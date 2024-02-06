@@ -27,6 +27,20 @@ pub fn open_file_dialog() -> String {
     }
 }
 
+pub fn save_file_dialog() -> String {
+    match nfd::open_save_dialog(None, None).unwrap() {
+        Response::Okay(file_path) => {
+            return file_path;
+        }
+        Response::Cancel => {
+            return "".to_string();
+        }
+        _ => {
+            return "".to_string();
+        }
+    }
+}
+
 
 pub fn create_directory(directory: &str) -> io::Result<()> {
     let mut p = Path::new(directory);
