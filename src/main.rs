@@ -8,10 +8,10 @@ mod Pack;
 mod misc;
 mod Zstd;
 mod BymlEntries;
+mod Gui;
 use Pack::PackFile;
 use TestCases::test_case1;
-
-
+use std::thread;
 
 fn main() -> io::Result<()> {
     //let totk_path = TotkPath::TotkPath::new(PathBuf::from(""), PathBuf::from(""));
@@ -27,6 +27,7 @@ fn main() -> io::Result<()> {
 
 
     println!("{:?}", totk_path.get_pack_path("Player").unwrap());
+    Gui::run();
     Ok(())
 }
 

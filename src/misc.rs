@@ -3,7 +3,30 @@ use std::{env, path};
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::io::{self, Error, ErrorKind, Read, Write};
+extern crate nfd;
+use nfd::Response;
 //use std::io;
+
+pub fn open_file_dialog() -> String {
+    match nfd::open_file_dialog(None, None).unwrap() {
+        Response::Okay(file_path) => {
+            // `file_path` contains the selected file's path as a `PathBuf`
+            println!("Selected file: {:?}", file_path);
+            return file_path;
+        }
+        Response::Cancel => {
+            // The user canceled the file selection
+            println!("File selection canceled");
+            return "".to_string();
+        }
+        _ => {
+            // Some other error occurred
+            println!("An error occurred");
+            return "".to_string();
+        }
+    }
+}
+
 
 pub fn create_directory(directory: &str) -> io::Result<()> {
     let mut p = Path::new(directory);
