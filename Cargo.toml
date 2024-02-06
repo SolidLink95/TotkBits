@@ -13,3 +13,4 @@ serde_json = "1.0"
 egui = "0.15"
 eframe = "0.15"
 nfd = "0.0.4" #openfiledialog
+native-dialog = "0.7.0"

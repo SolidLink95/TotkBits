@@ -21,7 +21,7 @@ pub fn open_file_dialog() -> String {
         }
         _ => {
             // Some other error occurred
-            println!("An error occurred");
+            //println!("An error occurred");
             return "".to_string();
         }
     }
