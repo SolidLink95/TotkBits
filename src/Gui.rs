@@ -1,15 +1,17 @@
 use crate::misc::{open_file_dialog, save_file_dialog};
-use eframe::egui::{self, Color32, CtxRef, ScrollArea, SelectableLabel, TextStyle, TopBottomPanel, TextureId};
+use eframe::egui::{
+    self, Color32, ScrollArea, SelectableLabel, TextStyle, TextureId, TopBottomPanel,
+};
 use egui::emath::Numeric;
-use egui::{Context};
-use eframe::epi::App;
-use eframe::epi::Frame;
+use egui::{CollapsingHeader, Context};
+//use eframe::epi::App;
+//use eframe::epi::Frame;
 use egui::text::Fonts;
+use image::io::Reader as ImageReader;
 use native_dialog::{MessageDialog, MessageType};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::{fs, io};
-use image::io::Reader as ImageReader;
+use std::{any, fs, io};
 
 #[derive(PartialEq)]
 enum ActiveTab {
@@ -23,25 +25,43 @@ struct TotkBitsApp {
     status_text: String,
     scroll: ScrollArea,
     active_tab: ActiveTab,
+    language: String,
 }
 impl Default for TotkBitsApp {
     fn default() -> Self {
         Self {
             opened_file: String::new(),
-            text: "Initial content of the text box".to_owned(),
+            //text: "fn main() {\n                println!(\"Hello world!\");\n            }".to_owned(),
+            text: "$parent: Work/Component/ArmorParam/Default.game__component__ArmorParam.gyml
+ArmorEffect: []
+BaseDefense: 3
+HasSoundCloth: true
+HeadEarBoneOffset: {X: 0.0,Y: 50.0,Z: 0.0}
+HeadMantleType: DoubleMantle
+HeadSwapActor: Work/Actor/Armor_001_Head_B.engine__actor__ActorParam.gyml
+HiddenMaterialGroupList: []
+HideMaterialGroupNameList: [G_Head,G_Scarf]
+NextRankActor: Work/Actor/Armor_002_Head.engine__actor__ActorParam.gyml
+SeriesName: Hylia
+SoundMaterial: Cloth
+WindEffectMesh: Mant_001_Havok
+WindEffectScale: 0.3
+            "
+            .to_owned(),
             status_text: "Ready".to_owned(),
             scroll: ScrollArea::vertical(),
             active_tab: ActiveTab::TextBox,
+            language: "toml".into(),
         }
     }
 }
 
-impl App for TotkBitsApp {
-    fn name(&self) -> &str {
-        "Totkbits"
-    }
+impl eframe::App for TotkBitsApp {
+    //fn name(&self) -> &str {
+    //    "Totkbits"
+    //}
 
-    fn update(&mut self, ctx: &CtxRef, _frame: &mut Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Top panel (menu bar)
         Gui::display_menu_bar(self, ctx);
 
@@ -59,7 +79,7 @@ impl App for TotkBitsApp {
 struct Gui {}
 
 impl Gui {
-    pub fn display_status_bar(ob: &mut TotkBitsApp, ctx: &CtxRef) {
+    pub fn display_status_bar(ob: &mut TotkBitsApp, ctx: &egui::Context) {
         TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(&ob.status_text);
@@ -67,10 +87,8 @@ impl Gui {
             });
         });
     }
-    
 
-
-    pub fn display_menu_bar(ob: &mut TotkBitsApp, ctx: &CtxRef) {
+    pub fn display_menu_bar(ob: &mut TotkBitsApp, ctx: &egui::Context) {
         //ob.open_icon_id = Gui::load_icon("res/open_icon.png");
         //ob.save_icon_id = Gui::load_icon("res/save_icon.png");
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -98,22 +116,62 @@ impl Gui {
     }
 
     pub fn display_main(ob: &mut TotkBitsApp, ui: &mut egui::Ui) {
+        let mut theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
+        //ui.collapsing("Theme", |ui| {
+        //    ui.group(|ui| {
+        //        theme.ui(ui);
+        //        theme.clone().store_in_memory(ui.ctx());
+        //   })
+        //});
+
+        let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
+            let mut layout_job =
+                egui_extras::syntax_highlighting::highlight(ui.ctx(), &theme, string, &ob.language);
+            layout_job.wrap.max_width = wrap_width;
+            ui.fonts(|f| f.layout_job(layout_job))
+        };
+
         match ob.active_tab {
             ActiveTab::TextBox => {
                 //scrollbar
                 ob.scroll.clone().show(ui, |ui| {
                     ui.add_sized(
                         ui.available_size(),
-                        egui::TextEdit::multiline(&mut ob.text).desired_rows(10),
+                        //egui::TextEdit::multiline(&mut ob.text).code_editor().desired_rows(10),
+                        egui::TextEdit::multiline(&mut ob.text)
+                            .font(egui::TextStyle::Monospace)
+                            .code_editor()
+                            .desired_rows(10)
+                            .lock_focus(true)
+                            .desired_width(f32::INFINITY)
+                            .layouter(&mut layouter),
                     );
-                })
+                });
             }
             ActiveTab::DiretoryTree => {
-                ui.allocate_space(ui.available_size());
+                //ui.allocate_space(ui.available_size());
+                CollapsingHeader::new("Label1")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        CollapsingHeader::new("Label2")
+                            .default_open(false)
+                            .show(ui, |ui| ui.label("ASDF"))
+                    });
+
+                let mut  paths = get_paths();
+                //Gui::create_nested_ticks(ob, ui,paths);
+
                 //ui.painter().rect_filled(ui.max_rect(), 0.0, Color32::BLACK);
             }
         }
     }
+
+    
+ 
+    
+        
+    }
+
     pub fn display_labels(ob: &mut TotkBitsApp, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui
@@ -155,14 +213,37 @@ impl Gui {
         }
     }
 
-    fn get_label_height(ctx: &CtxRef) -> f32 {
-        ctx.fonts()
-            .layout_no_wrap("Example".to_string(), TextStyle::Heading, Color32::BLACK)
-            .size()
-            .y
+    fn get_label_height(ctx: &egui::Context) -> f32 {
+        //ctx.fonts() unused
+        //    .layout_no_wrap("Example".to_string(), TextStyle::Heading, Color32::BLACK)
+        //    .size()
+        //    .y
+        0.0
     }
 }
+
+pub fn get_paths() -> Vec<&'static str> {
+    let s = "Component/ModelInfo/Armor_006_Head.engine__component__ModelInfo.bgyml
+GameParameter/GameParameterTable/Armor_006_Upper.engine__actor__GameParameterTable.bgyml
+GameParameter/EnhancementMaterial/Armor_006_Head.game__pouchcontent__EnhancementMaterial.bgyml
+Component/ActorPositionCalculatorParam/Armor_006_Upper.game__component__ActorPositionCalculatorParam.bgyml
+Component/CaptureParam/Armor_006_Upper.game__component__CaptureParam.bgyml
+Component/ArmorParam/Armor_006_Upper.game__component__ArmorParam.bgyml
+GameParameter/PriceParam/Armor_006_Upper.game__pouchcontent__PriceParam.bgyml
+Phive/HelperBone/Armor_006_RaulSkin_Upper.bphhb
+Phive/Cloth/Armor_006_RaulSkin_Upper.bphcl
+Component/ColorVariationParam/Armor_Upper.game__component__ColorVariationParam.bgyml
+Component/ASInfo/Upper_Common.engine__component__ASInfo.bgyml";
+    let paths: Vec<&str> = s.split("\n").collect();
+    return paths;
+}
+
 pub fn run() {
     let options = eframe::NativeOptions::default();
-    eframe::run_native(Box::new(TotkBitsApp::default()), options);
+    eframe::run_native(
+        "Totkbits",
+        options,
+        Box::new(|_cc| Box::<TotkBitsApp>::default()),
+    )
+    .unwrap();
 }

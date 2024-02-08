@@ -22,11 +22,13 @@ fn main() -> io::Result<()> {
     let _ = totk_path.print();
     //let zstd = Zstd::ZstdDecompressor::new(&totk_path)?;
     println!("Hello, world!");
-    test_case1(&totk_path);
+    //let code_content = test_case1(&totk_path).unwrap();
     let _ = totk_path.print();
 
 
     println!("{:?}", totk_path.get_pack_path("Player").unwrap());
+    //println!("{}", code_content);
+    //GuiUpdated::run();
     Gui::run();
     Ok(())
 }

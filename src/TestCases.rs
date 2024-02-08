@@ -14,18 +14,22 @@ use misc::{print_as_hex};
 use Pack::PackFile;
 
 
-pub fn test_case1(totk_path: &TotkPath::TotkPath) -> io::Result<()>{
+pub fn test_case1(totk_path: &TotkPath::TotkPath) -> io::Result<String>{
     //let mut zsdic = Arc::new(ZsDic::new(&totk_path)?);
     let TotkZstd: Zstd::totk_zstd<'_> = Zstd::totk_zstd::new(totk_path, 16)?;
     let p = PathBuf::from(r"res\Armor_006_Upper.pack.zs");
     //let compressor = Zstd::ZstdCompressor::new(&totk_path, zsdic, 16)?;
+    let mut ret_res: String = Default::default();
     let mut x: PackFile<'_> = PackFile::new(&p, &totk_path, &TotkZstd)?;
     for file in x.sarc.files(){
         let name  = file.name().unwrap();
+        println!("{}",name);
         if name.starts_with("Actor/") {
+            
             println!("{}", file.name().unwrap());
             let data = file.data();
             let mut pio = roead::byml::Byml::from_binary(&data.clone()).unwrap();//.expect("msg");
+            ret_res = pio.to_text();
             println!("  {:?}", pio["Components"].as_mut_map().unwrap().contains_key("ModelInfoRef"));
             for e in pio["Components"].as_map() {
                 println!("  {:?}", e);
@@ -47,5 +51,5 @@ pub fn test_case1(totk_path: &TotkPath::TotkPath) -> io::Result<()>{
     }
     x.save("res/asdf/zxcv.pack")?;
     x.save("res/asdf/zxcv.pack.zs")?;
-    Ok(())
+    Ok(ret_res)
 }
