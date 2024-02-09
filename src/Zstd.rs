@@ -10,19 +10,24 @@ use zstd::dict::{DDict, DecoderDictionary, EncoderDictionary};
 use crate::misc::check_file_exists;
 
 pub struct totk_zstd<'a> {
+    pub totk_path: Arc<TotkPath>,
     pub decompressor: ZstdDecompressor<'a>,
     pub compressor: ZstdCompressor<'a>
 }
 
 impl<'a> totk_zstd<'_> {
-    pub fn new(totk_path: &TotkPath, comp_level: i32) -> io::Result<totk_zstd> {
-        let zsdic = Arc::new(ZsDic::new(totk_path)?);
-        let decompressor: ZstdDecompressor = ZstdDecompressor::new(totk_path, zsdic.clone())?;
-        let compressor: ZstdCompressor = ZstdCompressor::new(totk_path, zsdic, comp_level)?;
+    //pub fn new(totk_path: &'a TotkPath, comp_level: i32) -> io::Result<totk_zstd> {
+    pub fn new(totk_path: Arc<TotkPath>, comp_level: i32) -> io::Result<totk_zstd<'a>> {
+    //pub fn new(comp_level: i32) -> io::Result<totk_zstd<'a>> {
+        //let totk_path = Arc::new(TotkPath::new());
+        let zsdic = Arc::new(ZsDic::new(totk_path.clone())?);
+        let decompressor: ZstdDecompressor = ZstdDecompressor::new(totk_path.clone(), zsdic.clone())?;
+        let compressor: ZstdCompressor = ZstdCompressor::new(totk_path.clone(), zsdic, comp_level)?;
 
         Ok(totk_zstd {
-            decompressor: decompressor,
-            compressor: compressor
+            totk_path,
+            decompressor,
+            compressor
         })
     }
 }
@@ -36,7 +41,7 @@ pub struct ZsDic {
 }
 
 impl ZsDic {
-    pub fn new(totk_path: &TotkPath) -> io::Result<ZsDic> {
+    pub fn new(totk_path: Arc<TotkPath>) -> io::Result<ZsDic> {
         let sarc = ZsDic::get_zsdic_sarc(&totk_path)?;
         let empty_data: Vec<u8> = Vec::new();
         let mut zs_data: Vec<u8> = Vec::new();
@@ -87,7 +92,7 @@ impl ZsDic {
 
 
 pub struct ZstdDecompressor<'a> {
-    totk_path: &'a TotkPath,
+    totk_path: Arc<TotkPath>,
     pub packzs: DecoderDictionary<'a>,//Vec<u8>,
     pub zs:  DecoderDictionary<'a>,//Vec<u8>,
     pub bcett: DecoderDictionary<'a>,//Vec<u8>,
@@ -96,7 +101,7 @@ pub struct ZstdDecompressor<'a> {
 }
 
 impl<'a> ZstdDecompressor<'_> {
-    pub fn new(totk_path: &'a TotkPath, zsdic: Arc<ZsDic>) -> io::Result<ZstdDecompressor<'a>> {
+    pub fn new(totk_path: Arc<TotkPath>, zsdic: Arc<ZsDic>) -> io::Result<ZstdDecompressor<'a>> {
         let zs: DecoderDictionary =     DecoderDictionary::copy(&zsdic.zs_data);
         let bcett: DecoderDictionary =  DecoderDictionary::copy(&zsdic.bcett_data);
         let packzs: DecoderDictionary = DecoderDictionary::copy(&zsdic.packzs_data);
@@ -143,7 +148,7 @@ impl<'a> ZstdDecompressor<'_> {
 
 
 pub struct ZstdCompressor<'a> {
-    totk_path: &'a TotkPath,
+    totk_path: Arc<TotkPath>,
     pub packzs: EncoderDictionary<'a>,//Vec<u8>,
     pub zs:  EncoderDictionary<'a>,//Vec<u8>,
     pub bcett: EncoderDictionary<'a>,//Vec<u8>,
@@ -152,7 +157,7 @@ pub struct ZstdCompressor<'a> {
 }
 
 impl<'a> ZstdCompressor<'_> {
-    pub fn new(totk_path: &'a TotkPath, zsdic: Arc<ZsDic>, comp_level: i32) -> io::Result<ZstdCompressor<'a>> {
+    pub fn new(totk_path: Arc<TotkPath>, zsdic: Arc<ZsDic>, comp_level: i32) -> io::Result<ZstdCompressor<'a>> {
         let zs: EncoderDictionary =     EncoderDictionary::copy(&zsdic.zs_data, comp_level);
         let bcett: EncoderDictionary =  EncoderDictionary::copy(&zsdic.bcett_data, comp_level);
         let packzs: EncoderDictionary = EncoderDictionary::copy(&zsdic.packzs_data, comp_level);

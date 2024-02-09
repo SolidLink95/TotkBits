@@ -1,4 +1,8 @@
-use crate::misc::{open_file_dialog, save_file_dialog};
+use crate::misc::{self, open_file_dialog, save_file_dialog};
+use crate::Pack::PackFile;
+use crate::TotkPath::TotkPath;
+use crate::Tree::{self, test_tree, tree_node};
+use crate::Zstd::{totk_zstd, ZsDic};
 use eframe::egui::{
     self, Color32, ScrollArea, SelectableLabel, TextStyle, TextureId, TopBottomPanel,
 };
@@ -9,8 +13,11 @@ use egui::{CollapsingHeader, Context};
 use egui::text::Fonts;
 use image::io::Reader as ImageReader;
 use native_dialog::{MessageDialog, MessageType};
+use std::borrow::BorrowMut;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::Arc;
 use std::{any, fs, io};
 
 #[derive(PartialEq)]
@@ -19,47 +26,35 @@ enum ActiveTab {
     TextBox,
 }
 
-struct TotkBitsApp {
+struct TotkBitsApp<'a> {
     opened_file: String,
     text: String,
     status_text: String,
     scroll: ScrollArea,
     active_tab: ActiveTab,
     language: String,
+    //totk_path: Arc<TotkPath>,
+    zstd: totk_zstd<'a>,
+    reload_tree: bool
 }
-impl Default for TotkBitsApp {
+impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
+        let totk_path = Arc::new(TotkPath::new());
         Self {
             opened_file: String::new(),
-            //text: "fn main() {\n                println!(\"Hello world!\");\n            }".to_owned(),
-            text: "$parent: Work/Component/ArmorParam/Default.game__component__ArmorParam.gyml
-ArmorEffect: []
-BaseDefense: 3
-HasSoundCloth: true
-HeadEarBoneOffset: {X: 0.0,Y: 50.0,Z: 0.0}
-HeadMantleType: DoubleMantle
-HeadSwapActor: Work/Actor/Armor_001_Head_B.engine__actor__ActorParam.gyml
-HiddenMaterialGroupList: []
-HideMaterialGroupNameList: [G_Head,G_Scarf]
-NextRankActor: Work/Actor/Armor_002_Head.engine__actor__ActorParam.gyml
-SeriesName: Hylia
-SoundMaterial: Cloth
-WindEffectMesh: Mant_001_Havok
-WindEffectScale: 0.3
-            "
-            .to_owned(),
+            text: misc::get_example_yaml(),
             status_text: "Ready".to_owned(),
             scroll: ScrollArea::vertical(),
-            active_tab: ActiveTab::TextBox,
+            active_tab: ActiveTab::DiretoryTree,
             language: "toml".into(),
+            //totk_path:  totk_path.clone(),
+            zstd: totk_zstd::new(totk_path, 16).unwrap(),
+            reload_tree: false
         }
     }
 }
 
-impl eframe::App for TotkBitsApp {
-    //fn name(&self) -> &str {
-    //    "Totkbits"
-    //}
+impl eframe::App for TotkBitsApp<'_> {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Top panel (menu bar)
@@ -149,19 +144,20 @@ impl Gui {
                 });
             }
             ActiveTab::DiretoryTree => {
-                //ui.allocate_space(ui.available_size());
-                CollapsingHeader::new("Label1")
-                    .default_open(false)
-                    .show(ui, |ui| {
-                        CollapsingHeader::new("Label2")
-                            .default_open(false)
-                            .show(ui, |ui| ui.label("ASDF"))
-                    });
-
-                let mut  paths = get_paths();
-                //Gui::create_nested_ticks(ob, ui,paths);
-
-                //ui.painter().rect_filled(ui.max_rect(), 0.0, Color32::BLACK);
+                //println!("{:?} {:?}",)
+                if ob.reload_tree{
+                    if ob.opened_file.len() > 0 {
+                        let p = PathBuf::from(ob.opened_file.clone());
+                        let x: PackFile<'_> = PackFile::new(&p, &ob.zstd).unwrap();
+                        let root_node: Rc<tree_node<String>> = tree_node::new("ROOT".to_string());
+                        
+                        Tree::update_from_sarc_paths(&root_node, x);
+                        for child in root_node.children.borrow().iter() {
+                            display_tree_in_egui(&child, ui);
+                        }
+                        //display_tree_in_egui(&root_node, ui);
+                        //ob.reload_tree = !ob.reload_tree;
+                }}
             }
         }
     }
@@ -170,7 +166,6 @@ impl Gui {
  
     
         
-    }
 
     pub fn display_labels(ob: &mut TotkBitsApp, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
@@ -199,12 +194,12 @@ impl Gui {
         // Logic for opening a file
         let file_name = open_file_dialog();
         if file_name.len() > 0 {
-            ob.status_text = format!("Opened file: {}", file_name).to_owned();
             ob.opened_file = file_name.clone();
+            ob.reload_tree = true;
             let mut f_handle = fs::File::open(file_name.clone()).unwrap();
             let mut buffer: Vec<u8> = Vec::new(); //String::new();
             match f_handle.read_to_end(&mut buffer) {
-                Ok(_) => ob.text = String::from_utf8_lossy(&buffer).to_string(),
+                Ok(_) =>  ob.status_text = format!("Opened file: {}", file_name).to_owned(),
                 Err(err) => ob.status_text = format!("Error reading file: {}", file_name),
             }
             //self.text = buffer;
@@ -220,23 +215,30 @@ impl Gui {
         //    .y
         0.0
     }
+
 }
 
-pub fn get_paths() -> Vec<&'static str> {
-    let s = "Component/ModelInfo/Armor_006_Head.engine__component__ModelInfo.bgyml
-GameParameter/GameParameterTable/Armor_006_Upper.engine__actor__GameParameterTable.bgyml
-GameParameter/EnhancementMaterial/Armor_006_Head.game__pouchcontent__EnhancementMaterial.bgyml
-Component/ActorPositionCalculatorParam/Armor_006_Upper.game__component__ActorPositionCalculatorParam.bgyml
-Component/CaptureParam/Armor_006_Upper.game__component__CaptureParam.bgyml
-Component/ArmorParam/Armor_006_Upper.game__component__ArmorParam.bgyml
-GameParameter/PriceParam/Armor_006_Upper.game__pouchcontent__PriceParam.bgyml
-Phive/HelperBone/Armor_006_RaulSkin_Upper.bphhb
-Phive/Cloth/Armor_006_RaulSkin_Upper.bphcl
-Component/ColorVariationParam/Armor_Upper.game__component__ColorVariationParam.bgyml
-Component/ASInfo/Upper_Common.engine__component__ASInfo.bgyml";
-    let paths: Vec<&str> = s.split("\n").collect();
-    return paths;
+pub fn display_tree_in_egui(root_node: &Rc<tree_node<String>>, ui: &mut egui::Ui) {
+    CollapsingHeader::new(root_node.value.clone())
+        .default_open(false)
+        .show(ui, |ui| {
+            for child in root_node.children.borrow().iter() {
+                if !tree_node::is_leaf(&child) {
+                    display_tree_in_egui(child, ui);
+                }
+                else {
+                    ui.horizontal(|ui| {
+                        if ui.button(child.value.clone()).clicked() {
+                            println!("Clicked {}", child.value);
+                        }
+                    });
+                }
+            }
+        });
 }
+
+
+
 
 pub fn run() {
     let options = eframe::NativeOptions::default();

@@ -39,6 +39,16 @@ impl TotkPath {
         }
     }
 
+    pub fn clone(&self) -> TotkPath {
+        TotkPath {
+            romfs: self.romfs.clone(),
+            bfres: self.bfres.clone(),
+            totk_decoded: self.totk_decoded.clone(),
+            yuzu_mod_path: self.yuzu_mod_path.clone(),
+            config_path: self.config_path.clone()
+        }
+    }
+
     pub fn get_pack_path(&self, name: &str) -> io::Result<PathBuf> {
         let pack_local_path = format!("Pack/Actor/{}.pack.zs", name);
         let mut pack_path = self.romfs.clone();

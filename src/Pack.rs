@@ -2,6 +2,7 @@ use roead;
 use std::fs;
 use std::io::{self, Error, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 //mod Zstd;
 use crate::BymlEntries::ActorParam;
 use crate::TotkPath::TotkPath;
@@ -9,7 +10,7 @@ use crate::Zstd::{totk_zstd, ZstdCompressor, ZstdDecompressor};
 
 pub struct PackFile<'a> {
     path: &'a PathBuf,
-    totk_path: &'a TotkPath,
+    totk_path: Arc<TotkPath>,
     zstd: &'a totk_zstd<'a>,
     //decompressor: &'a ZstdDecompressor<'a>,
     //compressor: &'a ZstdCompressor<'a>,
@@ -21,7 +22,7 @@ pub struct PackFile<'a> {
 impl<'a> PackFile<'_> {
     pub fn new(
         path: &'a PathBuf,
-        totk_path: &'a TotkPath,
+        //totk_path: Arc<TotkPath>,
         zstd: &'a totk_zstd,
         //decompressor: &'a ZstdDecompressor,
         //compressor: &'a ZstdCompressor
@@ -32,7 +33,7 @@ impl<'a> PackFile<'_> {
 
         Ok(PackFile {
             path: path,
-            totk_path: totk_path,
+            totk_path: zstd.totk_path.clone(),
             zstd: zstd,
             //decompressor: decompressor,
             //compressor: compressor,
@@ -71,4 +72,10 @@ impl<'a> PackFile<'_> {
         }
         Ok(buffer)
     }
+}
+
+
+struct opened_file {
+    file_path: String,
+
 }

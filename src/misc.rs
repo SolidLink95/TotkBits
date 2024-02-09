@@ -7,6 +7,25 @@ extern crate nfd;
 use nfd::Response;
 //use std::io;
 
+pub fn get_example_yaml() -> String{
+    return "$parent: Work/Component/ArmorParam/Default.game__component__ArmorParam.gyml
+ArmorEffect: []
+BaseDefense: 3
+HasSoundCloth: true
+HeadEarBoneOffset: {X: 0.0,Y: 50.0,Z: 0.0}
+HeadMantleType: DoubleMantle
+HeadSwapActor: Work/Actor/Armor_001_Head_B.engine__actor__ActorParam.gyml
+HiddenMaterialGroupList: []
+HideMaterialGroupNameList: [G_Head,G_Scarf]
+NextRankActor: Work/Actor/Armor_002_Head.engine__actor__ActorParam.gyml
+SeriesName: Hylia
+SoundMaterial: Cloth
+WindEffectMesh: Mant_001_Havok
+WindEffectScale: 0.3
+                "
+                .to_owned();
+}
+
 pub fn open_file_dialog() -> String {
     match nfd::open_file_dialog(None, None).unwrap() {
         Response::Okay(file_path) => {
