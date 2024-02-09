@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::path::PathBuf;
 use crate::TotkPath::TotkPath;
 use roead::sarc::*;
+use serde::de;
 //use zstd::zstd_safe::CompressionLevel;
 use std::fs;
 use std::io::{self, Cursor, Read, Write};
@@ -118,26 +119,41 @@ impl<'a> ZstdDecompressor<'_> {
 
     }
     
-    fn decompress(&self, data: &[u8], ddict: &DecoderDictionary) -> Result<Vec<u8>, String> {
+    fn decompress(&self, data: &[u8], ddict: &DecoderDictionary) -> Result<Vec<u8>, io::Error> {
         let mut decoder = Decoder::with_prepared_dictionary(
             data, 
             ddict
-        ).expect("Error");
+        );
+        match decoder {
+            Ok(_) => {},
+            Err(err) => {
+                eprintln!("Error getting the decoder");
+                return Err(err);
+            }
+        }
         let mut decompressed = Vec::new();
-        decoder.read_to_end(&mut decompressed)
-            .map_err(|e| e.to_string())?;
+        match decoder.unwrap().read_to_end(&mut decompressed) {
+            Ok(_) => {
+                return Ok(decompressed);
+            },
+            Err(err) => {
+                eprintln!("Error while decoding");
+                return Err(err);
+            }
+
+        }
         Ok(decompressed)
     }
 
-    pub fn decompress_zs(&self, data: &[u8]) -> Result<Vec<u8>, String>{
+    pub fn decompress_zs(&self, data: &[u8]) -> Result<Vec<u8>, io::Error>{
         ZstdDecompressor::decompress(&self, &data, &self.zs)
     }
 
-    pub fn decompress_pack(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn decompress_pack(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
         ZstdDecompressor::decompress(&self, &data, &self.packzs)
     }
 
-    pub fn decompress_bcett(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn decompress_bcett(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
         ZstdDecompressor::decompress(&self, &data, &self.bcett)
     }
 

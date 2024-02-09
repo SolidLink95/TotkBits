@@ -100,7 +100,7 @@ fn get_parent_node_if_exists(
     }
 }
 
-pub fn update_from_sarc_paths(root_node: &Rc<tree_node<String>>, sarc_file: PackFile) {
+pub fn update_from_sarc_paths(root_node: &Rc<tree_node<String>>, sarc_file: &PackFile) {
     let mut  paths: Vec<String> = Default::default();
     for file in sarc_file.sarc.files() {
         paths.push(file.name().unwrap().to_string());

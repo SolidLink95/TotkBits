@@ -34,8 +34,9 @@ struct TotkBitsApp<'a> {
     active_tab: ActiveTab,
     language: String,
     //totk_path: Arc<TotkPath>,
-    zstd: totk_zstd<'a>,
-    reload_tree: bool
+    zstd: Arc<totk_zstd<'a>>,
+    pack: Option<PackFile<'a>>,
+    root_node: Rc<tree_node<String>>
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -48,8 +49,9 @@ impl Default for TotkBitsApp<'_> {
             active_tab: ActiveTab::DiretoryTree,
             language: "toml".into(),
             //totk_path:  totk_path.clone(),
-            zstd: totk_zstd::new(totk_path, 16).unwrap(),
-            reload_tree: false
+            zstd: Arc::new(totk_zstd::new(totk_path, 16).unwrap()),
+            pack: None,
+            root_node: tree_node::new("ROOT".to_string())
         }
     }
 }
@@ -145,19 +147,27 @@ impl Gui {
             }
             ActiveTab::DiretoryTree => {
                 //println!("{:?} {:?}",)
-                if ob.reload_tree{
-                    if ob.opened_file.len() > 0 {
-                        let p = PathBuf::from(ob.opened_file.clone());
-                        let x: PackFile<'_> = PackFile::new(&p, &ob.zstd).unwrap();
-                        let root_node: Rc<tree_node<String>> = tree_node::new("ROOT".to_string());
-                        
-                        Tree::update_from_sarc_paths(&root_node, x);
-                        for child in root_node.children.borrow().iter() {
-                            display_tree_in_egui(&child, ui);
+                if ob.opened_file.len() > 0 {
+                    let p = PathBuf::from(ob.opened_file.clone());
+                    match PackFile::new(ob.opened_file.clone(), ob.zstd.clone()) {
+                        Ok(pack) => {
+                            ob.pack = Some(pack);
+                        },
+                        Err(err) => {
+                            eprintln!("Error parsing sarc file");
+                            ob.opened_file = String::new();
+                            return;
                         }
-                        //display_tree_in_egui(&root_node, ui);
+                    }
+                    //ob.pack = Some(PackFile::new(ob.opened_file.clone(), ob.zstd.clone()).unwrap();
+                    
+                    Tree::update_from_sarc_paths(&ob.root_node, &ob.pack.as_mut().expect("Error passing pack file"));
+                    for child in ob.root_node.children.borrow().iter() {
+                        display_tree_in_egui(&child, ui);
+                    }
+                    //display_tree_in_egui(&root_node, ui);
                         //ob.reload_tree = !ob.reload_tree;
-                }}
+                }
             }
         }
     }
@@ -194,8 +204,10 @@ impl Gui {
         // Logic for opening a file
         let file_name = open_file_dialog();
         if file_name.len() > 0 {
+            //let file_path: &PathBuf = &PathBuf::from(file_name.clone());
             ob.opened_file = file_name.clone();
-            ob.reload_tree = true;
+            //ob.pack = Some(PackFile::new(file_path, &ob.zstd).unwrap());
+            //ob.reload_tree = true;
             let mut f_handle = fs::File::open(file_name.clone()).unwrap();
             let mut buffer: Vec<u8> = Vec::new(); //String::new();
             match f_handle.read_to_end(&mut buffer) {

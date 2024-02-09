@@ -1,4 +1,5 @@
 use roead;
+use roead::sarc::{Sarc, SarcWriter};
 use std::fs;
 use std::io::{self, Error, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
@@ -9,38 +10,41 @@ use crate::TotkPath::TotkPath;
 use crate::Zstd::{totk_zstd, ZstdCompressor, ZstdDecompressor};
 
 pub struct PackFile<'a> {
-    path: &'a PathBuf,
+    path: String,
     totk_path: Arc<TotkPath>,
-    zstd: &'a totk_zstd<'a>,
+    zstd:  Arc<totk_zstd<'a>>,
     //decompressor: &'a ZstdDecompressor<'a>,
     //compressor: &'a ZstdCompressor<'a>,
     //raw_data: Vec<u8>,
-    pub writer: roead::sarc::SarcWriter,
-    pub sarc: roead::sarc::Sarc<'a>,
+    pub writer: SarcWriter,
+    pub sarc: Sarc<'a>,
 }
+
 
 impl<'a> PackFile<'_> {
     pub fn new(
-        path: &'a PathBuf,
+        path: String,
         //totk_path: Arc<TotkPath>,
-        zstd: &'a totk_zstd,
+        zstd:  Arc<totk_zstd<'a>>,
         //decompressor: &'a ZstdDecompressor,
         //compressor: &'a ZstdCompressor
     ) -> io::Result<PackFile<'a>> {
-        let raw_data = PackFile::sarc_file_to_bytes(path, zstd)?;
-        let sarc: roead::sarc::Sarc = roead::sarc::Sarc::new(raw_data.clone()).expect("Failed");
-        let writer: roead::sarc::SarcWriter = roead::sarc::SarcWriter::from_sarc(&sarc);
+        let raw_data = PackFile::sarc_file_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
+        let sarc: Sarc = Sarc::new(raw_data.clone()).expect("Failed");
+        let writer: SarcWriter = SarcWriter::from_sarc(&sarc);
 
         Ok(PackFile {
             path: path,
             totk_path: zstd.totk_path.clone(),
-            zstd: zstd,
+            zstd: zstd.clone(),
             //decompressor: decompressor,
             //compressor: compressor,
             writer: writer,
             sarc: sarc,
         })
     }
+
+
 
     //Get totk actor entries recursively
 
@@ -59,16 +63,22 @@ impl<'a> PackFile<'_> {
     }
 
     //Read sarc file's bytes, decompress if needed
-    fn sarc_file_to_bytes(path: &PathBuf, zstd: &'a totk_zstd) -> io::Result<Vec<u8>> {
+    fn sarc_file_to_bytes(path: &PathBuf, zstd: &'a totk_zstd) -> Result<Vec<u8>, io::Error> {
         let mut fHandle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
         fHandle.read_to_end(&mut buffer)?;
         if !buffer.as_slice().starts_with(b"SARC") {
-            let res: Vec<u8> = zstd
+            match zstd
                 .decompressor
-                .decompress_pack(&buffer)
-                .expect("Failed to decompress pack");
-            return Ok(res);
+                .decompress_pack(&buffer) {
+                Ok(res) => {
+                    return Ok(res);
+                },
+                Err(err) => {
+                    eprintln!("Error during zstd decompress");
+                    return Err(err);
+                }
+            }
         }
         Ok(buffer)
     }
