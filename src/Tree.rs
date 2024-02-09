@@ -1,4 +1,5 @@
 use egui::{CollapsingHeader, SelectableLabel};
+use natord::compare;
 use std::cell::{Ref, RefCell};
 use std::fmt::Debug;
 use std::io;
@@ -106,7 +107,8 @@ pub fn update_from_sarc_paths(root_node: &Rc<tree_node<String>>, sarc_file: &Pac
         paths.push(file.name().unwrap().to_string());
     }
     
-    paths.sort();
+    //paths.sort(); doesnt sort like windows
+    paths.sort_by(|a, b| compare(&a, &b));
     update_from_paths(&root_node, paths);
 }
 

@@ -7,13 +7,11 @@ use crate::Zstd::{totk_zstd, ZsDic};
 use eframe::egui::{
     self, Color32, ScrollArea, SelectableLabel, TextStyle, TextureId, TopBottomPanel,
 };
-use egui::emath::Numeric;
-use egui::text::Fonts;
 use egui::{CollapsingHeader, Context};
-use image::io::Reader as ImageReader;
 use native_dialog::{MessageDialog, MessageType};
+use rfd::FileDialog;
 use roead::byml::Byml;
-use std::borrow::BorrowMut;
+use roead::sarc::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -108,7 +106,7 @@ impl Gui {
     }
 
     pub fn display_main(ob: &mut TotkBitsApp, ui: &mut egui::Ui) {
-        let mut theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
+        let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
         //ui.collapsing("Theme", |ui| {
         //    ui.group(|ui| {
         //        theme.ui(ui);
@@ -138,18 +136,28 @@ impl Gui {
                             .layouter(&mut layouter),
                     );
                     Gui::open_byml_or_sarc(ob, ui);
+                    //TODO: get scrollbar position and render only that part of text
+                    //println!("{:?}", ob.scroll.clone().show_viewport(ui, add_contents))
                 });
             }
             ActiveTab::DiretoryTree => {
-                ob.scroll.clone().show(ui, |ui| {
-                    Gui::open_byml_or_sarc(ob, ui);
-                    if !ob.pack.is_none() {
-                        Tree::update_from_sarc_paths(&ob.root_node, &ob.pack.as_mut().expect("Error passing pack file"));
-                        for child in ob.root_node.children.borrow().iter() {
-                            display_tree_in_egui(&child, ui);
+                ob.scroll
+                    .clone()
+                    .auto_shrink([false, false])
+                    .max_height(ui.available_height())
+                    .max_width(ui.available_width())
+                    .show(ui, |ui| {
+                        Gui::open_byml_or_sarc(ob, ui);
+                        if !ob.pack.is_none() {
+                            Tree::update_from_sarc_paths(
+                                &ob.root_node,
+                                &ob.pack.as_mut().expect("Error passing pack file"),
+                            );
+                            for child in ob.root_node.children.borrow().iter() {
+                                display_tree_in_egui(&child, ui);
+                            }
                         }
-                    }
-                });
+                    });
             }
         }
     }
@@ -165,6 +173,7 @@ impl Gui {
                 ob.pack = Some(pack);
                 ob.is_file_loaded = true;
                 println!("Sarc  opened!");
+                ob.active_tab = ActiveTab::DiretoryTree;
                 return;
             }
             Err(_) => {}
@@ -172,13 +181,11 @@ impl Gui {
         println!("Is {} a byml?", ob.opened_file.clone());
         match byml_file::new(ob.opened_file.clone(), ob.zstd.clone()) {
             Ok(b) => {
-                //ob.byml = Some(b.pio);
                 match &Some(b.pio) {
                     Some(x) => {
                         ob.text = Byml::to_text(&x);
                         ob.byml = Some(x.clone());
                         ob.active_tab = ActiveTab::TextBox;
-                        ob.is_file_loaded = true;
                         println!("Byml  opened!");
                     }
                     None => {}
@@ -186,6 +193,8 @@ impl Gui {
             }
             Err(_) => {}
         };
+        ob.is_file_loaded = true;
+        ob.status_text = format!("Failed to open: {}", ob.opened_file.clone());
     }
 
     pub fn display_labels(ob: &mut TotkBitsApp, ui: &mut egui::Ui) {
@@ -252,6 +261,45 @@ impl Gui {
     }
 }
 
+//TODO: saving byml file, 
+fn save_as(ob: &mut TotkBitsApp) {
+    match ob.active_tab {
+        ActiveTab::DiretoryTree => {
+            if ob.pack.is_none() {
+                return; //no sarc opened, aborting
+            }
+            let file: Option<PathBuf> = FileDialog::new()
+                .set_title("Save sarc file as")
+                .set_file_name(ob.opened_file.clone())
+                .save_file();
+            if file.is_none() {
+                return; //saving aborted
+            }
+            let dest_file: String = file
+                .unwrap()
+                .into_os_string()
+                .into_string()
+                .map_err(|os_str| format!("Path contains invalid UTF-8: {:?}", os_str))
+                .unwrap();
+            let res = ob.pack.as_mut().unwrap().save(dest_file.clone());
+            match res {
+                Ok(_) => {
+                    ob.status_text = format!("Saved: {}", dest_file);
+                }
+                Err(err) => {
+                    ob.status_text = format!("Error in save: {}", dest_file);
+                }
+            }
+        }
+
+        ActiveTab::TextBox => {
+            if ob.pack.is_none() {//just byml
+
+            }
+        }
+    }
+}
+
 pub fn display_tree_in_egui(root_node: &Rc<tree_node<String>>, ui: &mut egui::Ui) {
     CollapsingHeader::new(root_node.value.clone())
         .default_open(false)
@@ -271,7 +319,9 @@ pub fn display_tree_in_egui(root_node: &Rc<tree_node<String>>, ui: &mut egui::Ui
 }
 
 pub fn run() {
-    let options = eframe::NativeOptions::default();
+    let mut options = eframe::NativeOptions::default();
+    //options::viewport::initial_window_size(Some(egui::vec2(1000.0, 1000.0)));
+    options.viewport.inner_size = Some(egui::vec2(700.0, 700.0));
     eframe::run_native(
         "Totkbits",
         options,

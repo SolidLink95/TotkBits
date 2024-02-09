@@ -49,8 +49,8 @@ impl<'a> PackFile<'_> {
     //Get totk actor entries recursively
 
     //Save the sarc file, compress if file ends with .zs, create directory if needed
-    pub fn save(&mut self, dest_file: &str) -> io::Result<()> {
-        let file_path: &Path = Path::new(dest_file);
+    pub fn save(&mut self, dest_file: String) -> io::Result<()> {
+        let file_path: &Path = Path::new(&dest_file);
         let directory: &Path = file_path.parent().expect("Cannot get parent of the file");
         fs::create_dir_all(directory)?;
         let mut data: Vec<u8> = self.writer.to_binary();

@@ -17,5 +17,7 @@ egui = { default-features = false }
 eframe = "0.26.0"
 egui_extras = { features = ["default"] }
 nfd = "0.0.4" #openfiledialog
+rfd = "0.13.0"
 native-dialog = "0.7.0"
-image = "0.23"
+natord = "1.0.9"
+#image = "0.23"
