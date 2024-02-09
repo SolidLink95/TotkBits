@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::fs;
 use std::io::{self, Error, ErrorKind, Read, Write};
 use std::collections;
+use crate::Zstd::is_byml;
 
 pub struct ActorParam<'a> {
     path: &'a str,
@@ -25,18 +26,13 @@ impl<'a> ActorParam<'_> {
     }
 
 }
-pub fn isByml(data: &[u8]) -> bool {
-    if data.starts_with(b"BY") || data.starts_with(b"YB") {
-        return true
-    }
-    return false
-}
+
 
 pub fn get_byml_pio(sarc: &Sarc, file: &str) -> Option<Byml> {
     let data = sarc.get_data(file);
     let bytes = match data {
         Some(bytes) => {
-            if !isByml(&bytes){
+            if !is_byml(&bytes){
                 return None
             }
             let pio: Byml =  Byml::from_binary(bytes).unwrap();

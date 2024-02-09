@@ -6,6 +6,7 @@ use std::str::FromStr;
 mod TotkPath;
 mod Pack;
 mod misc;
+mod BymlFile;
 mod Tree;
 mod Zstd;
 mod BymlEntries;

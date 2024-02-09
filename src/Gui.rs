@@ -1,4 +1,5 @@
 use crate::misc::{self, open_file_dialog, save_file_dialog};
+use crate::BymlFile::byml_file;
 use crate::Pack::PackFile;
 use crate::TotkPath::TotkPath;
 use crate::Tree::{self, test_tree, tree_node};
@@ -7,12 +8,11 @@ use eframe::egui::{
     self, Color32, ScrollArea, SelectableLabel, TextStyle, TextureId, TopBottomPanel,
 };
 use egui::emath::Numeric;
-use egui::{CollapsingHeader, Context};
-//use eframe::epi::App;
-//use eframe::epi::Frame;
 use egui::text::Fonts;
+use egui::{CollapsingHeader, Context};
 use image::io::Reader as ImageReader;
 use native_dialog::{MessageDialog, MessageType};
+use roead::byml::Byml;
 use std::borrow::BorrowMut;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -33,31 +33,33 @@ struct TotkBitsApp<'a> {
     scroll: ScrollArea,
     active_tab: ActiveTab,
     language: String,
-    //totk_path: Arc<TotkPath>,
     zstd: Arc<totk_zstd<'a>>,
     pack: Option<PackFile<'a>>,
-    root_node: Rc<tree_node<String>>
+    byml: Option<Byml>,
+    root_node: Rc<tree_node<String>>,
+    is_file_loaded: bool,
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
         let totk_path = Arc::new(TotkPath::new());
         Self {
             opened_file: String::new(),
-            text: misc::get_example_yaml(),
+            //text: misc::get_example_yaml(),
+            text: String::new(),
             status_text: "Ready".to_owned(),
             scroll: ScrollArea::vertical(),
             active_tab: ActiveTab::DiretoryTree,
             language: "toml".into(),
-            //totk_path:  totk_path.clone(),
             zstd: Arc::new(totk_zstd::new(totk_path, 16).unwrap()),
             pack: None,
-            root_node: tree_node::new("ROOT".to_string())
+            byml: None,
+            root_node: tree_node::new("ROOT".to_string()),
+            is_file_loaded: true,
         }
     }
 }
 
 impl eframe::App for TotkBitsApp<'_> {
-
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Top panel (menu bar)
         Gui::display_menu_bar(self, ctx);
@@ -80,34 +82,27 @@ impl Gui {
         TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(&ob.status_text);
-                // You can add more status information here
             });
         });
     }
 
     pub fn display_menu_bar(ob: &mut TotkBitsApp, ctx: &egui::Context) {
-        //ob.open_icon_id = Gui::load_icon("res/open_icon.png");
-        //ob.save_icon_id = Gui::load_icon("res/save_icon.png");
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Open").clicked() {
                     Gui::open_file_button_click(ob);
                 }
                 if ui.button("Save").clicked() {
-                    // Logic for saving the current text
                     if ob.opened_file.len() > 0 {
                         println!("Saving file to {}", ob.opened_file);
                     }
                 }
                 if ui.button("Save as").clicked() {
-                    // Logic for saving the current text
                     let file_path = save_file_dialog();
                     if file_path.len() > 0 {
                         println!("Saving file to {}", file_path);
                     }
                 }
-
-                // Add more menu items here
             });
         });
     }
@@ -120,10 +115,10 @@ impl Gui {
         //        theme.clone().store_in_memory(ui.ctx());
         //   })
         //});
-
+        let language = ob.language.clone();
         let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
             let mut layout_job =
-                egui_extras::syntax_highlighting::highlight(ui.ctx(), &theme, string, &ob.language);
+                egui_extras::syntax_highlighting::highlight(ui.ctx(), &theme, string, &language);
             layout_job.wrap.max_width = wrap_width;
             ui.fonts(|f| f.layout_job(layout_job))
         };
@@ -134,7 +129,6 @@ impl Gui {
                 ob.scroll.clone().show(ui, |ui| {
                     ui.add_sized(
                         ui.available_size(),
-                        //egui::TextEdit::multiline(&mut ob.text).code_editor().desired_rows(10),
                         egui::TextEdit::multiline(&mut ob.text)
                             .font(egui::TextStyle::Monospace)
                             .code_editor()
@@ -143,39 +137,56 @@ impl Gui {
                             .desired_width(f32::INFINITY)
                             .layouter(&mut layouter),
                     );
+                    Gui::open_byml_or_sarc(ob, ui);
                 });
             }
             ActiveTab::DiretoryTree => {
-                //println!("{:?} {:?}",)
-                if ob.opened_file.len() > 0 {
-                    let p = PathBuf::from(ob.opened_file.clone());
-                    match PackFile::new(ob.opened_file.clone(), ob.zstd.clone()) {
-                        Ok(pack) => {
-                            ob.pack = Some(pack);
-                        },
-                        Err(err) => {
-                            eprintln!("Error parsing sarc file");
-                            ob.opened_file = String::new();
-                            return;
+                ob.scroll.clone().show(ui, |ui| {
+                    Gui::open_byml_or_sarc(ob, ui);
+                    if !ob.pack.is_none() {
+                        Tree::update_from_sarc_paths(&ob.root_node, &ob.pack.as_mut().expect("Error passing pack file"));
+                        for child in ob.root_node.children.borrow().iter() {
+                            display_tree_in_egui(&child, ui);
                         }
                     }
-                    //ob.pack = Some(PackFile::new(ob.opened_file.clone(), ob.zstd.clone()).unwrap();
-                    
-                    Tree::update_from_sarc_paths(&ob.root_node, &ob.pack.as_mut().expect("Error passing pack file"));
-                    for child in ob.root_node.children.borrow().iter() {
-                        display_tree_in_egui(&child, ui);
-                    }
-                    //display_tree_in_egui(&root_node, ui);
-                        //ob.reload_tree = !ob.reload_tree;
-                }
+                });
             }
         }
     }
 
-    
- 
-    
-        
+    fn open_byml_or_sarc(ob: &mut TotkBitsApp, ui: &mut egui::Ui) {
+        if ob.is_file_loaded {
+            return;
+        }
+        let p = PathBuf::from(ob.opened_file.clone());
+        println!("Is {} a sarc?", ob.opened_file.clone());
+        match PackFile::new(ob.opened_file.clone(), ob.zstd.clone()) {
+            Ok(pack) => {
+                ob.pack = Some(pack);
+                ob.is_file_loaded = true;
+                println!("Sarc  opened!");
+                return;
+            }
+            Err(_) => {}
+        }
+        println!("Is {} a byml?", ob.opened_file.clone());
+        match byml_file::new(ob.opened_file.clone(), ob.zstd.clone()) {
+            Ok(b) => {
+                //ob.byml = Some(b.pio);
+                match &Some(b.pio) {
+                    Some(x) => {
+                        ob.text = Byml::to_text(&x);
+                        ob.byml = Some(x.clone());
+                        ob.active_tab = ActiveTab::TextBox;
+                        ob.is_file_loaded = true;
+                        println!("Byml  opened!");
+                    }
+                    None => {}
+                };
+            }
+            Err(_) => {}
+        };
+    }
 
     pub fn display_labels(ob: &mut TotkBitsApp, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
@@ -200,23 +211,35 @@ impl Gui {
         });
     }
 
-    fn open_file_button_click(ob: &mut TotkBitsApp) {
+    fn open_file_button_click(ob: &mut TotkBitsApp) -> io::Result<()> {
         // Logic for opening a file
         let file_name = open_file_dialog();
         if file_name.len() > 0 {
-            //let file_path: &PathBuf = &PathBuf::from(file_name.clone());
+            println!("Attempting to read {} file", file_name.clone());
             ob.opened_file = file_name.clone();
-            //ob.pack = Some(PackFile::new(file_path, &ob.zstd).unwrap());
-            //ob.reload_tree = true;
-            let mut f_handle = fs::File::open(file_name.clone()).unwrap();
+            let mut f_handle = fs::File::open(file_name.clone())?;
             let mut buffer: Vec<u8> = Vec::new(); //String::new();
             match f_handle.read_to_end(&mut buffer) {
-                Ok(_) =>  ob.status_text = format!("Opened file: {}", file_name).to_owned(),
-                Err(err) => ob.status_text = format!("Error reading file: {}", file_name),
+                Ok(_) => {
+                    ob.status_text = format!("Opened file: {}", ob.opened_file.clone()).to_owned();
+                    ob.is_file_loaded = false;
+                    return Ok(());
+                }
+                Err(err) => {
+                    ob.status_text = format!("Error reading file: {}", file_name);
+                    return Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        ob.status_text.clone(),
+                    ));
+                }
             }
             //self.text = buffer;
         } else {
             ob.status_text = "No file selected".to_owned();
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "No file selected",
+            ));
         }
     }
 
@@ -227,7 +250,6 @@ impl Gui {
         //    .y
         0.0
     }
-
 }
 
 pub fn display_tree_in_egui(root_node: &Rc<tree_node<String>>, ui: &mut egui::Ui) {
@@ -237,8 +259,7 @@ pub fn display_tree_in_egui(root_node: &Rc<tree_node<String>>, ui: &mut egui::Ui
             for child in root_node.children.borrow().iter() {
                 if !tree_node::is_leaf(&child) {
                     display_tree_in_egui(child, ui);
-                }
-                else {
+                } else {
                     ui.horizontal(|ui| {
                         if ui.button(child.value.clone()).clicked() {
                             println!("Clicked {}", child.value);
@@ -248,9 +269,6 @@ pub fn display_tree_in_egui(root_node: &Rc<tree_node<String>>, ui: &mut egui::Ui
             }
         });
 }
-
-
-
 
 pub fn run() {
     let options = eframe::NativeOptions::default();
