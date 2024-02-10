@@ -7,12 +7,12 @@ use std::sync::Arc;
 //mod Zstd;
 use crate::BymlEntries::ActorParam;
 use crate::TotkPath::TotkPath;
-use crate::Zstd::{totk_zstd, ZstdCompressor, ZstdDecompressor};
+use crate::Zstd::{is_sarc, totk_zstd, ZstdCompressor, ZstdDecompressor};
 
 pub struct PackFile<'a> {
     path: String,
     totk_path: Arc<TotkPath>,
-    zstd:  Arc<totk_zstd<'a>>,
+    zstd: Arc<totk_zstd<'a>>,
     //decompressor: &'a ZstdDecompressor<'a>,
     //compressor: &'a ZstdCompressor<'a>,
     //raw_data: Vec<u8>,
@@ -20,12 +20,11 @@ pub struct PackFile<'a> {
     pub sarc: Sarc<'a>,
 }
 
-
 impl<'a> PackFile<'_> {
     pub fn new(
         path: String,
         //totk_path: Arc<TotkPath>,
-        zstd:  Arc<totk_zstd<'a>>,
+        zstd: Arc<totk_zstd<'a>>,
         //decompressor: &'a ZstdDecompressor,
         //compressor: &'a ZstdCompressor
     ) -> io::Result<PackFile<'a>> {
@@ -43,8 +42,6 @@ impl<'a> PackFile<'_> {
             sarc: sarc,
         })
     }
-
-
 
     //Get totk actor entries recursively
 
@@ -66,26 +63,38 @@ impl<'a> PackFile<'_> {
     fn sarc_file_to_bytes(path: &PathBuf, zstd: &'a totk_zstd) -> Result<Vec<u8>, io::Error> {
         let mut fHandle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
+        let mut returned_result: Vec<u8> = Vec::new();
         fHandle.read_to_end(&mut buffer)?;
-        if !buffer.as_slice().starts_with(b"SARC") {
-            match zstd
-                .decompressor
-                .decompress_pack(&buffer) {
+        if is_sarc(&buffer) { //buffer.as_slice().starts_with(b"SARC") {
+            return Ok(buffer);
+        } else {
+            match zstd.decompressor.decompress_pack(&buffer) {
                 Ok(res) => {
-                    return Ok(res);
+                    returned_result = res;
                 },
                 Err(err) => {
+                    match zstd.try_decompress(&buffer) {//try decompressing with other dicts
+                        Ok(res) => {
+                            returned_result = res;
+                        }
+                        Err(err) => {
+                            eprintln!("Error during zstd decompress");
+                            return Err(err);
+                        }
+                    }
                     eprintln!("Error during zstd decompress");
                     return Err(err);
                 }
             }
+        
         }
-        Ok(buffer)
+        if is_sarc(&returned_result) {
+            return Ok(returned_result);
+        }
+        return Err(io::Error::new(io::ErrorKind::Other, "Invalid data, not a sarc"));
     }
 }
 
-
 struct opened_file {
     file_path: String,
-
 }

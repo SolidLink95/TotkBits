@@ -1,8 +1,10 @@
 use crate::TotkPath::TotkPath;
 use roead::sarc::*;
 use serde::de;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use zstd::bulk::Decompressor;
 //use zstd::zstd_safe::CompressionLevel;
 use crate::misc::check_file_exists;
 use std::fs;
@@ -26,7 +28,7 @@ pub struct totk_zstd<'a> {
 
 impl<'a> totk_zstd<'_> {
     pub fn new(totk_path: Arc<TotkPath>, comp_level: i32) -> io::Result<totk_zstd<'a>> {
-        let zsdic = Arc::new(ZsDic::new(totk_path.clone())?);
+        let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_path.clone())?);
         let decompressor: ZstdDecompressor =
             ZstdDecompressor::new(totk_path.clone(), zsdic.clone())?;
         let compressor: ZstdCompressor = ZstdCompressor::new(totk_path.clone(), zsdic, comp_level)?;
@@ -37,63 +39,38 @@ impl<'a> totk_zstd<'_> {
             compressor,
         })
     }
+    pub fn try_decompress(&self, data: &Vec<u8>) -> Result<Vec<u8>, io::Error> {
+        println!("Trying to decompress...");
+        let mut dicts: HashMap<String, Arc<DecoderDictionary>> = Default::default();
+        dicts.insert("zs".to_string(), self.decompressor.zs.clone());
+        dicts.insert("packzs".to_string(), self.decompressor.packzs.clone());
+        dicts.insert("empty".to_string(), self.decompressor.empty.clone());
+        dicts.insert("bcett".to_string(), self.decompressor.bcett.clone());
+
+        for (name, dictt) in dicts.iter() {
+            match self.decompressor.decompress(&data, &dictt) {
+                Ok(dec_data) => {
+                    println!("Finally decompressed! Its {} dictionary", name);
+                    return Ok(dec_data);
+                }
+                Err(_) => {}
+            }
+        }
+        return Err(io::Error::new(io::ErrorKind::Other, ""));
+    }
 
     pub fn identify_file_from_binary(&self, data: Vec<u8>) -> FileType {
-        //assume its not compressed
-        if is_byml(&data) {
+        let raw_data: Vec<u8> = self.try_decompress(&data).unwrap_or(data);
+        //try to decompress with everything
+        if is_byml(&raw_data) {
             return FileType::Bcett;
         }
-        if is_sarc(&data) {
+        if is_sarc(&raw_data) {
             return FileType::Sarc;
         }
-        if is_aamp(&data) {
+        if is_aamp(&raw_data) {
             return FileType::Aamp;
         }
-        //check if compressed
-        match self.decompressor.decompress_bcett(&data) {
-            Ok(_) => {
-                if is_byml(&data) {
-                    return FileType::Bcett;
-                }
-            }
-            Err(_) => {}
-        };
-        match self.decompressor.decompress_pack(&data) {
-            Ok(_) => {
-                if is_sarc(&data) {
-                    return FileType::Sarc;
-                }
-            }
-            Err(_) => {}
-        };
-        match self.decompressor.decompress_zs(&data) {
-            Ok(_) => {
-                if is_byml(&data) {
-                    return FileType::Bcett;
-                }
-                if is_sarc(&data) {
-                    return FileType::Sarc;
-                }
-                if is_aamp(&data) {
-                    return FileType::Aamp;
-                }
-            }
-            Err(_) => {}
-        };
-        match self.decompressor.decompress_empty(&data) {
-            Ok(_) => {
-                if is_byml(&data) {
-                    return FileType::Bcett;
-                }
-                if is_sarc(&data) {
-                    return FileType::Sarc;
-                }
-                if is_aamp(&data) {
-                    return FileType::Aamp;
-                }
-            }
-            Err(_) => {}
-        };
         //all validations failed
         return FileType::Other;
     }
@@ -146,19 +123,19 @@ impl ZsDic {
 
 pub struct ZstdDecompressor<'a> {
     totk_path: Arc<TotkPath>,
-    pub packzs: DecoderDictionary<'a>, //Vec<u8>,
-    pub zs: DecoderDictionary<'a>,     //Vec<u8>,
-    pub bcett: DecoderDictionary<'a>,  //Vec<u8>,
-    pub empty: DecoderDictionary<'a>,
+    pub packzs: Arc<DecoderDictionary<'a>>, //Vec<u8>,
+    pub zs: Arc<DecoderDictionary<'a>>,     //Vec<u8>,
+    pub bcett: Arc<DecoderDictionary<'a>>,  //Vec<u8>,
+    pub empty: Arc<DecoderDictionary<'a>>,
     //pub zsdic: ZsDic<'a>
 }
 
 impl<'a> ZstdDecompressor<'_> {
     pub fn new(totk_path: Arc<TotkPath>, zsdic: Arc<ZsDic>) -> io::Result<ZstdDecompressor<'a>> {
-        let zs: DecoderDictionary = DecoderDictionary::copy(&zsdic.zs_data);
-        let bcett: DecoderDictionary = DecoderDictionary::copy(&zsdic.bcett_data);
-        let packzs: DecoderDictionary = DecoderDictionary::copy(&zsdic.packzs_data);
-        let empty: DecoderDictionary = DecoderDictionary::copy(&zsdic.empty_data);
+        let zs: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.zs_data));
+        let bcett: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.bcett_data));
+        let packzs: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.packzs_data));
+        let empty: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.empty_data));
 
         Ok(ZstdDecompressor {
             totk_path: totk_path,
@@ -179,12 +156,18 @@ impl<'a> ZstdDecompressor<'_> {
             }
         }
         let mut decompressed = Vec::new();
+        if decoder.is_err() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to create a decoder {}", line!()),
+            ));
+        }
         match decoder.unwrap().read_to_end(&mut decompressed) {
             Ok(_) => {
                 return Ok(decompressed);
             }
             Err(err) => {
-                eprintln!("Error while decoding");
+                //eprintln!("Error while decoding");
                 return Err(err);
             }
         }

@@ -12,6 +12,7 @@ pub struct tree_node<T> {
     pub value: T,
     pub parent: RefCell<Weak<tree_node<T>>>,
     pub children: RefCell<Vec<Rc<tree_node<T>>>>,
+    pub full_path: String
 }
 
 impl<T> tree_node<T>
@@ -20,11 +21,12 @@ where
     T: PartialEq,
     T: Ord
 {
-    pub fn new(value: T) -> Rc<tree_node<T>> {
+    pub fn new(value: T, full_path: String) -> Rc<tree_node<T>> {
         Rc::new(tree_node {
             value: value,
             parent: RefCell::new(Weak::new()),
             children: RefCell::new(vec![]),
+            full_path: full_path
         })
     }
 
@@ -84,7 +86,7 @@ where
 }
 
 
-
+/* 
 fn get_parent_node_if_exists(
     root_node: &Rc<tree_node<String>>,
     value: String,
@@ -99,7 +101,7 @@ fn get_parent_node_if_exists(
             return new_node;
         }
     }
-}
+}*/
 
 pub fn update_from_sarc_paths(root_node: &Rc<tree_node<String>>, sarc_file: &PackFile) {
     let mut  paths: Vec<String> = Default::default();
@@ -115,23 +117,24 @@ pub fn update_from_sarc_paths(root_node: &Rc<tree_node<String>>, sarc_file: &Pac
 pub fn update_from_paths(node: &Rc<tree_node<String>>, paths: Vec<String>) {
     for path in paths {
         let elems: Vec<&str> = path.split("/").collect();
-        update_root_from_list(&node, elems);
+        update_root_from_list(&node, elems, path.clone());
     }
 }
 
-fn update_root_from_list(root_node: &Rc<tree_node<String>>, elems: Vec<&str>) {
+fn update_root_from_list(root_node: &Rc<tree_node<String>>, elems: Vec<&str>, path: String) {
     let mut cur_node: Rc<tree_node<String>> = Rc::clone(root_node);
     for elem in elems.iter() {
         if let Some(node) = tree_node::is_value_in_children(&cur_node, &elem.to_string()) {
             cur_node = Rc::clone(&node);
         } else {
-            let child = tree_node::new(elem.to_string());
+            let child = tree_node::new(elem.to_string(), path.clone());
             tree_node::add_child(&cur_node, &child);
             cur_node = Rc::clone(&child);
         }
     }
 }
 
+/* 
 pub fn test_paths_tree() {
     let mut paths: Vec<String> = vec![
         "coding/TotkBits/src/asdf.txt".to_string(),
@@ -142,7 +145,6 @@ pub fn test_paths_tree() {
     update_from_paths(&root_node, paths);
     tree_node::print(&root_node, 0);
 }
-
 pub fn test_tree() -> Rc<tree_node<String>> {
     let root = tree_node::new("Root".to_string());
     let child1 = tree_node::new("Child1".to_string());
@@ -156,3 +158,4 @@ pub fn test_tree() -> Rc<tree_node<String>> {
     //println!("{:?} {:?}", tree_node::is_root(&root), tree_node::is_leaf(&child2));
     root
 }
+*/

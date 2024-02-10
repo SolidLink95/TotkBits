@@ -2,8 +2,8 @@ use crate::misc::{self, open_file_dialog, save_file_dialog};
 use crate::BymlFile::byml_file;
 use crate::Pack::PackFile;
 use crate::TotkPath::TotkPath;
-use crate::Tree::{self, test_tree, tree_node};
-use crate::Zstd::{totk_zstd, ZsDic};
+use crate::Tree::{self, tree_node};
+use crate::Zstd::{is_byml, totk_zstd, ZsDic};
 use eframe::egui::{
     self, Color32, ScrollArea, SelectableLabel, TextStyle, TextureId, TopBottomPanel,
 };
@@ -13,6 +13,7 @@ use rfd::FileDialog;
 use roead::byml::Byml;
 use roead::sarc::File;
 use std::io::Read;
+use std::os::raw;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -33,8 +34,9 @@ struct TotkBitsApp<'a> {
     language: String,
     zstd: Arc<totk_zstd<'a>>,
     pack: Option<PackFile<'a>>,
-    byml: Option<Byml>,
+    byml: Option<byml_file<'a>>,
     root_node: Rc<tree_node<String>>,
+    internal_sarc_file: Option<Rc<tree_node<String>>>,
     is_file_loaded: bool,
 }
 impl Default for TotkBitsApp<'_> {
@@ -51,7 +53,8 @@ impl Default for TotkBitsApp<'_> {
             zstd: Arc::new(totk_zstd::new(totk_path, 16).unwrap()),
             pack: None,
             byml: None,
-            root_node: tree_node::new("ROOT".to_string()),
+            root_node: tree_node::new("ROOT".to_string(), "/".to_string()),
+            internal_sarc_file: None,
             is_file_loaded: true,
         }
     }
@@ -153,8 +156,10 @@ impl Gui {
                                 &ob.root_node,
                                 &ob.pack.as_mut().expect("Error passing pack file"),
                             );
-                            for child in ob.root_node.children.borrow().iter() {
-                                display_tree_in_egui(&child, ui);
+                            let children: Vec<_> =
+                                ob.root_node.children.borrow().iter().cloned().collect();
+                            for child in children {
+                                Gui::display_tree_in_egui(ob, &child, ui);
                             }
                         }
                     });
@@ -164,9 +169,8 @@ impl Gui {
 
     fn open_byml_or_sarc(ob: &mut TotkBitsApp, ui: &mut egui::Ui) {
         if ob.is_file_loaded {
-            return;
+            return; //stops the app from infinite file loading from disk
         }
-        let p = PathBuf::from(ob.opened_file.clone());
         println!("Is {} a sarc?", ob.opened_file.clone());
         match PackFile::new(ob.opened_file.clone(), ob.zstd.clone()) {
             Ok(pack) => {
@@ -179,18 +183,18 @@ impl Gui {
             Err(_) => {}
         }
         println!("Is {} a byml?", ob.opened_file.clone());
-        match byml_file::new(ob.opened_file.clone(), ob.zstd.clone()) {
-            Ok(b) => {
-                match &Some(b.pio) {
-                    Some(x) => {
-                        ob.text = Byml::to_text(&x);
-                        ob.byml = Some(x.clone());
-                        ob.active_tab = ActiveTab::TextBox;
-                        println!("Byml  opened!");
-                    }
-                    None => {}
-                };
+        let mut res_byml: Result<byml_file<'_>, io::Error> =
+            byml_file::new(ob.opened_file.clone(), ob.zstd.clone());
+        match res_byml {
+            Ok(ref b) => {
+                ob.text = Byml::to_text(&b.pio);
+                ob.byml = Some(res_byml.unwrap());
+                ob.active_tab = ActiveTab::TextBox;
+                println!("Byml  opened!");
+                ob.is_file_loaded = true;
+                return;
             }
+
             Err(_) => {}
         };
         ob.is_file_loaded = true;
@@ -252,16 +256,92 @@ impl Gui {
         }
     }
 
-    fn get_label_height(ctx: &egui::Context) -> f32 {
-        //ctx.fonts() unused
-        //    .layout_no_wrap("Example".to_string(), TextStyle::Heading, Color32::BLACK)
-        //    .size()
-        //    .y
-        0.0
+    fn display_tree_in_egui(
+        ob: &mut TotkBitsApp,
+        root_node: &Rc<tree_node<String>>,
+        ui: &mut egui::Ui,
+    ) {
+        CollapsingHeader::new(root_node.value.clone())
+            .default_open(false)
+            .show(ui, |ui| {
+                for child in root_node.children.borrow().iter() {
+                    if !tree_node::is_leaf(&child) {
+                        Gui::display_tree_in_egui(ob, child, ui);
+                    } else {
+                        ui.horizontal(|ui| {
+                            let file_label = ui.add(SelectableLabel::new(Gui::is_internal_file_selected(ob, child), child.value.clone()));
+                            if file_label.double_clicked()
+                            {
+                                //println!("Clicked {}", child.full_path.clone());
+                                ob.internal_sarc_file = Some(child.clone());
+                                Gui::safe_open_file_from_opened_sarc(ob, ui, child.full_path.clone())
+                            }
+                            if file_label.clicked() {
+                                //println!("Double Clicked {}", child.full_path.clone());
+                                ob.internal_sarc_file = Some(child.clone());
+
+                            }
+                            if file_label.secondary_clicked() {
+                                println!("Mocking future context menu for ");
+                            }
+                        });
+                    }
+                }
+            });
+    }
+
+    fn is_internal_file_selected(ob: &mut TotkBitsApp,  child: &Rc<tree_node<String>>) -> bool {
+        match &ob.internal_sarc_file {
+            Some(x) => {
+                if x.full_path == child.full_path {return true;}
+                return false;
+            },
+            None => {return false;}
+        }
+    }
+
+    fn safe_open_file_from_opened_sarc(ob: &mut TotkBitsApp, ui: &mut egui::Ui, full_path: String) {
+        match Gui::open_file_from_opened_sarc(ob, ui, full_path.clone()) {
+            Ok(_) => {}
+            Err(err) => {
+                eprintln!(
+                    "Failed to open {}, \nError: {:?}",
+                    full_path.clone(),
+                    err
+                );
+                ob.status_text = format!("Failed to open {}", full_path.clone());
+            }
+        }
+    }
+
+    fn open_file_from_opened_sarc(
+        ob: &mut TotkBitsApp,
+        ui: &mut egui::Ui,
+        full_path: String,
+    ) -> io::Result<()> {
+        if ob.pack.is_none() {
+            return Err(io::Error::new(io::ErrorKind::Other, "No sarc opened"));
+        }
+        let op_sarc = ob.pack.as_ref().unwrap();
+        let data = op_sarc.sarc.get_data(&full_path.clone());
+        if data.is_none() {
+            return Err(io::Error::new(io::ErrorKind::Other, "File absent in sarc"));
+        }
+        //For now assume only byml files will be opened
+        let raw_data = data.unwrap().to_vec();
+        if !is_byml(&raw_data) {
+            return Err(io::Error::new(io::ErrorKind::Other, "File is not a byml"));
+        }
+        let the_byml = byml_file::from_binary(&raw_data, ob.zstd.clone(), full_path)?;
+        let text = Byml::to_text(&the_byml.pio);
+        ob.text = text;
+        ob.is_file_loaded = true; //precaution
+        ob.active_tab = ActiveTab::TextBox;
+        Ok(())
     }
 }
 
-//TODO: saving byml file, 
+//TODO: saving byml file,
 fn save_as(ob: &mut TotkBitsApp) {
     match ob.active_tab {
         ActiveTab::DiretoryTree => {
@@ -293,29 +373,10 @@ fn save_as(ob: &mut TotkBitsApp) {
         }
 
         ActiveTab::TextBox => {
-            if ob.pack.is_none() {//just byml
-
+            if ob.pack.is_none() { //just byml
             }
         }
     }
-}
-
-pub fn display_tree_in_egui(root_node: &Rc<tree_node<String>>, ui: &mut egui::Ui) {
-    CollapsingHeader::new(root_node.value.clone())
-        .default_open(false)
-        .show(ui, |ui| {
-            for child in root_node.children.borrow().iter() {
-                if !tree_node::is_leaf(&child) {
-                    display_tree_in_egui(child, ui);
-                } else {
-                    ui.horizontal(|ui| {
-                        if ui.button(child.value.clone()).clicked() {
-                            println!("Clicked {}", child.value);
-                        }
-                    });
-                }
-            }
-        });
 }
 
 pub fn run() {
