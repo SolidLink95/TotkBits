@@ -39,9 +39,9 @@ impl<'a> byml_file<'_> {
     }
 
     fn byml_data_to_bytes(path: &PathBuf, zstd: &'a totk_zstd) -> Result<Vec<u8>, io::Error> {
-        let mut fHandle: fs::File = fs::File::open(path)?;
+        let mut f_handle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
-        fHandle.read_to_end(&mut buffer)?;
+        f_handle.read_to_end(&mut buffer)?;
         let mut returned_result: Vec<u8> = Vec::new();
         if is_byml(&buffer) {
             return Ok(buffer);

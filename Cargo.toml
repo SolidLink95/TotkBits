@@ -10,10 +10,11 @@ zstd = "0.13"
 roead = { version = "0.23.1", features = ["yaml","sarc","byml"] }
 serde = "1.0"
 serde_json = "1.0"
-#egui = "0.15"
-#eframe = "0.15"
-#egui = "0.26.0"
 egui = { default-features = false }
+#egui = { path = "W:/coding/egui_modified/crates/egui", default-features = false }
+#eframe = { path = "W:/coding/egui_modified/crates/eframe", default-features = true }
+#egui_extras = { path = "W:/coding/egui_modified/crates/egui_extras",features = ["default"]  }
+#eframe = { default-features = false }
 eframe = "0.26.0"
 egui_extras = { features = ["default"] }
 nfd = "0.0.4" #openfiledialog

@@ -12,7 +12,7 @@ use std::io::{self, Cursor, Read, Write};
 use zstd::dict::{DDict, DecoderDictionary, EncoderDictionary};
 use zstd::{dict::CDict, stream::decode_all, stream::Decoder, stream::Encoder};
 
-enum FileType {
+pub enum FileType {
     Sarc,
     Byml,
     Aamp,
@@ -111,9 +111,9 @@ impl ZsDic {
         let mut zsdic = totk_path.romfs.clone();
         zsdic.push("Pack/ZsDic.pack.zs");
         let _ = check_file_exists(&zsdic)?; //Path().exists()
-        let mut zsFile = fs::File::open(&zsdic)?; //with open() as f
+        let mut zs_file = fs::File::open(&zsdic)?; //with open() as f
         let mut rawData = Vec::new();
-        zsFile.read_to_end(&mut rawData)?; //f.read()
+        zs_file.read_to_end(&mut rawData)?; //f.read()
         let cursor = Cursor::new(&rawData);
         let data = decode_all(cursor)?;
 
