@@ -63,7 +63,7 @@ impl SarcLabel {
         
         if tree_node::is_leaf(&root_node) { //rarely files in sarc are in root directory
             SarcLabel::display_leaf_node(app, root_node, ui);
-            return
+            return;
         }
         CollapsingHeader::new(root_node.value.clone())
             .default_open(false)
