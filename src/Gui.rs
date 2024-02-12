@@ -1,8 +1,9 @@
 use crate::misc::{self, open_file_dialog, save_file_dialog};
 use crate::BymlFile::byml_file;
 use crate::CodeEditorFormatter::Editor;
-use crate::GuiMenuBar;
+use crate::GuiMenuBar::{self, MenuBar};
 use crate::Pack::PackFile;
+use crate::SarcFileLabel::SarcLabel;
 use crate::TotkPath::TotkPath;
 use crate::Tree::{self, tree_node};
 use crate::Zstd::{is_byml, totk_zstd, ZsDic};
@@ -11,7 +12,7 @@ use eframe::egui::{
     self, Color32, ScrollArea, SelectableLabel, TextStyle, TextureId, TopBottomPanel,
 };
 use egui::text::LayoutJob;
-use egui::{vec2, Align, CollapsingHeader, Context, Label, Pos2, Rect, Vec2};
+use egui::{vec2, Align, CollapsingHeader, Context, Label, Pos2, Rect, Style, Vec2};
 use native_dialog::{MessageDialog, MessageType};
 use rfd::FileDialog;
 use roead::byml::Byml;
@@ -23,34 +24,46 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::{any, fs, io};
 
+pub struct Flags{
+    pub is_file_loaded: bool, //flag for loading file, prevents the program from loading file from disk in every frame
+    pub is_tree_loaded: bool
+}
+
+impl Flags {
+    pub fn new(is_file_loaded: bool, is_tree_loaded: bool) -> Self {
+        Self {is_file_loaded, is_tree_loaded}
+    }
+}
+
 #[derive(PartialEq)]
-enum ActiveTab {
+pub enum ActiveTab {
     DiretoryTree,
     TextBox,
 }
 
 pub struct TotkBitsApp<'a> {
-    opened_file: String,
-    text: String,
-    status_text: String,
-    scroll: ScrollArea,
-    active_tab: ActiveTab,
-    language: String,
-    zstd: Arc<totk_zstd<'a>>,
-    pack: Option<PackFile<'a>>,
-    byml: Option<byml_file<'a>>,
-    root_node: Rc<tree_node<String>>,
-    internal_sarc_file: Option<Rc<tree_node<String>>>,
-    is_file_loaded: bool,
-    pub scroll_resp: Option<egui::scroll_area::ScrollAreaOutput<()>>
+    opened_file: String, //path to opened file in string
+    pub text: String, //content of the text editor
+    pub status_text: String, //bottom bar text
+    scroll: ScrollArea, //scroll area
+    pub active_tab: ActiveTab, //active tab, either sarc file or text editor
+    language: String, //language for highlighting, no option for yaml yet, toml is closest
+    pub zstd: Arc<totk_zstd<'a>>, //zstd compressors and decompressors
+    pub pack: Option<PackFile<'a>>, //opened sarc file object, none if none opened
+    pub byml: Option<byml_file<'a>>, //opened byml file, none if none opened
+    pub root_node: Rc<tree_node<String>>, //root_node pf the sarc directory tree
+    pub internal_sarc_file: Option<Rc<tree_node<String>>>, // node of sarc internal file opened in text editor
+    pub scroll_resp: Option<egui::scroll_area::ScrollAreaOutput<()>>, //response from self.scroll, for controlling scrollbar position
+    pub menu_bar: Arc<MenuBar>, //menu bar at the top
+    pub flags: Flags
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
         let totk_path = Arc::new(TotkPath::new());
+        let def_style = Style::default();
         Self {
             opened_file: String::new(),
             text: misc::get_example_yaml(),
-            //text: String::new(),
             status_text: "Ready".to_owned(),
             scroll: ScrollArea::vertical(),
             active_tab: ActiveTab::TextBox,
@@ -60,8 +73,9 @@ impl Default for TotkBitsApp<'_> {
             byml: None,
             root_node: tree_node::new("ROOT".to_string(), "/".to_string()),
             internal_sarc_file: None,
-            is_file_loaded: true,
-            scroll_resp: None
+            scroll_resp: None,
+            menu_bar: Arc::new(MenuBar::new(&def_style).unwrap()),
+            flags: Flags::new(true, true)
         }
     }
 }
@@ -69,7 +83,8 @@ impl Default for TotkBitsApp<'_> {
 impl eframe::App for TotkBitsApp<'_> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Top panel (menu bar)
-        GuiMenuBar::MenuBar::display(self, ctx);
+        self.menu_bar.clone().display(self, ctx);
+        //GuiMenuBar::MenuBar::display(self, ctx);
         Gui::display_main_buttons(self, ctx);
 
         // Bottom panel (status bar)
@@ -83,7 +98,7 @@ impl eframe::App for TotkBitsApp<'_> {
     }
 }
 
-struct Gui {}
+pub struct Gui {}
 
 impl Gui {
     pub fn display_status_bar(app: &mut TotkBitsApp, ctx: &egui::Context) {
@@ -111,7 +126,6 @@ impl Gui {
                     //Gui::scroll_the_boy(ui, x);
                     app.text = misc::get_other_yaml();
                     
-                    //app.text = "DUPA".to_string();
                 }
             });
         });
@@ -181,14 +195,17 @@ impl Gui {
                     .show(ui, |ui| {
                         Gui::open_byml_or_sarc(app, ui);
                         if !app.pack.is_none() {
-                            Tree::update_from_sarc_paths(
-                                &app.root_node,
-                                &app.pack.as_mut().expect("Error passing pack file"),
-                            );
+                            if !app.flags.is_tree_loaded {
+                                Tree::update_from_sarc_paths(
+                                    &app.root_node,
+                                    &app.pack.as_mut().expect("Error passing pack file"),
+                                );
+                                app.flags.is_tree_loaded = true;
+                            }
                             let children: Vec<_> =
                                 app.root_node.children.borrow().iter().cloned().collect();
                             for child in children {
-                                Gui::display_tree_in_egui(app, &child, ui);
+                                SarcLabel::display_tree_in_egui(app, &child, ui);
                             }
                         }
                     });
@@ -197,16 +214,17 @@ impl Gui {
     }
 
     fn open_byml_or_sarc(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
-        if app.is_file_loaded {
+        if app.flags.is_file_loaded {
             return; //stops the app from infinite file loading from disk
         }
         println!("Is {} a sarc?", app.opened_file.clone());
         match PackFile::new(app.opened_file.clone(), app.zstd.clone()) {
             Ok(pack) => {
                 app.pack = Some(pack);
-                app.is_file_loaded = true;
+                app.flags.is_file_loaded = true;
                 println!("Sarc  opened!");
                 app.active_tab = ActiveTab::DiretoryTree;
+                app.flags.is_tree_loaded = false;
                 return;
             }
             Err(_) => {}
@@ -220,13 +238,14 @@ impl Gui {
                 app.byml = Some(res_byml.unwrap());
                 app.active_tab = ActiveTab::TextBox;
                 println!("Byml  opened!");
-                app.is_file_loaded = true;
+                app.flags.is_file_loaded = true;
                 return;
             }
 
             Err(_) => {}
         };
-        app.is_file_loaded = true;
+        app.flags.is_file_loaded = true;
+        app.flags.is_tree_loaded = true;
         app.status_text = format!("Failed to open: {}", app.opened_file.clone());
     }
 
@@ -256,16 +275,16 @@ impl Gui {
     fn open_file_button_click(app: &mut TotkBitsApp) -> io::Result<()> {
         // Logic for opening a file
         let file_name = open_file_dialog();
-        if file_name.len() > 0 {
-            println!("Attempting to read {} file", file_name.clone());
+        if !file_name.is_empty() {
+            println!("Attempting to read {} file", &file_name);
             app.opened_file = file_name.clone();
-            let mut f_handle = fs::File::open(file_name.clone())?;
+            let mut f_handle = fs::File::open(&file_name)?;
             let mut buffer: Vec<u8> = Vec::new(); //String::new();
             match f_handle.read_to_end(&mut buffer) {
                 Ok(_) => {
                     app.status_text =
-                        format!("Opened file: {}", app.opened_file.clone()).to_owned();
-                    app.is_file_loaded = false;
+                        format!("Opened file: {}", &app.opened_file);
+                    app.flags.is_file_loaded = false;
                     return Ok(());
                 }
                 Err(err) => {
@@ -286,98 +305,7 @@ impl Gui {
         }
     }
 
-    fn display_tree_in_egui(
-        app: &mut TotkBitsApp,
-        root_node: &Rc<tree_node<String>>,
-        ui: &mut egui::Ui,
-    ) {
-        CollapsingHeader::new(root_node.value.clone())
-            .default_open(false)
-            .show(ui, |ui| {
-                for child in root_node.children.borrow().iter() {
-                    if !tree_node::is_leaf(&child) {
-                        Gui::display_tree_in_egui(app, child, ui);
-                    } else {
-                        ui.horizontal(|ui| {
-                            let file_label = ui.add(SelectableLabel::new(
-                                Gui::is_internal_file_selected(app, child),
-                                child.value.clone(),
-                            ));
-                            if file_label.double_clicked() {
-                                //println!("Clicked {}", child.full_path.clone());
-                                app.internal_sarc_file = Some(child.clone());
-                                Gui::safe_open_file_from_opened_sarc(
-                                    app,
-                                    ui,
-                                    child.full_path.clone(),
-                                )
-                            }
-                            if file_label.clicked() {
-                                //println!("Double Clicked {}", child.full_path.clone());
-                                app.internal_sarc_file = Some(child.clone());
-                            }
-                            if file_label.secondary_clicked() {
-                                println!("Mocking future context menu for ");
-                            }
-                        });
-                    }
-                }
-            });
-    }
 
-    fn is_internal_file_selected(app: &mut TotkBitsApp, child: &Rc<tree_node<String>>) -> bool {
-        match &app.internal_sarc_file {
-            Some(x) => {
-                if x.full_path == child.full_path {
-                    return true;
-                }
-                return false;
-            }
-            None => {
-                return false;
-            }
-        }
-    }
-
-    fn safe_open_file_from_opened_sarc(
-        app: &mut TotkBitsApp,
-        ui: &mut egui::Ui,
-        full_path: String,
-    ) {
-        match Gui::open_file_from_opened_sarc(app, ui, full_path.clone()) {
-            Ok(_) => {}
-            Err(err) => {
-                eprintln!("Failed to open {}, \nError: {:?}", full_path.clone(), err);
-                app.status_text = format!("Failed to open {}", full_path.clone());
-            }
-        }
-    }
-
-    fn open_file_from_opened_sarc(
-        app: &mut TotkBitsApp,
-        ui: &mut egui::Ui,
-        full_path: String,
-    ) -> io::Result<()> {
-        if app.pack.is_none() {
-            return Err(io::Error::new(io::ErrorKind::Other, "No sarc opened"));
-        }
-        let op_sarc = app.pack.as_ref().unwrap();
-        let data = op_sarc.sarc.get_data(&full_path.clone());
-        if data.is_none() {
-            return Err(io::Error::new(io::ErrorKind::Other, "File absent in sarc"));
-        }
-        //For now assume only byml files will be opened
-        let raw_data = data.unwrap().to_vec();
-        if !is_byml(&raw_data) {
-            return Err(io::Error::new(io::ErrorKind::Other, "File is not a byml"));
-        }
-        let the_byml = byml_file::from_binary(&raw_data, app.zstd.clone(), full_path)?;
-        let text = Byml::to_text(&the_byml.pio);
-        app.text = text;
-        app.is_file_loaded = true; //precaution
-        app.active_tab = ActiveTab::TextBox;
-        Ok(())
-    }
 }
 
 //TODO: saving byml file,
