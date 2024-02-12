@@ -34,7 +34,7 @@ impl SarcLabel {
         ui.horizontal(|ui| {
             let file_label = ui.add(SelectableLabel::new(
                 SarcLabel::is_internal_file_selected(app, child),
-                child.value.clone(),
+                &child.value,
             ));
             if file_label.double_clicked() {
                 //println!("Clicked {}", child.full_path.clone());
@@ -50,8 +50,21 @@ impl SarcLabel {
                 app.internal_sarc_file = Some(child.clone());
             }
             if file_label.secondary_clicked() {
-                println!("Mocking future context menu for ");
+                println!("Mocking future context menu for {}", &child.full_path);
             }
+            file_label.context_menu(|ui|{
+                if ui.button("Button 1").clicked() {
+                    // Handle Button 1 click
+                    println!("Button 1 clicked");
+                    ui.close_menu();
+                }
+
+                if ui.button("Button 2").clicked() {
+                    // Handle Button 2 click
+                    println!("Button 2 clicked");
+                    ui.close_menu();
+                }
+            } );
         });
     }
 
@@ -65,7 +78,7 @@ impl SarcLabel {
             SarcLabel::display_leaf_node(app, root_node, ui);
             return;
         }
-        CollapsingHeader::new(root_node.value.clone())
+        let response = CollapsingHeader::new(root_node.value.clone())
             .default_open(false)
             .show(ui, |ui| {
                 for child in root_node.children.borrow().iter() {
@@ -76,6 +89,10 @@ impl SarcLabel {
                     }
                 }
             });
+        //TODO: custom collapsing header (ui.horizontal with image and selectablelabel)
+        if response.header_response.secondary_clicked() {
+            println!("Mock for context menu {}",&root_node.full_path);
+        }
     }
 
     pub fn is_internal_file_selected(app: &mut TotkBitsApp, child: &Rc<tree_node<String>>) -> bool {

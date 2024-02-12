@@ -119,18 +119,30 @@ pub fn update_from_sarc_paths(root_node: &Rc<tree_node<String>>, sarc_file: &Pac
 
 pub fn update_from_paths(node: &Rc<tree_node<String>>, paths: Vec<String>) {
     for path in paths {
-        let elems: Vec<&str> = path.split("/").collect();
-        update_root_from_list(&node, elems, path.clone());
+        let elements: Vec<&str> = path.split("/").collect();
+        update_root_from_list(&node, elements, path.clone());
     }
 }
 
-fn update_root_from_list(root_node: &Rc<tree_node<String>>, elems: Vec<&str>, path: String) {
+fn update_root_from_list(root_node: &Rc<tree_node<String>>, elements: Vec<&str>, path: String) {
     let mut cur_node: Rc<tree_node<String>> = Rc::clone(root_node);
-    for elem in elems.iter() {
+    let size: usize = elements.len();
+    for (i, elem) in elements.iter().enumerate() {
         if let Some(node) = tree_node::is_value_in_children(&cur_node, &elem.to_string()) {
             cur_node = Rc::clone(&node);
         } else {
-            let child = tree_node::new(elem.to_string(), path.clone());
+            let mut cur_path = elements[0].to_string(); //root immediate children
+            if i > 0 {
+                if i < size -1 {
+                    for k in 1..i+1 {
+                        cur_path = format!("{}/{}", cur_path, elements[k].to_string());
+                    }
+                } else { //leaf
+                    cur_path = path.clone();
+                }
+            }
+            println!("Added node name {} full path {}", &elem, &cur_path);
+            let child = tree_node::new(elem.to_string(), cur_path);
             tree_node::add_child(&cur_node, &child);
             cur_node = Rc::clone(&child);
         }

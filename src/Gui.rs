@@ -256,7 +256,7 @@ impl Gui {
             if ui
                 .add(SelectableLabel::new(
                     app.active_tab == ActiveTab::DiretoryTree,
-                    "Sarc files",
+                    "SARC",
                 ))
                 .clicked()
             {
@@ -265,7 +265,7 @@ impl Gui {
             if ui
                 .add(SelectableLabel::new(
                     app.active_tab == ActiveTab::TextBox,
-                    "Byml editor",
+                    "YAML",
                 ))
                 .clicked()
             {
