@@ -136,7 +136,7 @@ impl SarcLabel {
         let the_byml = byml_file::from_binary(&raw_data, app.zstd.clone(), full_path)?;
         let text = Byml::to_text(&the_byml.pio);
         app.text = text;
-        app.flags.is_file_loaded = true; //precaution
+        app.settings.is_file_loaded = true; //precaution
         app.active_tab = ActiveTab::TextBox;
         Ok(())
     }

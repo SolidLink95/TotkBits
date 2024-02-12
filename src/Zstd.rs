@@ -112,9 +112,9 @@ impl ZsDic {
         zsdic.push("Pack/ZsDic.pack.zs");
         let _ = check_file_exists(&zsdic)?; //Path().exists()
         let mut zs_file = fs::File::open(&zsdic)?; //with open() as f
-        let mut rawData = Vec::new();
-        zs_file.read_to_end(&mut rawData)?; //f.read()
-        let cursor = Cursor::new(&rawData);
+        let mut raw_data = Vec::new();
+        zs_file.read_to_end(&mut raw_data)?; //f.read()
+        let cursor = Cursor::new(&raw_data);
         let data = decode_all(cursor)?;
 
         Sarc::new(data).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))

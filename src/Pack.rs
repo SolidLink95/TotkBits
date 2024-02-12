@@ -9,6 +9,10 @@ use crate::BymlEntries::ActorParam;
 use crate::TotkPath::TotkPath;
 use crate::Zstd::{is_sarc, totk_zstd, ZstdCompressor, ZstdDecompressor};
 
+pub enum Endian {
+    Big, 
+    Little
+}
 pub struct PackFile<'a> {
     path: String,
     totk_path: Arc<TotkPath>,
@@ -16,6 +20,7 @@ pub struct PackFile<'a> {
     //decompressor: &'a ZstdDecompressor<'a>,
     //compressor: &'a ZstdCompressor<'a>,
     //raw_data: Vec<u8>,
+   // pub endian: Endian,
     pub writer: SarcWriter,
     pub sarc: Sarc<'a>,
 }
@@ -36,13 +41,11 @@ impl<'a> PackFile<'_> {
             path: path,
             totk_path: zstd.totk_path.clone(),
             zstd: zstd.clone(),
-            //decompressor: decompressor,
-            //compressor: compressor,
+
             writer: writer,
             sarc: sarc,
         })
     }
-
     //Get totk actor entries recursively
 
     //Save the sarc file, compress if file ends with .zs, create directory if needed
@@ -61,10 +64,10 @@ impl<'a> PackFile<'_> {
 
     //Read sarc file's bytes, decompress if needed
     fn sarc_file_to_bytes(path: &PathBuf, zstd: &'a totk_zstd) -> Result<Vec<u8>, io::Error> {
-        let mut fHandle: fs::File = fs::File::open(path)?;
+        let mut f_handle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
         let mut returned_result: Vec<u8> = Vec::new();
-        fHandle.read_to_end(&mut buffer)?;
+        f_handle.read_to_end(&mut buffer)?;
         if is_sarc(&buffer) { //buffer.as_slice().starts_with(b"SARC") {
             return Ok(buffer);
         } else {
@@ -90,6 +93,12 @@ impl<'a> PackFile<'_> {
         }
         if is_sarc(&returned_result) {
             return Ok(returned_result);
+        }
+        if  returned_result.starts_with(b"Yaz0") {
+            match roead::yaz0::decompress(&returned_result) {
+                Ok(dec_data) => {return Ok(dec_data);},
+                Err(_) => {}
+            }
         }
         return Err(io::Error::new(io::ErrorKind::Other, "Invalid data, not a sarc"));
     }

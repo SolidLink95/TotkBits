@@ -1,3 +1,4 @@
+use crate::Pack::Endian;
 use crate::Zstd::is_byml;
 use crate::Zstd::totk_zstd;
 use core::fmt::Error as Generic_Error;
@@ -10,7 +11,7 @@ use std::{fs, io};
 pub struct byml_file<'a> {
     pub path: String,
     pub pio: roead::byml::Byml,
-    
+    pub endian: Option<Endian>,
     pub zstd: Arc<totk_zstd<'a>>,
 }
 
@@ -26,6 +27,7 @@ impl<'a> byml_file<'_> {
             Ok(ok_pio) => Ok(byml_file {
                 path: full_path,
                 pio: ok_pio,
+                endian: byml_file::get_endiannes(data),
                 zstd: zstd.clone(),
             }),
             Err(err) => {
@@ -36,6 +38,13 @@ impl<'a> byml_file<'_> {
             }
         }
 
+    }
+
+    
+    pub fn get_endiannes(data: &Vec<u8>) -> Option<Endian> {
+        if data.starts_with(b"BY") {return Some(Endian::Big);}
+        if data.starts_with(b"YB") {return Some(Endian::Little);}
+        None
     }
 
     fn byml_data_to_bytes(path: &PathBuf, zstd: &'a totk_zstd) -> Result<Vec<u8>, io::Error> {
@@ -55,10 +64,7 @@ impl<'a> byml_file<'_> {
                         returned_result = res;
                     }
                 },
-                Err(err) => {
-                    //println!("Error during zstd decompress, {}", line!());
-                    //return Err(err);
-                }
+                Err(err) => {}
             }
         }
         if !is_byml(&returned_result) {
@@ -74,6 +80,12 @@ impl<'a> byml_file<'_> {
         }
         if is_byml(&returned_result) {
             return Ok(returned_result);
+        }
+        if returned_result.starts_with(b"Yaz0") {
+            match roead::yaz0::decompress(&returned_result) {
+                Ok(dec_data) => {return Ok(dec_data);},
+                Err(_) => {}
+            }
         }
         return Err(io::Error::new(io::ErrorKind::Other, "Invalid data, not a byml"));
 

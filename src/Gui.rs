@@ -4,6 +4,7 @@ use crate::CodeEditorFormatter::Editor;
 use crate::GuiMenuBar::{self, MenuBar};
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
+use crate::Settings::{Icons, Settings};
 use crate::TotkPath::TotkPath;
 use crate::Tree::{self, tree_node};
 use crate::Zstd::{is_byml, totk_zstd, ZsDic};
@@ -25,16 +26,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::{any, fs, io};
 
-pub struct Flags{
-    pub is_file_loaded: bool, //flag for loading file, prevents the program from loading file from disk in every frame
-    pub is_tree_loaded: bool
-}
 
-impl Flags {
-    pub fn new(is_file_loaded: bool, is_tree_loaded: bool) -> Self {
-        Self {is_file_loaded, is_tree_loaded}
-    }
-}
 
 #[derive(PartialEq)]
 pub enum ActiveTab {
@@ -56,12 +48,13 @@ pub struct TotkBitsApp<'a> {
     pub internal_sarc_file: Option<Rc<tree_node<String>>>, // node of sarc internal file opened in text editor
     pub scroll_resp: Option<egui::scroll_area::ScrollAreaOutput<()>>, //response from self.scroll, for controlling scrollbar position
     pub menu_bar: Arc<MenuBar>, //menu bar at the top
-    pub flags: Flags
+    pub icons: Icons<'a>,
+    pub settings: Settings,
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
         let totk_path = Arc::new(TotkPath::new());
-        let def_style = Style::default();
+        let settings = Settings::default();
         Self {
             opened_file: String::new(),
             text: misc::get_example_yaml(),
@@ -75,8 +68,9 @@ impl Default for TotkBitsApp<'_> {
             root_node: tree_node::new("ROOT".to_string(), "/".to_string()),
             internal_sarc_file: None,
             scroll_resp: None,
-            menu_bar: Arc::new(MenuBar::new(&def_style).unwrap()),
-            flags: Flags::new(true, true)
+            menu_bar: Arc::new(MenuBar::new(settings.styles.menubar.clone()).unwrap()),
+            icons: Icons::new(&settings.icon_size.clone()),
+            settings: settings,
         }
     }
 }
@@ -197,12 +191,12 @@ impl Gui {
                     .show(ui, |ui| {
                         Gui::open_byml_or_sarc(app, ui);
                         if !app.pack.is_none() {
-                            if !app.flags.is_tree_loaded {
+                            if !app.settings.is_tree_loaded {
                                 Tree::update_from_sarc_paths(
                                     &app.root_node,
                                     &app.pack.as_mut().expect("Error passing pack file"),
                                 );
-                                app.flags.is_tree_loaded = true;
+                                app.settings.is_tree_loaded = true;
                             }
                             let children: Vec<_> =
                                 app.root_node.children.borrow().iter().cloned().collect();
@@ -216,17 +210,17 @@ impl Gui {
     }
 
     fn open_byml_or_sarc(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
-        if app.flags.is_file_loaded {
+        if app.settings.is_file_loaded {
             return; //stops the app from infinite file loading from disk
         }
         println!("Is {} a sarc?", app.opened_file.clone());
         match PackFile::new(app.opened_file.clone(), app.zstd.clone()) {
             Ok(pack) => {
                 app.pack = Some(pack);
-                app.flags.is_file_loaded = true;
+                app.settings.is_file_loaded = true;
                 println!("Sarc  opened!");
                 app.active_tab = ActiveTab::DiretoryTree;
-                app.flags.is_tree_loaded = false;
+                app.settings.is_tree_loaded = false;
                 return;
             }
             Err(_) => {}
@@ -240,14 +234,14 @@ impl Gui {
                 app.byml = Some(res_byml.unwrap());
                 app.active_tab = ActiveTab::TextBox;
                 println!("Byml  opened!");
-                app.flags.is_file_loaded = true;
+                app.settings.is_file_loaded = true;
                 return;
             }
 
             Err(_) => {}
         };
-        app.flags.is_file_loaded = true;
-        app.flags.is_tree_loaded = true;
+        app.settings.is_file_loaded = true;
+        app.settings.is_tree_loaded = true;
         app.status_text = format!("Failed to open: {}", app.opened_file.clone());
     }
 
@@ -286,7 +280,7 @@ impl Gui {
                 Ok(_) => {
                     app.status_text =
                         format!("Opened file: {}", &app.opened_file);
-                    app.flags.is_file_loaded = false;
+                    app.settings.is_file_loaded = false;
                     return Ok(());
                 }
                 Err(err) => {

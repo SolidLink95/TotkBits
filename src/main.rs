@@ -5,6 +5,7 @@ use std::str::FromStr;
 //mod TestCases;
 mod TotkPath;
 mod Pack;
+mod Settings;
 mod misc;
 mod BymlFile;
 mod Tree;
@@ -17,7 +18,12 @@ mod CodeEditorFormatter;
 use Tree::tree_node;
 use Pack::PackFile;
 //use TestCases::test_case1;
-use std::thread;
+/*
+TODO:
+- lines numbers for code editor
+- byml file name in left rifght corner
+- endiannes below 
+*/
 
 fn main() -> io::Result<()> {
  

@@ -14,7 +14,7 @@ pub struct ActorParam<'a> {
 
 impl<'a> ActorParam<'_> {
     pub fn new(sarc: &Sarc, actor_path: &'a str) -> io::Result<ActorParam<'a>> {
-        let mut pio: Byml = get_byml_pio(sarc, actor_path)
+        let pio: Byml = get_byml_pio(sarc, actor_path)
                 .expect("Cannot get pio for ActorParam");
         let entries: collections::HashMap<String, String> = get_entries(pio.clone(), actor_path.to_string()).expect("msg");
         
@@ -30,7 +30,7 @@ impl<'a> ActorParam<'_> {
 
 pub fn get_byml_pio(sarc: &Sarc, file: &str) -> Option<Byml> {
     let data = sarc.get_data(file);
-    let bytes = match data {
+    match data {
         Some(bytes) => {
             if !is_byml(&bytes){
                 return None
