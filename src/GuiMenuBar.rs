@@ -3,10 +3,11 @@ use crate::Tree::{self, tree_node};
 use crate::Zstd::{is_byml, totk_zstd, ZsDic};
 //use crate::SarcFileLabel::ScrollAreaPub;
 use eframe::egui::{
-    self, Color32, ScrollArea, SelectableLabel, Style, TextStyle, TextureId, TopBottomPanel
+    self, Color32, ScrollArea, SelectableLabel, Style, TextStyle, TextureId, TopBottomPanel, Button
 };
+use egui::epaint::Shadow;
 use egui::text::LayoutJob;
-use egui::{CollapsingHeader, Context, Margin, Vec2};
+use egui::{include_image, CollapsingHeader, Context, Margin, Vec2};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{any, fs, io};
@@ -52,6 +53,10 @@ impl MenuBar {
                     if ui.button("Settings").clicked() {}
                     if ui.button("Zoom in").clicked() {}
                     if ui.button("Zoom out").clicked() {}
+                    /*let egui_icon = include_image!("../res/open_icon.png"); 
+                    if ui.add(Button::image(egui::Image::new(egui_icon.clone()).fit_to_exact_size(Vec2::new(32.0, 32.0)))).clicked() {
+                            println!("Test");
+                        }; image button example*/
                 });
             });
             ui.add_space(1.0);
@@ -75,10 +80,13 @@ impl MenuBar {
         style.visuals.widgets.active.bg_stroke.color = transparent;
         style.visuals.widgets.hovered.bg_stroke.color = transparent;
         style.visuals.widgets.open.bg_stroke.color = transparent;
-
+        //misc
         style.visuals.widgets.noninteractive.fg_stroke.color = Color32::WHITE; // White text
-
+        style.visuals.window_shadow = Shadow::NONE;
+        style.visuals.popup_shadow = Shadow::NONE;
+        
         //Square rounding/edges
+        style.visuals.menu_rounding = square_rounding;
         style.visuals.widgets.noninteractive.rounding = square_rounding; // No rounding on buttons
         style.visuals.widgets.inactive.rounding = square_rounding; // No rounding on buttons
         style.visuals.widgets.hovered.rounding = square_rounding; // No rounding on buttons

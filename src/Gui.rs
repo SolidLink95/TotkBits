@@ -13,6 +13,7 @@ use eframe::egui::{
 };
 use egui::text::LayoutJob;
 use egui::{vec2, Align, CollapsingHeader, Context, Label, Pos2, Rect, Style, Vec2};
+use egui_extras::install_image_loaders;
 use native_dialog::{MessageDialog, MessageType};
 use rfd::FileDialog;
 use roead::byml::Byml;
@@ -82,6 +83,7 @@ impl Default for TotkBitsApp<'_> {
 
 impl eframe::App for TotkBitsApp<'_> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        install_image_loaders(ctx);
         // Top panel (menu bar)
         self.menu_bar.clone().display(self, ctx);
         //GuiMenuBar::MenuBar::display(self, ctx);

@@ -16,9 +16,9 @@ egui = { default-features = false }
 #egui_extras = { path = "W:/coding/egui_modified/crates/egui_extras",features = ["default"]  }
 #eframe = { default-features = false }
 eframe = "0.26.0"
-egui_extras = { features = ["default"] }
 nfd = "0.0.4" #openfiledialog
 rfd = "0.13.0"
 native-dialog = "0.7.0"
 natord = "1.0.9"
-#image = "0.23"
+egui_extras = { version = "*", features = ["all_loaders"] }
+image = { version = "0.24", features = ["jpeg", "png"] }
