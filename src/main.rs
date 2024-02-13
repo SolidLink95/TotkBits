@@ -9,6 +9,7 @@ mod Settings;
 mod misc;
 mod BymlFile;
 mod Tree;
+mod GuiScroll;
 mod Zstd;
 mod BymlEntries;
 mod Gui;

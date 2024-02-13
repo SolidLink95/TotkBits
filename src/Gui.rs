@@ -22,7 +22,7 @@ use rfd::FileDialog;
 use roead::byml::Byml;
 
 use std::io::Read;
-
+use crate::GuiScroll::EfficientScroll;
 use std::path::{PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -37,8 +37,10 @@ pub enum ActiveTab {
 pub struct TotkBitsApp<'a> {
     opened_file: String,                  //path to opened file in string
     pub text: String,                     //content of the text editor
+    pub displayed_text: String,                     //content of the text editor
     pub status_text: String,              //bottom bar text
-    scroll: ScrollArea,                   //scroll area
+    pub scroll: ScrollArea,                   //scroll area
+    pub scroll_updater: EfficientScroll,                   //scroll area
     pub active_tab: ActiveTab,            //active tab, either sarc file or text editor
     language: String, //language for highlighting, no option for yaml yet, toml is closest
     pub zstd: Arc<totk_zstd<'a>>, //zstd compressors and decompressors
@@ -58,8 +60,10 @@ impl Default for TotkBitsApp<'_> {
         Self {
             opened_file: String::new(),
             text: misc::get_example_yaml(),
+            displayed_text: misc::get_example_yaml(),
             status_text: "Ready".to_owned(),
             scroll: ScrollArea::vertical(),
+            scroll_updater: EfficientScroll::new(),
             active_tab: ActiveTab::TextBox,
             language: "toml".into(),
             zstd: Arc::new(totk_zstd::new(totk_path, settings.comp_level).unwrap()),
@@ -150,39 +154,39 @@ impl Gui {
             ActiveTab::TextBox => {
                 //scrollbar
                 app.scroll_resp = Some(app.scroll.clone().show(ui, |ui| {
+                    //EfficientScroll::update(app);
+                    //ui.add_space(app.scroll_updater.top_space);
                     ui.add_sized(
                         ui.available_size(),
-                        egui::TextEdit::multiline(&mut app.text)
-                            .font(egui::TextStyle::Monospace) // Use monospace font for proper alignment
+                        egui::TextEdit::multiline(&mut app.displayed_text)
+                            .font(app.settings.editor_font.clone()) // Use monospace font for proper alignment
                             .code_editor()
                             .desired_rows(10)
                             .lock_focus(true)
                             .desired_width(f32::INFINITY)
                             .layouter(&mut layouter),
                     );
-
+                    //ui.add_space(app.scroll_updater.bottom_space);
                     Gui::open_byml_or_sarc(app, ui);
                     //TODO: get scrollbar position and render only that part of text
                     //println!("{:?}", app.scroll.clone().show_viewport(ui, add_contents))
                 }));
                 let r = app.scroll_resp.as_ref().unwrap();
                 let p = (r.state.offset.y * 100.0) / r.content_size.y;
-                app.status_text = format!(
+                /*app.status_text = format!(
                     "Scroll: {:?} [{:?}%] size {:?}, cur. height: {:?}, {:?} lines",
                     r.state.offset.y as i32,
                     p,
                     r.content_size,
                     r.inner_rect.height(),
                     app.settings.lines_count //app.text.chars().filter(|&c| c == '\n').count()
-                );
+                );*/
                 //println!("{:?} \n\n\n", r.state);
             }
             ActiveTab::DiretoryTree => {
                 //println!("{:?}", egui::ScrollArea::vertical().off);
                 //app.scroll.scroll_offset(offset)
-                let _response = app
-                    .scroll
-                    .clone()
+                let _response = ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .max_height(ui.available_height())
                     .max_width(ui.available_width())
