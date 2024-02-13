@@ -1,16 +1,16 @@
 use crate::Gui::{TotkBitsApp};
-use crate::Tree::{self, tree_node};
-use crate::Zstd::{is_byml, totk_zstd, ZsDic};
+use crate::Tree::{tree_node};
+
 //use crate::SarcFileLabel::ScrollAreaPub;
 use eframe::egui::{
-    self, Color32, ScrollArea, SelectableLabel, Style, TextStyle, TextureId, TopBottomPanel, Button
+    self, Style, TopBottomPanel
 };
-use egui::epaint::Shadow;
-use egui::text::LayoutJob;
-use egui::{include_image, CollapsingHeader, Context, Margin, Vec2};
-use std::path::{Path, PathBuf};
+
+
+
+
 use std::sync::Arc;
-use std::{any, fs, io};
+use std::{io};
 
 pub struct MenuBar {
     //app: &'a TotkBitsApp<'a>,

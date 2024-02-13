@@ -1,16 +1,16 @@
 use crate::TotkPath::TotkPath;
 use roead::sarc::*;
-use serde::de;
+
 use std::collections::HashMap;
-use std::path::PathBuf;
+
 use std::sync::Arc;
-use zstd::bulk::Decompressor;
+
 //use zstd::zstd_safe::CompressionLevel;
 use crate::misc::check_file_exists;
 use std::fs;
 use std::io::{self, Cursor, Read, Write};
-use zstd::dict::{DDict, DecoderDictionary, EncoderDictionary};
-use zstd::{dict::CDict, stream::decode_all, stream::Decoder, stream::Encoder};
+use zstd::dict::{DecoderDictionary, EncoderDictionary};
+use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
 
 pub enum FileType {
     Sarc,
@@ -147,7 +147,7 @@ impl<'a> ZstdDecompressor<'_> {
     }
 
     fn decompress(&self, data: &[u8], ddict: &DecoderDictionary) -> Result<Vec<u8>, io::Error> {
-        let mut decoder = Decoder::with_prepared_dictionary(data, ddict);
+        let decoder = Decoder::with_prepared_dictionary(data, ddict);
         match decoder {
             Ok(_) => {}
             Err(err) => {

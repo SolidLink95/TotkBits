@@ -1,7 +1,7 @@
 use crate::Pack::Endian;
 use crate::Zstd::is_byml;
 use crate::Zstd::totk_zstd;
-use core::fmt::Error as Generic_Error;
+
 use roead::byml::Byml;
 use std::io::Read;
 use std::path::PathBuf;
@@ -30,7 +30,7 @@ impl<'a> byml_file<'_> {
                 endian: byml_file::get_endiannes(data),
                 zstd: zstd.clone(),
             }),
-            Err(err) => {
+            Err(_err) => {
                 return Err(io::Error::new(
                     io::ErrorKind::BrokenPipe,
                     "Error for byml file",
@@ -64,7 +64,7 @@ impl<'a> byml_file<'_> {
                         returned_result = res;
                     }
                 },
-                Err(err) => {}
+                Err(_err) => {}
             }
         }
         if !is_byml(&returned_result) {

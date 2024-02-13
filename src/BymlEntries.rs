@@ -2,7 +2,7 @@ use roead::byml::Byml;
 use roead::sarc::Sarc;
 //use std::path::{Path, PathBuf};
 //use std::fs;
-use std::io::{self, Error, ErrorKind, Read, Write};
+use std::io::{self};
 use std::collections;
 use crate::Zstd::is_byml;
 
@@ -46,7 +46,7 @@ pub fn get_byml_pio(sarc: &Sarc, file: &str) -> Option<Byml> {
 
 }
 
-pub fn get_entries(pio: Byml, actor_param_path: String) -> Result<collections::HashMap<String, String>, roead::Error> {
+pub fn get_entries(pio: Byml, _actor_param_path: String) -> Result<collections::HashMap<String, String>, roead::Error> {
     let mut res: collections::HashMap<String, String> = Default::default();
     let pio_map = pio.as_map()?;
     if !pio_map.contains_key("Components") {

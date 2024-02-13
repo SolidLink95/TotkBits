@@ -1,13 +1,13 @@
 use roead;
 use roead::sarc::{Sarc, SarcWriter};
 use std::fs;
-use std::io::{self, Error, ErrorKind, Read, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 //mod Zstd;
-use crate::BymlEntries::ActorParam;
+
 use crate::TotkPath::TotkPath;
-use crate::Zstd::{is_sarc, totk_zstd, ZstdCompressor, ZstdDecompressor};
+use crate::Zstd::{is_sarc, totk_zstd};
 
 pub enum Endian {
     Big, 

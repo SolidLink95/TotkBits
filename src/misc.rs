@@ -1,5 +1,5 @@
 
-use std::{env, path};
+use std::{env};
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::io::{self, Error, ErrorKind, Read, Write};
@@ -59,7 +59,7 @@ pub fn save_file_dialog() -> String {
 
 
 pub fn create_directory(directory: &str) -> io::Result<()> {
-    let mut p = Path::new(directory);
+    let p = Path::new(directory);
     fs::create_dir_all(p)?;
     Ok(())
 }

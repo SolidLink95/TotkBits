@@ -1,32 +1,32 @@
-use crate::misc::{self, open_file_dialog, save_file_dialog};
+use crate::misc::{self, open_file_dialog};
 use crate::BymlFile::byml_file;
-use crate::CodeEditorFormatter::Editor;
-use crate::GuiMenuBar::{self, MenuBar};
+
+use crate::GuiMenuBar::{MenuBar};
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{Icons, Settings};
 use crate::TotkPath::TotkPath;
 use crate::Tree::{self, tree_node};
-use crate::Zstd::{is_byml, totk_zstd, ZsDic};
+use crate::Zstd::{totk_zstd};
 //use crate::SarcFileLabel::ScrollAreaPub;
 use eframe::egui::{
-    self, Color32, ScrollArea, SelectableLabel, TextStyle, TextureId, TopBottomPanel,
+    self, ScrollArea, SelectableLabel, TopBottomPanel,
 };
 use egui::text::LayoutJob;
 use egui::{
-    vec2, Align, CollapsingHeader, Context, Label, Layout, Pos2, Rect, Shape, Style, TextEdit, Vec2
+    Align, Label, Layout, Pos2, Rect, Shape
 };
 use egui_extras::install_image_loaders;
-use native_dialog::{MessageDialog, MessageType};
+
 use rfd::FileDialog;
 use roead::byml::Byml;
-use roead::sarc::File;
+
 use std::io::Read;
-use std::os::raw;
-use std::path::{Path, PathBuf};
+
+use std::path::{PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::{any, fs, io};
+use std::{fs, io};
 
 #[derive(PartialEq)]
 pub enum ActiveTab {
@@ -118,7 +118,7 @@ impl Gui {
                 }
                 if ui.button("TEST").clicked() {
                     //let mut c = Editor::new(app, &app.text, 3500);
-                    let x = app.scroll_resp.as_ref().unwrap().content_size.y * 0.1;
+                    let _x = app.scroll_resp.as_ref().unwrap().content_size.y * 0.1;
                     //Gui::scroll_the_boy(ui, x);
                     app.text = misc::get_other_yaml();
                 }
@@ -143,7 +143,7 @@ impl Gui {
             layout_job.wrap.max_width = wrap_width;
             ui.fonts(|f| f.layout_job(layout_job))
         };
-        let font_id = egui::FontId::monospace(12.0);
+        let _font_id = egui::FontId::monospace(12.0);
         app.settings.lines_count = app.text.chars().filter(|&c| c == '\n').count() + 1;
 
         match app.active_tab {
@@ -166,7 +166,7 @@ impl Gui {
                     //println!("{:?}", app.scroll.clone().show_viewport(ui, add_contents))
                 }));
                 let r = app.scroll_resp.as_ref().unwrap();
-                let p = ((r.state.offset.y * 100.0) / r.content_size.y);
+                let p = (r.state.offset.y * 100.0) / r.content_size.y;
                 app.status_text = format!(
                     "Scroll: {:?} [{:?}%] size {:?}, cur. height: {:?}, {:?} lines",
                     r.state.offset.y as i32,
@@ -180,7 +180,7 @@ impl Gui {
             ActiveTab::DiretoryTree => {
                 //println!("{:?}", egui::ScrollArea::vertical().off);
                 //app.scroll.scroll_offset(offset)
-                let response = app
+                let _response = app
                     .scroll
                     .clone()
                     .auto_shrink([false, false])
@@ -236,7 +236,7 @@ impl Gui {
         ui.painter().add(shape);
     }
 
-    fn open_byml_or_sarc(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
+    fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) {
         if app.settings.is_file_loaded {
             return; //stops the app from infinite file loading from disk
         }
@@ -253,7 +253,7 @@ impl Gui {
             Err(_) => {}
         }
         println!("Is {} a byml?", app.opened_file.clone());
-        let mut res_byml: Result<byml_file<'_>, io::Error> =
+        let res_byml: Result<byml_file<'_>, io::Error> =
             byml_file::new(app.opened_file.clone(), app.zstd.clone());
         match res_byml {
             Ok(ref b) => {
@@ -310,7 +310,7 @@ impl Gui {
                     app.settings.is_file_loaded = false;
                     return Ok(());
                 }
-                Err(err) => {
+                Err(_err) => {
                     app.status_text = format!("Error reading file: {}", file_name);
                     return Err(io::Error::new(
                         io::ErrorKind::BrokenPipe,
@@ -354,7 +354,7 @@ fn save_as(app: &mut TotkBitsApp) {
                 Ok(_) => {
                     app.status_text = format!("Saved: {}", dest_file);
                 }
-                Err(err) => {
+                Err(_err) => {
                     app.status_text = format!("Error in save: {}", dest_file);
                 }
             }

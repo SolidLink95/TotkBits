@@ -2,16 +2,15 @@ use std::io;
 use std::rc::Rc;
 
 use crate::BymlFile::byml_file;
-use crate::Gui::Gui as gui;
-use crate::Gui::{self, ActiveTab, TotkBitsApp};
+
+use crate::Gui::{ActiveTab, TotkBitsApp};
 use crate::Tree::tree_node;
 use crate::Zstd::is_byml;
-use egui::scroll_area::ScrollBarVisibility;
+
 use egui::{
-    epaint, lerp, pos2, remap, remap_clamp, vec2, Context, Id, NumExt, Pos2, Rangef, Rect,
-    SelectableLabel, Sense, Vec2, Vec2b,
+    SelectableLabel,
 };
-use egui::{CollapsingHeader, Ui};
+use egui::{CollapsingHeader};
 use roead::byml::Byml;
 
 pub struct SarcLabel {
@@ -119,7 +118,7 @@ impl SarcLabel {
         }
     }
 
-    fn open_file_from_opened_sarc(app: &mut TotkBitsApp, ui: &mut egui::Ui, full_path: String) -> io::Result<()> {
+    fn open_file_from_opened_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui, full_path: String) -> io::Result<()> {
         if app.pack.is_none() {
             return Err(io::Error::new(io::ErrorKind::Other, "No sarc opened"));
         }
