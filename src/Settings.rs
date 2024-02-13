@@ -6,8 +6,11 @@ use eframe;
 
 
 pub struct Settings {
+    pub lines_count: usize,
+    pub comp_level: i32,
     pub editor_font: TextStyle,
     pub window_color: Color32,
+    pub tree_bg_color: Color32,
     pub button_size: Vec2,
     pub icon_size: Vec2,
     pub is_file_loaded: bool, //flag for loading file, prevents the program from loading file from disk in every frame
@@ -19,8 +22,11 @@ impl Default for Settings {
     fn default() -> Self {
         let def_style = Style::default();
         Self {
+            lines_count: 0 as usize,
+            comp_level: 16,
             editor_font: TextStyle::Monospace,
             window_color: Color32::from_gray(27),
+            tree_bg_color: Color32::from_gray(15),
             button_size: Vec2::default(),
             icon_size: Vec2::new(32.0,32.0),
             is_file_loaded: true,
@@ -64,8 +70,7 @@ pub struct Styles {
     pub tree: Arc<Style>,
     pub text_editor: Arc<Style>,
     pub toolbar: Arc<Style>,
-    pub dir_context: Arc<Style>,
-    pub file_context: Arc<Style>,
+    pub context_menu: Arc<Style>,
     pub menubar: Arc<Style>,
 }
 
@@ -76,12 +81,16 @@ impl Styles {
             tree: Arc::new(def_style.clone()),
             text_editor: Arc::new(def_style.clone()),
             toolbar: Arc::new(def_style.clone()),
-            dir_context: Arc::new(def_style.clone()),
-            file_context: Arc::new(def_style.clone()),
+            context_menu: Styles::get_context_menu_style(def_style.clone()),
             menubar: Styles::get_menubar_style(def_style)
         }
     }
 
+    
+
+    pub fn get_context_menu_style(def_style: Style) -> Arc<Style> {
+        Styles::get_menubar_style(def_style)
+    }
     pub fn get_menubar_style(def_style: Style) -> Arc<Style> {
             let mut style: Style = def_style.clone();
             let square_rounding = egui::Rounding::same(0.0);

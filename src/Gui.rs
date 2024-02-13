@@ -13,7 +13,9 @@ use eframe::egui::{
     self, Color32, ScrollArea, SelectableLabel, TextStyle, TextureId, TopBottomPanel,
 };
 use egui::text::LayoutJob;
-use egui::{vec2, Align, CollapsingHeader, Context, Label, Pos2, Rect, Style, Vec2};
+use egui::{
+    vec2, Align, CollapsingHeader, Context, Label, Layout, Pos2, Rect, Shape, Style, TextEdit, Vec2
+};
 use egui_extras::install_image_loaders;
 use native_dialog::{MessageDialog, MessageType};
 use rfd::FileDialog;
@@ -26,8 +28,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::{any, fs, io};
 
-
-
 #[derive(PartialEq)]
 pub enum ActiveTab {
     DiretoryTree,
@@ -35,11 +35,11 @@ pub enum ActiveTab {
 }
 
 pub struct TotkBitsApp<'a> {
-    opened_file: String, //path to opened file in string
-    pub text: String, //content of the text editor
-    pub status_text: String, //bottom bar text
-    scroll: ScrollArea, //scroll area
-    pub active_tab: ActiveTab, //active tab, either sarc file or text editor
+    opened_file: String,                  //path to opened file in string
+    pub text: String,                     //content of the text editor
+    pub status_text: String,              //bottom bar text
+    scroll: ScrollArea,                   //scroll area
+    pub active_tab: ActiveTab,            //active tab, either sarc file or text editor
     language: String, //language for highlighting, no option for yaml yet, toml is closest
     pub zstd: Arc<totk_zstd<'a>>, //zstd compressors and decompressors
     pub pack: Option<PackFile<'a>>, //opened sarc file object, none if none opened
@@ -47,7 +47,7 @@ pub struct TotkBitsApp<'a> {
     pub root_node: Rc<tree_node<String>>, //root_node pf the sarc directory tree
     pub internal_sarc_file: Option<Rc<tree_node<String>>>, // node of sarc internal file opened in text editor
     pub scroll_resp: Option<egui::scroll_area::ScrollAreaOutput<()>>, //response from self.scroll, for controlling scrollbar position
-    pub menu_bar: Arc<MenuBar>, //menu bar at the top
+    pub menu_bar: Arc<MenuBar>,                                       //menu bar at the top
     pub icons: Icons<'a>,
     pub settings: Settings,
 }
@@ -62,7 +62,7 @@ impl Default for TotkBitsApp<'_> {
             scroll: ScrollArea::vertical(),
             active_tab: ActiveTab::TextBox,
             language: "toml".into(),
-            zstd: Arc::new(totk_zstd::new(totk_path, 16).unwrap()),
+            zstd: Arc::new(totk_zstd::new(totk_path, settings.comp_level).unwrap()),
             pack: None,
             byml: None,
             root_node: tree_node::new("ROOT".to_string(), "/".to_string()),
@@ -121,22 +121,15 @@ impl Gui {
                     let x = app.scroll_resp.as_ref().unwrap().content_size.y * 0.1;
                     //Gui::scroll_the_boy(ui, x);
                     app.text = misc::get_other_yaml();
-                    
                 }
             });
         });
     }
 
-    fn scroll_the_boy(ui: &mut egui::Ui, val: f32)  {
+    fn scroll_the_boy(ui: &mut egui::Ui, val: f32) {
         let target_rect = Rect {
-            min: Pos2 {
-                x: 0.0,
-                y: val,
-            },
-            max: Pos2 {
-                x: 0.0,
-                y: val,
-            },
+            min: Pos2 { x: 0.0, y: val },
+            max: Pos2 { x: 0.0, y: val },
         };
         ui.scroll_to_rect(target_rect, Some(Align::Max));
     }
@@ -150,23 +143,24 @@ impl Gui {
             layout_job.wrap.max_width = wrap_width;
             ui.fonts(|f| f.layout_job(layout_job))
         };
+        let font_id = egui::FontId::monospace(12.0);
+        app.settings.lines_count = app.text.chars().filter(|&c| c == '\n').count() + 1;
 
         match app.active_tab {
             ActiveTab::TextBox => {
-                
                 //scrollbar
                 app.scroll_resp = Some(app.scroll.clone().show(ui, |ui| {
-                    //let r =scroll_area.show(ui, |ui| {
                     ui.add_sized(
                         ui.available_size(),
                         egui::TextEdit::multiline(&mut app.text)
-                            .font(egui::TextStyle::Monospace)
+                            .font(egui::TextStyle::Monospace) // Use monospace font for proper alignment
                             .code_editor()
                             .desired_rows(10)
                             .lock_focus(true)
                             .desired_width(f32::INFINITY)
                             .layouter(&mut layouter),
                     );
+
                     Gui::open_byml_or_sarc(app, ui);
                     //TODO: get scrollbar position and render only that part of text
                     //println!("{:?}", app.scroll.clone().show_viewport(ui, add_contents))
@@ -174,8 +168,12 @@ impl Gui {
                 let r = app.scroll_resp.as_ref().unwrap();
                 let p = ((r.state.offset.y * 100.0) / r.content_size.y);
                 app.status_text = format!(
-                    "Scroll: {:?} [{:?}%] size {:?}, cur. height: {:?}, size {:?} bytes",
-                    r.state.offset.y as i32, p , r.content_size, r.inner_rect.height(), app.text.chars().filter(|&c| c == '\n').count()
+                    "Scroll: {:?} [{:?}%] size {:?}, cur. height: {:?}, {:?} lines",
+                    r.state.offset.y as i32,
+                    p,
+                    r.content_size,
+                    r.inner_rect.height(),
+                    app.settings.lines_count //app.text.chars().filter(|&c| c == '\n').count()
                 );
                 //println!("{:?} \n\n\n", r.state);
             }
@@ -189,6 +187,7 @@ impl Gui {
                     .max_height(ui.available_height())
                     .max_width(ui.available_width())
                     .show(ui, |ui| {
+                        Gui::display_tree_background(app, ui);
                         Gui::open_byml_or_sarc(app, ui);
                         if !app.pack.is_none() {
                             if !app.settings.is_tree_loaded {
@@ -207,6 +206,34 @@ impl Gui {
                     });
             }
         }
+    }
+
+    pub fn display_lines_numbers(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
+        app.settings.lines_count = app.text.chars().filter(|&c| c == '\n').count() + 1;
+        let max_width = format!("{}", app.settings.lines_count).len();
+        let mut lines_numbers = String::new();
+        for i in 1..app.settings.lines_count {
+            let l = format!("{}", i);
+            let spacing = " ".repeat(max_width - l.len());
+            lines_numbers.push_str(&format!("{}{}\n", spacing, l));
+        }
+        let lines_count = app.text.chars().filter(|&c| c == '\n').count() + 1;
+        let lines_numbers: String = (1..=lines_count).map(|i| format!("{}\n", i)).collect();
+        let label = Label::new(lines_numbers);
+        ui.vertical(|ui| {
+
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                ui.add(label);
+            });
+        });
+        //ui.vertical(|ui| ui.label(lines_numbers));
+        //ui.separator();
+    }
+
+    pub fn display_tree_background(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
+        let tree_bg = ui.available_rect_before_wrap();
+        let shape = Shape::rect_filled(tree_bg, 0.0, app.settings.tree_bg_color);
+        ui.painter().add(shape);
     }
 
     fn open_byml_or_sarc(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
@@ -266,6 +293,7 @@ impl Gui {
                 app.active_tab = ActiveTab::TextBox;
             }
         });
+        ui.add_space(10.0);
     }
 
     fn open_file_button_click(app: &mut TotkBitsApp) -> io::Result<()> {
@@ -278,8 +306,7 @@ impl Gui {
             let mut buffer: Vec<u8> = Vec::new(); //String::new();
             match f_handle.read_to_end(&mut buffer) {
                 Ok(_) => {
-                    app.status_text =
-                        format!("Opened file: {}", &app.opened_file);
+                    app.status_text = format!("Opened file: {}", &app.opened_file);
                     app.settings.is_file_loaded = false;
                     return Ok(());
                 }
@@ -300,8 +327,6 @@ impl Gui {
             ));
         }
     }
-
-
 }
 
 //TODO: saving byml file,
