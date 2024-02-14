@@ -6,21 +6,19 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 //mod Zstd;
 
+use crate::Settings::Pathlib;
 use crate::TotkPath::TotkPath;
 use crate::Zstd::{is_sarc, totk_zstd};
 
-pub enum Endian {
-    Big, 
-    Little
-}
+
 pub struct PackFile<'a> {
-    path: String,
+    pub path: Pathlib,
     totk_path: Arc<TotkPath>,
     zstd: Arc<totk_zstd<'a>>,
     //decompressor: &'a ZstdDecompressor<'a>,
     //compressor: &'a ZstdCompressor<'a>,
     //raw_data: Vec<u8>,
-   // pub endian: Endian,
+    pub endian: roead::Endian,
     pub writer: SarcWriter,
     pub sarc: Sarc<'a>,
 }
@@ -36,12 +34,12 @@ impl<'a> PackFile<'_> {
         let raw_data = PackFile::sarc_file_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
         let sarc: Sarc = Sarc::new(raw_data.clone()).expect("Failed");
         let writer: SarcWriter = SarcWriter::from_sarc(&sarc);
-
+        
         Ok(PackFile {
-            path: path,
+            path: Pathlib::new(path),
             totk_path: zstd.totk_path.clone(),
             zstd: zstd.clone(),
-
+            endian: sarc.endian(),
             writer: writer,
             sarc: sarc,
         })

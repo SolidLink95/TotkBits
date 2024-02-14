@@ -42,7 +42,6 @@ impl MenuBar {
                         app.settings.is_tree_loaded = true;
                         ui.close_menu();
                     }
-                    if ui.button("Restart").clicked() {}
                     if ui.button("Exit").clicked() {}
                 });
 

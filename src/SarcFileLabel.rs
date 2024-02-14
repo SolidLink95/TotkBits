@@ -1,7 +1,7 @@
 use std::io;
 use std::rc::Rc;
 
-use crate::BymlFile::{byml_file, FileData};
+use crate::BymlFile::{BymlFile, FileData};
 
 use crate::Gui::{ActiveTab, TotkBitsApp};
 use crate::Tree::tree_node;
@@ -133,7 +133,7 @@ impl SarcLabel {
             let mut file_data = FileData::new();
             file_data.data = raw_data;
             file_data.file_type = FileType::Byml;
-            let the_byml = byml_file::from_binary(file_data, app.zstd.clone(), full_path)?;
+            let the_byml = BymlFile::from_binary(file_data, app.zstd.clone(), full_path)?;
             let text = Byml::to_text(&the_byml.pio);
             app.text = text;
             app.settings.is_file_loaded = true; //precaution

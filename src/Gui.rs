@@ -1,28 +1,23 @@
 use crate::misc::{self, open_file_dialog, save_file_dialog};
-use crate::BymlFile::byml_file;
+use crate::BymlFile::BymlFile;
 
-use crate::GuiMenuBar::{MenuBar};
+use crate::GuiMenuBar::MenuBar;
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{Icons, Settings};
 use crate::TotkPath::TotkPath;
 use crate::Tree::{self, tree_node};
-use crate::Zstd::{totk_zstd};
+use crate::Zstd::totk_zstd;
 //use crate::SarcFileLabel::ScrollAreaPub;
-use eframe::egui::{
-    self, ScrollArea, SelectableLabel, TopBottomPanel,
-};
+use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::text::LayoutJob;
-use egui::{
-    Align, Button, Label, Layout, Pos2, Rect, Shape
-};
+use egui::{Align, Button, Label, Layout, Pos2, Rect, Shape};
 use egui_extras::install_image_loaders;
-
 
 use roead::byml::Byml;
 
-use std::io::Read;
 use crate::GuiScroll::EfficientScroll;
+use std::io::Read;
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -37,15 +32,15 @@ pub enum ActiveTab {
 pub struct TotkBitsApp<'a> {
     opened_file: String,                  //path to opened file in string
     pub text: String,                     //content of the text editor
-    pub displayed_text: String,                     //content of the text editor
+    pub displayed_text: String,           //content of the text editor
     pub status_text: String,              //bottom bar text
-    pub scroll: ScrollArea,                   //scroll area
-    pub scroll_updater: EfficientScroll,                   //scroll area
+    pub scroll: ScrollArea,               //scroll area
+    pub scroll_updater: EfficientScroll,  //scroll area
     pub active_tab: ActiveTab,            //active tab, either sarc file or text editor
     language: String, //language for highlighting, no option for yaml yet, toml is closest
     pub zstd: Arc<totk_zstd<'a>>, //zstd compressors and decompressors
     pub pack: Option<PackFile<'a>>, //opened sarc file object, none if none opened
-    pub byml: Option<byml_file<'a>>, //opened byml file, none if none opened
+    pub byml: Option<BymlFile<'a>>, //opened byml file, none if none opened
     pub root_node: Rc<tree_node<String>>, //root_node pf the sarc directory tree
     pub internal_sarc_file: Option<Rc<tree_node<String>>>, // node of sarc internal file opened in text editor
     pub scroll_resp: Option<egui::scroll_area::ScrollAreaOutput<()>>, //response from self.scroll, for controlling scrollbar position
@@ -113,24 +108,52 @@ impl Gui {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.set_style(app.settings.styles.toolbar.clone());
             ui.horizontal(|ui| {
-                if ui.add(Button::image(app.icons.new.clone())).on_hover_text("New").clicked() {}
-                if ui.add( Button::image(app.icons.open.clone())).on_hover_text("Open").clicked() {
+                if ui
+                    .add(Button::image(app.icons.new.clone()))
+                    .on_hover_text("New")
+                    .clicked()
+                {}
+                if ui
+                    .add(Button::image(app.icons.open.clone()))
+                    .on_hover_text("Open")
+                    .clicked()
+                {
                     let _ = Gui::open_file_button_click(app);
                 }
-                if ui.add(Button::image(app.icons.save.clone())).on_hover_text("Save").clicked() {
+                if ui
+                    .add(Button::image(app.icons.save.clone()))
+                    .on_hover_text("Save")
+                    .clicked()
+                {
                     if app.opened_file.len() > 0 {
                         println!("Saving file to {}", app.opened_file);
                     }
                 }
-                if ui.add(Button::image(app.icons.save_as.clone())).on_hover_text("Save as").clicked() {
+                if ui
+                    .add(Button::image(app.icons.save_as.clone()))
+                    .on_hover_text("Save as")
+                    .clicked()
+                {
                     if app.opened_file.len() > 0 {
                         println!("Saving file to {}", app.opened_file);
                     }
                 }
-                
-                if ui.add(Button::image(app.icons.edit.clone())).on_hover_text("Save as").clicked() {}
-                if ui.add(Button::image(app.icons.add_sarc.clone())).on_hover_text("Add file").clicked() {}
-                if ui.add(Button::image(app.icons.extract.clone())).on_hover_text("Extract").clicked() {}
+
+                if ui
+                    .add(Button::image(app.icons.edit.clone()))
+                    .on_hover_text("Save as")
+                    .clicked()
+                {}
+                if ui
+                    .add(Button::image(app.icons.add_sarc.clone()))
+                    .on_hover_text("Add file")
+                    .clicked()
+                {}
+                if ui
+                    .add(Button::image(app.icons.extract.clone()))
+                    .on_hover_text("Extract")
+                    .clicked()
+                {}
             });
             ui.add_space(2.0);
             ui.set_style(egui::Style::default());
@@ -227,7 +250,6 @@ impl Gui {
         let lines_numbers: String = (1..=lines_count).map(|i| format!("{}\n", i)).collect();
         let label = Label::new(lines_numbers);
         ui.vertical(|ui| {
-
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 ui.add(label);
             });
@@ -259,8 +281,8 @@ impl Gui {
             Err(_) => {}
         }
         println!("Is {} a byml?", app.opened_file.clone());
-        let res_byml: Result<byml_file<'_>, io::Error> =
-            byml_file::new(app.opened_file.clone(), app.zstd.clone());
+        let res_byml: Result<BymlFile<'_>, io::Error> =
+            BymlFile::new(app.opened_file.clone(), app.zstd.clone());
         match res_byml {
             Ok(ref b) => {
                 app.text = Byml::to_text(&b.pio);
@@ -268,6 +290,7 @@ impl Gui {
                 app.active_tab = ActiveTab::TextBox;
                 println!("Byml  opened!");
                 app.settings.is_file_loaded = true;
+                app.internal_sarc_file = None;
                 return;
             }
 
@@ -298,6 +321,38 @@ impl Gui {
             {
                 app.active_tab = ActiveTab::TextBox;
             }
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                match app.active_tab {
+                    ActiveTab::DiretoryTree =>  {
+                        if let Some(pack) = &app.pack {
+                            let endian_label = match pack.endian {
+                                roead::Endian::Big => "BE",
+                                roead::Endian::Little => "LE"
+                            };
+                            ui.label(endian_label);
+                            ui.label(&pack.path.stem);
+                        }
+                    },
+                    ActiveTab::TextBox =>  {
+                        if let Some(byml) = &app.byml {
+                            if let Some(endian) = byml.endian {
+                                let endian_label = match endian {
+                                    roead::Endian::Big => "BE",
+                                    roead::Endian::Little => "LE"
+                                };
+                                ui.label(endian_label);
+                                if let Some(internal_file) = &app.internal_sarc_file {
+                                    ui.label(&byml.path.stem);
+                                }
+                                else {
+                                    ui.label(&byml.path.stem); //TODO:display internal file path and endianes
+                                }
+                                
+                            }
+                        }
+                    },
+                }
+            })
         });
         ui.add_space(10.0);
     }
@@ -339,9 +394,13 @@ impl Gui {
 fn save_as_click(app: &mut TotkBitsApp) {
     match app.active_tab {
         ActiveTab::DiretoryTree => {
-            if app.pack.is_none() { return;} //no sarc opened, aborting
+            if app.pack.is_none() {
+                return;
+            } //no sarc opened, aborting
             let dest_file = save_file_dialog();
-            if dest_file.len() == 0 {return;}
+            if dest_file.len() == 0 {
+                return;
+            }
             let res = app.pack.as_mut().unwrap().save(dest_file.clone());
             match res {
                 Ok(_) => {
@@ -351,7 +410,7 @@ fn save_as_click(app: &mut TotkBitsApp) {
                     app.status_text = format!("Error in save: {}", dest_file);
                 }
             }
-        },
+        }
 
         ActiveTab::TextBox => {
             if app.pack.is_some() && app.internal_sarc_file.is_some() {

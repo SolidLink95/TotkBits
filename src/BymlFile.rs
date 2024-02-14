@@ -1,7 +1,6 @@
-use crate::Pack::Endian;
+use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, totk_zstd, FileType};
 use roead::byml::Byml;
-
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,27 +22,27 @@ impl FileData {
 } 
 
 
-pub struct byml_file<'a> {
-    pub endian: Option<Endian>,
+pub struct BymlFile<'a> {
+    pub endian: Option<roead::Endian>,
     pub file_data: FileData,
-    pub path: String,
+    pub path: Pathlib,
     pub pio: roead::byml::Byml,
     pub zstd: Arc<totk_zstd<'a>>,
 }
 
-impl<'a> byml_file<'_> {
-    pub fn new(path: String, zstd: Arc<totk_zstd<'a>>) -> io::Result<byml_file<'a>> {
-        let data: FileData = byml_file::byml_data_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
-        return byml_file::from_binary(data, zstd, path);
+impl<'a> BymlFile<'_> {
+    pub fn new(path: String, zstd: Arc<totk_zstd<'a>>) -> io::Result<BymlFile<'a>> {
+        let data: FileData = BymlFile::byml_data_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
+        return BymlFile::from_binary(data, zstd, path);
     }
 
-    pub fn from_binary(data: FileData, zstd: Arc<totk_zstd<'a>>, full_path: String) -> io::Result<byml_file<'a>> {
+    pub fn from_binary(data: FileData, zstd: Arc<totk_zstd<'a>>, full_path: String) -> io::Result<BymlFile<'a>> {
         let pio = Byml::from_binary(&data.data);
         match pio {
-            Ok(ok_pio) => Ok(byml_file {
-                endian: byml_file::get_endiannes(&data.data.clone()),
+            Ok(ok_pio) => Ok(BymlFile {
+                endian: BymlFile::get_endiannes(&data.data.clone()),
                 file_data: data,
-                path: full_path,
+                path: Pathlib::new(full_path),
                 pio: ok_pio,
                 zstd: zstd.clone(),
             }),
@@ -58,9 +57,9 @@ impl<'a> byml_file<'_> {
     }
 
     
-    pub fn get_endiannes(data: &Vec<u8>) -> Option<Endian> {
-        if data.starts_with(b"BY") {return Some(Endian::Big);}
-        if data.starts_with(b"YB") {return Some(Endian::Little);}
+    pub fn get_endiannes(data: &Vec<u8>) -> Option<roead::Endian> {
+        if data.starts_with(b"BY") {return Some(roead::Endian::Big);}
+        if data.starts_with(b"YB") {return Some(roead::Endian::Little);}
         None
     }
 
