@@ -47,6 +47,11 @@ impl<'a> PackFile<'_> {
     //Get totk actor entries recursively
 
     //Save the sarc file, compress if file ends with .zs, create directory if needed
+    pub fn save_default(&mut self)-> io::Result<()> {
+        let dest_file = self.path.full_path.clone();
+        self.save(dest_file)
+    }
+
     pub fn save(&mut self, dest_file: String) -> io::Result<()> {
         let file_path: &Path = Path::new(&dest_file);
         let directory: &Path = file_path.parent().expect("Cannot get parent of the file");

@@ -7,12 +7,13 @@ use std::rc::{Rc, Weak};
 
 
 use crate::Pack::PackFile;
+use crate::Settings::Pathlib;
 
 pub struct tree_node<T> {
     pub value: T,
     pub parent: RefCell<Weak<tree_node<T>>>,
     pub children: RefCell<Vec<Rc<tree_node<T>>>>,
-    pub full_path: String
+    pub path: Pathlib
 }
 
 impl<T> tree_node<T>
@@ -26,7 +27,7 @@ where
             value: value,
             parent: RefCell::new(Weak::new()),
             children: RefCell::new(vec![]),
-            full_path: full_path
+            path: Pathlib::new(full_path)
         })
     }
 

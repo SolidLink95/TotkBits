@@ -187,7 +187,8 @@ pub struct Pathlib {
     pub name: String,
     pub stem: String,
     pub extension: String,
-    pub full_path: String
+    pub full_path: String,
+    
 }
 
 impl Pathlib {

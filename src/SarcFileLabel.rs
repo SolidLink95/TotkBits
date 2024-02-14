@@ -41,7 +41,7 @@ impl SarcLabel {
                 SarcLabel::safe_open_file_from_opened_sarc(
                     app,
                     ui,
-                    child.full_path.clone(),
+                    child.path.full_path.clone(),
                 )
             }
             if file_label.clicked() {
@@ -49,7 +49,7 @@ impl SarcLabel {
                 app.internal_sarc_file = Some(child.clone());
             }
             if file_label.secondary_clicked() {
-                println!("Mocking future context menu for {}", &child.full_path);
+                println!("Mocking future context menu for {}", &child.path.full_path);
             }
             file_label.context_menu(|ui|{
                 if ui.button("Button 1").clicked() {
@@ -90,14 +90,14 @@ impl SarcLabel {
             });
         //TODO: custom collapsing header (ui.horizontal with image and selectablelabel)
         if response.header_response.secondary_clicked() {
-            println!("Mock for context menu {}",&root_node.full_path);
+            println!("Mock for context menu {}",&root_node.path.full_path);
         }
     }
 
     pub fn is_internal_file_selected(app: &mut TotkBitsApp, child: &Rc<tree_node<String>>) -> bool {
         match &app.internal_sarc_file {
             Some(x) => {
-                if x.full_path == child.full_path {
+                if x.path.full_path == child.path.full_path {
                     return true;
                 }
                 return false;

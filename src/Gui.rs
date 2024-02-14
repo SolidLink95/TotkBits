@@ -1,6 +1,6 @@
-use crate::misc::{self, open_file_dialog, save_file_dialog};
+use crate::misc;
+use crate::ButtonOperations::{edit_click, open_byml_or_sarc, open_file_button_click, save_as_click, save_click, save_file_dialog};
 use crate::BymlFile::BymlFile;
-
 use crate::GuiMenuBar::MenuBar;
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
@@ -13,12 +13,10 @@ use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::text::LayoutJob;
 use egui::{Align, Button, Label, Layout, Pos2, Rect, Shape};
 use egui_extras::install_image_loaders;
-
 use roead::byml::Byml;
-
 use crate::GuiScroll::EfficientScroll;
+use std::cell::RefCell;
 use std::io::Read;
-
 use std::rc::Rc;
 use std::sync::Arc;
 use std::{fs, io};
@@ -30,7 +28,7 @@ pub enum ActiveTab {
 }
 
 pub struct TotkBitsApp<'a> {
-    opened_file: String,                  //path to opened file in string
+    pub opened_file: String,                  //path to opened file in string
     pub text: String,                     //content of the text editor
     pub displayed_text: String,           //content of the text editor
     pub status_text: String,              //bottom bar text
@@ -96,6 +94,7 @@ impl eframe::App for TotkBitsApp<'_> {
 pub struct Gui {}
 
 impl Gui {
+
     pub fn display_status_bar(app: &mut TotkBitsApp, ctx: &egui::Context) {
         TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -108,42 +107,36 @@ impl Gui {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.set_style(app.settings.styles.toolbar.clone());
             ui.horizontal(|ui| {
-                if ui
-                    .add(Button::image(app.icons.new.clone()))
-                    .on_hover_text("New")
-                    .clicked()
-                {}
+                //if ui.add(Button::image(app.icons.new.clone())).on_hover_text("New").clicked(){}
                 if ui
                     .add(Button::image(app.icons.open.clone()))
                     .on_hover_text("Open")
                     .clicked()
                 {
-                    let _ = Gui::open_file_button_click(app);
+                    let _ = open_file_button_click(app);
                 }
                 if ui
                     .add(Button::image(app.icons.save.clone()))
                     .on_hover_text("Save")
                     .clicked()
                 {
-                    if app.opened_file.len() > 0 {
-                        println!("Saving file to {}", app.opened_file);
-                    }
+                    save_click(app);
                 }
                 if ui
                     .add(Button::image(app.icons.save_as.clone()))
                     .on_hover_text("Save as")
                     .clicked()
                 {
-                    if app.opened_file.len() > 0 {
-                        println!("Saving file to {}", app.opened_file);
-                    }
+                   let _ = save_as_click(app);
                 }
 
                 if ui
                     .add(Button::image(app.icons.edit.clone()))
-                    .on_hover_text("Save as")
+                    .on_hover_text("Edit")
                     .clicked()
-                {}
+                {
+                    edit_click(app, ui);
+                }
                 if ui
                     .add(Button::image(app.icons.add_sarc.clone()))
                     .on_hover_text("Add file")
@@ -194,7 +187,7 @@ impl Gui {
                             .desired_width(f32::INFINITY)
                             .layouter(&mut layouter),
                     );
-                    Gui::open_byml_or_sarc(app, ui);
+                    open_byml_or_sarc(app, ui);
                     //TODO: get scrollbar position and render only that part of text
                     //println!("{:?}", app.scroll.clone().show_viewport(ui, add_contents))
                 }));
@@ -217,7 +210,7 @@ impl Gui {
                     .max_width(ui.available_width())
                     .show(ui, |ui| {
                         Gui::display_tree_background(app, ui);
-                        Gui::open_byml_or_sarc(app, ui);
+                        open_byml_or_sarc(app, ui);
                         if !app.pack.is_none() {
                             if !app.settings.is_tree_loaded {
                                 Tree::update_from_sarc_paths(
@@ -264,43 +257,7 @@ impl Gui {
         ui.painter().add(shape);
     }
 
-    fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) {
-        if app.settings.is_file_loaded {
-            return; //stops the app from infinite file loading from disk
-        }
-        println!("Is {} a sarc?", app.opened_file.clone());
-        match PackFile::new(app.opened_file.clone(), app.zstd.clone()) {
-            Ok(pack) => {
-                app.pack = Some(pack);
-                app.settings.is_file_loaded = true;
-                println!("Sarc  opened!");
-                app.active_tab = ActiveTab::DiretoryTree;
-                app.settings.is_tree_loaded = false;
-                return;
-            }
-            Err(_) => {}
-        }
-        println!("Is {} a byml?", app.opened_file.clone());
-        let res_byml: Result<BymlFile<'_>, io::Error> =
-            BymlFile::new(app.opened_file.clone(), app.zstd.clone());
-        match res_byml {
-            Ok(ref b) => {
-                app.text = Byml::to_text(&b.pio);
-                app.byml = Some(res_byml.unwrap());
-                app.active_tab = ActiveTab::TextBox;
-                println!("Byml  opened!");
-                app.settings.is_file_loaded = true;
-                app.internal_sarc_file = None;
-                return;
-            }
-
-            Err(_) => {}
-        };
-        app.settings.is_file_loaded = true;
-        app.settings.is_tree_loaded = true;
-        app.status_text = format!("Failed to open: {}", app.opened_file.clone());
-    }
-
+    
     pub fn display_labels(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui
@@ -322,103 +279,47 @@ impl Gui {
                 app.active_tab = ActiveTab::TextBox;
             }
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                match app.active_tab {
-                    ActiveTab::DiretoryTree =>  {
-                        if let Some(pack) = &app.pack {
-                            let endian_label = match pack.endian {
-                                roead::Endian::Big => "BE",
-                                roead::Endian::Little => "LE"
-                            };
-                            ui.label(endian_label);
-                            ui.label(&pack.path.stem);
-                        }
-                    },
-                    ActiveTab::TextBox =>  {
-                        if let Some(byml) = &app.byml {
-                            if let Some(endian) = byml.endian {
-                                let endian_label = match endian {
-                                    roead::Endian::Big => "BE",
-                                    roead::Endian::Little => "LE"
-                                };
-                                ui.label(endian_label);
-                                if let Some(internal_file) = &app.internal_sarc_file {
-                                    ui.label(&byml.path.stem);
-                                }
-                                else {
-                                    ui.label(&byml.path.stem); //TODO:display internal file path and endianes
-                                }
-                                
-                            }
-                        }
-                    },
-                }
+                Gui::display_filename_endian(app, ui);
             })
         });
         ui.add_space(10.0);
     }
 
-    fn open_file_button_click(app: &mut TotkBitsApp) -> io::Result<()> {
-        // Logic for opening a file
-        let file_name = open_file_dialog();
-        if !file_name.is_empty() {
-            println!("Attempting to read {} file", &file_name);
-            app.opened_file = file_name.clone();
-            let mut f_handle = fs::File::open(&file_name)?;
-            let mut buffer: Vec<u8> = Vec::new(); //String::new();
-            match f_handle.read_to_end(&mut buffer) {
-                Ok(_) => {
-                    app.status_text = format!("Opened file: {}", &app.opened_file);
-                    app.settings.is_file_loaded = false;
-                    return Ok(());
-                }
-                Err(_err) => {
-                    app.status_text = format!("Error reading file: {}", file_name);
-                    return Err(io::Error::new(
-                        io::ErrorKind::BrokenPipe,
-                        app.status_text.clone(),
-                    ));
+    fn display_filename_endian(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
+        match app.active_tab {
+            ActiveTab::DiretoryTree => {
+                if let Some(pack) = &app.pack {
+                    let endian_label = match pack.endian {
+                        roead::Endian::Big => "BE",
+                        roead::Endian::Little => "LE",
+                    };
+                    ui.label(endian_label);
+                    ui.label(&pack.path.name);
                 }
             }
-            //self.text = buffer;
-        } else {
-            app.status_text = "No file selected".to_owned();
-            return Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "No file selected",
-            ));
+            ActiveTab::TextBox => {
+                if let Some(byml) = &app.byml {
+                    if let Some(endian) = byml.endian {
+                        let endian_label = match endian {
+                            roead::Endian::Big => "BE",
+                            roead::Endian::Little => "LE",
+                        };
+                        ui.label(endian_label);
+                        if let Some(internal_file) = &app.internal_sarc_file {
+                            ui.label(&byml.path.stem);
+                        } else {
+                            ui.label(&byml.path.stem); //TODO:display internal file path and endianes
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 //TODO: saving byml file,
-fn save_as_click(app: &mut TotkBitsApp) {
-    match app.active_tab {
-        ActiveTab::DiretoryTree => {
-            if app.pack.is_none() {
-                return;
-            } //no sarc opened, aborting
-            let dest_file = save_file_dialog();
-            if dest_file.len() == 0 {
-                return;
-            }
-            let res = app.pack.as_mut().unwrap().save(dest_file.clone());
-            match res {
-                Ok(_) => {
-                    app.status_text = format!("Saved: {}", dest_file);
-                }
-                Err(_err) => {
-                    app.status_text = format!("Error in save: {}", dest_file);
-                }
-            }
-        }
 
-        ActiveTab::TextBox => {
-            if app.pack.is_some() && app.internal_sarc_file.is_some() {
-                //let pio
-            }
-        }
-    }
-}
+
 
 pub fn run() {
     let mut options = eframe::NativeOptions::default();

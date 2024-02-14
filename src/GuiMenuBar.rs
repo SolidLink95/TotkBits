@@ -1,3 +1,4 @@
+use crate::ButtonOperations::{edit_click, open_file_button_click, save_as_click, save_click};
 use crate::Gui::{TotkBitsApp};
 use crate::Tree::{tree_node};
 
@@ -30,9 +31,18 @@ impl MenuBar {
         TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.menu_button("File", |ui| {
-                    if ui.button("Open").clicked() {}
-                    if ui.button("Save").clicked() {}
-                    if ui.button("Save as").clicked() {}
+                    if ui.button("Open").clicked() {
+                        let _ = open_file_button_click(app);
+                        ui.close_menu();
+                    }
+                    if ui.button("Save").clicked() {
+                        save_click(app);
+                        ui.close_menu();
+                    }
+                    if ui.button("Save as").clicked() {
+                        let _ = save_as_click(app);
+                        ui.close_menu();
+                    }
                     if ui.button("Close all").clicked() {
                         app.pack = None;
                         app.byml = None;
@@ -46,6 +56,10 @@ impl MenuBar {
                 });
 
                 ui.menu_button("Tools", |ui| {
+                    if ui.button("Edit").clicked() {
+                        edit_click(app, ui);
+                        ui.close_menu();
+                    }
                     if ui.button("Find").clicked() {}
                     if ui.button("Settings").clicked() {}
                     if ui.button("Zoom in").clicked() {}

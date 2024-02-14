@@ -3,6 +3,7 @@
 use std::io::{self};
 
 //mod TestCases;
+mod ButtonOperations;
 mod TotkPath;
 mod Pack;
 mod Settings;
