@@ -1,4 +1,4 @@
-use crate::misc::{self, open_file_dialog};
+use crate::misc::{self, open_file_dialog, save_file_dialog};
 use crate::BymlFile::byml_file;
 
 use crate::GuiMenuBar::{MenuBar};
@@ -14,7 +14,7 @@ use eframe::egui::{
 };
 use egui::text::LayoutJob;
 use egui::{
-    Align, Label, Layout, Pos2, Rect, Shape
+    Align, Button, Label, Layout, Pos2, Rect, Shape
 };
 use egui_extras::install_image_loaders;
 
@@ -111,22 +111,29 @@ impl Gui {
 
     pub fn display_main_buttons(app: &mut TotkBitsApp, ctx: &egui::Context) {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            ui.set_style(app.settings.styles.toolbar.clone());
             ui.horizontal(|ui| {
-                if ui.button("Open").clicked() {
+                if ui.add(Button::image(app.icons.new.clone())).on_hover_text("New").clicked() {}
+                if ui.add( Button::image(app.icons.open.clone())).on_hover_text("Open").clicked() {
                     let _ = Gui::open_file_button_click(app);
                 }
-                if ui.button("Save").clicked() {
+                if ui.add(Button::image(app.icons.save.clone())).on_hover_text("Save").clicked() {
                     if app.opened_file.len() > 0 {
                         println!("Saving file to {}", app.opened_file);
                     }
                 }
-                if ui.button("TEST").clicked() {
-                    //let mut c = Editor::new(app, &app.text, 3500);
-                    let _x = app.scroll_resp.as_ref().unwrap().content_size.y * 0.1;
-                    //Gui::scroll_the_boy(ui, x);
-                    app.text = misc::get_other_yaml();
+                if ui.add(Button::image(app.icons.save_as.clone())).on_hover_text("Save as").clicked() {
+                    if app.opened_file.len() > 0 {
+                        println!("Saving file to {}", app.opened_file);
+                    }
                 }
+                
+                if ui.add(Button::image(app.icons.edit.clone())).on_hover_text("Save as").clicked() {}
+                if ui.add(Button::image(app.icons.add_sarc.clone())).on_hover_text("Add file").clicked() {}
+                if ui.add(Button::image(app.icons.extract.clone())).on_hover_text("Extract").clicked() {}
             });
+            ui.add_space(2.0);
+            ui.set_style(egui::Style::default());
         });
     }
 
@@ -154,11 +161,9 @@ impl Gui {
             ActiveTab::TextBox => {
                 //scrollbar
                 app.scroll_resp = Some(app.scroll.clone().show(ui, |ui| {
-                    //EfficientScroll::update(app);
-                    //ui.add_space(app.scroll_updater.top_space);
                     ui.add_sized(
                         ui.available_size(),
-                        egui::TextEdit::multiline(&mut app.displayed_text)
+                        egui::TextEdit::multiline(&mut app.text)
                             .font(app.settings.editor_font.clone()) // Use monospace font for proper alignment
                             .code_editor()
                             .desired_rows(10)
@@ -166,7 +171,6 @@ impl Gui {
                             .desired_width(f32::INFINITY)
                             .layouter(&mut layouter),
                     );
-                    //ui.add_space(app.scroll_updater.bottom_space);
                     Gui::open_byml_or_sarc(app, ui);
                     //TODO: get scrollbar position and render only that part of text
                     //println!("{:?}", app.scroll.clone().show_viewport(ui, add_contents))
@@ -184,8 +188,6 @@ impl Gui {
                 //println!("{:?} \n\n\n", r.state);
             }
             ActiveTab::DiretoryTree => {
-                //println!("{:?}", egui::ScrollArea::vertical().off);
-                //app.scroll.scroll_offset(offset)
                 let _response = ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .max_height(ui.available_height())
@@ -334,25 +336,12 @@ impl Gui {
 }
 
 //TODO: saving byml file,
-fn save_as(app: &mut TotkBitsApp) {
+fn save_as_click(app: &mut TotkBitsApp) {
     match app.active_tab {
         ActiveTab::DiretoryTree => {
-            if app.pack.is_none() {
-                return; //no sarc opened, aborting
-            }
-            let file: Option<PathBuf> = FileDialog::new()
-                .set_title("Save sarc file as")
-                .set_file_name(app.opened_file.clone())
-                .save_file();
-            if file.is_none() {
-                return; //saving aborted
-            }
-            let dest_file: String = file
-                .unwrap()
-                .into_os_string()
-                .into_string()
-                .map_err(|os_str| format!("Path contains invalid UTF-8: {:?}", os_str))
-                .unwrap();
+            if app.pack.is_none() { return;} //no sarc opened, aborting
+            let dest_file = save_file_dialog();
+            if dest_file.len() == 0 {return;}
             let res = app.pack.as_mut().unwrap().save(dest_file.clone());
             match res {
                 Ok(_) => {
@@ -362,10 +351,11 @@ fn save_as(app: &mut TotkBitsApp) {
                     app.status_text = format!("Error in save: {}", dest_file);
                 }
             }
-        }
+        },
 
         ActiveTab::TextBox => {
-            if app.pack.is_none() { //just byml
+            if app.pack.is_some() && app.internal_sarc_file.is_some() {
+                //let pio
             }
         }
     }

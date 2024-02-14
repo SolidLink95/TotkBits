@@ -1,11 +1,11 @@
 use std::io;
 use std::rc::Rc;
 
-use crate::BymlFile::byml_file;
+use crate::BymlFile::{byml_file, FileData};
 
 use crate::Gui::{ActiveTab, TotkBitsApp};
 use crate::Tree::tree_node;
-use crate::Zstd::is_byml;
+use crate::Zstd::{is_byml, FileType};
 
 use egui::{
     SelectableLabel,
@@ -129,14 +129,17 @@ impl SarcLabel {
         }
         //For now assume only byml files will be opened
         let raw_data = data.unwrap().to_vec();
-        if !is_byml(&raw_data) {
-            return Err(io::Error::new(io::ErrorKind::Other, "File is not a byml"));
+        if is_byml(&raw_data) {
+            let mut file_data = FileData::new();
+            file_data.data = raw_data;
+            file_data.file_type = FileType::Byml;
+            let the_byml = byml_file::from_binary(file_data, app.zstd.clone(), full_path)?;
+            let text = Byml::to_text(&the_byml.pio);
+            app.text = text;
+            app.settings.is_file_loaded = true; //precaution
+            app.active_tab = ActiveTab::TextBox;
         }
-        let the_byml = byml_file::from_binary(&raw_data, app.zstd.clone(), full_path)?;
-        let text = Byml::to_text(&the_byml.pio);
-        app.text = text;
-        app.settings.is_file_loaded = true; //precaution
-        app.active_tab = ActiveTab::TextBox;
+  
         Ok(())
     }
 }

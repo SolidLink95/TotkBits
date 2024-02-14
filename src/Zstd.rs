@@ -18,6 +18,7 @@ pub enum FileType {
     Aamp,
     Bcett,
     Other,
+    None,
 }
 
 pub struct totk_zstd<'a> {
@@ -59,17 +60,23 @@ impl<'a> totk_zstd<'_> {
         return Err(io::Error::new(io::ErrorKind::Other, ""));
     }
 
-    pub fn identify_file_from_binary(&self, data: Vec<u8>) -> FileType {
-        let raw_data: Vec<u8> = self.try_decompress(&data).unwrap_or(data);
-        //try to decompress with everything
-        if is_byml(&raw_data) {
-            return FileType::Bcett;
-        }
-        if is_sarc(&raw_data) {
-            return FileType::Sarc;
-        }
-        if is_aamp(&raw_data) {
-            return FileType::Aamp;
+
+    pub fn identify_file_from_binary(zstd: totk_zstd, data: &Vec<u8>) -> FileType {
+        match zstd.try_decompress(&data) {
+            Ok(raw_data) => {
+                //try to decompress with everything
+                if is_byml(&raw_data) {
+                    return FileType::Bcett;
+                }
+                if is_sarc(&raw_data) {
+                    return FileType::Sarc;
+                }
+                if is_aamp(&raw_data) {
+                    return FileType::Aamp;
+                }
+
+            },
+            _ => {return FileType::Other;}
         }
         //all validations failed
         return FileType::Other;
@@ -193,10 +200,10 @@ impl<'a> ZstdDecompressor<'_> {
 
 pub struct ZstdCompressor<'a> {
     totk_path: Arc<TotkPath>,
-    pub packzs: EncoderDictionary<'a>, //Vec<u8>,
-    pub zs: EncoderDictionary<'a>,     //Vec<u8>,
-    pub bcett: EncoderDictionary<'a>,  //Vec<u8>,
-    pub empty: EncoderDictionary<'a>,
+    pub packzs: Arc<EncoderDictionary<'a>>, //Vec<u8>,
+    pub zs: Arc<EncoderDictionary<'a>>,     //Vec<u8>,
+    pub bcett: Arc<EncoderDictionary<'a>>,  //Vec<u8>,
+    pub empty: Arc<EncoderDictionary<'a>>,
     pub comp_level: i32,
 }
 
@@ -206,10 +213,10 @@ impl<'a> ZstdCompressor<'_> {
         zsdic: Arc<ZsDic>,
         comp_level: i32,
     ) -> io::Result<ZstdCompressor<'a>> {
-        let zs: EncoderDictionary = EncoderDictionary::copy(&zsdic.zs_data, comp_level);
-        let bcett: EncoderDictionary = EncoderDictionary::copy(&zsdic.bcett_data, comp_level);
-        let packzs: EncoderDictionary = EncoderDictionary::copy(&zsdic.packzs_data, comp_level);
-        let empty: EncoderDictionary = EncoderDictionary::copy(&zsdic.empty_data, comp_level);
+        let zs: Arc<EncoderDictionary> = Arc::new(EncoderDictionary::copy(&zsdic.zs_data, comp_level));
+        let bcett: Arc<EncoderDictionary> = Arc::new(EncoderDictionary::copy(&zsdic.bcett_data, comp_level));
+        let packzs: Arc<EncoderDictionary> = Arc::new(EncoderDictionary::copy(&zsdic.packzs_data, comp_level));
+        let empty: Arc<EncoderDictionary> = Arc::new(EncoderDictionary::copy(&zsdic.empty_data, comp_level));
 
         Ok(ZstdCompressor {
             totk_path: totk_path,

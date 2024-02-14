@@ -15,7 +15,6 @@ mod BymlEntries;
 mod Gui;
 mod GuiMenuBar;
 mod SarcFileLabel;
-mod CodeEditorFormatter;
 
 
 //use TestCases::test_case1;

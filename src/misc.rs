@@ -20,42 +20,49 @@ pub fn get_other_yaml() -> String{
     for i in 1..10000 {
         r += &format!("{:?}\n", -i);
     }
-    return r;
-}
-
-pub fn open_file_dialog() -> String {
-    match nfd::open_file_dialog(None, None).unwrap() {
-        Response::Okay(file_path) => {
-            // `file_path` contains the selected file's path as a `PathBuf`
-            println!("Selected file: {:?}", file_path);
-            return file_path;
-        }
-        Response::Cancel => {
-            // The user canceled the file selection
-            println!("File selection canceled");
-            return "".to_string();
-        }
-        _ => {
-            // Some other error occurred
-            //println!("An error occurred");
-            return "".to_string();
-        }
-    }
+    return r; 
 }
 
 pub fn save_file_dialog() -> String {
-    match nfd::open_save_dialog(None, None).unwrap() {
-        Response::Okay(file_path) => {
-            return file_path;
-        }
-        Response::Cancel => {
-            return "".to_string();
-        }
-        _ => {
-            return "".to_string();
-        }
+    match nfd::open_save_dialog(None, None) {
+        Ok(response) => {
+            match response {
+                Response::Okay(file_path) => {
+                    return file_path;
+                },
+                Response::Cancel => {return "".to_string();},
+                _ => {return "".to_string();}
+            }
+        },
+        _ => {return "".to_string();}
     }
 }
+
+pub fn open_file_dialog() -> String {
+    match nfd::open_file_dialog(None, None) {
+        Ok(response) => {
+            match response {
+                Response::Okay(file_path) => {
+                    // `file_path` contains the selected file's path as a `PathBuf`
+                    println!("Selected file: {:?}", file_path);
+                    return file_path;
+                }
+                Response::Cancel => {
+                    // The user canceled the file selection
+                    println!("File selection canceled");
+                    return "".to_string();
+                }
+                _ => {
+                    // Some other error occurred
+                    //println!("An error occurred");
+                    return "".to_string();
+                }
+            }
+        },
+        _ => {return "".to_string();}
+    }
+}
+
 
 
 pub fn create_directory(directory: &str) -> io::Result<()> {
