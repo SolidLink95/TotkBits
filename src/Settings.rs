@@ -102,8 +102,8 @@ impl Styles {
         let mut style: Style = def_style.clone();
         let square_rounding = egui::Rounding::same(0.0);
         let white = Color32::WHITE;
-        let inactive_color = Color32::from_gray(27);
-        let active_color = Color32::from_gray(60);
+        let _inactive_color = Color32::from_gray(27);
+        let _active_color = Color32::from_gray(60);
         let transparent = Color32::TRANSPARENT;
         style.spacing.item_spacing.x = 0.0;
         //Buttons have the same colors as background

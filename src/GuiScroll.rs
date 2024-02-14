@@ -1,21 +1,21 @@
-use crate::misc::{self, open_file_dialog};
-use crate::BymlFile::byml_file;
+
+
 use crate::Gui::TotkBitsApp;
-use crate::GuiMenuBar::MenuBar;
-use crate::SarcFileLabel::SarcLabel;
-use crate::Settings::{Icons, Settings};
-use crate::Tree::{self, tree_node};
+
+
+
+
 //use crate::SarcFileLabel::ScrollAreaPub;
-use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
-use egui::text::LayoutJob;
-use egui::{Align, Label, Layout, Pos2, Rect, Shape, Vec2};
-use egui_extras::install_image_loaders;
-use rfd::FileDialog;
+use eframe::egui::{self};
+
+
+
+
 use std::io::Read;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::{fs, io};
+
+
+
+
 
 pub struct EfficientScroll {
     //pub scroll: ScrollArea,
@@ -137,7 +137,7 @@ impl EfficientScroll {
     }
 
     pub fn update1(app: &mut TotkBitsApp) {
-        let mut sc = &mut app.scroll_updater;
+        let sc = &mut app.scroll_updater;
         if app.scroll_resp.is_none() {
             return;
         } //nothing to update
@@ -227,7 +227,7 @@ impl EfficientScroll {
         //}
     }
 
-    pub fn scroll_move(app: &mut TotkBitsApp) {}
+    pub fn scroll_move(_app: &mut TotkBitsApp) {}
 
     pub fn get_lines_count(app: &mut TotkBitsApp) -> usize {
         app.text.chars().filter(|&c| c == '\n').count() + 1

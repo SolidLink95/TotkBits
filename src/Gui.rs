@@ -18,12 +18,12 @@ use egui::{
 };
 use egui_extras::install_image_loaders;
 
-use rfd::FileDialog;
+
 use roead::byml::Byml;
 
 use std::io::Read;
 use crate::GuiScroll::EfficientScroll;
-use std::path::{PathBuf};
+
 use std::rc::Rc;
 use std::sync::Arc;
 use std::{fs, io};
@@ -176,7 +176,7 @@ impl Gui {
                     //println!("{:?}", app.scroll.clone().show_viewport(ui, add_contents))
                 }));
                 let r = app.scroll_resp.as_ref().unwrap();
-                let p = (r.state.offset.y * 100.0) / r.content_size.y;
+                let _p = (r.state.offset.y * 100.0) / r.content_size.y;
                 /*app.status_text = format!(
                     "Scroll: {:?} [{:?}%] size {:?}, cur. height: {:?}, {:?} lines",
                     r.state.offset.y as i32,
