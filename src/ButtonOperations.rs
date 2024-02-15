@@ -55,6 +55,7 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) {
     match MsytFile::file_to_text(path) {
         Ok(text) => {
             app.text = text;
+            app.opened_file_type = FileType::Msbt;
             app.internal_sarc_file = None;
             app.active_tab = ActiveTab::TextBox;
             app.byml = None;

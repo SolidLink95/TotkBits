@@ -314,6 +314,9 @@ impl Gui {
                 if let Some(internal_file) = &app.internal_sarc_file {
                     label_path = Some(internal_file.path.name.clone());
                 }
+                else {
+                    label_path = Some(app.opened_file.name.clone());
+                }
                 match app.opened_file_type {
                     FileType::Msbt => {
                         label_endian = "LE".to_string();
