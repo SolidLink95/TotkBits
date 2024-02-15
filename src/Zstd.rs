@@ -14,27 +14,29 @@ use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
 
 pub enum FileType {
     Sarc,
+    MalsSarc,
     Byml,
     Aamp,
+    Msbt,
     Bcett,
     Other,
     None,
 }
 
-pub struct totk_zstd<'a> {
+pub struct TotkZstd<'a> {
     pub totk_path: Arc<TotkPath>,
     pub decompressor: ZstdDecompressor<'a>,
     pub compressor: ZstdCompressor<'a>,
 }
 
-impl<'a> totk_zstd<'_> {
-    pub fn new(totk_path: Arc<TotkPath>, comp_level: i32) -> io::Result<totk_zstd<'a>> {
+impl<'a> TotkZstd<'_> {
+    pub fn new(totk_path: Arc<TotkPath>, comp_level: i32) -> io::Result<TotkZstd<'a>> {
         let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_path.clone())?);
         let decompressor: ZstdDecompressor =
             ZstdDecompressor::new(totk_path.clone(), zsdic.clone())?;
         let compressor: ZstdCompressor = ZstdCompressor::new(totk_path.clone(), zsdic, comp_level)?;
 
-        Ok(totk_zstd {
+        Ok(TotkZstd {
             totk_path,
             decompressor,
             compressor,
@@ -61,7 +63,7 @@ impl<'a> totk_zstd<'_> {
     }
 
 
-    pub fn identify_file_from_binary(zstd: totk_zstd, data: &Vec<u8>) -> FileType {
+    pub fn identify_file_from_binary(zstd: TotkZstd, data: &Vec<u8>) -> FileType {
         match zstd.try_decompress(&data) {
             Ok(raw_data) => {
                 //try to decompress with everything

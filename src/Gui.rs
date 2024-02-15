@@ -1,13 +1,13 @@
 use crate::misc;
 use crate::ButtonOperations::{edit_click, open_byml_or_sarc, open_file_button_click, save_as_click, save_click, save_file_dialog};
-use crate::BymlFile::BymlFile;
+use crate::BinTextFile::BymlFile;
 use crate::GuiMenuBar::MenuBar;
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{Icons, Settings};
 use crate::TotkPath::TotkPath;
 use crate::Tree::{self, tree_node};
-use crate::Zstd::totk_zstd;
+use crate::Zstd::TotkZstd;
 //use crate::SarcFileLabel::ScrollAreaPub;
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::text::LayoutJob;
@@ -36,7 +36,7 @@ pub struct TotkBitsApp<'a> {
     pub scroll_updater: EfficientScroll,  //scroll area
     pub active_tab: ActiveTab,            //active tab, either sarc file or text editor
     language: String, //language for highlighting, no option for yaml yet, toml is closest
-    pub zstd: Arc<totk_zstd<'a>>, //zstd compressors and decompressors
+    pub zstd: Arc<TotkZstd<'a>>, //zstd compressors and decompressors
     pub pack: Option<PackFile<'a>>, //opened sarc file object, none if none opened
     pub byml: Option<BymlFile<'a>>, //opened byml file, none if none opened
     pub root_node: Rc<tree_node<String>>, //root_node pf the sarc directory tree
@@ -59,7 +59,7 @@ impl Default for TotkBitsApp<'_> {
             scroll_updater: EfficientScroll::new(),
             active_tab: ActiveTab::TextBox,
             language: "toml".into(),
-            zstd: Arc::new(totk_zstd::new(totk_path, settings.comp_level).unwrap()),
+            zstd: Arc::new(TotkZstd::new(totk_path, settings.comp_level).unwrap()),
             pack: None,
             byml: None,
             root_node: tree_node::new("ROOT".to_string(), "/".to_string()),

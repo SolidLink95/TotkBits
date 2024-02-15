@@ -10,6 +10,7 @@ dependencies = [
  "egui",
  "egui_extras",
  "image",
+ "msbt",
  "native-dialog",
  "natord",
  "nfd",
@@ -679,6 +680,15 @@ name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+
+[[package]]
+name = "byteordered"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a90ff53bdca087f5c3ebf666edb0aaf3cd17c145b6db177f305407b0370de9a9"
+dependencies = [
+ "byteorder",
+]
 
 [[package]]
 name = "bytes"
@@ -2374,6 +2384,14 @@ checksum = "9d811f3e15f28568be3407c8e7fdb6514c1cda3cb30683f15b6a1a1dc4ea14a7"
 dependencies = [
  "adler",
  "simd-adler32",
+]
+
+[[package]]
+name = "msbt"
+version = "0.1.1"
+dependencies = [
+ "byteordered",
+ "thiserror",
 ]
 
 [[package]]

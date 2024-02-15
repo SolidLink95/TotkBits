@@ -16,7 +16,7 @@ use Pack::PackFile;
 
 pub fn test_case1(totk_path: &TotkPath::TotkPath) -> io::Result<String>{
     //let mut zsdic = Arc::new(ZsDic::new(&totk_path)?);
-    let TotkZstd: Zstd::totk_zstd<'_> = Zstd::totk_zstd::new(totk_path, 16)?;
+    let TotkZstd: Zstd::TotkZstd<'_> = Zstd::TotkZstd::new(totk_path, 16)?;
     let p = PathBuf::from(r"res\Armor_006_Upper.pack.zs");
     //let compressor = Zstd::ZstdCompressor::new(&totk_path, zsdic, 16)?;
     let mut ret_res: String = Default::default();

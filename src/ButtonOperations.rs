@@ -1,10 +1,10 @@
-use crate::BymlFile::BymlFile;
+use crate::BinTextFile::BymlFile;
 use crate::Gui::{ActiveTab, TotkBitsApp};
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{Icons, Pathlib, Settings};
 use crate::Tree::{self, tree_node};
-use crate::Zstd::totk_zstd;
+use crate::Zstd::TotkZstd;
 //use crate::SarcFileLabel::ScrollAreaPub;
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::{Align, Button, Label, Layout, Pos2, Rect, Shape};
@@ -32,7 +32,11 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) {
             app.root_node = tree_node::new("ROOT".to_string(), "/".to_string());
             return;
         }
-        Err(_) => {}
+        Err(err) => {
+            eprintln!("Error creating sarc {}: {}",app.opened_file.clone(), err);
+            app.settings.is_file_loaded = true;
+            return
+        }
     }
     println!("Is {} a byml?", app.opened_file.clone());
     let res_byml: Result<BymlFile<'_>, io::Error> =

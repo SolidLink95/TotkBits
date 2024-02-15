@@ -8,7 +8,7 @@ mod TotkPath;
 mod Pack;
 mod Settings;
 mod misc;
-mod BymlFile;
+mod BinTextFile;
 mod Tree;
 mod GuiScroll;
 mod Zstd;

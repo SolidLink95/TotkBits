@@ -1,7 +1,7 @@
 use std::io;
 use std::rc::Rc;
 
-use crate::BymlFile::{BymlFile, FileData};
+use crate::BinTextFile::{BymlFile, FileData};
 
 use crate::Gui::{ActiveTab, TotkBitsApp};
 use crate::Tree::tree_node;

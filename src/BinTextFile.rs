@@ -1,10 +1,11 @@
 use crate::Settings::Pathlib;
-use crate::Zstd::{is_byml, totk_zstd, FileType};
+use crate::Zstd::{is_byml, TotkZstd, FileType};
 use roead::byml::Byml;
-use std::io::Read;
+use std::io::{BufReader, Read};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
+use msbt::Msbt;
 
 pub struct FileData {
     pub file_type: FileType,
@@ -18,8 +19,21 @@ impl FileData {
             data: Vec::new()
         }
     }
-
+    pub fn from(data: Vec<u8>, file_type: FileType) -> Self {
+        Self {
+            file_type: file_type,
+            data: data
+        }
+    }
 } 
+
+pub struct MsbtFile <'a> {
+    //pub file_data: FileData,
+    pub path: Pathlib,
+    pub pio: std::pin::Pin<Box<Msbt>>,
+    pub zstd: Arc<TotkZstd<'a>>,
+}
+
 
 
 pub struct BymlFile<'a> {
@@ -27,16 +41,16 @@ pub struct BymlFile<'a> {
     pub file_data: FileData,
     pub path: Pathlib,
     pub pio: roead::byml::Byml,
-    pub zstd: Arc<totk_zstd<'a>>,
+    pub zstd: Arc<TotkZstd<'a>>,
 }
 
 impl<'a> BymlFile<'_> {
-    pub fn new(path: String, zstd: Arc<totk_zstd<'a>>) -> io::Result<BymlFile<'a>> {
+    pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> io::Result<BymlFile<'a>> {
         let data: FileData = BymlFile::byml_data_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
         return BymlFile::from_binary(data, zstd, path);
     }
 
-    pub fn from_binary(data: FileData, zstd: Arc<totk_zstd<'a>>, full_path: String) -> io::Result<BymlFile<'a>> {
+    pub fn from_binary(data: FileData, zstd: Arc<TotkZstd<'a>>, full_path: String) -> io::Result<BymlFile<'a>> {
         let pio = Byml::from_binary(&data.data);
         match pio {
             Ok(ok_pio) => Ok(BymlFile {
@@ -63,7 +77,7 @@ impl<'a> BymlFile<'_> {
         None
     }
 
-    fn byml_data_to_bytes(path: &PathBuf, zstd: &'a totk_zstd) -> Result<FileData, io::Error> {
+    fn byml_data_to_bytes(path: &PathBuf, zstd: &'a TotkZstd) -> Result<FileData, io::Error> {
         let mut f_handle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;

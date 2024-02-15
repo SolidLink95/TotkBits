@@ -4,20 +4,20 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::thread::sleep;
 //mod Zstd;
 
+use crate::BinTextFile::FileData;
 use crate::Settings::Pathlib;
 use crate::TotkPath::TotkPath;
-use crate::Zstd::{is_sarc, totk_zstd};
+use crate::Zstd::{is_sarc, TotkZstd, FileType};
 
 
 pub struct PackFile<'a> {
     pub path: Pathlib,
     totk_path: Arc<TotkPath>,
-    zstd: Arc<totk_zstd<'a>>,
-    //decompressor: &'a ZstdDecompressor<'a>,
-    //compressor: &'a ZstdCompressor<'a>,
-    //raw_data: Vec<u8>,
+    zstd: Arc<TotkZstd<'a>>,
+    pub data: FileData,
     pub endian: roead::Endian,
     pub writer: SarcWriter,
     pub sarc: Sarc<'a>,
@@ -27,18 +27,19 @@ impl<'a> PackFile<'_> {
     pub fn new(
         path: String,
         //totk_path: Arc<TotkPath>,
-        zstd: Arc<totk_zstd<'a>>,
+        zstd: Arc<TotkZstd<'a>>,
         //decompressor: &'a ZstdDecompressor,
         //compressor: &'a ZstdCompressor
     ) -> io::Result<PackFile<'a>> {
-        let raw_data = PackFile::sarc_file_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
-        let sarc: Sarc = Sarc::new(raw_data.clone()).expect("Failed");
+        let file_data = PackFile::sarc_file_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
+        println!("asdf");
+        let sarc: Sarc = Sarc::new(file_data.data.clone()).expect("Failed");
         let writer: SarcWriter = SarcWriter::from_sarc(&sarc);
-        
         Ok(PackFile {
             path: Pathlib::new(path),
             totk_path: zstd.totk_path.clone(),
             zstd: zstd.clone(),
+            data: file_data,
             endian: sarc.endian(),
             writer: writer,
             sarc: sarc,
@@ -52,13 +53,27 @@ impl<'a> PackFile<'_> {
         self.save(dest_file)
     }
 
+    fn compress(&self) -> Vec<u8> {
+        match self.data.file_type {
+            FileType::Sarc => {
+                return  self.zstd.compressor.compress_pack(&self.data.data).unwrap();
+            },
+            FileType::MalsSarc => {
+                return  self.zstd.compressor.compress_zs(&self.data.data).unwrap();
+            },
+            _ => {
+                return  self.zstd.compressor.compress_zs(&self.data.data).unwrap();
+            }
+        }
+    }
+
     pub fn save(&mut self, dest_file: String) -> io::Result<()> {
         let file_path: &Path = Path::new(&dest_file);
         let directory: &Path = file_path.parent().expect("Cannot get parent of the file");
         fs::create_dir_all(directory)?;
         let mut data: Vec<u8> = self.writer.to_binary();
         if dest_file.to_lowercase().ends_with(".zs") {
-            data = self.zstd.compressor.compress_pack(&data)?;
+            data = self.compress();
         }
         let mut file_handle: fs::File = fs::File::create(file_path)?;
         file_handle.write_all(&data)?;
@@ -66,42 +81,49 @@ impl<'a> PackFile<'_> {
     }
 
     //Read sarc file's bytes, decompress if needed
-    fn sarc_file_to_bytes(path: &PathBuf, zstd: &'a totk_zstd) -> Result<Vec<u8>, io::Error> {
+    fn sarc_file_to_bytes(path: &PathBuf, zstd: &'a TotkZstd) -> Result<FileData, io::Error> {
         let mut f_handle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
-        let mut returned_result: Vec<u8> = Vec::new();
+        //let mut returned_result: Vec<u8> = Vec::new();
+        let mut file_data: FileData = FileData::new();
+        file_data.file_type = FileType::Sarc;
         f_handle.read_to_end(&mut buffer)?;
         if is_sarc(&buffer) { //buffer.as_slice().starts_with(b"SARC") {
-            return Ok(buffer);
-        } else {
-            match zstd.decompressor.decompress_pack(&buffer) {
-                Ok(res) => {
-                    returned_result = res;
-                },
-                Err(err) => {
-                    match zstd.try_decompress(&buffer) {//try decompressing with other dicts
-                        Ok(res) => {
-                            returned_result = res;
-                        }
-                        Err(err) => {
-                            eprintln!("Error during zstd decompress");
-                            return Err(err);
+            file_data.data = buffer;
+            return Ok(file_data);
+        } 
+        match zstd.decompressor.decompress_pack(&buffer) {
+            Ok(res) => {
+                if is_sarc(&res) {file_data.data = res;}
+            },
+            Err(_) => {
+                match zstd.decompressor.decompress_zs(&buffer) {//try decompressing with other dicts
+                    Ok(res) => {
+                        if is_sarc(&res) {
+                            file_data.data = res;
+                            file_data.file_type = FileType::MalsSarc;
                         }
                     }
-                    eprintln!("Error during zstd decompress");
-                    return Err(err);
+                    Err(err) => {
+                        eprintln!("Error during zstd decompress {}", &path.to_str().unwrap_or("UNKNOWN"));
+                        return Err(err);
+                    }
                 }
             }
+            
         
         }
-        if is_sarc(&returned_result) {
-            return Ok(returned_result);
-        }
-        if  returned_result.starts_with(b"Yaz0") {
-            match roead::yaz0::decompress(&returned_result) {
-                Ok(dec_data) => {return Ok(dec_data);},
+        if  file_data.data.starts_with(b"Yaz0") {
+            match roead::yaz0::decompress(&file_data.data) {
+                Ok(dec_data) => {
+                    file_data.data = dec_data;
+                    return Ok(file_data);
+                },
                 Err(_) => {}
             }
+        }
+        if is_sarc(&file_data.data) {
+            return Ok(file_data);
         }
         return Err(io::Error::new(io::ErrorKind::Other, "Invalid data, not a sarc"));
     }
