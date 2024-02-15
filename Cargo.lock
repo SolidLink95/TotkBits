@@ -6,6 +6,7 @@ version = 3
 name = "TotkBits"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "eframe",
  "egui",
  "egui_extras",
@@ -18,7 +19,9 @@ dependencies = [
  "rfd",
  "roead",
  "serde",
+ "serde_derive",
  "serde_json",
+ "serde_yaml",
  "zstd",
 ]
 

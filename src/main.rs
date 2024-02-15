@@ -15,6 +15,7 @@ mod TotkPath;
 mod Tree;
 mod Zstd;
 mod misc;
+//mod msyt;
 use egui::output;
 use msbt::{section::Atr1, Msbt};
 

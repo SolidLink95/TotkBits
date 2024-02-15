@@ -70,8 +70,7 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) {
         }
     }
     println!("Is {} a byml?", app.opened_file.full_path.clone());
-    let res_byml: Result<BymlFile<'_>, io::Error> =
-        BymlFile::new(app.opened_file.full_path.clone(), app.zstd.clone());
+    let res_byml = BymlFile::new(app.opened_file.full_path.clone(), app.zstd.clone());
     match res_byml {
         Ok(ref b) => {
             app.text = Byml::to_text(&b.pio);

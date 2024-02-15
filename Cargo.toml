@@ -26,4 +26,7 @@ image = { version = "0.24", features = ["jpeg", "png"] }
 #msyt = {path = "./msyt-master"}
 msbt = { git = "https://github.com/NiceneNerd/msbt-rs" }
 msyt = { git = "https://github.com/NiceneNerd/msyt" }
+serde_derive = "1"
+serde_yaml = "0.9.17"
+anyhow = "1.0.47"
 
