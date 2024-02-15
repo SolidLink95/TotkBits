@@ -7,11 +7,11 @@ pub struct Settings {
     pub comp_level: i32,
     pub editor_font: TextStyle,
     pub window_color: Color32,
-    pub tree_bg_color: Color32,
-    pub button_size: Vec2,
-    pub icon_size: Vec2,
+    pub tree_bg_color: Color32, // color of the backgroun
+    pub button_size: Vec2, //size of the buttons
+    pub icon_size: Vec2, //size of the icons for buttons
     pub is_file_loaded: bool, //flag for loading file, prevents the program from loading file from disk in every frame
-    pub is_tree_loaded: bool,
+    pub is_tree_loaded: bool, //flag to reload gui (collapsingheaders) from tree, prevents from traversing tree in every frame
     pub styles: Styles,
 }
 

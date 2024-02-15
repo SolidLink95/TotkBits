@@ -1,11 +1,10 @@
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, TotkZstd, FileType};
 use roead::byml::Byml;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{fs, io};
-use msbt::Msbt;
+use std::{io, fs};
 
 pub struct FileData {
     pub file_type: FileType,
@@ -27,13 +26,6 @@ impl FileData {
     }
 } 
 
-pub struct MsbtFile <'a> {
-    //pub file_data: FileData,
-    pub path: Pathlib,
-    pub pio: std::pin::Pin<Box<Msbt>>,
-    pub zstd: Arc<TotkZstd<'a>>,
-}
-
 
 
 pub struct BymlFile<'a> {
@@ -48,6 +40,40 @@ impl<'a> BymlFile<'_> {
     pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> io::Result<BymlFile<'a>> {
         let data: FileData = BymlFile::byml_data_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
         return BymlFile::from_binary(data, zstd, path);
+    }
+
+    pub fn save(&self, path: String) -> io::Result<()> {
+        let mut f_handle = fs::File::open(path.clone())?;
+        let mut data = self.pio.to_binary(self.endian.unwrap_or(roead::Endian::Little));
+        if path.to_ascii_lowercase().ends_with(".zs") {
+            match self.file_data.file_type {
+                FileType::Byml => {data = self.zstd.compressor.compress_zs(&data).unwrap();},
+                FileType::Bcett => {data = self.zstd.compressor.compress_bcett(&data).unwrap();},
+                _ => {data = self.zstd.compressor.compress_zs(&data).unwrap();}
+            }
+            
+        }
+        f_handle.write_all(&data);
+        Ok(())
+    }
+
+    pub fn from_text(content: String, zstd: Arc<TotkZstd<'a>>) -> io::Result<BymlFile<'a>> {
+        let pio: Result<Byml, roead::Error> = Byml::from_text(&content);
+        match pio {
+            Ok(ok_pio) => Ok(BymlFile {
+                endian: Some(roead::Endian::Little), //TODO: add Big endian support
+                file_data: FileData::new(),
+                path: Pathlib::new("".to_string()),
+                pio: ok_pio,
+                zstd: zstd.clone(),
+            }),
+            Err(_err) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "Error for byml file",
+                ));
+            }
+        }
     }
 
     pub fn from_binary(data: FileData, zstd: Arc<TotkZstd<'a>>, full_path: String) -> io::Result<BymlFile<'a>> {

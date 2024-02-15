@@ -1,20 +1,23 @@
 use crate::misc;
-use crate::ButtonOperations::{edit_click, open_byml_or_sarc, open_file_button_click, save_as_click, save_click, save_file_dialog};
 use crate::BinTextFile::BymlFile;
+use crate::ButtonOperations::{
+    edit_click, extract_click, open_byml_or_sarc, open_file_button_click, save_as_click,
+    save_click, save_file_dialog,
+};
 use crate::GuiMenuBar::MenuBar;
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
-use crate::Settings::{Icons, Settings};
+use crate::Settings::{Icons, Pathlib, Settings};
 use crate::TotkPath::TotkPath;
 use crate::Tree::{self, tree_node};
-use crate::Zstd::TotkZstd;
+use crate::Zstd::{FileType, TotkZstd};
 //use crate::SarcFileLabel::ScrollAreaPub;
+use crate::GuiScroll::EfficientScroll;
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::text::LayoutJob;
 use egui::{Align, Button, Label, Layout, Pos2, Rect, Shape};
 use egui_extras::install_image_loaders;
 use roead::byml::Byml;
-use crate::GuiScroll::EfficientScroll;
 use std::cell::RefCell;
 use std::io::Read;
 use std::rc::Rc;
@@ -28,7 +31,8 @@ pub enum ActiveTab {
 }
 
 pub struct TotkBitsApp<'a> {
-    pub opened_file: String,                  //path to opened file in string
+    pub opened_file: Pathlib,             //path to opened file in string
+    pub opened_file_type: FileType,       //path to opened file in string
     pub text: String,                     //content of the text editor
     pub displayed_text: String,           //content of the text editor
     pub status_text: String,              //bottom bar text
@@ -43,15 +47,16 @@ pub struct TotkBitsApp<'a> {
     pub internal_sarc_file: Option<Rc<tree_node<String>>>, // node of sarc internal file opened in text editor
     pub scroll_resp: Option<egui::scroll_area::ScrollAreaOutput<()>>, //response from self.scroll, for controlling scrollbar position
     pub menu_bar: Arc<MenuBar>,                                       //menu bar at the top
-    pub icons: Icons<'a>,
-    pub settings: Settings,
+    pub icons: Icons<'a>, //cached icons for buttons
+    pub settings: Settings, //various settings
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
         let totk_path = Arc::new(TotkPath::new());
         let settings = Settings::default();
         Self {
-            opened_file: String::new(),
+            opened_file: Pathlib::new("".to_string()),
+            opened_file_type: FileType::None, //used only for TextBox active tab
             text: misc::get_example_yaml(),
             displayed_text: misc::get_example_yaml(),
             status_text: "Ready".to_owned(),
@@ -94,7 +99,6 @@ impl eframe::App for TotkBitsApp<'_> {
 pub struct Gui {}
 
 impl Gui {
-
     pub fn display_status_bar(app: &mut TotkBitsApp, ctx: &egui::Context) {
         TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -127,7 +131,7 @@ impl Gui {
                     .on_hover_text("Save as")
                     .clicked()
                 {
-                   let _ = save_as_click(app);
+                    let _ = save_as_click(app);
                 }
 
                 if ui
@@ -146,7 +150,9 @@ impl Gui {
                     .add(Button::image(app.icons.extract.clone()))
                     .on_hover_text("Extract")
                     .clicked()
-                {}
+                {
+                    extract_click(app);
+                }
             });
             ui.add_space(2.0);
             ui.set_style(egui::Style::default());
@@ -204,7 +210,7 @@ impl Gui {
                 //println!("{:?} \n\n\n", r.state);
             }
             ActiveTab::DiretoryTree => {
-                let _response = ScrollArea::vertical()
+                app.scroll_resp = Some(ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .max_height(ui.available_height())
                     .max_width(ui.available_width())
@@ -225,7 +231,7 @@ impl Gui {
                                 SarcLabel::display_tree_in_egui(app, &child, ui);
                             }
                         }
-                    });
+                    }));
             }
         }
     }
@@ -247,17 +253,20 @@ impl Gui {
                 ui.add(label);
             });
         });
-        //ui.vertical(|ui| ui.label(lines_numbers));
-        //ui.separator();
     }
 
     pub fn display_tree_background(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
-        let tree_bg = ui.available_rect_before_wrap();
-        let shape = Shape::rect_filled(tree_bg, 0.0, app.settings.tree_bg_color);
-        ui.painter().add(shape);
+        let mut height = 0.0;
+        if let Some(resp) = &app.scroll_resp {
+            height = resp.inner_rect.height().max(resp.content_size.y);
+        }
+        let painter = ui.painter();
+        let tree_bg =
+            egui::Rect::from_min_size(ui.min_rect().min, egui::vec2(ui.available_width(), height));
+        let shape = egui::Shape::rect_filled(tree_bg, 0.0, app.settings.tree_bg_color);
+        painter.add(shape);
     }
 
-    
     pub fn display_labels(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui
@@ -318,8 +327,6 @@ impl Gui {
 }
 
 //TODO: saving byml file,
-
-
 
 pub fn run() {
     let mut options = eframe::NativeOptions::default();

@@ -1,4 +1,4 @@
-use crate::ButtonOperations::{edit_click, open_file_button_click, save_as_click, save_click};
+use crate::ButtonOperations::{edit_click, extract_click, open_file_button_click, save_as_click, save_click};
 use crate::Gui::{TotkBitsApp};
 use crate::Tree::{tree_node};
 
@@ -58,6 +58,10 @@ impl MenuBar {
                 ui.menu_button("Tools", |ui| {
                     if ui.button("Edit").clicked() {
                         edit_click(app, ui);
+                        ui.close_menu();
+                    }
+                    if ui.button("Extract").clicked() {
+                        extract_click(app);
                         ui.close_menu();
                     }
                     if ui.button("Find").clicked() {}
