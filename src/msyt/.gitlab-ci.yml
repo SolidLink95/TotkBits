@@ -1,0 +1,49 @@
+image: registry.gitlab.com/jkcclemens/msyt/build:latest
+
+stages:
+  - build
+  - release
+  - test
+
+build_linux:
+  stage: build
+  script: cargo build --all-features
+
+build_linux_release:
+  stage: release
+  script: cargo build --all-features --release
+  after_script:
+    - find target -executable -type f -name 'msyt' -exec strip {} \;
+  artifacts:
+    paths:
+      - target/release/msyt
+
+build_win:
+  stage: build
+  script: cargo build --all-features --target=x86_64-pc-windows-gnu
+
+build_win_release:
+  stage: release
+  script: cargo build --all-features --release --target=x86_64-pc-windows-gnu
+  after_script:
+    - find target -executable -type f -name 'msyt.exe' -exec x86_64-w64-mingw32-strip {} \;
+  artifacts:
+    paths:
+      - target/x86_64-pc-windows-gnu/release/msyt.exe
+
+build_linux_musl:
+  stage: build
+  script: cargo build --all-features --target=x86_64-unknown-linux-musl
+
+build_linux_musl_release:
+  stage: release
+  script: cargo build --all-features --release --target=x86_64-unknown-linux-musl
+  after_script:
+    - find target -executable -type f -name 'msyt' -exec strip {} \;
+  artifacts:
+    paths:
+      - target/x86_64-unknown-linux-musl/release/msyt
+
+test:
+  stage: test
+  script: ./test.sh

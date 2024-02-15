@@ -12,6 +12,7 @@ use std::io::{self, Cursor, Read, Write};
 use zstd::dict::{DecoderDictionary, EncoderDictionary};
 use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
 
+#[derive(Debug)]
 pub enum FileType {
     Sarc,
     MalsSarc,
@@ -271,6 +272,13 @@ pub fn is_sarc(data: &[u8]) -> bool {
 
 pub fn is_aamp(data: &[u8]) -> bool {
     if data.starts_with(b"AAMP") {
+        return true;
+    }
+    return false;
+}
+
+pub fn is_msyt(data: &[u8]) -> bool {
+    if data.starts_with(b"MsgStd") {
         return true;
     }
     return false;

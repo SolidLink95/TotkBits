@@ -15,9 +15,11 @@ mod TotkPath;
 mod Tree;
 mod Zstd;
 mod misc;
-//mod msyt;
+
+//use msyt;
 use egui::output;
 use msbt::{section::Atr1, Msbt};
+use BinTextFile::MsytFile;
 
 //use TestCases::test_case1;
 /*
@@ -36,16 +38,8 @@ fn msbt_to_text(path:String) {
 
 
 fn main() -> io::Result<()> {
-    /*let path = "".to_string();
-    let msbt_file = File::open(&path).unwrap();
-    let msbt = Msbt::from_reader(BufReader::new(msbt_file)).unwrap();
-    let mut buf: Vec<u8> = Vec::new();
-    let new_f = BufWriter::new(buf);
-    msbt.write_to(new_f).unwrap();*/
-    //println!("{}", code_content);
-    //GuiUpdated::run();
-    //Tree::test_tree();
-    //Tree::test_paths_tree();
+    
+    //MsytFile::file_to_text("res/Attachment.msbt".to_string());
     Gui::run();
     Ok(())
 }

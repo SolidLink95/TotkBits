@@ -1,0 +1,22 @@
+[package]
+name = "msyt"
+version = "1.1.0"
+authors = ["Kyle Clemens <msyt@kyleclemens.com>"]
+description = "Import and export from MSBT files to MSYT (YAML) files."
+edition = "2018"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+base64 = "0.10"
+byteordered = "0.4"
+clap = "2"
+failure = "0.1"
+indexmap = { version = "1", features = ["serde", "serde-1"] }
+msbt = { git = "https://github.com/jkcclemens/msbt-rs" }
+rayon = "1"
+serde = "1"
+serde_derive = "1"
+serde_yaml = "0.8"
+walkdir = "2"

@@ -1,15 +1,21 @@
-//use crate::msyt::model::Msyt;
+
+use crate::Pack::PackFile;
 use crate::Settings::Pathlib;
-use crate::Zstd::{is_byml, FileType, TotkZstd};
+use crate::Zstd::{is_byml, is_msyt, FileType, TotkZstd};
 use anyhow;
+use msbt::section::Atr1;
 use msbt::Msbt;
-use msyt::model::Content;
-use msyt::Msyt;
+use msyt::model::{self, Content, Entry, MsbtInfo};
+use msyt::Result as MsbtResult;
+use msyt::model::Msyt;
 use roead::byml::Byml;
-use std::io::{BufReader, Cursor, Read, Write};
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Cursor, Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
+use failure::ResultExt;
+use indexmap::IndexMap;
 
 pub struct FileData {
     pub file_type: FileType,
@@ -31,171 +37,90 @@ impl FileData {
     }
 }
 
-pub struct MsytFile<'a> {
-    pub endian: Option<roead::Endian>,
+pub struct MsytFile {
+    /*pub endian: Option<roead::Endian>,
     pub file_data: FileData,
     pub path: Pathlib,
     pub msbt: std::pin::Pin<Box<Msbt>>,
-    pub zstd: Arc<TotkZstd<'a>>,
+    pub zstd: Arc<TotkZstd<'a>>,*/
 }
 
-impl<'a> MsytFile<'_> {
-    pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> io::Result<MsytFile<'a>> {
-        let mut f_handle = fs::File::open(&path)?;
-        let mut data: Vec<u8> = Vec::new();
-        f_handle.read_to_end(&mut data);
-        MsytFile::from_binary(FileData::from(data, FileType::Msbt), zstd)
+impl MsytFile {
+   
+
+    pub fn file_to_text(path: String) -> MsbtResult<String>{
+        let mut f_handle = fs::File::open(&path).unwrap();
+        let mut buf: Vec<u8> = Vec::new();
+        f_handle.read_to_end(&mut buf);
+        let text = MsytFile::binary_to_text(buf)?;
+        Ok(text)
     }
-
-    /*pub fn to_text() -> io::Result<()> {
-        {
-            let mut data: Vec<u8> = Vec::new();
-            let cursor = Cursor::new(&data.data);
-            let mut reader = BufReader::new(cursor);
-            let msbt = Msbt::from_reader(reader).unwrap();
-            /*let msbt_file = File::open(&path)
-                .with_context(|| format!("could not open {}", path.to_string_lossy()))?;
-            let msbt = Msbt::from_reader(BufReader::new(msbt_file)).with_context(|| {
-                format!("could not read msbt file at {}", path.to_string_lossy())
-            })?;*/
-
-            let lbl1 = match msbt.lbl1() {
-                Some(lbl) => lbl,
-                None => {
-                    return Err(anyhow::anyhow!(
-                        "invalid msbt: missing lbl1: {}",
-                        path.to_string_lossy()
-                    ))
-                }
-            };
-
-            let mut entries = IndexMap::with_capacity(lbl1.labels().len());
-
-            for label in lbl1.labels() {
-                let mut all_content = Vec::new();
-
-                let raw_value = label.value_raw().ok_or_else(|| {
-                    anyhow::format_err!(
-                        "invalid msbt at {}: missing string for label {}",
-                        path.to_string_lossy(),
-                        label.name(),
-                    )
-                })?;
-                let mut parts = crate::botw::parse_controls(msbt.header(), raw_value)
-                    .with_context(|| {
-                        format!(
-                            "could not parse control sequences in {}",
-                            path.to_string_lossy()
-                        )
-                    })?;
-                all_content.append(&mut parts);
-                let entry = Entry {
-                    attributes: msbt.atr1().and_then(|a| {
-                        a.strings()
-                            .get(label.index() as usize)
-                            .map(|s| crate::util::strip_nul(s))
-                            .map(ToString::to_string)
-                    }),
-                    contents: all_content,
-                };
-                entries.insert(label.name().to_string(), entry);
-            }
-
-            entries.sort_keys();
-
-            let msyt = Msyt {
-                entries,
-                msbt: MsbtInfo {
-                    group_count: lbl1.group_count(),
-                    atr1_unknown: msbt.atr1().map(Atr1::unknown_1),
-                    ato1: msbt.ato1().map(|a| a.unknown_bytes().to_vec()),
-                    tsy1: msbt.tsy1().map(|a| a.unknown_bytes().to_vec()),
-                    nli1: msbt.nli1().map(|a| crate::model::Nli1 {
-                        id_count: a.id_count(),
-                        global_ids: a.global_ids().clone(),
-                    }),
-                },
-            };
-
-            let dest = match output_path {
-                Some(output) => {
-                    let stripped_path = match input_paths
-                        .iter()
-                        .flat_map(|input| path.strip_prefix(input))
-                        .next()
-                    {
-                        Some(s) => s,
-                        None => {
-                            return Err(anyhow::anyhow!(
-                                "no input path works as a prefix on {}",
-                                path.to_string_lossy()
-                            ))
-                        }
-                    };
-                    output.join(stripped_path).with_extension("msyt")
-                }
-                None => path.with_extension("msyt"),
-            };
-            if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent).with_context(|| {
-                    format!(
-                        "could not create parent directories for {}",
-                        parent.to_string_lossy()
-                    )
-                })?;
-            }
-            let mut writer = BufWriter::new(File::create(dest)?);
-            serde_yaml::to_writer(&mut writer, &msyt)
-                .with_context(|| "could not write yaml to file")?;
-            // add final newline
-            writer
-                .write_all(b"\n")
-                .with_context(|| "could not write final newline to file")?;
-
-            Ok(())
+    pub fn binary_to_text(data: Vec<u8>)  -> MsbtResult<String> {
+        if !is_msyt(&data) {
+            return Err(failure::format_err!("Not msyt file"));
         }
-    }*/
-
-    pub fn from_text(text: String, zstd: Arc<TotkZstd<'a>>) -> io::Result<MsytFile<'a>> {
-        let msyt: Msyt = serde_yaml::from_str(&text).unwrap();
-        let mut data: Vec<u8> = Vec::new();
         let cursor = Cursor::new(&data);
         let mut reader = BufReader::new(cursor);
-        let mut msbt = Msbt::from_reader(reader).unwrap();
-        let mut file_data = FileData::new();
-        file_data.file_type = FileType::Msbt;
-        for (key, entry) in msyt.entries {
-            let new_val = Content::write_all(msbt.header(), &entry.contents).unwrap();
-            if let Some(ref mut lbl1) = msbt.lbl1_mut() {
-                if let Some(label) = lbl1.labels_mut().iter_mut().find(|x| x.name() == key) {
-                    if let Err(()) = label.set_value_raw(new_val) {
-                        eprintln!("could not set raw string at index {}", label.index());
-                    }
-                }
-            }
+        let msbt = Msbt::from_reader(BufReader::new(reader))
+            .with_context(|_| format!("could not read msbt file at ")).unwrap();
+
+        let lbl1 = match msbt.lbl1() {
+            Some(lbl) => lbl,
+            None => {
+                
+                println!("invalid msbt: missing lbl1: ");
+                return Ok("".to_string());}
+        };
+
+        let mut entries = IndexMap::with_capacity(lbl1.labels().len());
+
+        for label in lbl1.labels() {
+            let mut all_content = Vec::new();
+
+            let raw_value = label.value_raw().ok_or_else(|| {
+                failure::format_err!(
+                    "invalid msbt at : missing string for label {}",
+                    
+                    label.name(),
+                )
+            }).unwrap();
+            let mut parts =
+                msyt::botw::parse_controls(msbt.header(), raw_value).unwrap();
+            all_content.append(&mut parts);
+            let entry = Entry {
+                attributes: msbt.atr1().and_then(|a| {
+                    a.strings()
+                        .get(label.index() as usize)
+                        .map(|s| msyt::util::strip_nul(*s))
+                        .map(ToString::to_string)
+                }),
+                contents: all_content,
+            };
+            entries.insert(label.name().to_string(), entry);
         }
 
-        Ok(MsytFile {
-            endian: Some(roead::Endian::Little),
-            file_data: file_data,
-            path: Pathlib::new("".to_string()),
-            msbt: msbt,
-            zstd: zstd.clone(),
-        })
-    }
-    pub fn from_binary(data: FileData, zstd: Arc<TotkZstd<'a>>) -> io::Result<MsytFile<'a>> {
-        let cursor = Cursor::new(&data.data);
-        let mut reader = BufReader::new(cursor);
-        let msbt = Msbt::from_reader(reader).unwrap();
+        entries.sort_keys();
 
-        return Ok(MsytFile {
-            endian: Some(roead::Endian::Little),
-            file_data: FileData::from(data.data, FileType::Msbt),
-            path: Pathlib::new("".to_string()),
-            msbt: msbt,
-            zstd: zstd.clone(),
-        });
+        let msyt = Msyt {
+            entries,
+            msbt: MsbtInfo {
+                group_count: lbl1.group_count(),
+                atr1_unknown: msbt.atr1().map(Atr1::unknown_1),
+                ato1: msbt.ato1().map(|a| a.unknown_bytes().to_vec()),
+                tsy1: msbt.tsy1().map(|a| a.unknown_bytes().to_vec()),
+                nli1: msbt.nli1().map(|a| model::Nli1 {
+                    id_count: a.id_count(),
+                    global_ids: a.global_ids().clone(),
+                }),
+            },
+        };
+
+        let dest = PathBuf::from("res/asdf.yaml");
+        let yaml_string = serde_yaml::to_string(&msyt)
+    .with_context(|_| "could not serialize yaml to string")?;
+        Ok(yaml_string)
     }
+
 }
 
 pub struct BymlFile<'a> {
@@ -351,3 +276,4 @@ impl<'a> BymlFile<'_> {
         ));
     }
 }
+

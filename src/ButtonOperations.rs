@@ -1,10 +1,10 @@
-use crate::BinTextFile::BymlFile;
+use crate::BinTextFile::{BymlFile, MsytFile};
 use crate::Gui::{ActiveTab, TotkBitsApp};
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{Icons, Pathlib, Settings};
 use crate::Tree::{self, tree_node};
-use crate::Zstd::{FileType, TotkZstd};
+use crate::Zstd::{is_msyt, FileType, TotkZstd};
 //use crate::SarcFileLabel::ScrollAreaPub;
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::{Align, Button, InnerResponse, Label, Layout, Pos2, Rect, Shape};
@@ -26,14 +26,15 @@ pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
                 if let Some(pack) = &mut app.pack {
                     let path = FileDialog::new()
                         .set_file_name(&internal_file.path.name)
-                        .set_title("Save")
+                        .set_title("Extract")
                         .save_file();
                     if let Some(dest_file) = &path {
                         let data: Option<&[u8]> = pack.sarc.get_data(&internal_file.path.full_path);
                         if data.is_some() {
                             let mut f_handle = fs::File::create(dest_file)?;
                             f_handle.write_all(&data.unwrap())?;
-                            app.status_text = format!("Saved: {}", dest_file.to_string_lossy().into_owned());
+                            app.status_text =
+                                format!("Saved: {}", dest_file.to_string_lossy().into_owned());
                         }
                     }
                 }
@@ -47,6 +48,19 @@ pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
 pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) {
     if app.settings.is_file_loaded {
         return; //stops the app from infinite file loading from disk
+    }
+    app.settings.is_file_loaded = true;
+    let path = app.opened_file.full_path.clone();
+    println!("Is {} a msyt?", &path);
+    match MsytFile::file_to_text(path) {
+        Ok(text) => {
+            app.text = text;
+            app.internal_sarc_file = None;
+            app.active_tab = ActiveTab::TextBox;
+            app.byml = None;
+            return;
+        }
+        Err(err) => {}
     }
     println!("Is {} a sarc?", app.opened_file.full_path.clone());
     match PackFile::new(app.opened_file.full_path.clone(), app.zstd.clone()) {
@@ -77,21 +91,19 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) {
             app.byml = Some(res_byml.unwrap());
             app.active_tab = ActiveTab::TextBox;
             println!("Byml  opened!");
-            app.settings.is_file_loaded = true;
             app.internal_sarc_file = None;
             return;
         }
 
         Err(_) => {}
     };
-    app.settings.is_file_loaded = true;
     app.settings.is_tree_loaded = true;
     app.status_text = format!("Failed to open: {}", app.opened_file.full_path.clone());
 }
 
 pub fn edit_click(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
     if let Some(child) = &mut app.internal_sarc_file.clone() {
-        SarcLabel::safe_open_file_from_opened_sarc(app, ui, child.path.full_path.clone())
+        SarcLabel::safe_open_file_from_opened_sarc(app, ui, child)
     }
     //app.internal_sarc_file = Some(child.clone());
 }

@@ -1,11 +1,11 @@
 use std::io;
 use std::rc::Rc;
 
-use crate::BinTextFile::{BymlFile, FileData};
+use crate::BinTextFile::{BymlFile, FileData, MsytFile};
 
 use crate::Gui::{ActiveTab, TotkBitsApp};
 use crate::Tree::tree_node;
-use crate::Zstd::{is_byml, FileType};
+use crate::Zstd::{is_byml, is_msyt, FileType};
 
 use egui::{
     SelectableLabel,
@@ -41,7 +41,7 @@ impl SarcLabel {
                 SarcLabel::safe_open_file_from_opened_sarc(
                     app,
                     ui,
-                    child.path.full_path.clone(),
+                    &child,
                 )
             }
             if file_label.clicked() {
@@ -108,36 +108,43 @@ impl SarcLabel {
         }
     }
 
-    pub fn safe_open_file_from_opened_sarc(app: &mut TotkBitsApp, ui: &mut egui::Ui, full_path: String) {
-        match SarcLabel::open_file_from_opened_sarc(app, ui, full_path.clone()) {
+    pub fn safe_open_file_from_opened_sarc(app: &mut TotkBitsApp, ui: &mut egui::Ui, child: &Rc<tree_node<String>>) {
+        match SarcLabel::open_file_from_opened_sarc(app, ui, child) {
             Ok(_) => {}
             Err(err) => {
-                eprintln!("Failed to open {}, \nError: {:?}", full_path.clone(), err);
-                app.status_text = format!("Failed to open {}", full_path.clone());
+                eprintln!("Failed to open {}, \nError: {:?}", &child.path.full_path.clone(), err);
+                app.status_text = format!("Failed to open {}", &child.path.full_path.clone());
             }
         }
     }
 
-    fn open_file_from_opened_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui, full_path: String) -> io::Result<()> {
+    fn open_file_from_opened_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui, child: &Rc<tree_node<String>>) -> io::Result<()> {
         if app.pack.is_none() {
             return Err(io::Error::new(io::ErrorKind::Other, "No sarc opened"));
         }
         let op_sarc = app.pack.as_ref().unwrap();
-        let data = op_sarc.sarc.get_data(&full_path.clone());
+        let data = op_sarc.sarc.get_data(&child.path.full_path.clone());
         if data.is_none() {
             return Err(io::Error::new(io::ErrorKind::Other, "File absent in sarc"));
         }
         //For now assume only byml files will be opened
         let raw_data = data.unwrap().to_vec();
-        if is_byml(&raw_data) {
-            let mut file_data = FileData::new();
-            file_data.data = raw_data;
-            file_data.file_type = FileType::Byml;
-            let the_byml = BymlFile::from_binary(file_data, app.zstd.clone(), full_path)?;
-            let text = Byml::to_text(&the_byml.pio);
-            app.text = text;
+        if is_msyt(&raw_data) {
+            app.opened_file_type = FileType::Msbt;
+            app.text = MsytFile::binary_to_text(raw_data).expect("Error getting file msyt");
             app.settings.is_file_loaded = true; //precaution
+        }
+        else if is_byml(&raw_data) {
+            let file_data = FileData::from(raw_data,FileType::Byml);
+            app.opened_file_type = FileType::Byml;
+            let the_byml = BymlFile::from_binary(file_data, app.zstd.clone(), child.path.full_path.clone())?;
+            app.text = Byml::to_text(&the_byml.pio);
+            app.settings.is_file_loaded = true; //precaution
+        }
+        if app.settings.is_file_loaded { //something got opened
+            app.internal_sarc_file = Some(child.clone());
             app.active_tab = ActiveTab::TextBox;
+
         }
   
         Ok(())

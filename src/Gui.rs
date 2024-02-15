@@ -47,8 +47,8 @@ pub struct TotkBitsApp<'a> {
     pub internal_sarc_file: Option<Rc<tree_node<String>>>, // node of sarc internal file opened in text editor
     pub scroll_resp: Option<egui::scroll_area::ScrollAreaOutput<()>>, //response from self.scroll, for controlling scrollbar position
     pub menu_bar: Arc<MenuBar>,                                       //menu bar at the top
-    pub icons: Icons<'a>, //cached icons for buttons
-    pub settings: Settings, //various settings
+    pub icons: Icons<'a>,                                             //cached icons for buttons
+    pub settings: Settings,                                           //various settings
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -210,28 +210,30 @@ impl Gui {
                 //println!("{:?} \n\n\n", r.state);
             }
             ActiveTab::DiretoryTree => {
-                app.scroll_resp = Some(ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .max_height(ui.available_height())
-                    .max_width(ui.available_width())
-                    .show(ui, |ui| {
-                        Gui::display_tree_background(app, ui);
-                        open_byml_or_sarc(app, ui);
-                        if !app.pack.is_none() {
-                            if !app.settings.is_tree_loaded {
-                                Tree::update_from_sarc_paths(
-                                    &app.root_node,
-                                    &app.pack.as_mut().expect("Error passing pack file"),
-                                );
-                                app.settings.is_tree_loaded = true;
+                app.scroll_resp = Some(
+                    ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .max_height(ui.available_height())
+                        .max_width(ui.available_width())
+                        .show(ui, |ui| {
+                            Gui::display_tree_background(app, ui);
+                            open_byml_or_sarc(app, ui);
+                            if !app.pack.is_none() {
+                                if !app.settings.is_tree_loaded {
+                                    Tree::update_from_sarc_paths(
+                                        &app.root_node,
+                                        &app.pack.as_mut().expect("Error passing pack file"),
+                                    );
+                                    app.settings.is_tree_loaded = true;
+                                }
+                                let children: Vec<_> =
+                                    app.root_node.children.borrow().iter().cloned().collect();
+                                for child in children {
+                                    SarcLabel::display_tree_in_egui(app, &child, ui);
+                                }
                             }
-                            let children: Vec<_> =
-                                app.root_node.children.borrow().iter().cloned().collect();
-                            for child in children {
-                                SarcLabel::display_tree_in_egui(app, &child, ui);
-                            }
-                        }
-                    }));
+                        }),
+                );
             }
         }
     }
@@ -307,19 +309,47 @@ impl Gui {
                 }
             }
             ActiveTab::TextBox => {
-                if let Some(byml) = &app.byml {
-                    if let Some(endian) = byml.endian {
-                        let endian_label = match endian {
-                            roead::Endian::Big => "BE",
-                            roead::Endian::Little => "LE",
-                        };
-                        ui.label(endian_label);
-                        if let Some(internal_file) = &app.internal_sarc_file {
-                            ui.label(&byml.path.stem);
-                        } else {
-                            ui.label(&byml.path.stem); //TODO:display internal file path and endianes
+                let mut label_path: Option<String> = None;
+                let mut label_endian = String::new();
+                if let Some(internal_file) = &app.internal_sarc_file {
+                    label_path = Some(internal_file.path.name.clone());
+                }
+                match app.opened_file_type {
+                    FileType::Msbt => {
+                        label_endian = "LE".to_string();
+                    }
+                    FileType::Byml => {
+                        if let Some(byml) = &app.byml {
+                            match byml.endian {
+                                Some(endian) => {
+                                    label_endian = match endian {
+                                        roead::Endian::Big => "BE".to_string(),
+                                        roead::Endian::Little => "LE".to_string(),
+                                    }
+                                },
+                                None => {
+                                    label_endian = "LE".to_string();
+                                }
+                            }
                         }
                     }
+                    FileType::None => {
+                        label_endian = String::new();
+                    },
+                    FileType::Other => {
+                        label_endian = String::new();
+                    },
+                    _ => {
+                        label_endian = "LE".to_string();
+                    }
+                }
+                if label_endian.len() == 0 {
+                    label_endian = "LE".to_string();
+                }
+                if let Some(l_path) = &label_path {
+                    //ui.label(format!("{:?}", app.opened_file_type));
+                    ui.label(label_endian);
+                    ui.label(l_path);
                 }
             }
         }
