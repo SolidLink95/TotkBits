@@ -3,9 +3,9 @@ use std::rc::Rc;
 
 use crate::BinTextFile::{BymlFile, FileData, MsytFile};
 
-use crate::Gui::{ActiveTab, TotkBitsApp};
-use crate::Tree::tree_node;
-use crate::Zstd::{is_byml, is_msyt, FileType};
+use crate::Gui::{ActiveTab, OpenedFile, TotkBitsApp};
+use crate::Tree::TreeNode;
+use crate::Zstd::{is_aamp, is_byml, is_msyt, FileType};
 
 use egui::{
     SelectableLabel,
@@ -14,8 +14,8 @@ use egui::{CollapsingHeader};
 use roead::byml::Byml;
 
 pub struct SarcLabel {
-    //root_node: Rc<tree_node<String>>,
-    //node: &'a Rc<tree_node<String>>,
+    //root_node: Rc<TreeNode<String>>,
+    //node: &'a Rc<TreeNode<String>>,
     //app: &'a mut TotkBitsApp<'a>,
     //ui: &'a egui::Ui,
 }
@@ -27,7 +27,7 @@ impl SarcLabel {
 
     fn display_leaf_node(
         app: &mut TotkBitsApp,
-        child: &Rc<tree_node<String>>,
+        child: &Rc<TreeNode<String>>,
         ui: &mut egui::Ui,
     ) {
         ui.horizontal(|ui| {
@@ -69,11 +69,11 @@ impl SarcLabel {
 
     pub fn display_tree_in_egui(
         app: &mut TotkBitsApp,
-        root_node: &Rc<tree_node<String>>,
+        root_node: &Rc<TreeNode<String>>,
         ui: &mut egui::Ui,
     ) {
         
-        if tree_node::is_leaf(&root_node) { //rarely files in sarc are in root directory
+        if TreeNode::is_leaf(&root_node) { //rarely files in sarc are in root directory
             SarcLabel::display_leaf_node(app, root_node, ui);
             return;
         }
@@ -81,7 +81,7 @@ impl SarcLabel {
             .default_open(false)
             .show(ui, |ui| {
                 for child in root_node.children.borrow().iter() {
-                    if !tree_node::is_leaf(&child) {
+                    if !TreeNode::is_leaf(&child) {
                         SarcLabel::display_tree_in_egui(app, child, ui);
                     } else {
                         SarcLabel::display_leaf_node(app, child, ui);
@@ -94,7 +94,7 @@ impl SarcLabel {
         }
     }
 
-    pub fn is_internal_file_selected(app: &mut TotkBitsApp, child: &Rc<tree_node<String>>) -> bool {
+    pub fn is_internal_file_selected(app: &mut TotkBitsApp, child: &Rc<TreeNode<String>>) -> bool {
         match &app.internal_sarc_file {
             Some(x) => {
                 if x.path.full_path == child.path.full_path {
@@ -108,7 +108,7 @@ impl SarcLabel {
         }
     }
 
-    pub fn safe_open_file_from_opened_sarc(app: &mut TotkBitsApp, ui: &mut egui::Ui, child: &Rc<tree_node<String>>) {
+    pub fn safe_open_file_from_opened_sarc(app: &mut TotkBitsApp, ui: &mut egui::Ui, child: &Rc<TreeNode<String>>) {
         match SarcLabel::open_file_from_opened_sarc(app, ui, child) {
             Ok(_) => {}
             Err(err) => {
@@ -118,32 +118,38 @@ impl SarcLabel {
         }
     }
 
-    fn open_file_from_opened_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui, child: &Rc<tree_node<String>>) -> io::Result<()> {
+    fn open_file_from_opened_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui, child: &Rc<TreeNode<String>>) -> io::Result<()> {
         if app.pack.is_none() {
             return Err(io::Error::new(io::ErrorKind::Other, "No sarc opened"));
         }
+        let path = &child.path.full_path.clone();
         let op_sarc = app.pack.as_ref().unwrap();
-        let data = op_sarc.sarc.get_data(&child.path.full_path.clone());
+        let data = op_sarc.sarc.get_data(&path);
         if data.is_none() {
             return Err(io::Error::new(io::ErrorKind::Other, "File absent in sarc"));
         }
-        //For now assume only byml files will be opened
+        //For now assume only byml and msyt files will be opened
         let raw_data = data.unwrap().to_vec();
         if is_msyt(&raw_data) {
-            app.opened_file_type = FileType::Msbt;
             app.text = MsytFile::binary_to_text(raw_data).expect("Error getting file msyt");
+            app.opened_file = OpenedFile::new(path.to_string(), FileType::Msbt, Some(roead::Endian::Little), None);
             app.settings.is_file_loaded = true; //precaution
         }
         else if is_byml(&raw_data) {
             let file_data = FileData::from(raw_data,FileType::Byml);
-            app.opened_file_type = FileType::Byml;
             let the_byml = BymlFile::from_binary(file_data, app.zstd.clone(), child.path.full_path.clone())?;
+            app.opened_file = OpenedFile::new(path.to_string(), FileType::Byml,  Some(roead::Endian::Little), None);
             app.text = Byml::to_text(&the_byml.pio);
+            app.opened_file.byml = Some(the_byml);
             app.settings.is_file_loaded = true; //precaution
+        }
+        else if is_aamp(&raw_data) {
+            //placeholder for aamp
         }
         if app.settings.is_file_loaded { //something got opened
             app.internal_sarc_file = Some(child.clone());
             app.active_tab = ActiveTab::TextBox;
+            app.status_text = format!("Opened: {}", path);
 
         }
   

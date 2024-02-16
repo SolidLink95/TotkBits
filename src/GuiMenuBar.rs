@@ -1,6 +1,6 @@
-use crate::ButtonOperations::{edit_click, extract_click, open_file_button_click, save_as_click, save_click};
-use crate::Gui::{TotkBitsApp};
-use crate::Tree::{tree_node};
+use crate::ButtonOperations::{close_all_click, edit_click, extract_click, open_file_button_click, save_as_click, save_click};
+use crate::Gui::{OpenedFile, TotkBitsApp};
+use crate::Tree::{TreeNode};
 
 //use crate::SarcFileLabel::ScrollAreaPub;
 use eframe::egui::{
@@ -44,12 +44,7 @@ impl MenuBar {
                         ui.close_menu();
                     }
                     if ui.button("Close all").clicked() {
-                        app.pack = None;
-                        app.byml = None;
-                        app.root_node = tree_node::new("ROOT".to_string(), "/".to_string());
-                        app.text = String::new();
-                        app.settings.is_file_loaded = true;
-                        app.settings.is_tree_loaded = true;
+                        close_all_click(app);
                         ui.close_menu();
                     }
                     if ui.button("Exit").clicked() {}

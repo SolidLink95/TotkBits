@@ -17,6 +17,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
+        
         let def_style = Style::default();
         Self {
             lines_count: 0 as usize,
@@ -202,23 +203,23 @@ impl Pathlib {
             full_path: path
         }
     }
-    pub fn get_parent(path: &str) -> String {
+    pub fn get_parent(path: &str) -> String { //parent dir
         Path::new(path)
             .parent()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
             .unwrap_or("".to_string())
     }
-    pub fn get_name(path: &str) -> String {
+    pub fn get_name(path: &str) -> String { //file name + extension
         Path::new(path)
             .file_name()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
             .unwrap_or("".to_string())
     }
-    pub fn get_stem(path: &str) -> String {
+    pub fn get_stem(path: &str) -> String { //just file name
         Path::new(path)
-            .file_name()
+            .file_stem()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
             .unwrap_or("".to_string())

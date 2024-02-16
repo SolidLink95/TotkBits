@@ -1,0 +1,1446 @@
+---
+group_count: 101
+entries:
+  AsbObj_BoneStick_A_01_Adjective:
+    contents:
+      - text: Spiny-Bone
+  AsbObj_BoneStick_A_01_Name:
+    contents:
+      - text: Spiny Bone
+  AsbObj_RockParts_C_S_05_Adjective:
+    contents:
+      - text: Blue-Rock
+  AsbObj_RockParts_C_S_05_Name:
+    contents:
+      - text: Blue Rock
+  AsbObj_WoodStick_A_LL_01_Adjective:
+    contents:
+      - text: Lumber
+  AsbObj_WoodStick_A_LL_01_Name:
+    contents:
+      - text: Lumber
+  AsbObj_WoodWheel_A_01_Adjective:
+    contents:
+      - text: Wheel
+  AsbObj_WoodWheel_A_01_Name:
+    contents:
+      - text: Wheel
+  BeeHome_Adjective:
+    contents:
+      - text: Honeycomb
+  BombFruit_Adjective:
+    contents:
+      - text: Bomb-Flower
+  ConfusionFruit_Adjective:
+    contents:
+      - text: Muddle-Bud
+  DgnObj_BoxNet_A_Adjective:
+    contents:
+      - text: Mesh-Block
+  DgnObj_BoxNet_A_Name:
+    contents:
+      - text: Metal Mesh Block
+  DgnObj_Candle_Adjective:
+    contents:
+      - text: Candle
+  DgnObj_Candle_Name:
+    contents:
+      - text: Candle
+  DgnObj_Dish_A_01_Adjective:
+    contents:
+      - text: Bowl
+  DgnObj_Dish_A_01_Name:
+    contents:
+      - text: Bowl
+  DgnObj_ElectricBoxStone_A_02_Adjective:
+    contents:
+      - text: Stone-Block
+  DgnObj_ElectricBoxStone_A_02_Name:
+    contents:
+      - text: Stone Block
+  DgnObj_Float_A_01_Adjective:
+    contents:
+      - text: Float
+  DgnObj_Float_A_01_Name:
+    contents:
+      - text: Float
+  DgnObj_Motor_A_01_Adjective:
+    contents:
+      - text: Motor
+  DgnObj_Motor_A_01_Name:
+    contents:
+      - text: Motor
+  DgnObj_Small_Lift_A_01_Adjective:
+    contents:
+      - text: Lift
+  DgnObj_Small_Lift_A_01_Name:
+    contents:
+      - text: Lift
+  DgnObj_Small_floatFortParts_A_02_Adjective:
+    contents:
+      - text: Column
+  DgnObj_Small_floatFortParts_A_02_Name:
+    contents:
+      - text: Column
+  DgnObj_Small_floatFortParts_A_03_Adjective:
+    contents:
+      - text: Board
+  DgnObj_Small_floatFortParts_A_03_Name:
+    contents:
+      - text: Board
+  DgnObj_Small_floatFortParts_A_04_Adjective:
+    contents:
+      - text: Column
+  DgnObj_Small_floatFortParts_A_04_Name:
+    contents:
+      - text: Column
+  DgnObj_StoneBall_Fire_Adjective:
+    contents:
+      - text: Flame-Ball
+  DgnObj_StoneBall_Fire_Name:
+    contents:
+      - text: Flame Ball
+  DgnObj_SwitchElectric_Dynamic_Adjective:
+    contents:
+      - text: Battery
+  DgnObj_SwitchElectric_Dynamic_Name:
+    contents:
+      - text: Battery
+  DungeonBoss_Goron_Rock_Weapon_Adjective:
+    contents:
+      - text: Gloom-Rock
+  DungeonBoss_Goron_Rock_Weapon_Large_Adjective:
+    contents:
+      - text: Gloom-Rock
+  DungeonBoss_Goron_Rock_Weapon_Large_Name:
+    contents:
+      - text: Gloom Rock
+  DungeonBoss_Goron_Rock_Weapon_Name:
+    contents:
+      - text: Gloom Rock
+  ElectricalFruit_Adjective:
+    contents:
+      - text: Shock-Fruit
+  FireFruit_Adjective:
+    contents:
+      - text: Fire-Fruit
+  FldObj_Pinecone_A_01_Adjective:
+    contents:
+      - text: Pine-Cone
+  IceFruit_Adjective:
+    contents:
+      - text: Ice-Fruit
+  Item_Boiled_01_Adjective:
+    contents:
+      - text: Boiled-Egg
+  Item_ChilledFish_01_Adjective:
+    contents:
+      - text: Frozen-Bass
+  Item_ChilledFish_02_Adjective:
+    contents:
+      - text: Frozen-Salmon
+  Item_ChilledFish_03_Adjective:
+    contents:
+      - text: Frozen-Trout
+  Item_ChilledFish_04_Adjective:
+    contents:
+      - text: Frozen-Carp
+  Item_ChilledFish_05_Adjective:
+    contents:
+      - text: Frozen-Porgy
+  Item_ChilledFish_06_Adjective:
+    contents:
+      - text: Frozen-Bass
+  Item_ChilledFish_07_Adjective:
+    contents:
+      - text: Frozen-Crab
+  Item_ChilledFish_08_Adjective:
+    contents:
+      - text: Frozen-Snail
+  Item_ChilledFish_16_Adjective:
+    contents:
+      - text: Frozen-Arowana
+  Item_ChilledFish_18_Adjective:
+    contents:
+      - text: Frozen-Fish
+  Item_Chilled_01_Adjective:
+    contents:
+      - text: Icy-Meat
+  Item_Chilled_02_Adjective:
+    contents:
+      - text: Icy-Meat
+  Item_Chilled_03_Adjective:
+    contents:
+      - text: Icy-Meat
+  Item_Chilled_04_Adjective:
+    contents:
+      - text: Frozen-Drumstick
+  Item_Chilled_05_Adjective:
+    contents:
+      - text: Frozen-Thigh
+  Item_Chilled_06_Adjective:
+    contents:
+      - text: Frozen-Bird
+  Item_Enemy_130_Adjective:
+    contents:
+      - text: Zonaite
+  Item_Enemy_131_Adjective:
+    contents:
+      - text: Zonaite
+  Item_Enemy_137_Adjective:
+    contents:
+      - text: Stone Talus
+  Item_Enemy_137_Name:
+    contents:
+      - text: Stone Talus Heart
+  Item_Enemy_138_Adjective:
+    contents:
+      - text: Luminous Stone Talus
+  Item_Enemy_138_Name:
+    contents:
+      - text: Luminous Stone Talus Heart
+  Item_Enemy_139_Adjective:
+    contents:
+      - text: Rare Stone Talus
+  Item_Enemy_139_Name:
+    contents:
+      - text: Rare Stone Talus Heart
+  Item_Enemy_140_Adjective:
+    contents:
+      - text: Igneo Talus
+  Item_Enemy_140_Name:
+    contents:
+      - text: Igneo Talus Heart
+  Item_Enemy_141_Adjective:
+    contents:
+      - text: Frost Talus
+  Item_Enemy_141_Name:
+    contents:
+      - text: Frost Talus Heart
+  Item_Enemy_153_Adjective:
+    contents:
+      - text: Flame-Gleeok
+  Item_Enemy_154_Adjective:
+    contents:
+      - text: Frost-Gleeok
+  Item_Enemy_155_Adjective:
+    contents:
+      - text: Thunder-Gleeok
+  Item_Enemy_15_Adjective:
+    contents:
+      - text: Red-Jelly
+  Item_Enemy_16_Adjective:
+    contents:
+      - text: Yellow-Jelly
+  Item_Enemy_17_Adjective:
+    contents:
+      - text: White-Jelly
+  Item_Enemy_220_Adjective:
+    contents:
+      - text: Colgera
+  Item_Enemy_220_Name:
+    contents:
+      - text: Colgera Jaw
+  Item_Enemy_221_Adjective:
+    contents:
+      - text: Marbled Gohma
+  Item_Enemy_221_Name:
+    contents:
+      - text: Marbled Gohma Leg
+  Item_Enemy_223_Adjective:
+    contents:
+      - text: Queen Gibdo
+  Item_Enemy_223_Name:
+    contents:
+      - text: Queen Gibdo Wing
+  Item_Enemy_225_Adjective:
+    contents:
+      - text: Flux Core I
+  Item_Enemy_225_Name:
+    contents:
+      - text: Flux Construct I Core
+  Item_Enemy_226_Adjective:
+    contents:
+      - text: Flux Core II
+  Item_Enemy_226_Name:
+    contents:
+      - text: Flux Construct II Core
+  Item_Enemy_227_Adjective:
+    contents:
+      - text: Flux Core III
+  Item_Enemy_227_Name:
+    contents:
+      - text: Flux Construct III Core
+  Item_Enemy_40_Adjective:
+    contents:
+      - text: Chuchu-Jelly
+  Item_Enemy_57_Adjective:
+    contents:
+      - text: Octo-Balloon
+  Item_Fruit_A_Adjective:
+    contents:
+      - text: Apple
+  Item_Fruit_B_Adjective:
+    contents:
+      - text: Wildberry
+  Item_Fruit_C_Adjective:
+    contents:
+      - text: Voltfruit
+  Item_Fruit_E_Adjective:
+    contents:
+      - text: Lotus-Seed
+  Item_Fruit_F_Adjective:
+    contents:
+      - text: Hydromelon
+  Item_Fruit_G_Adjective:
+    contents:
+      - text: Palm-Fruit
+  Item_Fruit_H_Adjective:
+    contents:
+      - text: Banana
+  Item_Fruit_I_Adjective:
+    contents:
+      - text: Pepper
+  Item_Fruit_J_Adjective:
+    contents:
+      - text: Pumpkin
+  Item_Fruit_K_Adjective:
+    contents:
+      - text: Acorn
+  Item_Fruit_L_Adjective:
+    contents:
+      - text: Tree-Nut
+  Item_Fruit_M_Adjective:
+    contents:
+      - text: Tomato
+  Item_Fruit_N_Adjective:
+    contents:
+      - text: Pumpkin
+  Item_Fruit_P_Adjective:
+    contents:
+      - text: Apple
+  Item_KingScale_Adjective:
+    contents:
+      - text: "King's-Scale"
+  Item_Material_01_Adjective:
+    contents:
+      - text: Cane-Sugar
+  Item_Material_02_Adjective:
+    contents:
+      - text: Goron-Spice
+  Item_Material_03_Adjective:
+    contents:
+      - text: Rice
+  Item_Material_04_Adjective:
+    contents:
+      - text: Egg
+  Item_Material_05_Adjective:
+    contents:
+      - text: Milk
+  Item_Material_06_Adjective:
+    contents:
+      - text: Butter
+  Item_Material_07_Adjective:
+    contents:
+      - text: Wheat
+  Item_Material_08_Adjective:
+    contents:
+      - text: Monster-Extract
+  Item_Material_09_Adjective:
+    contents:
+      - text: Oil-Jar
+  Item_Material_10_Adjective:
+    contents:
+      - text: Cheese
+  Item_Material_11_Adjective:
+    contents:
+      - text: Dark-Clump
+  Item_Meat_01_Adjective:
+    contents:
+      - text: Raw-Meat
+  Item_Meat_02_Adjective:
+    contents:
+      - text: Raw-Meat
+  Item_Meat_06_Adjective:
+    contents:
+      - text: Raw-Drumstick
+  Item_Meat_07_Adjective:
+    contents:
+      - text: Raw-Thigh
+  Item_Meat_11_Adjective:
+    contents:
+      - text: Raw-Meat
+  Item_Meat_12_Adjective:
+    contents:
+      - text: Raw-Bird
+  Item_MushroomGet_D_Adjective:
+    contents:
+      - text: Rushroom
+  Item_MushroomGet_K_Adjective:
+    contents:
+      - text: Brightcap
+  Item_Mushroom_A_Adjective:
+    contents:
+      - text: Stamella-Shroom
+  Item_Mushroom_B_Adjective:
+    contents:
+      - text: Chillshroom
+  Item_Mushroom_C_Adjective:
+    contents:
+      - text: Sunshroom
+  Item_Mushroom_E_Adjective:
+    contents:
+      - text: Hylian-Shroom
+  Item_Mushroom_F_Adjective:
+    contents:
+      - text: Truffle
+  Item_Mushroom_H_Adjective:
+    contents:
+      - text: Zapshroom
+  Item_Mushroom_J_Adjective:
+    contents:
+      - text: Silent-Shroom
+  Item_Mushroom_L_Adjective:
+    contents:
+      - text: Razorshroom
+  Item_Mushroom_M_Adjective:
+    contents:
+      - text: Ironshroom
+  Item_Mushroom_N_Adjective:
+    contents:
+      - text: Big-Truffle
+  Item_Mushroom_O_Adjective:
+    contents:
+      - text: Endura-Shroom
+  Item_Mushroom_P_Adjective:
+    contents:
+      - text: Skyshroom
+  Item_Ore_A_Adjective:
+    contents:
+      - text: Diamond
+  Item_Ore_B_Adjective:
+    contents:
+      - text: Ruby
+  Item_Ore_C_Adjective:
+    contents:
+      - text: Sapphire
+  Item_Ore_D_Adjective:
+    contents:
+      - text: Topaz
+  Item_Ore_E_Adjective:
+    contents:
+      - text: Opal
+  Item_Ore_F_Adjective:
+    contents:
+      - text: Amber
+  Item_Ore_G_Adjective:
+    contents:
+      - text: Luminous-Stone
+  Item_Ore_H_Adjective:
+    contents:
+      - text: Rock-Salt
+  Item_Ore_I_Adjective:
+    contents:
+      - text: Flint
+  Item_Ore_J_Adjective:
+    contents:
+      - text: Star-Fragment
+  Item_Ore_L_Adjective:
+    contents:
+      - text: Zonaite
+  Item_Ore_M_Adjective:
+    contents:
+      - text: Zonaite
+  Item_PlantGet_A_Adjective:
+    contents:
+      - text: Hyrule-Herb
+  Item_PlantGet_B_Adjective:
+    contents:
+      - text: Radish
+  Item_PlantGet_C_Adjective:
+    contents:
+      - text: Big-Radish
+  Item_PlantGet_E_Adjective:
+    contents:
+      - text: Cool-Safflina
+  Item_PlantGet_F_Adjective:
+    contents:
+      - text: Warm-Safflina
+  Item_PlantGet_G_Adjective:
+    contents:
+      - text: Mighty-Thistle
+  Item_PlantGet_H_Adjective:
+    contents:
+      - text: Armoranth
+  Item_PlantGet_I_Adjective:
+    contents:
+      - text: Blue-Nightshade
+  Item_PlantGet_J_Adjective:
+    contents:
+      - text: Silent-Princess
+  Item_PlantGet_L_Adjective:
+    contents:
+      - text: Electric-Safflina
+  Item_PlantGet_M_Adjective:
+    contents:
+      - text: Carrot
+  Item_PlantGet_O_Adjective:
+    contents:
+      - text: Swift-Violet
+  Item_PlantGet_Q_Adjective:
+    contents:
+      - text: Carrot
+  Item_PlantGet_R_Adjective:
+    contents:
+      - text: Sundelion
+  Item_PlantGet_S_Adjective:
+    contents:
+      - text: Stambulb
+  Item_PlantGet_U_Adjective:
+    contents:
+      - text: Korok-Frond
+  Item_RoastFish_01_Adjective:
+    contents:
+      - text: Roasted-Bass
+  Item_RoastFish_02_Adjective:
+    contents:
+      - text: Roasted-Bass
+  Item_RoastFish_03_Adjective:
+    contents:
+      - text: Roasted-Trout
+  Item_RoastFish_04_Adjective:
+    contents:
+      - text: Roasted-Salmon
+  Item_RoastFish_07_Adjective:
+    contents:
+      - text: Roasted-Carp
+  Item_RoastFish_09_Adjective:
+    contents:
+      - text: Roasted-Porgy
+  Item_RoastFish_13_Adjective:
+    contents:
+      - text: River-Escargot
+  Item_RoastFish_15_Adjective:
+    contents:
+      - text: Blackened-Crab
+  Item_RoastFish_16_Adjective:
+    contents:
+      - text: Grilled-Arowana
+  Item_RoastFish_18_Adjective:
+    contents:
+      - text: Roasted-Fish
+  Item_Roast_01_Adjective:
+    contents:
+      - text: Seared-Steak
+  Item_Roast_02_Adjective:
+    contents:
+      - text: Roasted-Drumstick
+  Item_Roast_03_Adjective:
+    contents:
+      - text: Baked-Apple
+  Item_Roast_04_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_05_Adjective:
+    contents:
+      - text: Toasted-Truffle
+  Item_Roast_06_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_07_Adjective:
+    contents:
+      - text: Roasted-Wildberry
+  Item_Roast_08_Adjective:
+    contents:
+      - text: Roasted-Voltfruit
+  Item_Roast_10_Adjective:
+    contents:
+      - text: Baked-Palm-Fruit
+  Item_Roast_11_Adjective:
+    contents:
+      - text: Roasted-Banana
+  Item_Roast_12_Adjective:
+    contents:
+      - text: Roasted-Hydromelon
+  Item_Roast_13_Adjective:
+    contents:
+      - text: Charred-Pepper
+  Item_Roast_15_Adjective:
+    contents:
+      - text: Baked-Pumpkin
+  Item_Roast_16_Adjective:
+    contents:
+      - text: Roasted-Lotus-Seed
+  Item_Roast_18_Adjective:
+    contents:
+      - text: Roasted-Radish
+  Item_Roast_19_Adjective:
+    contents:
+      - text: Roasted-Radish
+  Item_Roast_24_Adjective:
+    contents:
+      - text: Roasted-Carrot
+  Item_Roast_27_Adjective:
+    contents:
+      - text: Roasted-Thistle
+  Item_Roast_28_Adjective:
+    contents:
+      - text: Roasted-Armoranth
+  Item_Roast_31_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_32_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_33_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_36_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_37_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_38_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_39_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_40_Adjective:
+    contents:
+      - text: Seared-Steak
+  Item_Roast_41_Adjective:
+    contents:
+      - text: Seared-Bird
+  Item_Roast_45_Adjective:
+    contents:
+      - text: Seared-Steak
+  Item_Roast_46_Adjective:
+    contents:
+      - text: Seared-Bird
+  Item_Roast_48_Adjective:
+    contents:
+      - text: Roasted-Acorn
+  Item_Roast_49_Adjective:
+    contents:
+      - text: Toasted-Truffle
+  Item_Roast_50_Adjective:
+    contents:
+      - text: Roasted-Carrot
+  Item_Roast_51_Adjective:
+    contents:
+      - text: Campfire-Egg
+  Item_Roast_52_Adjective:
+    contents:
+      - text: Roasted-Tree-Nut
+  Item_Roast_53_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_54_Adjective:
+    contents:
+      - text: Roasted-Tomato
+  Item_Roast_55_Adjective:
+    contents:
+      - text: Baked-Pumpkin
+  Item_Roast_56_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_58_Adjective:
+    contents:
+      - text: Toasty-Shroom
+  Item_Roast_59_Adjective:
+    contents:
+      - text: Roasted-Apple
+  Item_Weapon_01_Adjective:
+    contents:
+      - text: Ancient-Blade
+  LightBall_Large_Adjective:
+    contents:
+      - text: Brightbloom-Seed
+  LightBall_Small_Adjective:
+    contents:
+      - text: Brightbloom-Seed
+  LightFruit_Adjective:
+    contents:
+      - text: Dazzlefruit
+  Obj_CageIron_A_01_Adjective:
+    contents:
+      - text: Cage
+  Obj_CageIron_A_01_Name:
+    contents:
+      - text: Cage
+  Obj_FireWoodBundle_Adjective:
+    contents:
+      - text: Wood
+  Obj_GerudoHoleCover_A_03_Adjective:
+    contents:
+      - text: Sand-Seal-Statue
+  Obj_GerudoHoleCover_A_03_Name:
+    contents:
+      - text: Sand-Seal Statue
+  Obj_MeatRock_Adjective:
+    contents:
+      - text: Rock-Roast
+  Obj_MeatRock_Name:
+    contents:
+      - text: Rock Roast
+  Obj_SheikerWakkaCharm_A_01_Adjective:
+    contents:
+      - text: Ring-Garland
+  Obj_SheikerWakkaCharm_A_01_Name:
+    contents:
+      - text: Ring Garland
+  Obj_Tumbleweed_A_01_Adjective:
+    contents:
+      - text: Tumbleweed
+  Obj_Tumbleweed_A_01_Name:
+    contents:
+      - text: Tumbleweed
+  Obj_Village_IchikaraEnokidaCutout_A_01_Adjective:
+    contents:
+      - text: President Hudson
+  Obj_Village_IchikaraEnokidaCutout_A_01_Name:
+    contents:
+      - text: President Hudson Cutout
+  SmokeFruit_Adjective:
+    contents:
+      - text: Puffshroom
+  SpObj_BalloonEnvelope_A_01_Adjective:
+    contents:
+      - text: Balloon
+  SpObj_BalloonEnvelope_A_01_Name:
+    contents:
+      - text: Balloon
+  SpObj_Beamos_A_01_Adjective:
+    contents:
+      - text: Beam-Emitter
+  SpObj_Beamos_A_01_Name:
+    contents:
+      - text: Beam Emitter
+  SpObj_Cannon_A_01_Adjective:
+    contents:
+      - text: Cannon
+  SpObj_Cannon_A_01_Name:
+    contents:
+      - text: Cannon
+  SpObj_Cart_A_01_Adjective:
+    contents:
+      - text: Cart
+  SpObj_Cart_A_01_Name:
+    contents:
+      - text: Cart
+  SpObj_Chaser_A_01_Adjective:
+    contents:
+      - text: Homing-Cart
+  SpObj_Chaser_A_01_Name:
+    contents:
+      - text: Homing Cart
+  SpObj_ControlStick_A_01_Adjective:
+    contents:
+      - text: Steering-Stick
+  SpObj_ControlStick_A_01_Name:
+    contents:
+      - text: Steering Stick
+  SpObj_CookSetOnFire_A_01_Adjective:
+    contents:
+      - text: Portable-Pot
+  SpObj_CookSetOnFire_A_01_Name:
+    contents:
+      - text: Portable Pot
+  SpObj_ElectricBoxGenerator_Adjective:
+    contents:
+      - text: Shock-Emitter
+  SpObj_ElectricBoxGenerator_Name:
+    contents:
+      - text: Shock Emitter
+  SpObj_EnergyBank_A_01_Adjective:
+    contents:
+      - text: Battery
+  SpObj_EnergyBank_A_01_Name:
+    contents:
+      - text: Battery
+  SpObj_EnergyBank_A_02_Adjective:
+    contents:
+      - text: Battery
+  SpObj_EnergyBank_A_02_Name:
+    contents:
+      - text: Big Battery
+  SpObj_FastWheel_A_01_Adjective:
+    contents:
+      - text: Small-Wheel
+  SpObj_FastWheel_A_01_Name:
+    contents:
+      - text: Small Wheel
+  SpObj_FlameThrower_A_01_Adjective:
+    contents:
+      - text: Flame-Emitter
+  SpObj_FlameThrower_A_01_Name:
+    contents:
+      - text: Flame Emitter
+  SpObj_FlashLight_A_01_Adjective:
+    contents:
+      - text: Light
+  SpObj_FlashLight_A_01_Name:
+    contents:
+      - text: Light
+  SpObj_FloatingStone_A_01_Adjective:
+    contents:
+      - text: Hover-Stone
+  SpObj_FloatingStone_A_01_Name:
+    contents:
+      - text: Hover Stone
+  SpObj_GolemHead_A_01_Adjective:
+    contents:
+      - text: Construct-Head
+  SpObj_GolemHead_A_01_Name:
+    contents:
+      - text: Construct Head
+  SpObj_LiftGeneratorWing_A_01_Adjective:
+    contents:
+      - text: Wing
+  SpObj_LiftGeneratorWing_A_01_Name:
+    contents:
+      - text: Wing
+  SpObj_LightMirror_A_01_Adjective:
+    contents:
+      - text: Mirror
+  SpObj_LightMirror_A_01_Name:
+    contents:
+      - text: Mirror
+  SpObj_Pile_A_01_Adjective:
+    contents:
+      - text: Stake
+  SpObj_Pile_A_01_Name:
+    contents:
+      - text: Stake
+  SpObj_Rocket_A_01_Adjective:
+    contents:
+      - text: Rocket
+  SpObj_Rocket_A_01_Name:
+    contents:
+      - text: Rocket
+  SpObj_SlipBoard_A_01_Adjective:
+    contents:
+      - text: Sled
+  SpObj_SlipBoard_A_01_Name:
+    contents:
+      - text: Sled
+  SpObj_SnowMachine_A_01_Adjective:
+    contents:
+      - text: Frost-Emitter
+  SpObj_SnowMachine_A_01_Name:
+    contents:
+      - text: Frost Emitter
+  SpObj_SpringPiston_A_01_Adjective:
+    contents:
+      - text: Spring
+  SpObj_SpringPiston_A_01_Name:
+    contents:
+      - text: Spring
+  SpObj_SwitchWheel_B_01_Adjective:
+    contents:
+      - text: Big-Wheel
+  SpObj_SwitchWheel_B_01_Name:
+    contents:
+      - text: Big Wheel
+  SpObj_TiltingDoll_A_01_Adjective:
+    contents:
+      - text: Stabilizer
+  SpObj_TiltingDoll_A_01_Name:
+    contents:
+      - text: Stabilizer
+  SpObj_TimerBomb_A_01_Adjective:
+    contents:
+      - text: Time-Bomb
+  SpObj_TimerBomb_A_01_Name:
+    contents:
+      - text: Time Bomb
+  SpObj_WaterPump_A_01_Adjective:
+    contents:
+      - text: Hydrant
+  SpObj_WaterPump_A_01_Name:
+    contents:
+      - text: Hydrant
+  SpObj_WindGenerator_A_01_Adjective:
+    contents:
+      - text: Fan
+  SpObj_WindGenerator_A_01_Name:
+    contents:
+      - text: Fan
+  TwnObj_GerudoDollBlue_A_02_Adjective:
+    contents:
+      - text: Blue-Seal-Toy
+  TwnObj_GerudoDollBlue_A_02_Name:
+    contents:
+      - text: Blue-Seal Toy
+  TwnObj_GerudoDollGreen_A_02_Adjective:
+    contents:
+      - text: Green-Seal-Toy
+  TwnObj_GerudoDollGreen_A_02_Name:
+    contents:
+      - text: Green-Seal Toy
+  TwnObj_GerudoDollSmallGreen_A_01_Adjective:
+    contents:
+      - text: Green-Seal-Toy
+  TwnObj_GerudoDollSmallGreen_A_01_Name:
+    contents:
+      - text: Green-Seal Toy
+  TwnObj_GerudoDollSmallRed_A_01_Adjective:
+    contents:
+      - text: Red-Seal-Toy
+  TwnObj_GerudoDollSmallRed_A_01_Name:
+    contents:
+      - text: Red-Seal Toy
+  TwnObj_HyruleCastleObject_BookShelf_Iron_A_01_Adjective:
+    contents:
+      - text: Bookcase
+  TwnObj_HyruleCastleObject_BookShelf_Iron_A_01_Name:
+    contents:
+      - text: Bookcase
+  TwnObj_Village_Fishing_Boat_A_02_Adjective:
+    contents:
+      - text: Boat
+  TwnObj_Village_Fishing_Boat_A_02_Name:
+    contents:
+      - text: Boat
+  WaterFruit_Adjective:
+    contents:
+      - text: Splash-Fruit
+  Weapon_Bow_001_Adjective:
+    contents:
+      - text: "Traveler's-Bow"
+  Weapon_Bow_002_Adjective:
+    contents:
+      - text: "Soldier's-Bow"
+  Weapon_Bow_003_Adjective:
+    contents:
+      - text: Spiked-Boko-Bow
+  Weapon_Bow_004_Adjective:
+    contents:
+      - text: Boko-Bow
+  Weapon_Bow_006_Adjective:
+    contents:
+      - text: Lizal-Bow
+  Weapon_Bow_009_Adjective:
+    contents:
+      - text: Lynel-Bow
+  Weapon_Bow_011_Adjective:
+    contents:
+      - text: Strengthened-Lizal-Bow
+  Weapon_Bow_013_Adjective:
+    contents:
+      - text: Forest-Bow
+  Weapon_Bow_014_Adjective:
+    contents:
+      - text: Zora-Bow
+  Weapon_Bow_015_Adjective:
+    contents:
+      - text: Gerudo-Bow
+  Weapon_Bow_016_Adjective:
+    contents:
+      - text: Swallow-Bow
+  Weapon_Bow_017_Adjective:
+    contents:
+      - text: Falcon-Bow
+  Weapon_Bow_026_Adjective:
+    contents:
+      - text: Mighty-Lynel-Bow
+  Weapon_Bow_027_Adjective:
+    contents:
+      - text: Dragonbone-Boko-Bow
+  Weapon_Bow_028_Adjective:
+    contents:
+      - text: Great Eagle Bow
+  Weapon_Bow_029_Adjective:
+    contents:
+      - text: Phrenic-Bow
+  Weapon_Bow_030_Adjective:
+    contents:
+      - text: Steel-Lizal-Bow
+  Weapon_Bow_032_Adjective:
+    contents:
+      - text: Savage-Lynel-Bow
+  Weapon_Bow_033_Adjective:
+    contents:
+      - text: "Guard's-Bow"
+  Weapon_Bow_035_Adjective:
+    contents:
+      - text: "Knight's-Bow"
+  Weapon_Bow_036_Adjective:
+    contents:
+      - text: Royal-Bow
+  Weapon_Bow_038_Adjective:
+    contents:
+      - text: Wooden-Bow
+  Weapon_Bow_040_Adjective:
+    contents:
+      - text: Duplex-Bow
+  Weapon_Bow_072_Adjective:
+    contents:
+      - text: Dusk-Bow
+  Weapon_Bow_101_Adjective:
+    contents:
+      - text: Zonaite-Bow
+  Weapon_Bow_104_Adjective:
+    contents:
+      - text: Construct-Bow
+  Weapon_Bow_105_Adjective:
+    contents:
+      - text: Strong-Construct-Bow
+  Weapon_Bow_106_Adjective:
+    contents:
+      - text: Mighty-Construct-Bow
+  Weapon_Bow_107_Adjective:
+    contents:
+      - text: Old-Wooden-Bow
+  Weapon_Bow_166_Adjective:
+    contents:
+      - text: "Demon-King's-Bow"
+  Weapon_Lsword_001_Adjective:
+    contents:
+      - text: "Traveler's-Claymore"
+  Weapon_Lsword_002_Adjective:
+    contents:
+      - text: "Soldier's-Claymore"
+  Weapon_Lsword_003_Adjective:
+    contents:
+      - text: "Knight's-Claymore"
+  Weapon_Lsword_019_Adjective:
+    contents:
+      - text: Moblin-Arm
+  Weapon_Lsword_020_Adjective:
+    contents:
+      - text: Rusty-Claymore
+  Weapon_Lsword_024_Adjective:
+    contents:
+      - text: Royal-Claymore
+  Weapon_Lsword_027_Adjective:
+    contents:
+      - text: Zora-Longsword
+  Weapon_Lsword_029_Adjective:
+    contents:
+      - text: Gerudo-Claymore
+  Weapon_Lsword_036_Adjective:
+    contents:
+      - text: Cobble-Crusher
+  Weapon_Lsword_038_Adjective:
+    contents:
+      - text: Boat-Oar
+  Weapon_Lsword_041_Adjective:
+    contents:
+      - text: Eightfold-Longblade
+  Weapon_Lsword_045_Adjective:
+    contents:
+      - text: Farming-Hoe
+  Weapon_Lsword_047_Adjective:
+    contents:
+      - text: "Guard's-Claymore"
+  Weapon_Lsword_051_Adjective:
+    contents:
+      - text: Giant-Boomerang
+  Weapon_Lsword_054_Adjective:
+    contents:
+      - text: Boulder Breaker
+  Weapon_Lsword_057_Adjective:
+    contents:
+      - text: Dusk-Claymore
+  Weapon_Lsword_059_Adjective:
+    contents:
+      - text: "Biggoron's Sword"
+  Weapon_Lsword_060_Adjective:
+    contents:
+      - text: Fierce Deity Sword
+  Weapon_Lsword_101_Adjective:
+    contents:
+      - text: Zonaite-Longsword
+  Weapon_Lsword_103_Adjective:
+    contents:
+      - text: Thick-Stick
+  Weapon_Lsword_106_Adjective:
+    contents:
+      - text: "Traveler's-Claymore"
+  Weapon_Lsword_108_Adjective:
+    contents:
+      - text: Thick-Stick
+  Weapon_Lsword_109_Adjective:
+    contents:
+      - text: Thick-Stick
+  Weapon_Lsword_112_Adjective:
+    contents:
+      - text: "Soldier's-Claymore"
+  Weapon_Lsword_113_Adjective:
+    contents:
+      - text: "Knight's-Claymore"
+  Weapon_Lsword_114_Adjective:
+    contents:
+      - text: Eightfold-Longblade
+  Weapon_Lsword_124_Adjective:
+    contents:
+      - text: Royal-Claymore
+  Weapon_Lsword_127_Adjective:
+    contents:
+      - text: Zora-Longsword
+  Weapon_Lsword_129_Adjective:
+    contents:
+      - text: Gerudo-Claymore
+  Weapon_Lsword_136_Adjective:
+    contents:
+      - text: Cobble-Crusher
+  Weapon_Lsword_147_Adjective:
+    contents:
+      - text: "Guard's-Claymore"
+  Weapon_Lsword_161_Adjective:
+    contents:
+      - text: Magic-Scepter
+  Weapon_Lsword_163_Adjective:
+    contents:
+      - text: Zonaite-Longsword
+  Weapon_Lsword_164_Adjective:
+    contents:
+      - text: Zonaite-Longsword
+  Weapon_Lsword_166_Adjective:
+    contents:
+      - text: Gloom-Club
+  Weapon_Lsword_168_Adjective:
+    contents:
+      - text: Thick-Stick
+  Weapon_Lsword_174_Adjective:
+    contents:
+      - text: Boomerang
+  Weapon_Shield_001_Adjective:
+    contents:
+      - text: Wooden-Shield
+  Weapon_Shield_002_Adjective:
+    contents:
+      - text: "Soldier's-Shield"
+  Weapon_Shield_003_Adjective:
+    contents:
+      - text: "Knight's-Shield"
+  Weapon_Shield_004_Adjective:
+    contents:
+      - text: Boko-Shield
+  Weapon_Shield_005_Adjective:
+    contents:
+      - text: Spiked-Boko-Shield
+  Weapon_Shield_006_Adjective:
+    contents:
+      - text: Dragonbone-Boko-Shield
+  Weapon_Shield_007_Adjective:
+    contents:
+      - text: Lizal-Shield
+  Weapon_Shield_008_Adjective:
+    contents:
+      - text: Reinforced-Lizal-Shield
+  Weapon_Shield_009_Adjective:
+    contents:
+      - text: Steel-Lizal-Shield
+  Weapon_Shield_016_Adjective:
+    contents:
+      - text: Lynel-Shield
+  Weapon_Shield_017_Adjective:
+    contents:
+      - text: Mighty-Lynel-Shield
+  Weapon_Shield_018_Adjective:
+    contents:
+      - text: Savage-Lynel-Shield
+  Weapon_Shield_021_Adjective:
+    contents:
+      - text: Rusty-Shield
+  Weapon_Shield_022_Adjective:
+    contents:
+      - text: Royal-Shield
+  Weapon_Shield_023_Adjective:
+    contents:
+      - text: Forest-Shield
+  Weapon_Shield_025_Adjective:
+    contents:
+      - text: Zora-Shield
+  Weapon_Shield_026_Adjective:
+    contents:
+      - text: Gerudo-Shield
+  Weapon_Shield_030_Adjective:
+    contents:
+      - text: Hylian-Shield
+  Weapon_Shield_031_Adjective:
+    contents:
+      - text: "Hunter's-Shield"
+  Weapon_Shield_032_Adjective:
+    contents:
+      - text: "Fisherman's-Shield"
+  Weapon_Shield_033_Adjective:
+    contents:
+      - text: "Guard's-Shield"
+  Weapon_Shield_034_Adjective:
+    contents:
+      - text: Emblazoned-Shield
+  Weapon_Shield_035_Adjective:
+    contents:
+      - text: "Traveler's-Shield"
+  Weapon_Shield_036_Adjective:
+    contents:
+      - text: Radiant-Shield
+  Weapon_Shield_037_Adjective:
+    contents:
+      - text: Daybreaker
+  Weapon_Shield_040_Adjective:
+    contents:
+      - text: Pot-Lid
+  Weapon_Shield_041_Adjective:
+    contents:
+      - text: "Shield of the Mind's Eye"
+  Weapon_Shield_042_Adjective:
+    contents:
+      - text: Kite-Shield
+  Weapon_Shield_057_Adjective:
+    contents:
+      - text: Sea-Breeze-Shield
+  Weapon_Shield_101_Adjective:
+    contents:
+      - text: Zonaite-Shield
+  Weapon_Shield_102_Adjective:
+    contents:
+      - text: Zonaite-Shield
+  Weapon_Shield_103_Adjective:
+    contents:
+      - text: Zonaite-Shield
+  Weapon_Shield_107_Adjective:
+    contents:
+      - text: Old-Wooden-Shield
+  Weapon_Spear_001_Adjective:
+    contents:
+      - text: "Traveler's-Spear"
+  Weapon_Spear_002_Adjective:
+    contents:
+      - text: "Soldier's-Spear"
+  Weapon_Spear_003_Adjective:
+    contents:
+      - text: "Knight's-Halberd"
+  Weapon_Spear_021_Adjective:
+    contents:
+      - text: Rusty-Halberd
+  Weapon_Spear_022_Adjective:
+    contents:
+      - text: "Farmer's-Pitchfork"
+  Weapon_Spear_024_Adjective:
+    contents:
+      - text: Royal-Halberd
+  Weapon_Spear_025_Adjective:
+    contents:
+      - text: Forest-Spear
+  Weapon_Spear_027_Adjective:
+    contents:
+      - text: Zora-Spear
+  Weapon_Spear_029_Adjective:
+    contents:
+      - text: Gerudo-Spear
+  Weapon_Spear_030_Adjective:
+    contents:
+      - text: Throwing-Spear
+  Weapon_Spear_032_Adjective:
+    contents:
+      - text: Feathered-Spear
+  Weapon_Spear_036_Adjective:
+    contents:
+      - text: Wooden-Mop
+  Weapon_Spear_038_Adjective:
+    contents:
+      - text: Fishing-Harpoon
+  Weapon_Spear_047_Adjective:
+    contents:
+      - text: "Guard's-Spear"
+  Weapon_Spear_050_Adjective:
+    contents:
+      - text: Lightscale Trident
+  Weapon_Spear_101_Adjective:
+    contents:
+      - text: Zonaite-Spear
+  Weapon_Spear_103_Adjective:
+    contents:
+      - text: Long-Stick
+  Weapon_Spear_106_Adjective:
+    contents:
+      - text: "Traveler's-Spear"
+  Weapon_Spear_108_Adjective:
+    contents:
+      - text: Sturdy-Long-Stick
+  Weapon_Spear_109_Adjective:
+    contents:
+      - text: Strong-Long-Stick
+  Weapon_Spear_112_Adjective:
+    contents:
+      - text: "Soldier's-Spear"
+  Weapon_Spear_113_Adjective:
+    contents:
+      - text: "Knight's-Halberd"
+  Weapon_Spear_124_Adjective:
+    contents:
+      - text: Royal-Halberd
+  Weapon_Spear_125_Adjective:
+    contents:
+      - text: Forest-Spear
+  Weapon_Spear_127_Adjective:
+    contents:
+      - text: Zora-Spear
+  Weapon_Spear_129_Adjective:
+    contents:
+      - text: Gerudo-Spear
+  Weapon_Spear_132_Adjective:
+    contents:
+      - text: Feathered-Spear
+  Weapon_Spear_147_Adjective:
+    contents:
+      - text: "Guard's-Spear"
+  Weapon_Spear_161_Adjective:
+    contents:
+      - text: Magic-Staff
+  Weapon_Spear_163_Adjective:
+    contents:
+      - text: Zonaite-Spear
+  Weapon_Spear_164_Adjective:
+    contents:
+      - text: Zonaite-Spear
+  Weapon_Spear_166_Adjective:
+    contents:
+      - text: Gloom-Spear
+  Weapon_Spear_168_Adjective:
+    contents:
+      - text: Long-Stick
+  Weapon_Spear_173_Adjective:
+    contents:
+      - text: Throwing-Spear
+  Weapon_Sword_001_Adjective:
+    contents:
+      - text: "Traveler's-Sword"
+  Weapon_Sword_002_Adjective:
+    contents:
+      - text: "Soldier's-Sword"
+  Weapon_Sword_003_Adjective:
+    contents:
+      - text: "Knight's-Sword"
+  Weapon_Sword_019_Adjective:
+    contents:
+      - text: Bokoblin-Arm
+  Weapon_Sword_020_Adjective:
+    contents:
+      - text: Lizalfos-Arm
+  Weapon_Sword_021_Adjective:
+    contents:
+      - text: Rusty-Broadsword
+  Weapon_Sword_022_Adjective:
+    contents:
+      - text: Soup-Ladle
+  Weapon_Sword_024_Adjective:
+    contents:
+      - text: Royal-Broadsword
+  Weapon_Sword_025_Adjective:
+    contents:
+      - text: Forest-Sword
+  Weapon_Sword_027_Adjective:
+    contents:
+      - text: Zora-Sword
+  Weapon_Sword_029_Adjective:
+    contents:
+      - text: Gerudo-Scimitar
+  Weapon_Sword_031_Adjective:
+    contents:
+      - text: Feathered-Edge
+  Weapon_Sword_041_Adjective:
+    contents:
+      - text: Eightfold-Blade
+  Weapon_Sword_043_Adjective:
+    contents:
+      - text: Torch
+  Weapon_Sword_044_Adjective:
+    contents:
+      - text: Tree-Branch
+  Weapon_Sword_047_Adjective:
+    contents:
+      - text: "Guard's-Sword"
+  Weapon_Sword_051_Adjective:
+    contents:
+      - text: Boomerang
+  Weapon_Sword_052_Adjective:
+    contents:
+      - text: Scimitar of the Seven
+  Weapon_Sword_057_Adjective:
+    contents:
+      - text: White Sword of the Sky
+  Weapon_Sword_058_Adjective:
+    contents:
+      - text: Sword of the Hero
+  Weapon_Sword_059_Adjective:
+    contents:
+      - text: Boomerang
+  Weapon_Sword_101_Adjective:
+    contents:
+      - text: Zonaite-Sword
+  Weapon_Sword_103_Adjective:
+    contents:
+      - text: Wooden-Stick
+  Weapon_Sword_105_Adjective:
+    contents:
+      - text: Boomerang
+  Weapon_Sword_106_Adjective:
+    contents:
+      - text: "Traveler's-Sword"
+  Weapon_Sword_107_Adjective:
+    contents:
+      - text: Boomerang
+  Weapon_Sword_108_Adjective:
+    contents:
+      - text: Sturdy-Stick
+  Weapon_Sword_109_Adjective:
+    contents:
+      - text: Mighty-Stick
+  Weapon_Sword_112_Adjective:
+    contents:
+      - text: "Soldier's-Broadsword"
+  Weapon_Sword_113_Adjective:
+    contents:
+      - text: "Knight's-Broadsword"
+  Weapon_Sword_114_Adjective:
+    contents:
+      - text: Eightfold-Blade
+  Weapon_Sword_124_Adjective:
+    contents:
+      - text: Royal-Broadsword
+  Weapon_Sword_125_Adjective:
+    contents:
+      - text: Forest-Sword
+  Weapon_Sword_127_Adjective:
+    contents:
+      - text: Zora-Sword
+  Weapon_Sword_129_Adjective:
+    contents:
+      - text: Gerudo-Scimitar
+  Weapon_Sword_131_Adjective:
+    contents:
+      - text: Feathered-Edge
+  Weapon_Sword_147_Adjective:
+    contents:
+      - text: "Guard's-Sword"
+  Weapon_Sword_161_Adjective:
+    contents:
+      - text: Magic-Rod
+  Weapon_Sword_163_Adjective:
+    contents:
+      - text: Strong-Zonaite-Sword
+  Weapon_Sword_164_Adjective:
+    contents:
+      - text: Mighty-Zonaite-Sword
+  Weapon_Sword_166_Adjective:
+    contents:
+      - text: Gloom-Sword
+  Weapon_Sword_167_Adjective:
+    contents:
+      - text: Tree-Branch
+  Weapon_Sword_168_Adjective:
+    contents:
+      - text: Wooden-Stick
+  WoodBall_Golf_Adjective:
+    contents:
+      - text: Ball
+  WoodBall_Golf_Name:
+    contents:
+      - text: Ball

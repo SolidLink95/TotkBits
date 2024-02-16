@@ -1,21 +1,22 @@
-
 use crate::Pack::PackFile;
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, is_msyt, FileType, TotkZstd};
 use anyhow;
+use byteordered::Endianness;
+use failure::ResultExt;
+use indexmap::IndexMap;
+use msbt::builder::MsbtBuilder;
 use msbt::section::Atr1;
 use msbt::Msbt;
+use msyt::model::Msyt;
 use msyt::model::{self, Content, Entry, MsbtInfo};
 use msyt::Result as MsbtResult;
-use msyt::model::Msyt;
 use roead::byml::Byml;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
-use failure::ResultExt;
-use indexmap::IndexMap;
 
 pub struct FileData {
     pub file_type: FileType,
@@ -45,31 +46,48 @@ pub struct MsytFile {
     pub zstd: Arc<TotkZstd<'a>>,*/
 }
 
-impl MsytFile {
-   
+pub fn roead_endian_to_byteordered(endian: roead::Endian) -> Endianness {
+    match endian {
+        roead::Endian::Big => {return Endianness::Big;},
+        roead::Endian::Little => {return Endianness::Little;},
+    }
+}
 
-    pub fn file_to_text(path: String) -> MsbtResult<String>{
-        let mut f_handle = fs::File::open(&path).unwrap();
+impl MsytFile {
+    pub fn text_to_binary_file(text: &str, path: &str, endian: roead::Endian) -> MsbtResult<()> {
+        let encoding = msbt::Encoding::Utf16;
+        let endiannes = roead_endian_to_byteordered(endian);
+        let data = MsytFile::text_to_binary(text, endiannes, encoding).expect("Unable to save to msyt");
+        //let mut f_handle = fs::File::open(&path).expect(&format!("Failed to open file {}", &path));
+        let mut file = OpenOptions::new().write(true).open(&path)?;
+        file.write_all(&data).expect("Error writing data to file");
+        Ok(())
+    }
+
+    pub fn file_to_text(path: String) -> MsbtResult<String> {
+        let mut f_handle = fs::File::open(&path).expect(&format!("Failed to open file {}", &path));
         let mut buf: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buf);
         let text = MsytFile::binary_to_text(buf)?;
         Ok(text)
     }
-    pub fn binary_to_text(data: Vec<u8>)  -> MsbtResult<String> {
+
+    pub fn binary_to_text(data: Vec<u8>) -> MsbtResult<String> {
         if !is_msyt(&data) {
             return Err(failure::format_err!("Not msyt file"));
         }
         let cursor = Cursor::new(&data);
-        let mut reader = BufReader::new(cursor);
+        let reader = BufReader::new(cursor);
         let msbt = Msbt::from_reader(BufReader::new(reader))
-            .with_context(|_| format!("could not read msbt file at ")).unwrap();
+            .with_context(|_| format!("Failed to create msbt from reader"))
+            .expect(&format!("Failed to create msbt from reader"));
 
         let lbl1 = match msbt.lbl1() {
             Some(lbl) => lbl,
             None => {
-                
                 println!("invalid msbt: missing lbl1: ");
-                return Ok("".to_string());}
+                return Ok("".to_string());
+            }
         };
 
         let mut entries = IndexMap::with_capacity(lbl1.labels().len());
@@ -77,15 +95,20 @@ impl MsytFile {
         for label in lbl1.labels() {
             let mut all_content = Vec::new();
 
-            let raw_value = label.value_raw().ok_or_else(|| {
-                failure::format_err!(
+            let raw_value = label
+                .value_raw()
+                .ok_or_else(|| {
+                    failure::format_err!(
+                        "invalid msbt at : missing string for label {}",
+                        label.name(),
+                    )
+                })
+                .expect(&format!(
                     "invalid msbt at : missing string for label {}",
-                    
                     label.name(),
-                )
-            }).unwrap();
-            let mut parts =
-                msyt::botw::parse_controls(msbt.header(), raw_value).unwrap();
+                ));
+            let mut parts = msyt::botw::parse_controls(msbt.header(), raw_value)
+                .expect("Failed to parse controls");
             all_content.append(&mut parts);
             let entry = Entry {
                 attributes: msbt.atr1().and_then(|a| {
@@ -115,12 +138,57 @@ impl MsytFile {
             },
         };
 
-        let dest = PathBuf::from("res/asdf.yaml");
-        let yaml_string = serde_yaml::to_string(&msyt)
-    .with_context(|_| "could not serialize yaml to string")?;
+        let yaml_string =
+            serde_yaml::to_string(&msyt).with_context(|_| "could not serialize yaml to string")?;
         Ok(yaml_string)
     }
 
+    pub fn text_to_binary(text: &str, endianness: Endianness, encoding: msbt::Encoding) -> MsbtResult<Vec<u8>> {
+        let msyt: Msyt =
+            serde_yaml::from_str(&text).expect(&format!("Cannot create msyt from string"));
+
+        let mut builder = MsbtBuilder::new(endianness, encoding, Some(msyt.msbt.group_count));
+      if let Some(unknown_bytes) = msyt.msbt.ato1 {
+        builder = builder.ato1(msbt::section::Ato1::new_unlinked(unknown_bytes));
+      }
+      if let Some(unknown_1) = msyt.msbt.atr1_unknown {
+        // ATR1 should have exactly the same amount of entries as TXT2. In the BotW files, sometimes
+        // an ATR1 section is specified to have that amount but the section is actually empty. For
+        // msyt's purposes, if the msyt does not contain the same amount of attributes as it does
+        // text entries (i.e. not every label has an `attributes` node), it will be assumed that the
+        // ATR1 section should specify that it has the correct amount of entries but actually be
+        // empty.
+        let strings: Option<Vec<String>> = msyt.entries
+          .iter()
+          .map(|(_, e)| e.attributes.clone())
+          .map(|s| s.map(msyt::util::append_nul))
+          .collect();
+        let atr_len = match strings {
+          Some(ref s) => s.len(),
+          None => msyt.entries.len(),
+        };
+        let strings = strings.unwrap_or_default();
+        builder = builder.atr1(msbt::section::Atr1::new_unlinked(atr_len as u32, unknown_1, strings));
+      }
+      if let Some(unknown_bytes) = msyt.msbt.tsy1 {
+        builder = builder.tsy1(msbt::section::Tsy1::new_unlinked(unknown_bytes));
+      }
+      if let Some(nli1) = msyt.msbt.nli1 {
+        builder = builder.nli1(msbt::section::Nli1::new_unlinked(nli1.id_count, nli1.global_ids));
+      }
+      for (label, entry) in msyt.entries.into_iter() {
+        let new_val = Content::write_all(builder.header(), &entry.contents)?;
+        builder = builder.add_label(label, new_val);
+      }
+      let msbt = builder.build();
+
+      let mut dest_buf: Vec<u8> = Vec::new();
+      let dest_cursor = Cursor::new(&mut dest_buf);
+      //let mut new_msbt = Msbt::from_reader(dest_cursor).expect("Failed to create empty msbt");
+      msbt.write_to(dest_cursor).expect(&format!("Error writing to cursor {}", line!()));
+
+        Ok(dest_buf)
+    }
 }
 
 pub struct BymlFile<'a> {
@@ -139,28 +207,41 @@ impl<'a> BymlFile<'_> {
     }
 
     pub fn save(&self, path: String) -> io::Result<()> {
-        let mut f_handle = fs::File::open(path.clone())?;
+        //let mut f_handle = OpenOptions::new().write(true).open(&path)?;
         let mut data = self
             .pio
             .to_binary(self.endian.unwrap_or(roead::Endian::Little));
         if path.to_ascii_lowercase().ends_with(".zs") {
             match self.file_data.file_type {
                 FileType::Byml => {
-                    data = self.zstd.compressor.compress_zs(&data).unwrap();
+                    data = self
+                        .zstd
+                        .compressor
+                        .compress_zs(&data)
+                        .expect("Failed to compress with zs");
                 }
                 FileType::Bcett => {
-                    data = self.zstd.compressor.compress_bcett(&data).unwrap();
+                    data = self
+                        .zstd
+                        .compressor
+                        .compress_bcett(&data)
+                        .expect("Failed to compress with bcett");
                 }
                 _ => {
-                    data = self.zstd.compressor.compress_zs(&data).unwrap();
+                    data = self
+                        .zstd
+                        .compressor
+                        .compress_zs(&data)
+                        .expect("Failed to compress with zs");
                 }
             }
         }
-        f_handle.write_all(&data);
+        //f_handle.write_all(&data);
+        bytes_to_file(data, &path);
         Ok(())
     }
 
-    pub fn from_text(content: String, zstd: Arc<TotkZstd<'a>>) -> io::Result<BymlFile<'a>> {
+    pub fn from_text(content: &str, zstd: Arc<TotkZstd<'a>>) -> io::Result<BymlFile<'a>> {
         let pio: Result<Byml, roead::Error> = Byml::from_text(&content);
         match pio {
             Ok(ok_pio) => Ok(BymlFile {
@@ -200,6 +281,15 @@ impl<'a> BymlFile<'_> {
                 ));
             }
         }
+    }
+
+    pub fn get_endiannes_from_self(&self) -> roead::Endian {
+        if self.file_data.data.starts_with(b"BY") {
+            return roead::Endian::Big;
+        } else if self.file_data.data.starts_with(b"YB") {
+            return roead::Endian::Little;
+        }
+        return roead::Endian::Little;
     }
 
     pub fn get_endiannes(data: &Vec<u8>) -> Option<roead::Endian> {
@@ -277,3 +367,18 @@ impl<'a> BymlFile<'_> {
     }
 }
 
+
+pub fn bytes_to_file(data: Vec<u8>, path: &str) -> io::Result<()> {
+    let mut f = fs::File::create(&path);//TODO check if the ::create is sufficient
+    match f {
+        Ok(mut f_handle) => {//file does not exist
+            f_handle.write_all(&data);
+        },
+        Err(_) => { //file exist, overwrite
+            let mut f_handle = OpenOptions::new().write(true).open(&path)?;
+            f_handle.write_all(&data);
+
+        }
+    }
+    Ok(())
+}

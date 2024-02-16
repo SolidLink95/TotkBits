@@ -118,7 +118,7 @@ impl EfficientScroll {
 
                 }
                 //new_text.push_str(&"\n".repeat(end_ind));
-                app.displayed_text = new_text;
+                app.text = new_text;
             }
 
             app.status_text = format!(

@@ -1,25 +1,21 @@
 use crate::misc;
 use crate::BinTextFile::BymlFile;
 use crate::ButtonOperations::{
-    edit_click, extract_click, open_byml_or_sarc, open_file_button_click, save_as_click,
-    save_click, save_file_dialog,
+    edit_click, extract_click, open_byml_or_sarc, open_file_button_click, open_file_safe, save_as_click, save_click, save_file_dialog
 };
 use crate::GuiMenuBar::MenuBar;
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{Icons, Pathlib, Settings};
 use crate::TotkPath::TotkPath;
-use crate::Tree::{self, tree_node};
+use crate::Tree::{self, TreeNode};
 use crate::Zstd::{FileType, TotkZstd};
-//use crate::SarcFileLabel::ScrollAreaPub;
 use crate::GuiScroll::EfficientScroll;
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::text::LayoutJob;
 use egui::{Align, Button, Label, Layout, Pos2, Rect, Shape};
 use egui_extras::install_image_loaders;
-use roead::byml::Byml;
-use std::cell::RefCell;
-use std::io::Read;
+use roead::sarc::File;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::{fs, io};
@@ -30,11 +26,66 @@ pub enum ActiveTab {
     TextBox,
 }
 
+pub struct OpenedFile<'a> {
+    pub file_type: FileType,
+    pub path: Pathlib,
+    pub byml: Option<BymlFile<'a>>,
+    pub endian: Option<roead::Endian>,
+    pub msyt: Option<String>,
+}
+
+impl Default for OpenedFile<'_> {
+    fn default() -> Self {
+        Self {
+            file_type: FileType::None,
+            path: Pathlib::new("".to_string()),
+            byml: None,
+            endian: None,
+            msyt: None,
+        }
+    }
+}
+
+impl<'a> OpenedFile<'_> {
+
+    pub fn new(path: String, file_type: FileType,  endian: Option<roead::Endian>, msyt: Option<String>) -> Self {
+        Self {
+            file_type: file_type,
+            path: Pathlib::new(path),
+            byml: None,
+            endian: endian,
+            msyt: msyt,
+        }
+    }
+
+    pub fn from_path(path: String, file_type: FileType) -> Self {
+        Self {
+            file_type: file_type,
+            path: Pathlib::new(path),
+            byml: None,
+            endian: None,
+            msyt: None,
+        }
+    }
+}
+
+impl<'a> OpenedFile<'_> {
+    pub fn get_endian_label(&self) -> String {
+        match self.endian {
+            Some(endian) => {
+                match endian {
+                    roead::Endian::Big => {return "BE".to_string();},
+                    roead::Endian::Little => {return  "LE".to_string();}
+                }
+            },
+            None => {return "".to_string();}
+        }
+    }
+}
+
 pub struct TotkBitsApp<'a> {
-    pub opened_file: Pathlib,             //path to opened file in string
-    pub opened_file_type: FileType,       //path to opened file in string
+    pub opened_file: OpenedFile<'a>,             //path to opened file in string
     pub text: String,                     //content of the text editor
-    pub displayed_text: String,           //content of the text editor
     pub status_text: String,              //bottom bar text
     pub scroll: ScrollArea,               //scroll area
     pub scroll_updater: EfficientScroll,  //scroll area
@@ -42,9 +93,8 @@ pub struct TotkBitsApp<'a> {
     language: String, //language for highlighting, no option for yaml yet, toml is closest
     pub zstd: Arc<TotkZstd<'a>>, //zstd compressors and decompressors
     pub pack: Option<PackFile<'a>>, //opened sarc file object, none if none opened
-    pub byml: Option<BymlFile<'a>>, //opened byml file, none if none opened
-    pub root_node: Rc<tree_node<String>>, //root_node pf the sarc directory tree
-    pub internal_sarc_file: Option<Rc<tree_node<String>>>, // node of sarc internal file opened in text editor
+    pub root_node: Rc<TreeNode<String>>, //root_node pf the sarc directory tree
+    pub internal_sarc_file: Option<Rc<TreeNode<String>>>, // node of sarc internal file opened in text editor
     pub scroll_resp: Option<egui::scroll_area::ScrollAreaOutput<()>>, //response from self.scroll, for controlling scrollbar position
     pub menu_bar: Arc<MenuBar>,                                       //menu bar at the top
     pub icons: Icons<'a>,                                             //cached icons for buttons
@@ -55,10 +105,8 @@ impl Default for TotkBitsApp<'_> {
         let totk_path = Arc::new(TotkPath::new());
         let settings = Settings::default();
         Self {
-            opened_file: Pathlib::new("".to_string()),
-            opened_file_type: FileType::None, //used only for TextBox active tab
+            opened_file: OpenedFile::default(),
             text: misc::get_example_yaml(),
-            displayed_text: misc::get_example_yaml(),
             status_text: "Ready".to_owned(),
             scroll: ScrollArea::vertical(),
             scroll_updater: EfficientScroll::new(),
@@ -66,8 +114,7 @@ impl Default for TotkBitsApp<'_> {
             language: "toml".into(),
             zstd: Arc::new(TotkZstd::new(totk_path, settings.comp_level).unwrap()),
             pack: None,
-            byml: None,
-            root_node: tree_node::new("ROOT".to_string(), "/".to_string()),
+            root_node: TreeNode::new("ROOT".to_string(), "/".to_string()),
             internal_sarc_file: None,
             scroll_resp: None,
             menu_bar: Arc::new(MenuBar::new(settings.styles.menubar.clone()).unwrap()),
@@ -159,16 +206,8 @@ impl Gui {
         });
     }
 
-    fn scroll_the_boy(ui: &mut egui::Ui, val: f32) {
-        let target_rect = Rect {
-            min: Pos2 { x: 0.0, y: val },
-            max: Pos2 { x: 0.0, y: val },
-        };
-        ui.scroll_to_rect(target_rect, Some(Align::Max));
-    }
-
     pub fn display_main(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
-        let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
+        let theme: egui_extras::syntax_highlighting::CodeTheme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
         let language = app.language.clone();
         let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
             let mut layout_job: LayoutJob =
@@ -176,8 +215,6 @@ impl Gui {
             layout_job.wrap.max_width = wrap_width;
             ui.fonts(|f| f.layout_job(layout_job))
         };
-        let _font_id = egui::FontId::monospace(12.0);
-        app.settings.lines_count = app.text.chars().filter(|&c| c == '\n').count() + 1;
 
         match app.active_tab {
             ActiveTab::TextBox => {
@@ -310,45 +347,14 @@ impl Gui {
             }
             ActiveTab::TextBox => {
                 let mut label_path: Option<String> = None;
-                let mut label_endian = String::new();
+                let mut label_endian = app.opened_file.get_endian_label();
                 if let Some(internal_file) = &app.internal_sarc_file {
                     label_path = Some(internal_file.path.name.clone());
                 }
                 else {
-                    label_path = Some(app.opened_file.name.clone());
+                    label_path = Some(app.opened_file.path.name.clone());
                 }
-                match app.opened_file_type {
-                    FileType::Msbt => {
-                        label_endian = "LE".to_string();
-                    }
-                    FileType::Byml => {
-                        if let Some(byml) = &app.byml {
-                            match byml.endian {
-                                Some(endian) => {
-                                    label_endian = match endian {
-                                        roead::Endian::Big => "BE".to_string(),
-                                        roead::Endian::Little => "LE".to_string(),
-                                    }
-                                },
-                                None => {
-                                    label_endian = "LE".to_string();
-                                }
-                            }
-                        }
-                    }
-                    FileType::None => {
-                        label_endian = String::new();
-                    },
-                    FileType::Other => {
-                        label_endian = String::new();
-                    },
-                    _ => {
-                        label_endian = "LE".to_string();
-                    }
-                }
-                if label_endian.len() == 0 {
-                    label_endian = "LE".to_string();
-                }
+                
                 if let Some(l_path) = &label_path {
                     //ui.label(format!("{:?}", app.opened_file_type));
                     ui.label(label_endian);

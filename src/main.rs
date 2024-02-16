@@ -1,5 +1,5 @@
 //use std::fs::File;
-use std::{fs::File, io::{self, BufReader, BufWriter}};
+use std::{fs::File, io::{self, BufReader, BufWriter, Cursor}};
 
 //mod TestCases;
 mod BinTextFile;
@@ -15,6 +15,7 @@ mod TotkPath;
 mod Tree;
 mod Zstd;
 mod misc;
+use msyt::{model::{Content, Msyt}, Result as MsbtResult};
 
 //use msyt;
 use egui::output;
@@ -29,16 +30,10 @@ TODO:
 - endiannes below*/
 
 
-fn msbt_to_text(path:String) {
-    let f = BufReader::new(File::open(&path).unwrap());
-
-    let msbt = Msbt::from_reader(f).unwrap();
-    }
     
 
 
 fn main() -> io::Result<()> {
-    
     //MsytFile::file_to_text("res/Attachment.msbt".to_string());
     Gui::run();
     Ok(())
