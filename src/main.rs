@@ -11,7 +11,7 @@ mod GuiScroll;
 mod Pack;
 mod SarcFileLabel;
 mod Settings;
-mod TotkPath;
+mod TotkConfig;
 mod Tree;
 mod Zstd;
 mod misc;

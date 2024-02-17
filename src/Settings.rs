@@ -1,6 +1,6 @@
 use std::{path::Path, sync::Arc};
 
-use egui::{epaint::Shadow, include_image, Color32, Margin, Style, TextStyle, Vec2};
+use egui::{epaint::Shadow, include_image, style::HandleShape, Color32, Margin, Style, TextStyle, Vec2};
 use egui_code_editor::Syntax;
 
 pub struct Settings {
@@ -76,7 +76,7 @@ impl<'a> Icons<'_> {
 }
 
 pub struct Styles {
-    pub def_style: Style,         //default style
+    pub def_style:Arc<Style>,         //default style
     pub tree: Arc<Style>,         //sarc directory tree
     pub text_editor: Arc<Style>,  //text editor textedit
     pub toolbar: Arc<Style>,      // image buttons (save, open)
@@ -87,16 +87,16 @@ pub struct Styles {
 impl Styles {
     pub fn new(def_style: Style) -> Self {
         Self {
-            def_style: def_style.clone(),
+            def_style: Arc::new(def_style.clone()),
             tree: Arc::new(def_style.clone()),
-            text_editor: Styles::get_text_editor_style(def_style.clone()),
-            toolbar: Styles::get_toolbar_style(def_style.clone()),
-            context_menu: Styles::get_menubar_style(def_style.clone()),
-            menubar: Styles::get_menubar_style(def_style),
+            text_editor: Arc::new(Styles::get_text_editor_style(def_style.clone())),
+            toolbar: Arc::new(Styles::get_toolbar_style(def_style.clone())),
+            context_menu: Arc::new(Styles::get_context_menu_style(def_style.clone())),
+            menubar: Arc::new(Styles::get_menubar_style(def_style)),
         }
     }
 
-    pub fn get_text_editor_style(def_style: Style) -> Arc<Style> {
+    pub fn get_text_editor_style(def_style: Style) -> Style {
         let mut style: Style = def_style.clone();
         let square_rounding = egui::Rounding::same(0.0);
         let transparent = Color32::TRANSPARENT;
@@ -116,14 +116,33 @@ impl Styles {
         style.visuals.window_rounding = square_rounding;
 
 
-        return Arc::new(style);
+        return style;
 
     }
-    pub fn get_context_menu_style(def_style: Style) -> Arc<Style> {
-        Styles::get_menubar_style(def_style)
+    pub fn get_context_menu_style(def_style: Style) -> Style {
+        let mut style: Style = Styles::get_menubar_style(def_style);
+        let square_rounding = egui::Rounding::same(0.0);
+        let active_color = Color32::from_gray(60);
+        let inactive_color = Color32::from_gray(27);
+        let transparent = Color32::TRANSPARENT;
+        
+        style.visuals.handle_shape = HandleShape::Rect { aspect_ratio: 7.0 };
+        style.visuals.menu_rounding = square_rounding;
+        style.visuals.window_rounding = square_rounding;
+        style.visuals.widgets.noninteractive.rounding = square_rounding; // No rounding on buttons
+        style.visuals.widgets.inactive.rounding = square_rounding; // No rounding on buttons
+        style.visuals.widgets.hovered.rounding = square_rounding; // No rounding on buttons
+        style.visuals.widgets.active.rounding = square_rounding; // No rounding on buttons
+        style.visuals.widgets.open.rounding = square_rounding; // No rounding on buttons
+        style.visuals.widgets.noninteractive.fg_stroke.width = 1.0; // Width of the border line
+        style.spacing.button_padding = Vec2::new(10.0, 4.0); // Padding inside the buttons
+        style.spacing.window_margin = Margin::symmetric(4.0, 4.0); // Margin around the window
+
+        
+        return style;
     }
 
-    pub fn get_toolbar_style(def_style: Style) -> Arc<Style> {
+    pub fn get_toolbar_style(def_style: Style) -> Style {
         let mut style: Style = def_style.clone();
         let square_rounding = egui::Rounding::same(0.0);
         let white = Color32::WHITE;
@@ -159,10 +178,10 @@ impl Styles {
         style.visuals.widgets.noninteractive.fg_stroke.width = 0.0; // Width of the border line
         style.spacing.button_padding = Vec2::new(0.0, 0.0); // Padding inside the buttons
                                                             //style.spacing.window_margin = Margin::symmetric(4.0, 4.0); // Margin around the window
-        return Arc::new(style);
+        return style;
     }
 
-    pub fn get_menubar_style(def_style: Style) -> Arc<Style> {
+    pub fn get_menubar_style(def_style: Style) -> Style {
         let mut style: Style = def_style.clone();
         let square_rounding = egui::Rounding::same(0.0);
         let active_color = Color32::from_gray(60);
@@ -205,7 +224,7 @@ impl Styles {
         style.spacing.button_padding = Vec2::new(10.0, 4.0); // Padding inside the buttons
         style.spacing.window_margin = Margin::symmetric(4.0, 4.0); // Margin around the window
 
-        return Arc::new(style);
+        return style;
     }
 }
 

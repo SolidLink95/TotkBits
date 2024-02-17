@@ -41,6 +41,21 @@ where
     pub fn is_root(&self) -> bool {
         self.parent.borrow().upgrade().is_none()
     }
+    pub fn get_parent(&self) -> Option<Rc<TreeNode<T>>> {
+        let parent = self.parent.borrow().upgrade();
+        match parent {
+            Some(p) => {return Some(Rc::clone(&p));},
+            None => {return None;}
+        }
+    }
+
+    pub fn remove_itself(&self) {
+        if let Some(parent) = &self.get_parent() {
+            parent.remove_child(&self.value);
+        } else {
+            println!("Removing root node unsupported")
+        }
+    }
 
     pub fn is_leaf(&self) -> bool {
         self.children.borrow().is_empty()

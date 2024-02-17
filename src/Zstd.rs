@@ -1,5 +1,7 @@
-use crate::TotkPath::TotkPath;
+use crate::TotkConfig::TotkConfig;
+use digest::Digest;
 use roead::sarc::*;
+use sha2::Sha256;
 
 use std::collections::HashMap;
 
@@ -25,20 +27,20 @@ pub enum FileType {
 }
 
 pub struct TotkZstd<'a> {
-    pub totk_path: Arc<TotkPath>,
+    pub totk_config: Arc<TotkConfig>,
     pub decompressor: ZstdDecompressor<'a>,
     pub compressor: ZstdCompressor<'a>,
 }
 
 impl<'a> TotkZstd<'_> {
-    pub fn new(totk_path: Arc<TotkPath>, comp_level: i32) -> io::Result<TotkZstd<'a>> {
-        let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_path.clone())?);
+    pub fn new(totk_config: Arc<TotkConfig>, comp_level: i32) -> io::Result<TotkZstd<'a>> {
+        let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_config.clone())?);
         let decompressor: ZstdDecompressor =
-            ZstdDecompressor::new(totk_path.clone(), zsdic.clone())?;
-        let compressor: ZstdCompressor = ZstdCompressor::new(totk_path.clone(), zsdic, comp_level)?;
+            ZstdDecompressor::new(totk_config.clone(), zsdic.clone())?;
+        let compressor: ZstdCompressor = ZstdCompressor::new(totk_config.clone(), zsdic, comp_level)?;
 
         Ok(TotkZstd {
-            totk_path,
+            totk_config,
             decompressor,
             compressor,
         })
@@ -94,8 +96,8 @@ pub struct ZsDic {
 }
 
 impl ZsDic {
-    pub fn new(totk_path: Arc<TotkPath>) -> io::Result<ZsDic> {
-        let sarc = ZsDic::get_zsdic_sarc(&totk_path)?;
+    pub fn new(totk_config: Arc<TotkConfig>) -> io::Result<ZsDic> {
+        let sarc = ZsDic::get_zsdic_sarc(&totk_config)?;
         let empty_data: Vec<u8> = Vec::new();
         let mut zs_data: Vec<u8> = Vec::new();
         let mut bcett_data: Vec<u8> = Vec::new();
@@ -117,8 +119,8 @@ impl ZsDic {
         })
     }
 
-    fn get_zsdic_sarc(totk_path: &TotkPath) -> io::Result<Sarc> {
-        let mut zsdic = totk_path.romfs.clone();
+    fn get_zsdic_sarc(totk_config: &TotkConfig) -> io::Result<Sarc> {
+        let mut zsdic = totk_config.romfs.clone();
         zsdic.push("Pack/ZsDic.pack.zs");
         let _ = check_file_exists(&zsdic)?; //Path().exists()
         let mut zs_file = fs::File::open(&zsdic)?; //with open() as f
@@ -132,7 +134,7 @@ impl ZsDic {
 }
 
 pub struct ZstdDecompressor<'a> {
-    totk_path: Arc<TotkPath>,
+    totk_config: Arc<TotkConfig>,
     pub packzs: Arc<DecoderDictionary<'a>>, //Vec<u8>,
     pub zs: Arc<DecoderDictionary<'a>>,     //Vec<u8>,
     pub bcett: Arc<DecoderDictionary<'a>>,  //Vec<u8>,
@@ -141,14 +143,14 @@ pub struct ZstdDecompressor<'a> {
 }
 
 impl<'a> ZstdDecompressor<'_> {
-    pub fn new(totk_path: Arc<TotkPath>, zsdic: Arc<ZsDic>) -> io::Result<ZstdDecompressor<'a>> {
+    pub fn new(totk_config: Arc<TotkConfig>, zsdic: Arc<ZsDic>) -> io::Result<ZstdDecompressor<'a>> {
         let zs: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.zs_data));
         let bcett: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.bcett_data));
         let packzs: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.packzs_data));
         let empty: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.empty_data));
 
         Ok(ZstdDecompressor {
-            totk_path: totk_path,
+            totk_config: totk_config,
             packzs: packzs,
             zs: zs,
             bcett: bcett,
@@ -202,7 +204,7 @@ impl<'a> ZstdDecompressor<'_> {
 }
 
 pub struct ZstdCompressor<'a> {
-    totk_path: Arc<TotkPath>,
+    totk_config: Arc<TotkConfig>,
     pub packzs: Arc<EncoderDictionary<'a>>, //Vec<u8>,
     pub zs: Arc<EncoderDictionary<'a>>,     //Vec<u8>,
     pub bcett: Arc<EncoderDictionary<'a>>,  //Vec<u8>,
@@ -212,7 +214,7 @@ pub struct ZstdCompressor<'a> {
 
 impl<'a> ZstdCompressor<'_> {
     pub fn new(
-        totk_path: Arc<TotkPath>,
+        totk_config: Arc<TotkConfig>,
         zsdic: Arc<ZsDic>,
         comp_level: i32,
     ) -> io::Result<ZstdCompressor<'a>> {
@@ -222,7 +224,7 @@ impl<'a> ZstdCompressor<'_> {
         let empty: Arc<EncoderDictionary> = Arc::new(EncoderDictionary::copy(&zsdic.empty_data, comp_level));
 
         Ok(ZstdCompressor {
-            totk_path: totk_path,
+            totk_config: totk_config,
             packzs: packzs,
             zs: zs,
             bcett: bcett,
@@ -282,4 +284,18 @@ pub fn is_msyt(data: &[u8]) -> bool {
         return true;
     }
     return false;
+}
+
+
+pub fn SHA256(data: Vec<u8>) -> String {
+    // Create a Sha256 object
+    let mut hasher = Sha256::new();
+
+    // Write input data
+    hasher.update(&data);
+
+    // Read hash digest and consume hasher
+    let result = hasher.finalize();
+    format!("{:X}", result)
+
 }

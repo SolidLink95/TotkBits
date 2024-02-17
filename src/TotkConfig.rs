@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::Pack::PackFile;
 
 #[derive(Deserialize, Serialize)]
-pub struct TotkPath {
+pub struct TotkConfig {
     pub romfs: PathBuf,
     pub bfres: PathBuf,
     pub totk_decoded: PathBuf,
@@ -21,17 +21,17 @@ pub struct TotkPath {
     pub config_path: PathBuf,
 }
 
-impl TotkPath {
-    pub fn new() -> TotkPath {
-        let config = TotkPath::get_config().expect("Unable to get totks paths");
+impl TotkConfig {
+    pub fn new() -> TotkConfig {
+        let config = TotkConfig::get_config().expect("Unable to get totks paths");
         let config_path = PathBuf::from(config.get("config_path").unwrap().to_string());
-        let yuzu_mod_path = TotkPath::get_yuzumodpath().expect("Unable to get yuzu totk mod path");
+        let yuzu_mod_path = TotkConfig::get_yuzumodpath().expect("Unable to get yuzu totk mod path");
         let romfs = PathBuf::from(config.get("romfs").unwrap_or(&"".to_string()));
         let bfres = PathBuf::from(config.get("bfres_raw").unwrap_or(&"".to_string()));
         let totk_decoded = PathBuf::from(config.get("TOTK_decoded").unwrap_or(&r"W:/TOTK_modding/0100F2C0115B6000/Bfres_1.1.2".to_string()));
         
 
-        TotkPath {
+        TotkConfig {
             romfs: romfs, 
             bfres: bfres,
             totk_decoded: totk_decoded,
@@ -41,8 +41,8 @@ impl TotkPath {
         }
     }
 
-    pub fn clone(&self) -> TotkPath {
-        TotkPath {
+    pub fn clone(&self) -> TotkConfig {
+        TotkConfig {
             romfs: self.romfs.clone(),
             bfres: self.bfres.clone(),
             totk_decoded: self.totk_decoded.clone(),
@@ -51,21 +51,17 @@ impl TotkPath {
         }
     }
 
-    pub fn get_pack_path_from_sarc(&self, pack: PackFile) -> io::Result<PathBuf> {
+    pub fn get_pack_path_from_sarc(&self, pack: PackFile) -> Option<PathBuf> {
         self.get_pack_path(&pack.path.stem)
     }
-    pub fn get_pack_path(&self, name: &str) -> io::Result<PathBuf> {
+    pub fn get_pack_path(&self, name: &str) -> Option<PathBuf> {
         let pack_local_path = format!("Pack/Actor/{}.pack.zs", name);
         let mut pack_path = self.romfs.clone();
         pack_path.push(pack_local_path);
         if pack_path.exists() {
-            return Ok(pack_path);
+            return Some(pack_path);
         }
-        else {
-            let m: String = format!("Pack with name {:?} does not exist (full path: {:?})", name, pack_path);
-            //println!("Pack with name {:?} does not exist (full path: {:?})", name, pack_path);
-            return Err(io::Error::new(io::ErrorKind::NotFound, m));
-        }
+        None
     }
 
     pub fn save(&self) -> io::Result<()> {

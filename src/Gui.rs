@@ -1,20 +1,22 @@
 use crate::misc;
 use crate::BinTextFile::BymlFile;
 use crate::ButtonOperations::{
-    edit_click, extract_click, open_byml_or_sarc, open_file_button_click,
-    save_as_click, save_click, save_file_dialog,
+    edit_click, extract_click, open_byml_or_sarc, open_file_button_click, save_as_click,
+    save_click, save_file_dialog,
 };
 use crate::GuiMenuBar::MenuBar;
 use crate::GuiScroll::EfficientScroll;
-use crate::Pack::PackFile;
+use crate::Pack::{PackComparer, PackFile};
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{Icons, Pathlib, Settings};
-use crate::TotkPath::TotkPath;
+use crate::TotkConfig::TotkConfig;
 use crate::Tree::{self, TreeNode};
 use crate::Zstd::{FileType, TotkZstd};
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::text::LayoutJob;
-use egui::{Align, Button, Context, FontId, InputState, Label, Layout, Pos2, Rect, Response, Shape};
+use egui::{
+    Align, Button, Context, FontId, InputState, Label, Layout, Pos2, Rect, Response, Shape,
+};
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use egui_extras::install_image_loaders;
 use roead::sarc::File;
@@ -102,7 +104,7 @@ pub struct TotkBitsApp<'a> {
     pub active_tab: ActiveTab,           //active tab, either sarc file or text editor
     language: String, //language for highlighting, no option for yaml yet, toml is closest
     pub zstd: Arc<TotkZstd<'a>>, //zstd compressors and decompressors
-    pub pack: Option<PackFile<'a>>, //opened sarc file object, none if none opened
+    pub pack: Option<PackComparer<'a>>, //opened sarc file object, none if none opened
     pub root_node: Rc<TreeNode<String>>, //root_node pf the sarc directory tree
     pub internal_sarc_file: Option<Rc<TreeNode<String>>>, // node of sarc internal file opened in text editor
     pub scroll_resp: Option<egui::scroll_area::ScrollAreaOutput<()>>, //response from self.scroll, for controlling scrollbar position
@@ -110,11 +112,11 @@ pub struct TotkBitsApp<'a> {
     pub icons: Icons<'a>,                                             //cached icons for buttons
     pub settings: Settings,                                           //various settings
     pub code_editor: CodeEditor,
-    pub input_state: InputState
+    pub input_state: InputState,
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
-        let totk_path = Arc::new(TotkPath::new());
+        let totk_config = Arc::new(TotkConfig::new());
         let settings = Settings::default();
         Self {
             opened_file: OpenedFile::default(),
@@ -124,7 +126,7 @@ impl Default for TotkBitsApp<'_> {
             scroll_updater: EfficientScroll::new(),
             active_tab: ActiveTab::TextBox,
             language: "toml".into(),
-            zstd: Arc::new(TotkZstd::new(totk_path, settings.comp_level).unwrap()),
+            zstd: Arc::new(TotkZstd::new(totk_config, settings.comp_level).unwrap()),
             pack: None,
             root_node: TreeNode::new("ROOT".to_string(), "/".to_string()),
             internal_sarc_file: None,
@@ -238,14 +240,16 @@ impl Gui {
                 //scrollbar
                 app.scroll_resp = Some(app.scroll.clone().show(ui, |ui| {
                     ui.set_style(app.settings.styles.text_editor.clone());
-                    app.code_editor.clone()
+                    app.code_editor
+                        .clone()
                         .id_source("code editor")
                         .with_rows(12)
-                        .with_fontsize(12.0).vscroll(true)
+                        .with_fontsize(12.0)
+                        .vscroll(true)
                         .with_theme(ColorTheme::GRUVBOX)
                         .with_syntax(app.settings.syntax.clone())
                         .with_numlines(false)
-                        .show(ui, &mut app.text,  ctx.clone());
+                        .show(ui, &mut app.text, ctx.clone());
                     open_byml_or_sarc(app, ui);
                     //TODO: get scrollbar position and render only that part of text
                     //println!("{:?}", app.scroll.clone().show_viewport(ui, add_contents))
@@ -272,20 +276,23 @@ impl Gui {
                         .show(ui, |ui| {
                             Gui::display_tree_background(app, ui);
                             open_byml_or_sarc(app, ui);
-                            if !app.pack.is_none() {
-                                if !app.settings.is_tree_loaded {
-                                    Tree::update_from_sarc_paths(
-                                        &app.root_node,
-                                        &app.pack.as_mut().expect("Error passing pack file"),
-                                    );
-                                    app.settings.is_tree_loaded = true;
+                            if let Some(pack) = &app.pack {
+                                //Comparer opened
+                                if let Some(opened) = &pack.opened {
+                                    //Sarc is opened
+                                    if !app.settings.is_tree_loaded {
+                                        Tree::update_from_sarc_paths(&app.root_node, opened);
+                                        app.settings.is_tree_loaded = true;
+                                        Tree::TreeNode::print(&app.root_node, 1);
+                                    }
                                 }
                                 let children: Vec<_> =
                                     app.root_node.children.borrow().iter().cloned().collect();
                                 for child in children {
-                                    SarcLabel::display_tree_in_egui(app, &child, ui);
+                                    SarcLabel::display_tree_in_egui(app, &child, ui, &ctx);
                                 }
                             }
+                            if !app.pack.is_none() {}
                         }),
                 );
             }
@@ -354,11 +361,17 @@ impl Gui {
         match app.active_tab {
             ActiveTab::DiretoryTree => {
                 if let Some(pack) = &app.pack {
-                    let label_endian = match pack.endian {
-                        roead::Endian::Big => "BE",
-                        roead::Endian::Little => "LE",
-                    };
-                    display_infolabels(ui, label_endian.to_string(), Some(pack.path.name.clone()));
+                    if let Some(opened) = &pack.opened {
+                        let label_endian = match opened.endian {
+                            roead::Endian::Big => "BE",
+                            roead::Endian::Little => "LE",
+                        };
+                        display_infolabels(
+                            ui,
+                            label_endian.to_string(),
+                            Some(opened.path.name.clone()),
+                        );
+                    }
                 }
             }
             ActiveTab::TextBox => {
@@ -382,7 +395,7 @@ fn calc_labels_width(label: &str) -> f32 {
 
 fn are_infolables_shown(ui: &mut egui::Ui, label: &str) -> bool {
     let perc = calc_labels_width(label) / ui.available_width();
-    if perc < 0.79{
+    if perc < 0.79 {
         return true;
     }
     return false;
@@ -395,7 +408,6 @@ pub fn display_infolabels(ui: &mut egui::Ui, endian: String, path: Option<String
         }
     }
 }
-
 
 //TODO: saving byml file,
 

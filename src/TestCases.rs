@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::str::FromStr;
 use std::sync::Arc;
-use crate::TotkPath;
+use crate::TotkConfig;
 use crate::Pack;
 use crate::misc;
 use crate::Zstd::{self, ZsDic};
@@ -14,13 +14,13 @@ use misc::{print_as_hex};
 use Pack::PackFile;
 
 
-pub fn test_case1(totk_path: &TotkPath::TotkPath) -> io::Result<String>{
-    //let mut zsdic = Arc::new(ZsDic::new(&totk_path)?);
-    let TotkZstd: Zstd::TotkZstd<'_> = Zstd::TotkZstd::new(totk_path, 16)?;
+pub fn test_case1(totk_config: &TotkConfig::TotkConfig) -> io::Result<String>{
+    //let mut zsdic = Arc::new(ZsDic::new(&totk_config)?);
+    let TotkZstd: Zstd::TotkZstd<'_> = Zstd::TotkZstd::new(totk_config, 16)?;
     let p = PathBuf::from(r"res\Armor_006_Upper.pack.zs");
-    //let compressor = Zstd::ZstdCompressor::new(&totk_path, zsdic, 16)?;
+    //let compressor = Zstd::ZstdCompressor::new(&totk_config, zsdic, 16)?;
     let mut ret_res: String = Default::default();
-    let mut x: PackFile<'_> = PackFile::new(&p, &totk_path, &TotkZstd)?;
+    let mut x: PackFile<'_> = PackFile::new(&p, &totk_config, &TotkZstd)?;
     for file in x.sarc.files(){
         let name  = file.name().unwrap();
         println!("{}",name);

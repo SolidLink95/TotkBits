@@ -1,5 +1,6 @@
 use roead;
 use roead::sarc::{Sarc, SarcWriter};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -9,24 +10,92 @@ use std::thread::sleep;
 
 use crate::BinTextFile::FileData;
 use crate::Settings::Pathlib;
-use crate::TotkPath::TotkPath;
-use crate::Zstd::{is_sarc, TotkZstd, FileType};
+use crate::TotkConfig::TotkConfig;
+use crate::Zstd::{is_sarc, FileType, TotkZstd, SHA256};
+
+pub struct PackComparer<'a> {
+    pub opened: Option<PackFile<'a>>,
+    pub vanila: Option<PackFile<'a>>,
+    pub totk_config: Arc<TotkConfig>,
+    pub zstd: Arc<TotkZstd<'a>>,
+    pub added: HashMap<String,String>,
+    pub modded: HashMap<String,String>,
+}
+
+impl<'a> PackComparer<'a> {
+    pub fn from_pack(pack: PackFile<'a>, zstd: Arc<TotkZstd<'a>>) -> Self {
+        let config = zstd.clone().totk_config.clone();
+        let vanila = PackComparer::get_vanila_pack(pack.path.name.clone(), zstd.clone());
+        //let vanila_path = config.get_pack_path_from_sarc(pack);
+        Self {
+            opened: Some(pack),
+            vanila: vanila,
+            totk_config: config,
+            zstd: zstd.clone(),
+            added: HashMap::default(),
+            modded: HashMap::default(),
+        }
+        
+    }
+    pub fn compare(&mut self) {
+        if let Some(vanila) = &self.vanila {
+            if let Some(opened) = &self.opened {
+                let mut added: HashMap<String,String> = HashMap::default();
+                let mut modded: HashMap<String,String> = HashMap::default();
+                for (file, Hash) in opened.hashes.iter() {
+                    let van_hash = vanila.hashes.get(file);
+                    match van_hash {
+                        Some(h) => {
+                            if h != Hash {
+                                modded.insert(file.to_string(), Hash.to_string());
+                            }
+                        },
+                        None => {
+                            added.insert(file.to_string(), Hash.to_string());
+                        }
+                    }
+    
+                }
+                self.added = added;
+                self.modded = modded;
+            }
+
+        } else { //custom actor
+            self.added.clear();
+            self.modded.clear();
+        }
+    }
+
+    pub fn get_vanila_pack(name: String, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile> {
+        let path = zstd.clone().totk_config.clone().get_pack_path(&name);
+        if let Some(path) = &path {
+            match PackFile::new(path.to_string_lossy().to_string(), zstd.clone()) {
+                Ok(pack) => {return  Some(pack);},
+                _ => {return None;}
+            }
+        }
+        None
+
+
+    }
+}
 
 
 pub struct PackFile<'a> {
     pub path: Pathlib,
-    totk_path: Arc<TotkPath>,
+    pub totk_config: Arc<TotkConfig>,
     zstd: Arc<TotkZstd<'a>>,
     pub data: FileData,
     pub endian: roead::Endian,
     pub writer: SarcWriter,
+    pub hashes: HashMap<String, String>,
     pub sarc: Sarc<'a>,
 }
 
 impl<'a> PackFile<'_> {
     pub fn new(
         path: String,
-        //totk_path: Arc<TotkPath>,
+        //totk_config: Arc<TotkConfig>,
         zstd: Arc<TotkZstd<'a>>,
         //decompressor: &'a ZstdDecompressor,
         //compressor: &'a ZstdCompressor
@@ -37,15 +106,32 @@ impl<'a> PackFile<'_> {
         let writer: SarcWriter = SarcWriter::from_sarc(&sarc);
         Ok(PackFile {
             path: Pathlib::new(path),
-            totk_path: zstd.totk_path.clone(),
+            totk_config: zstd.totk_config.clone(),
             zstd: zstd.clone(),
             data: file_data,
             endian: sarc.endian(),
             writer: writer,
+            hashes: PackFile::populate_hashes(&sarc),
             sarc: sarc,
         })
     }
-    //Get totk actor entries recursively
+
+    pub fn reload(&mut self) {
+        let data: Vec<u8> = self.writer.to_binary();
+        self.sarc = Sarc::new(data).expect("Failed");
+    }
+    
+    pub fn populate_hashes(sarc: &Sarc) -> HashMap<String, String> {
+        let mut hashes: HashMap<String, String> = HashMap::default();
+        for file in sarc.files() {
+            let file_name = file.name.unwrap_or("");
+            if !file_name.is_empty() {
+                let Hash = SHA256(file.data().to_vec());
+                hashes.insert(file_name.to_string(), Hash);
+            }
+        }
+        hashes
+    }
 
     //Save the sarc file, compress if file ends with .zs, create directory if needed
     pub fn save_default(&mut self)-> io::Result<()> {

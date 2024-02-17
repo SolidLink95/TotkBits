@@ -1,6 +1,6 @@
 use crate::BinTextFile::{bytes_to_file, BymlFile};
 use crate::Gui::{ActiveTab, OpenedFile, TotkBitsApp};
-use crate::Pack::PackFile;
+use crate::Pack::{PackComparer, PackFile};
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{Icons, Pathlib, Settings};
 use crate::Tree::{self, TreeNode};
@@ -27,33 +27,35 @@ pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
         ActiveTab::DiretoryTree => {
             if let Some(internal_file) = &mut app.internal_sarc_file {
                 if let Some(pack) = &mut app.pack {
-                    let path = FileDialog::new()
-                        .set_file_name(&internal_file.path.name)
-                        .set_title("Extract")
-                        .save_file();
-                    println!("{}", &path.clone().unwrap().to_string_lossy().into_owned());
-                    if let Some(dest_file) = &path {
-                        if let Some(data) = pack.sarc.get_data(&internal_file.path.full_path) {
-                            match bytes_to_file(data.to_vec(), &dest_file.to_string_lossy()) {
-                                Ok(_) => {
-                                    app.status_text = format!(
-                                        "Saved: {}",
-                                        dest_file.to_string_lossy().into_owned()
-                                    );
+                    if let Some(opened) = &mut pack.opened {
+                        let path = FileDialog::new()
+                            .set_file_name(&internal_file.path.name)
+                            .set_title("Extract")
+                            .save_file();
+                        println!("{}", &path.clone().unwrap().to_string_lossy().into_owned());
+                        if let Some(dest_file) = &path {
+                            if let Some(data) = opened.sarc.get_data(&internal_file.path.full_path) {
+                                match bytes_to_file(data.to_vec(), &dest_file.to_string_lossy()) {
+                                    Ok(_) => {
+                                        app.status_text = format!(
+                                            "Saved: {}",
+                                            dest_file.to_string_lossy().into_owned()
+                                        );
+                                    }
+                                    Err(err) => {
+                                        app.status_text = format!(
+                                            "Error extracting: {}",
+                                            dest_file.to_string_lossy().into_owned()
+                                        );
+                                    }
                                 }
-                                Err(err) => {
-                                    app.status_text = format!(
-                                        "Error extracting: {}",
-                                        dest_file.to_string_lossy().into_owned()
-                                    );
-                                }
+                            } else {
+                                app.status_text = format!(
+                                    "Error extracting: {} to {}",
+                                    &internal_file.path.name,
+                                    dest_file.to_string_lossy().into_owned()
+                                );
                             }
-                        } else {
-                            app.status_text = format!(
-                                "Error extracting: {} to {}",
-                                &internal_file.path.name,
-                                dest_file.to_string_lossy().into_owned()
-                            );
                         }
                     }
                 }
@@ -63,8 +65,6 @@ pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
     }
     Ok(())
 }
-
-
 
 pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io::Result<()>> {
     if app.settings.is_file_loaded {
@@ -90,7 +90,7 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
     println!("Is {} a sarc?", path.clone());
     match PackFile::new(path.clone(), app.zstd.clone()) {
         Ok(pack) => {
-            app.pack = Some(pack);
+            app.pack = Some(PackComparer::from_pack(pack, app.zstd.clone()));
             app.settings.is_file_loaded = true;
             println!("Sarc  opened!");
             app.active_tab = ActiveTab::DiretoryTree;
@@ -105,7 +105,12 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
     let res_byml = BymlFile::new(path.clone(), app.zstd.clone());
     if let Ok(b) = res_byml {
         app.text = Byml::to_text(&b.pio);
-        println!("{}, {} {}", &app.text.len(), &b.pio.to_binary(roead::Endian::Little).len(), app.text.chars().filter(|&c| c == '\n').count());
+        println!(
+            "{}, {} {}",
+            &app.text.len(),
+            &b.pio.to_binary(roead::Endian::Little).len(),
+            app.text.chars().filter(|&c| c == '\n').count()
+        );
         app.opened_file = OpenedFile::new(
             path,
             FileType::Byml,
@@ -168,9 +173,13 @@ pub fn save_text_file_by_filetype(app: &mut TotkBitsApp, dest_file: &str) {
             if let Ok(b) = &mut byml {
                 b.file_data.file_type = FileType::Bcett;
                 match b.save(dest_file.to_string()) {
-                    Ok(_) => {app.status_text = format!("Saved: {}", dest_file);},
-                    Err(_) => {app.status_text = format!("Failed to save bcett byml: {}", dest_file);},
-                }                
+                    Ok(_) => {
+                        app.status_text = format!("Saved: {}", dest_file);
+                    }
+                    Err(_) => {
+                        app.status_text = format!("Failed to save bcett byml: {}", dest_file);
+                    }
+                }
             }
         }
         FileType::Byml => {
@@ -178,9 +187,13 @@ pub fn save_text_file_by_filetype(app: &mut TotkBitsApp, dest_file: &str) {
             if let Ok(b) = &mut byml {
                 b.file_data.file_type = FileType::Byml;
                 match b.save(dest_file.to_string()) {
-                    Ok(_) => {app.status_text = format!("Saved: {}", dest_file);},
-                    Err(_) => {app.status_text = format!("Failed to save byml: {}", dest_file);},
-                }       
+                    Ok(_) => {
+                        app.status_text = format!("Saved: {}", dest_file);
+                    }
+                    Err(_) => {
+                        app.status_text = format!("Failed to save byml: {}", dest_file);
+                    }
+                }
             }
         }
         FileType::Msbt => {
@@ -204,7 +217,9 @@ pub fn save_text_file_by_filetype(app: &mut TotkBitsApp, dest_file: &str) {
 pub fn save_tab_tree(app: &mut TotkBitsApp) {
     //save sarc to default path, if any opened
     if let Some(pack) = &mut app.pack {
-        let _ = pack.save_default();
+        if let Some(opened) = &mut pack.opened {
+            let _ = opened.save_default();
+        }
     }
 }
 
@@ -218,12 +233,14 @@ pub fn save_as_click(app: &mut TotkBitsApp) -> Result<(), roead::Error> {
         match app.active_tab {
             ActiveTab::DiretoryTree => {
                 if let Some(pack) = &mut app.pack {
-                    pack.save(dest_file)?;
-                    return Ok(());
+                    if let Some(opened) = &mut pack.opened {
+                        opened.save(dest_file)?;
+                        return Ok(());
+                    }
                 }
             }
             ActiveTab::TextBox => {
-                for ext in vec![".yml",".yaml",".json"] {
+                for ext in vec![".yml", ".yaml", ".json"] {
                     if dest_file.to_lowercase().ends_with(ext) {
                         let mut f = fs::File::create(dest_file)?;
                         f.write_all(app.text.as_bytes())?;
