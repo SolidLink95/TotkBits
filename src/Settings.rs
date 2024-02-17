@@ -1,6 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use egui::{epaint::Shadow, include_image, Color32, Margin, Style, TextStyle, Vec2};
+use egui_code_editor::Syntax;
 
 pub struct Settings {
     pub lines_count: usize,
@@ -13,6 +14,7 @@ pub struct Settings {
     pub is_file_loaded: bool, //flag for loading file, prevents the program from loading file from disk in every frame
     pub is_tree_loaded: bool, //flag to reload gui (collapsingheaders) from tree, prevents from traversing tree in every frame
     pub styles: Styles,
+    pub syntax: Arc<Syntax> //syntax for code editor
 }
 
 impl Default for Settings {
@@ -30,6 +32,7 @@ impl Default for Settings {
             is_file_loaded: true,
             is_tree_loaded: true,
             styles: Styles::new(def_style),
+            syntax: Arc::new(Syntax::rust())
         }
     }
 }
@@ -86,13 +89,36 @@ impl Styles {
         Self {
             def_style: def_style.clone(),
             tree: Arc::new(def_style.clone()),
-            text_editor: Arc::new(def_style.clone()),
+            text_editor: Styles::get_text_editor_style(def_style.clone()),
             toolbar: Styles::get_toolbar_style(def_style.clone()),
             context_menu: Styles::get_menubar_style(def_style.clone()),
             menubar: Styles::get_menubar_style(def_style),
         }
     }
 
+    pub fn get_text_editor_style(def_style: Style) -> Arc<Style> {
+        let mut style: Style = def_style.clone();
+        let square_rounding = egui::Rounding::same(0.0);
+        let transparent = Color32::TRANSPARENT;
+        //No outline
+        style.visuals.widgets.noninteractive.bg_stroke.color = transparent;
+        style.visuals.widgets.inactive.bg_stroke.color = transparent;
+        style.visuals.widgets.active.bg_stroke.color = transparent;
+        style.visuals.widgets.hovered.bg_stroke.color = transparent;
+        style.visuals.widgets.open.bg_stroke.color = transparent;
+        //Square rounding/edges
+        style.visuals.menu_rounding = square_rounding;
+        style.visuals.widgets.noninteractive.rounding = square_rounding; // No rounding on buttons
+        style.visuals.widgets.inactive.rounding = square_rounding; // No rounding on buttons
+        style.visuals.widgets.hovered.rounding = square_rounding; // No rounding on buttons
+        style.visuals.widgets.active.rounding = square_rounding; // No rounding on buttons
+        style.visuals.widgets.open.rounding = square_rounding; // No rounding on buttons
+        style.visuals.window_rounding = square_rounding;
+
+
+        return Arc::new(style);
+
+    }
     pub fn get_context_menu_style(def_style: Style) -> Arc<Style> {
         Styles::get_menubar_style(def_style)
     }

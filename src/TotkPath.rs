@@ -9,6 +9,8 @@ use std::env;
 //use roead::byml::HashMap;
 use serde::{Deserialize, Serialize};
 
+use crate::Pack::PackFile;
+
 #[derive(Deserialize, Serialize)]
 pub struct TotkPath {
     pub romfs: PathBuf,
@@ -49,6 +51,9 @@ impl TotkPath {
         }
     }
 
+    pub fn get_pack_path_from_sarc(&self, pack: PackFile) -> io::Result<PathBuf> {
+        self.get_pack_path(&pack.path.stem)
+    }
     pub fn get_pack_path(&self, name: &str) -> io::Result<PathBuf> {
         let pack_local_path = format!("Pack/Actor/{}.pack.zs", name);
         let mut pack_path = self.romfs.clone();

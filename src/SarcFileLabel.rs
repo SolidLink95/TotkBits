@@ -1,7 +1,8 @@
 use std::io;
 use std::rc::Rc;
 
-use crate::BinTextFile::{BymlFile, FileData, MsytFile};
+use crate::BinTextFile::{BymlFile, FileData};
+use msyt::converter::MsytFile;
 
 use crate::Gui::{ActiveTab, OpenedFile, TotkBitsApp};
 use crate::Tree::TreeNode;

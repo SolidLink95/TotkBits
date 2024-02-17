@@ -38,4 +38,6 @@ clap = "2"
 failure = "0.1"
 indexmap = { version = "1", features = ["serde", "serde-1"] }
 anyhow = "1"
+egui_code_editor = { path = "src/egui_code_editor" , default-features = true }
+colorful = "0.2.2"
 

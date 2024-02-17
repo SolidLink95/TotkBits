@@ -1,14 +1,15 @@
-use crate::BinTextFile::{bytes_to_file, BymlFile, MsytFile};
+use crate::BinTextFile::{bytes_to_file, BymlFile};
 use crate::Gui::{ActiveTab, OpenedFile, TotkBitsApp};
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{Icons, Pathlib, Settings};
 use crate::Tree::{self, TreeNode};
 use crate::Zstd::{is_msyt, FileType, TotkZstd};
+use msyt::converter::MsytFile;
 //use crate::SarcFileLabel::ScrollAreaPub;
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::{Align, Button, InnerResponse, Label, Layout, Pos2, Rect, Shape};
-use rfd::FileDialog;
+use rfd::{FileDialog, MessageDialog};
 use roead::aamp::ParameterIO;
 //use nfd::Response;
 use roead::byml::Byml;
@@ -18,7 +19,7 @@ use std::error::Error;
 use std::fmt::format;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{fs, io};
 
 pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
@@ -34,10 +35,19 @@ pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
                     if let Some(dest_file) = &path {
                         if let Some(data) = pack.sarc.get_data(&internal_file.path.full_path) {
                             match bytes_to_file(data.to_vec(), &dest_file.to_string_lossy()) {
-                                Ok(_) => {app.status_text = format!("Saved: {}", dest_file.to_string_lossy().into_owned());},
-                                Err(err) => {app.status_text = format!("Error extracting: {}", dest_file.to_string_lossy().into_owned());}
+                                Ok(_) => {
+                                    app.status_text = format!(
+                                        "Saved: {}",
+                                        dest_file.to_string_lossy().into_owned()
+                                    );
+                                }
+                                Err(err) => {
+                                    app.status_text = format!(
+                                        "Error extracting: {}",
+                                        dest_file.to_string_lossy().into_owned()
+                                    );
+                                }
                             }
-                            
                         } else {
                             app.status_text = format!(
                                 "Error extracting: {} to {}",
@@ -54,16 +64,7 @@ pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
     Ok(())
 }
 
-pub fn open_file_safe(app: &mut TotkBitsApp, _ui: &mut egui::Ui) {
-    match open_byml_or_sarc(app, _ui) {
-        Some(_) => {
-            app.status_text = format!("Opened: {}", app.opened_file.path.full_path);
-        }
-        None => {
-            app.status_text = format!("Failed to open: {}", app.opened_file.path.full_path);
-        }
-    }
-}
+
 
 pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io::Result<()>> {
     if app.settings.is_file_loaded {
@@ -102,25 +103,22 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
     }
     println!("Is {} a byml?", path.clone());
     let res_byml = BymlFile::new(path.clone(), app.zstd.clone());
-    match res_byml {
-        Ok(b) => {
-            app.text = Byml::to_text(&b.pio);
-            app.opened_file = OpenedFile::new(
-                path,
-                FileType::Byml,
-                BymlFile::get_endiannes(&b.file_data.data),
-                None,
-            );
-            app.opened_file.byml = Some(b);
-            app.active_tab = ActiveTab::TextBox;
-            println!("Byml  opened!");
-            app.internal_sarc_file = None;
-            app.status_text = format!("Opened: {}", app.opened_file.path.full_path);
-            return Some(Ok(()));
-        }
-
-        Err(_) => {}
-    };
+    if let Ok(b) = res_byml {
+        app.text = Byml::to_text(&b.pio);
+        println!("{}, {} {}", &app.text.len(), &b.pio.to_binary(roead::Endian::Little).len(), app.text.chars().filter(|&c| c == '\n').count());
+        app.opened_file = OpenedFile::new(
+            path,
+            FileType::Byml,
+            BymlFile::get_endiannes(&b.file_data.data),
+            None,
+        );
+        app.opened_file.byml = Some(b);
+        app.active_tab = ActiveTab::TextBox;
+        println!("Byml  opened!");
+        app.internal_sarc_file = None;
+        app.status_text = format!("Opened: {}", app.opened_file.path.full_path);
+        return Some(Ok(()));
+    }
     app.settings.is_tree_loaded = true;
     app.status_text = format!("Failed to open: {}", app.opened_file.path.full_path.clone());
     return None;
@@ -163,24 +161,26 @@ pub fn save_tab_text(app: &mut TotkBitsApp) -> Result<(), roead::Error> {
 }
 
 pub fn save_text_file_by_filetype(app: &mut TotkBitsApp, dest_file: &str) {
-    //Save the content of the text editor. Check if app.text is empty beforehand!
+    //Save the content of the text editor. Check if app.text and dest_file are not empty beforehand!
     match app.opened_file.file_type {
         FileType::Bcett => {
             let mut byml = BymlFile::from_text(&app.text, app.zstd.clone());
             if let Ok(b) = &mut byml {
                 b.file_data.file_type = FileType::Bcett;
-                b.save(dest_file.to_string())
-                    .expect(&format!("Failed to save bcett byml {}", dest_file));
-                app.status_text = format!("Saved: {}", dest_file);
+                match b.save(dest_file.to_string()) {
+                    Ok(_) => {app.status_text = format!("Saved: {}", dest_file);},
+                    Err(_) => {app.status_text = format!("Failed to save bcett byml: {}", dest_file);},
+                }                
             }
         }
         FileType::Byml => {
             let mut byml = BymlFile::from_text(&app.text, app.zstd.clone());
             if let Ok(b) = &mut byml {
                 b.file_data.file_type = FileType::Byml;
-                b.save(dest_file.to_string())
-                    .expect(&format!("Failed to save  byml {}", dest_file));
-                app.status_text = format!("Saved: {}", dest_file);
+                match b.save(dest_file.to_string()) {
+                    Ok(_) => {app.status_text = format!("Saved: {}", dest_file);},
+                    Err(_) => {app.status_text = format!("Failed to save byml: {}", dest_file);},
+                }       
             }
         }
         FileType::Msbt => {
@@ -190,7 +190,7 @@ pub fn save_text_file_by_filetype(app: &mut TotkBitsApp, dest_file: &str) {
                     app.status_text = format!("Saved: {}", dest_file);
                 }
                 Err(_) => {
-                    app.status_text = format!("Error saving: {}", dest_file);
+                    app.status_text = format!("Error saving msyt: {}", dest_file);
                 }
             }
         }
@@ -214,7 +214,7 @@ pub fn save_as_click(app: &mut TotkBitsApp) -> Result<(), roead::Error> {
         prob_file_name = Pathlib::new(app.opened_file.path.full_path.clone()).name;
     }
     let dest_file = save_file_dialog(Some(prob_file_name));
-    if dest_file.len() > 0 {
+    if !dest_file.is_empty() {
         match app.active_tab {
             ActiveTab::DiretoryTree => {
                 if let Some(pack) = &mut app.pack {
@@ -223,6 +223,13 @@ pub fn save_as_click(app: &mut TotkBitsApp) -> Result<(), roead::Error> {
                 }
             }
             ActiveTab::TextBox => {
+                for ext in vec![".yml",".yaml",".json"] {
+                    if dest_file.to_lowercase().ends_with(ext) {
+                        let mut f = fs::File::create(dest_file)?;
+                        f.write_all(app.text.as_bytes())?;
+                        return Ok(());
+                    }
+                }
                 save_text_file_by_filetype(app, &dest_file);
             }
         }
@@ -233,29 +240,37 @@ pub fn save_as_click(app: &mut TotkBitsApp) -> Result<(), roead::Error> {
 
 pub fn open_file_button_click(app: &mut TotkBitsApp) -> io::Result<()> {
     // Logic for opening a file
-    let file_name = open_file_dialog(None);
-    if !file_name.is_empty() {
-        println!("Attempting to read {} file", &file_name);
-        app.opened_file = OpenedFile::from_path(file_name.clone(), FileType::Other);
-        app.opened_file.endian = None;
-        app.opened_file.msyt = None;
-        let mut f_handle = fs::File::open(&file_name)?;
-        let mut buffer: Vec<u8> = Vec::new(); //String::new();
-        match f_handle.read_to_end(&mut buffer) {
-            Ok(_) => {
-                app.status_text = format!("Opened file: {}", &app.opened_file.path.full_path);
-                app.settings.is_file_loaded = false;
-                return Ok(());
-            }
-            Err(_err) => {
-                app.status_text = format!("Error reading file: {}", file_name);
-                return Err(io::Error::new(
-                    io::ErrorKind::BrokenPipe,
-                    app.status_text.clone(),
-                ));
+    if let Some(file) = FileDialog::new().pick_file() {
+        let file_name = file.to_string_lossy().to_string();
+        if !file.exists() {
+            //open dialog forbids opening
+            app.status_text = format!("File does not exist: {}", file_name);
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                app.status_text.clone(),
+            ));
+        }
+        if !file_name.is_empty() {
+            println!("Attempting to read {} file", &file_name);
+            app.opened_file = OpenedFile::from_path(file_name.clone(), FileType::Other);
+            app.opened_file.endian = None;
+            app.opened_file.msyt = None;
+            let mut f_handle = fs::File::open(&file_name)?;
+            let mut buffer: Vec<u8> = Vec::new(); //String::new();
+            match f_handle.read_to_end(&mut buffer) {
+                Ok(_) => {
+                    app.status_text = format!("Opened file: {}", &app.opened_file.path.full_path);
+                    app.settings.is_file_loaded = false;
+                }
+                Err(_err) => {
+                    app.status_text = format!("Error reading file: {}", file_name);
+                    return Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        app.status_text.clone(),
+                    ));
+                }
             }
         }
-        //self.text = buffer;
     } else {
         app.status_text = "No file selected".to_owned();
         return Err(io::Error::new(
@@ -263,6 +278,7 @@ pub fn open_file_button_click(app: &mut TotkBitsApp) -> io::Result<()> {
             "No file selected",
         ));
     }
+    return Ok(());
 }
 
 pub fn close_all_click(app: &mut TotkBitsApp) {
@@ -277,19 +293,6 @@ pub fn close_all_click(app: &mut TotkBitsApp) {
 pub fn save_file_dialog(file_name: Option<String>) -> String {
     let name = file_name.unwrap_or("".to_string());
     let file = FileDialog::new().set_file_name(name).save_file();
-    match file {
-        Some(res) => {
-            return res.to_string_lossy().into_owned();
-        }
-        None => {
-            return "".to_string();
-        }
-    }
-}
-
-pub fn open_file_dialog(file_name: Option<String>) -> String {
-    let name = file_name.unwrap_or("".to_string());
-    let file = FileDialog::new().set_file_name(name).pick_file();
     match file {
         Some(res) => {
             return res.to_string_lossy().into_owned();

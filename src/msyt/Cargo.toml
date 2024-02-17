@@ -20,3 +20,4 @@ serde = "1"
 serde_derive = "1"
 serde_yaml = "0.8"
 walkdir = "2"
+roead = { version = "0.23.1", features = ["yaml","sarc","byml"] }

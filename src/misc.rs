@@ -10,7 +10,7 @@ use nfd::Response;
 pub fn get_example_yaml() -> String{
     let mut r = String::new();
     for i in 1..10000 {
-        r += &format!("{:?}\n", i);
+        r += &format!("{:?} ", i);
     }
     return r;
 }

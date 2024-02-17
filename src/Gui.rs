@@ -1,19 +1,21 @@
 use crate::misc;
 use crate::BinTextFile::BymlFile;
 use crate::ButtonOperations::{
-    edit_click, extract_click, open_byml_or_sarc, open_file_button_click, open_file_safe, save_as_click, save_click, save_file_dialog
+    edit_click, extract_click, open_byml_or_sarc, open_file_button_click,
+    save_as_click, save_click, save_file_dialog,
 };
 use crate::GuiMenuBar::MenuBar;
+use crate::GuiScroll::EfficientScroll;
 use crate::Pack::PackFile;
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{Icons, Pathlib, Settings};
 use crate::TotkPath::TotkPath;
 use crate::Tree::{self, TreeNode};
 use crate::Zstd::{FileType, TotkZstd};
-use crate::GuiScroll::EfficientScroll;
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::text::LayoutJob;
-use egui::{Align, Button, Label, Layout, Pos2, Rect, Shape};
+use egui::{Align, Button, Context, FontId, InputState, Label, Layout, Pos2, Rect, Response, Shape};
+use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use egui_extras::install_image_loaders;
 use roead::sarc::File;
 use std::rc::Rc;
@@ -47,8 +49,12 @@ impl Default for OpenedFile<'_> {
 }
 
 impl<'a> OpenedFile<'_> {
-
-    pub fn new(path: String, file_type: FileType,  endian: Option<roead::Endian>, msyt: Option<String>) -> Self {
+    pub fn new(
+        path: String,
+        file_type: FileType,
+        endian: Option<roead::Endian>,
+        msyt: Option<String>,
+    ) -> Self {
         Self {
             file_type: file_type,
             path: Pathlib::new(path),
@@ -72,24 +78,28 @@ impl<'a> OpenedFile<'_> {
 impl<'a> OpenedFile<'_> {
     pub fn get_endian_label(&self) -> String {
         match self.endian {
-            Some(endian) => {
-                match endian {
-                    roead::Endian::Big => {return "BE".to_string();},
-                    roead::Endian::Little => {return  "LE".to_string();}
+            Some(endian) => match endian {
+                roead::Endian::Big => {
+                    return "BE".to_string();
+                }
+                roead::Endian::Little => {
+                    return "LE".to_string();
                 }
             },
-            None => {return "".to_string();}
+            None => {
+                return "".to_string();
+            }
         }
     }
 }
 
 pub struct TotkBitsApp<'a> {
-    pub opened_file: OpenedFile<'a>,             //path to opened file in string
-    pub text: String,                     //content of the text editor
-    pub status_text: String,              //bottom bar text
-    pub scroll: ScrollArea,               //scroll area
-    pub scroll_updater: EfficientScroll,  //scroll area
-    pub active_tab: ActiveTab,            //active tab, either sarc file or text editor
+    pub opened_file: OpenedFile<'a>,     //path to opened file in string
+    pub text: String,                    //content of the text editor
+    pub status_text: String,             //bottom bar text
+    pub scroll: ScrollArea,              //scroll area
+    pub scroll_updater: EfficientScroll, //scroll area
+    pub active_tab: ActiveTab,           //active tab, either sarc file or text editor
     language: String, //language for highlighting, no option for yaml yet, toml is closest
     pub zstd: Arc<TotkZstd<'a>>, //zstd compressors and decompressors
     pub pack: Option<PackFile<'a>>, //opened sarc file object, none if none opened
@@ -99,6 +109,8 @@ pub struct TotkBitsApp<'a> {
     pub menu_bar: Arc<MenuBar>,                                       //menu bar at the top
     pub icons: Icons<'a>,                                             //cached icons for buttons
     pub settings: Settings,                                           //various settings
+    pub code_editor: CodeEditor,
+    pub input_state: InputState
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -120,12 +132,16 @@ impl Default for TotkBitsApp<'_> {
             menu_bar: Arc::new(MenuBar::new(settings.styles.menubar.clone()).unwrap()),
             icons: Icons::new(&settings.icon_size.clone()),
             settings: settings,
+            code_editor: CodeEditor::default(),
+            input_state: InputState::default(),
         }
     }
 }
 
 impl eframe::App for TotkBitsApp<'_> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        //let x = ctx.input(|i| i.raw_scroll_delta.y);
+        //self.status_text = format!("{}", x);
         install_image_loaders(ctx);
         // Top panel (menu bar)
         self.menu_bar.clone().display(self, ctx);
@@ -138,7 +154,7 @@ impl eframe::App for TotkBitsApp<'_> {
         egui::CentralPanel::default().show(ctx, |ui| {
             Gui::display_labels(self, ui);
 
-            Gui::display_main(self, ui);
+            Gui::display_main(self, ui, ctx);
         });
     }
 }
@@ -206,8 +222,9 @@ impl Gui {
         });
     }
 
-    pub fn display_main(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
-        let theme: egui_extras::syntax_highlighting::CodeTheme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
+    pub fn display_main(app: &mut TotkBitsApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let theme: egui_extras::syntax_highlighting::CodeTheme =
+            egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
         let language = app.language.clone();
         let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
             let mut layout_job: LayoutJob =
@@ -220,16 +237,15 @@ impl Gui {
             ActiveTab::TextBox => {
                 //scrollbar
                 app.scroll_resp = Some(app.scroll.clone().show(ui, |ui| {
-                    ui.add_sized(
-                        ui.available_size(),
-                        egui::TextEdit::multiline(&mut app.text)
-                            .font(app.settings.editor_font.clone()) // Use monospace font for proper alignment
-                            .code_editor()
-                            .desired_rows(10)
-                            .lock_focus(true)
-                            .desired_width(f32::INFINITY)
-                            .layouter(&mut layouter),
-                    );
+                    ui.set_style(app.settings.styles.text_editor.clone());
+                    app.code_editor.clone()
+                        .id_source("code editor")
+                        .with_rows(12)
+                        .with_fontsize(12.0).vscroll(true)
+                        .with_theme(ColorTheme::GRUVBOX)
+                        .with_syntax(app.settings.syntax.clone())
+                        .with_numlines(false)
+                        .show(ui, &mut app.text,  ctx.clone());
                     open_byml_or_sarc(app, ui);
                     //TODO: get scrollbar position and render only that part of text
                     //println!("{:?}", app.scroll.clone().show_viewport(ui, add_contents))
@@ -245,6 +261,7 @@ impl Gui {
                     app.settings.lines_count //app.text.chars().filter(|&c| c == '\n').count()
                 );*/
                 //println!("{:?} \n\n\n", r.state);
+                //ctx.set_style(app.settings.styles.def_style.clone());
             }
             ActiveTab::DiretoryTree => {
                 app.scroll_resp = Some(
@@ -337,33 +354,48 @@ impl Gui {
         match app.active_tab {
             ActiveTab::DiretoryTree => {
                 if let Some(pack) = &app.pack {
-                    let endian_label = match pack.endian {
+                    let label_endian = match pack.endian {
                         roead::Endian::Big => "BE",
                         roead::Endian::Little => "LE",
                     };
-                    ui.label(endian_label);
-                    ui.label(&pack.path.name);
+                    display_infolabels(ui, label_endian.to_string(), Some(pack.path.name.clone()));
                 }
             }
             ActiveTab::TextBox => {
                 let mut label_path: Option<String> = None;
-                let mut label_endian = app.opened_file.get_endian_label();
+                let label_endian = app.opened_file.get_endian_label();
                 if let Some(internal_file) = &app.internal_sarc_file {
                     label_path = Some(internal_file.path.name.clone());
-                }
-                else {
+                } else {
                     label_path = Some(app.opened_file.path.name.clone());
                 }
-                
-                if let Some(l_path) = &label_path {
-                    //ui.label(format!("{:?}", app.opened_file_type));
-                    ui.label(label_endian);
-                    ui.label(l_path);
-                }
+
+                display_infolabels(ui, label_endian, label_path);
             }
         }
     }
 }
+
+fn calc_labels_width(label: &str) -> f32 {
+    (label.len() + 3) as f32 * 6.0 //very rough calculation based on default Style
+}
+
+fn are_infolables_shown(ui: &mut egui::Ui, label: &str) -> bool {
+    let perc = calc_labels_width(label) / ui.available_width();
+    if perc < 0.79{
+        return true;
+    }
+    return false;
+}
+pub fn display_infolabels(ui: &mut egui::Ui, endian: String, path: Option<String>) {
+    if let Some(path) = &path {
+        if are_infolables_shown(ui, path) {
+            ui.add(Label::new(endian));
+            ui.add(Label::new(path));
+        }
+    }
+}
+
 
 //TODO: saving byml file,
 
