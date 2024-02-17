@@ -38,6 +38,10 @@ where
         parent.children.borrow_mut().push(Rc::clone(child));
     }
 
+    pub fn is_file(&self) -> bool {
+        self.path.full_path.contains(".")
+    }
+
     pub fn is_root(&self) -> bool {
         self.parent.borrow().upgrade().is_none()
     }

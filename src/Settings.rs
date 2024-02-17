@@ -1,7 +1,11 @@
-use std::{path::Path, sync::Arc};
+use std::{path::Path, rc::Rc, sync::Arc};
 
-use egui::{epaint::Shadow, include_image, style::HandleShape, Color32, Margin, Style, TextStyle, Vec2};
+use egui::{
+    epaint::Shadow, include_image, style::HandleShape, Color32, Margin, Style, TextStyle, Vec2,
+};
 use egui_code_editor::Syntax;
+
+use crate::{Gui::TotkBitsApp, Tree::TreeNode};
 
 pub struct Settings {
     pub lines_count: usize,
@@ -9,17 +13,17 @@ pub struct Settings {
     pub editor_font: TextStyle,
     pub window_color: Color32,
     pub tree_bg_color: Color32, // color of the backgroun
-    pub button_size: Vec2, //size of the buttons
-    pub icon_size: Vec2, //size of the icons for buttons
+    pub button_size: Vec2,      //size of the buttons
+    pub icon_size: Vec2,        //size of the icons for buttons
     pub is_file_loaded: bool, //flag for loading file, prevents the program from loading file from disk in every frame
     pub is_tree_loaded: bool, //flag to reload gui (collapsingheaders) from tree, prevents from traversing tree in every frame
     pub styles: Styles,
-    pub syntax: Arc<Syntax> //syntax for code editor
+    pub syntax: Arc<Syntax>, //syntax for code editor
+    pub modded_color: Color32
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        
         let def_style = Style::default();
         Self {
             lines_count: 0 as usize,
@@ -32,7 +36,8 @@ impl Default for Settings {
             is_file_loaded: true,
             is_tree_loaded: true,
             styles: Styles::new(def_style),
-            syntax: Arc::new(Syntax::rust())
+            syntax: Arc::new(Syntax::rust()),
+            modded_color: Color32::from_rgb(204, 153, 16),
         }
     }
 }
@@ -76,12 +81,15 @@ impl<'a> Icons<'_> {
 }
 
 pub struct Styles {
-    pub def_style:Arc<Style>,         //default style
+    pub def_style: Arc<Style>,    //default style
     pub tree: Arc<Style>,         //sarc directory tree
     pub text_editor: Arc<Style>,  //text editor textedit
     pub toolbar: Arc<Style>,      // image buttons (save, open)
     pub context_menu: Arc<Style>, //context menu
     pub menubar: Arc<Style>,      //the menu bar at the top
+    pub modded_file: Arc<Style>,  //the menu bar at the top
+    pub added_file: Arc<Style>,   //the menu bar at the top
+    pub vanila_file: Arc<Style>,   //the menu bar at the top
 }
 
 impl Styles {
@@ -92,12 +100,109 @@ impl Styles {
             text_editor: Arc::new(Styles::get_text_editor_style(def_style.clone())),
             toolbar: Arc::new(Styles::get_toolbar_style(def_style.clone())),
             context_menu: Arc::new(Styles::get_context_menu_style(def_style.clone())),
-            menubar: Arc::new(Styles::get_menubar_style(def_style)),
+            menubar: Arc::new(Styles::get_menubar_style(def_style.clone())),
+            modded_file: Arc::new(Styles::get_modded_file_style(def_style.clone())),
+            added_file: Arc::new(Styles::get_added_file_style(def_style.clone())),
+            vanila_file: Arc::new(Styles::get_vanila_file_style(def_style)),
         }
     }
 
+    pub fn get_style_from_comparer(app: &mut TotkBitsApp, ui: &mut egui::Ui, child: &Rc<TreeNode<String>>,) -> Arc<Style> {
+        if let Some(pack) = &mut app.pack {
+            let path = &child.path.full_path;
+            if pack.modded.contains_key(path) {
+                //println!("modded {}", path);
+                return app.settings.styles.modded_file.clone();
+            }
+            else if pack.added.contains_key(path) {
+                return app.settings.styles.added_file.clone();
+            }
+        }
+
+        app.settings.styles.vanila_file.clone()
+    }
+
+    pub fn get_vanila_file_style(def_style: Style) -> Style {
+        let mut style: Style = def_style;
+        /*let dark_yellow = Color32::from_rgb(84, 62, 6);
+        let yellow = Color32::from_rgb(145, 111, 0);
+        //let font_color = Color32::from_gray(27);
+        style.visuals.widgets.noninteractive.weak_bg_fill = dark_yellow;
+        style.visuals.widgets.inactive.weak_bg_fill = dark_yellow;
+        style.visuals.widgets.active.weak_bg_fill = dark_yellow;
+        style.visuals.widgets.hovered.weak_bg_fill = dark_yellow;
+        style.visuals.widgets.open.weak_bg_fill = dark_yellow;
+
+        style.visuals.widgets.noninteractive.bg_fill = yellow;
+        style.visuals.widgets.inactive.bg_fill = yellow;
+        style.visuals.widgets.active.bg_fill = yellow;
+        style.visuals.widgets.hovered.bg_fill = yellow;
+        style.visuals.widgets.open.bg_fill = yellow;
+
+        /*style.visuals.widgets.noninteractive.fg_stroke.color = font_color; // White text
+        style.visuals.widgets.inactive.fg_stroke.color = font_color; // White text
+        style.visuals.widgets.active.fg_stroke.color = font_color; // White text
+        style.visuals.widgets.hovered.fg_stroke.color = font_color; // White text
+        style.visuals.widgets.open.fg_stroke.color = font_color; // White text
+        */
+        style.visuals.selection.bg_fill = yellow;
+        //style.visuals.selection.stroke.color = yellow; font
+        */
+        return style;
+    }
+
+    pub fn get_modded_file_style(def_style: Style) -> Style {
+        let mut style: Style = def_style;
+        let dark_yellow = Color32::from_rgb(84, 62, 6);
+        let yellow = Color32::from_rgb(145, 111, 0);
+        //let font_color = Color32::from_gray(27);
+        style.visuals.widgets.noninteractive.weak_bg_fill = dark_yellow;
+        style.visuals.widgets.inactive.weak_bg_fill = dark_yellow;
+        style.visuals.widgets.active.weak_bg_fill = dark_yellow;
+        style.visuals.widgets.hovered.weak_bg_fill = dark_yellow;
+        style.visuals.widgets.open.weak_bg_fill = dark_yellow;
+
+        style.visuals.widgets.noninteractive.bg_fill = yellow;
+        style.visuals.widgets.inactive.bg_fill = yellow;
+        style.visuals.widgets.active.bg_fill = yellow;
+        style.visuals.widgets.hovered.bg_fill = yellow;
+        style.visuals.widgets.open.bg_fill = yellow;
+
+        /*style.visuals.widgets.noninteractive.fg_stroke.color = font_color; // White text
+        style.visuals.widgets.inactive.fg_stroke.color = font_color; // White text
+        style.visuals.widgets.active.fg_stroke.color = font_color; // White text
+        style.visuals.widgets.hovered.fg_stroke.color = font_color; // White text
+        style.visuals.widgets.open.fg_stroke.color = font_color; // White text
+        */
+        style.visuals.selection.bg_fill = yellow;
+        //style.visuals.selection.stroke.color = yellow; font
+
+        return style;
+    }
+
+    pub fn get_added_file_style(def_style: Style) -> Style {
+        let mut style: Style = def_style;
+        let purple = Color32::from_rgb(109, 0, 158);
+        let dark_purple = Color32::from_rgb(87, 0, 127);
+        style.visuals.widgets.noninteractive.weak_bg_fill = dark_purple;
+        style.visuals.widgets.inactive.weak_bg_fill = dark_purple;
+        style.visuals.widgets.active.weak_bg_fill = dark_purple;
+        style.visuals.widgets.hovered.weak_bg_fill = dark_purple;
+        style.visuals.widgets.open.weak_bg_fill = dark_purple;
+
+        style.visuals.widgets.noninteractive.bg_fill = purple;
+        style.visuals.widgets.inactive.bg_fill = purple;
+        style.visuals.widgets.active.bg_fill = purple;
+        style.visuals.widgets.hovered.bg_fill = purple;
+        style.visuals.widgets.open.bg_fill = purple;
+
+        style.visuals.selection.bg_fill = purple;
+
+        return style;
+    }
+
     pub fn get_text_editor_style(def_style: Style) -> Style {
-        let mut style: Style = def_style.clone();
+        let mut style: Style = def_style;
         let square_rounding = egui::Rounding::same(0.0);
         let transparent = Color32::TRANSPARENT;
         //No outline
@@ -115,35 +220,16 @@ impl Styles {
         style.visuals.widgets.open.rounding = square_rounding; // No rounding on buttons
         style.visuals.window_rounding = square_rounding;
 
-
         return style;
-
     }
     pub fn get_context_menu_style(def_style: Style) -> Style {
-        let mut style: Style = Styles::get_menubar_style(def_style);
-        let square_rounding = egui::Rounding::same(0.0);
-        let active_color = Color32::from_gray(60);
-        let inactive_color = Color32::from_gray(27);
-        let transparent = Color32::TRANSPARENT;
-        
-        style.visuals.handle_shape = HandleShape::Rect { aspect_ratio: 7.0 };
-        style.visuals.menu_rounding = square_rounding;
-        style.visuals.window_rounding = square_rounding;
-        style.visuals.widgets.noninteractive.rounding = square_rounding; // No rounding on buttons
-        style.visuals.widgets.inactive.rounding = square_rounding; // No rounding on buttons
-        style.visuals.widgets.hovered.rounding = square_rounding; // No rounding on buttons
-        style.visuals.widgets.active.rounding = square_rounding; // No rounding on buttons
-        style.visuals.widgets.open.rounding = square_rounding; // No rounding on buttons
-        style.visuals.widgets.noninteractive.fg_stroke.width = 1.0; // Width of the border line
-        style.spacing.button_padding = Vec2::new(10.0, 4.0); // Padding inside the buttons
-        style.spacing.window_margin = Margin::symmetric(4.0, 4.0); // Margin around the window
+        let style: Style = Styles::get_menubar_style(def_style);
 
-        
         return style;
     }
 
     pub fn get_toolbar_style(def_style: Style) -> Style {
-        let mut style: Style = def_style.clone();
+        let mut style: Style = def_style;
         let square_rounding = egui::Rounding::same(0.0);
         let white = Color32::WHITE;
         let _inactive_color = Color32::from_gray(27);
@@ -182,7 +268,7 @@ impl Styles {
     }
 
     pub fn get_menubar_style(def_style: Style) -> Style {
-        let mut style: Style = def_style.clone();
+        let mut style: Style = def_style;
         let square_rounding = egui::Rounding::same(0.0);
         let active_color = Color32::from_gray(60);
         let inactive_color = Color32::from_gray(27);
@@ -234,7 +320,6 @@ pub struct Pathlib {
     pub stem: String,
     pub extension: String,
     pub full_path: String,
-    
 }
 
 impl Pathlib {
@@ -245,31 +330,41 @@ impl Pathlib {
             name: Pathlib::get_name(&path),
             stem: Pathlib::get_stem(&path),
             extension: Pathlib::get_extension(&path),
-            full_path: path
+            full_path: path,
         }
     }
-    pub fn get_parent(path: &str) -> String { //parent dir
+    pub fn get_parent(path: &str) -> String {
+        //parent dir
         Path::new(path)
             .parent()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
             .unwrap_or("".to_string())
     }
-    pub fn get_name(path: &str) -> String { //file name + extension
+    pub fn get_name(path: &str) -> String {
+        //file name + extension
         Path::new(path)
             .file_name()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
             .unwrap_or("".to_string())
     }
-    pub fn get_stem(path: &str) -> String { //just file name
-        Path::new(path)
+    pub fn get_stem(path: &str) -> String {
+        //just file name
+        let mut res = Path::new(path)
             .file_stem()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or("".to_string())
+            .unwrap_or("".to_string());
+        if res.contains(".") {
+           return  res.split(".").next().unwrap_or("").to_string();
+        }
+        res
     }
     pub fn get_extension(path: &str) -> String {
+        let dots = path.chars().filter(|&x| x == '.').count();
+        if dots == 0 {return String::new();}
+        if dots > 1 {return path.split('.').skip(1).collect::<Vec<&str>>().join(".");}
         Path::new(path)
             .extension()
             .and_then(|p| p.to_str())

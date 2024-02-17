@@ -25,7 +25,7 @@ pub struct PackComparer<'a> {
 impl<'a> PackComparer<'a> {
     pub fn from_pack(pack: PackFile<'a>, zstd: Arc<TotkZstd<'a>>) -> Self {
         let config = zstd.clone().totk_config.clone();
-        let vanila = PackComparer::get_vanila_pack(pack.path.name.clone(), zstd.clone());
+        let vanila = PackComparer::get_vanila_pack(pack.path.stem.clone(), zstd.clone());
         //let vanila_path = config.get_pack_path_from_sarc(pack);
         Self {
             opened: Some(pack),
@@ -58,6 +58,7 @@ impl<'a> PackComparer<'a> {
                 }
                 self.added = added;
                 self.modded = modded;
+                println!("Added {:?}\nModded {:?}", self.added, self.modded);
             }
 
         } else { //custom actor
@@ -67,6 +68,7 @@ impl<'a> PackComparer<'a> {
     }
 
     pub fn get_vanila_pack(name: String, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile> {
+        println!("Getting the pack: {}", &name);
         let path = zstd.clone().totk_config.clone().get_pack_path(&name);
         if let Some(path) = &path {
             match PackFile::new(path.to_string_lossy().to_string(), zstd.clone()) {

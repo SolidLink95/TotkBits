@@ -283,7 +283,7 @@ impl Gui {
                                     if !app.settings.is_tree_loaded {
                                         Tree::update_from_sarc_paths(&app.root_node, opened);
                                         app.settings.is_tree_loaded = true;
-                                        Tree::TreeNode::print(&app.root_node, 1);
+                                        //Tree::TreeNode::print(&app.root_node, 1);
                                     }
                                 }
                                 let children: Vec<_> =
@@ -299,24 +299,7 @@ impl Gui {
         }
     }
 
-    pub fn display_lines_numbers(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
-        app.settings.lines_count = app.text.chars().filter(|&c| c == '\n').count() + 1;
-        let max_width = format!("{}", app.settings.lines_count).len();
-        let mut lines_numbers = String::new();
-        for i in 1..app.settings.lines_count {
-            let l = format!("{}", i);
-            let spacing = " ".repeat(max_width - l.len());
-            lines_numbers.push_str(&format!("{}{}\n", spacing, l));
-        }
-        let lines_count = app.text.chars().filter(|&c| c == '\n').count() + 1;
-        let lines_numbers: String = (1..=lines_count).map(|i| format!("{}\n", i)).collect();
-        let label = Label::new(lines_numbers);
-        ui.vertical(|ui| {
-            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                ui.add(label);
-            });
-        });
-    }
+
 
     pub fn display_tree_background(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
         let mut height = 0.0;

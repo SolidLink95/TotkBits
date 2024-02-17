@@ -20,7 +20,29 @@ use std::fmt::format;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::{fs, io};
+
+pub fn remove_click(app: &mut TotkBitsApp, child: &Rc<TreeNode<String>>,) -> io::Result<()> {
+    if let Some(pack) = &mut app.pack {
+        if let Some(opened) = &mut pack.opened {
+            if MessageDialog::new()
+            .set_title("Warning")
+            .set_description(format!(
+                "The following file will be deleted:\n{}\nProceed?",
+                &child.path.full_path
+            ))
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show() == rfd::MessageDialogResult::Yes {
+                app.settings.is_tree_loaded = false; //reload tree
+                opened.writer.remove_file(&child.path.full_path);
+                opened.reload();
+                child.remove_itself();
+            }
+        }
+    }
+    Ok(())
+}
 
 pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
     match app.active_tab {
@@ -63,6 +85,7 @@ pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
         }
         ActiveTab::TextBox => {}
     }
+    
     Ok(())
 }
 
@@ -90,7 +113,9 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
     println!("Is {} a sarc?", path.clone());
     match PackFile::new(path.clone(), app.zstd.clone()) {
         Ok(pack) => {
-            app.pack = Some(PackComparer::from_pack(pack, app.zstd.clone()));
+            let mut pack = PackComparer::from_pack(pack, app.zstd.clone());
+            pack.compare();
+            app.pack = Some(pack);
             app.settings.is_file_loaded = true;
             println!("Sarc  opened!");
             app.active_tab = ActiveTab::DiretoryTree;

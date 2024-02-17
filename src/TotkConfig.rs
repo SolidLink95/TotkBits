@@ -52,7 +52,7 @@ impl TotkConfig {
     }
 
     pub fn get_pack_path_from_sarc(&self, pack: PackFile) -> Option<PathBuf> {
-        self.get_pack_path(&pack.path.stem)
+        self.get_pack_path(&pack.path.name)
     }
     pub fn get_pack_path(&self, name: &str) -> Option<PathBuf> {
         let pack_local_path = format!("Pack/Actor/{}.pack.zs", name);
