@@ -1,7 +1,7 @@
 use std::{path::Path, rc::Rc, sync::Arc};
 
 use egui::{
-    epaint::Shadow, include_image, style::HandleShape, Color32, Margin, Style, TextStyle, Vec2,
+    epaint::Shadow, include_image, style::HandleShape, Color32, Margin, Pos2, Rect, Response, Style, TextStyle, Vec2
 };
 use egui_code_editor::Syntax;
 
@@ -19,7 +19,10 @@ pub struct Settings {
     pub is_tree_loaded: bool, //flag to reload gui (collapsingheaders) from tree, prevents from traversing tree in every frame
     pub styles: Styles,
     pub syntax: Arc<Syntax>, //syntax for code editor
-    pub modded_color: Color32
+    pub modded_color: Color32,
+    pub is_dir_context_menu: bool, //is context menu for dir opened
+    pub dir_context_pos: Option<egui::Pos2>, //
+    pub dir_context_size: Option<Response>,
 }
 
 impl Default for Settings {
@@ -38,6 +41,9 @@ impl Default for Settings {
             styles: Styles::new(def_style),
             syntax: Arc::new(Syntax::rust()),
             modded_color: Color32::from_rgb(204, 153, 16),
+            is_dir_context_menu: false,
+            dir_context_pos: None, //
+            dir_context_size: None,
         }
     }
 }

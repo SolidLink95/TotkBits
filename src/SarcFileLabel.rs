@@ -2,7 +2,7 @@ use std::io;
 use std::rc::Rc;
 
 use crate::BinTextFile::{BymlFile, FileData};
-use crate::ButtonOperations::{extract_click, remove_click};
+use crate::ButtonOperations::ButtonOperations;
 use crate::Settings::Styles;
 use msyt::converter::MsytFile;
 
@@ -10,8 +10,10 @@ use crate::Gui::{ActiveTab, OpenedFile, TotkBitsApp};
 use crate::Tree::TreeNode;
 use crate::Zstd::{is_aamp, is_byml, is_msyt, FileType};
 
-use egui::{CollapsingHeader, Response, Sense, TextStyle, Widget, WidgetInfo, WidgetText, WidgetType};
-use egui::SelectableLabel;
+use egui::{
+    CollapsingHeader, Id, Response, Sense, TextStyle, Widget, WidgetInfo, WidgetText, WidgetType,
+};
+use egui::{Color32, Pos2, Rect, SelectableLabel, Vec2};
 use roead::byml::Byml;
 
 pub struct SarcLabel {
@@ -38,23 +40,18 @@ impl SarcLabel {
             ui.set_style(style);
             let is_selected = SarcLabel::is_internal_file_selected(app, child);
 
-
             //if is_selected {
             let file_label = ui.add(SelectableLabelSarc::new(is_selected, &child.value));
             //file_label.rect.size().y
-            
+
             if file_label.double_clicked() {
                 //println!("Clicked {}", child.full_path.clone());
                 app.internal_sarc_file = Some(child.clone());
                 SarcLabel::safe_open_file_from_opened_sarc(app, ui, &child)
             }
-            if file_label.clicked() {
+            if file_label.clicked() || file_label.secondary_clicked() {
                 //println!("Double Clicked {}", child.full_path.clone());
                 app.internal_sarc_file = Some(child.clone());
-            }
-            if file_label.secondary_clicked() {
-                app.internal_sarc_file = Some(child.clone());
-                println!("Mocking future context menu for {}", &child.path.full_path);
             }
             ctx.set_style(app.settings.styles.context_menu.clone());
             file_label.context_menu(|ui| {
@@ -63,16 +60,17 @@ impl SarcLabel {
                     ui.close_menu();
                 }
                 if ui.button("Extract").clicked() {
-                    let _ = extract_click(app);
+                    let _ = ButtonOperations::extract_click(app);
                     ui.close_menu();
                 }
                 if ui.button("Add").clicked() {
                     println!("Add");
+                    let _ = ButtonOperations::add_click(app, &child);
                     ui.close_menu();
                 }
                 if ui.button("Remove").clicked() {
                     println!("Remove"); //fix this ugly code
-                    let _ = remove_click(app, &child);
+                    let _ = ButtonOperations::remove_click(app, &child);
                     ui.close_menu();
                 }
                 if ui.button("Replace").clicked() {
@@ -95,41 +93,164 @@ impl SarcLabel {
         ui: &mut egui::Ui,
         ctx: &egui::Context,
     ) {
-        if TreeNode::is_leaf(&root_node) {
+        if TreeNode::is_leaf(&root_node) && root_node.is_file() {
             //rarely files in sarc are in root directory
             SarcLabel::display_leaf_node(app, root_node, ui, ctx);
             return;
         }
-        let response = CollapsingHeader::new(root_node.value.clone())
+        let response = CollapsingHeader::new(&root_node.value)
             .default_open(false)
             .show(ui, |ui| {
-                let children: Vec<_> = root_node.children.borrow().iter().cloned().collect();
+                let children: Vec<_> = root_node.children.borrow().iter().cloned().collect(); //prevents borrowing issues
                 for child in children {
-                    if !TreeNode::is_leaf(&child) {
+                    if !TreeNode::is_leaf(&child) && !child.is_file() {
                         SarcLabel::display_tree_in_egui(app, &child, ui, ctx);
                     } else {
                         SarcLabel::display_leaf_node(app, &child, ui, ctx);
                     }
                 }
             });
-        //TODO: custom collapsing header (ui.horizontal with image and selectablelabel)
-        if response.header_response.secondary_clicked() {
-            println!("Mock for context menu {}", &root_node.path.full_path);
+
+        SarcLabel::display_dir_context_menu(app, &root_node, ui, ctx, response.header_response);
+    }
+
+    pub fn display_dir_context_menu(
+        app: &mut TotkBitsApp,
+        child: &Rc<TreeNode<String>>,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        response: Response,
+    ) {
+        if response.secondary_clicked() {
+            app.settings.is_dir_context_menu = true;
+            app.internal_sarc_file = Some(child.clone());
+        }
+        if response.clicked() {
+            app.internal_sarc_file = Some(child.clone());
+            if let Some(internal_file) = &app.internal_sarc_file {
+                if internal_file.path.full_path == child.path.full_path {
+                    println!("CLosed context menu - another node selected");
+                    app.settings.is_dir_context_menu = false;
+                    app.settings.dir_context_pos = None;
+                }
+            }
+        }
+
+        if !app.settings.is_dir_context_menu {
+            return;
+        }
+
+        if let Some(internal_file) = &app.internal_sarc_file {
+            if internal_file.path.full_path != child.path.full_path {
+                return;
+            }
+            //let last_click = ui.input(|i| i.pointer.interact_pos());
+            if app.settings.dir_context_pos.is_none() {
+                app.settings.dir_context_pos = ui.input(|i| i.pointer.interact_pos());
+            }
+            if let Some(pos) = &app.settings.dir_context_pos {
+                let margin = Vec2::new(5.0, 5.0); // Additional margin for width and height
+                let little_margin = Vec2::new(1.0, 1.0); // Additional margin for width and height
+                    
+                let mut rect_pos = pos.clone();
+                let mut dir_pos = pos.clone() + margin;
+                
+
+
+                egui::Area::new(ui.id()).fixed_pos(dir_pos).show(ctx, |ui| {
+                    ui.set_style(app.settings.styles.context_menu.clone());
+                    if app.settings.dir_context_size.is_none() {
+                        app.settings.dir_context_size = Some(
+                            ui.allocate_ui(Vec2::new(ui.available_width(), 0.0), |ui| {
+                                ui.vertical(|ui| {
+                                    ui.button("Button 1");
+                                    ui.button("Button 2");
+                                    ui.button("Button 3");
+                                    ui.button("Button 4");
+                                });
+                            })
+                            .response,
+                        );
+                    }
+
+                    let margin = Vec2::new(10.0, 10.0); // Additional margin for width and height
+                    let mut rect_size = app.settings.dir_context_size.as_ref().unwrap().rect.size() +  margin;
+
+                    // Calculate the position for the rectangle
+                    //let mut rect_pos = response.rect.min - margin;
+
+                    // Draw the rectangle
+                    let rect = Rect::from_min_size(rect_pos, rect_size);
+
+                    let outer_rect = Rect::from_min_size(rect_pos-little_margin, rect_size+(2.0*little_margin));
+                    let button_width = egui::vec2(rect.width() - margin.x, ui.spacing().interact_size.y);
+
+                    ui.painter().rect_filled(outer_rect, 0.0, Color32::from_gray(60));
+                    ui.painter().rect_filled(rect, 0.0, app.settings.window_color);
+                    
+                    //SarcLabel::display_dir_context_menu_bg(app, ui, rect_pos);
+
+                    //if ui.button("Add   ").clicked() {
+                    if ui.add(egui::Button::new("Add").min_size(button_width)).clicked() {
+                        println!("Add   ");
+                        let _ = ButtonOperations::add_click(app, &child);
+                        app.settings.is_dir_context_menu = false;
+                        app.settings.dir_context_pos = None;
+                    }
+                    //if ui.button("Remove").clicked() {
+                    if ui.add(egui::Button::new("Remove").min_size(button_width)).clicked() {
+                        println!("Remove"); //fix this ugly code
+                        let _ = ButtonOperations::remove_click(app, &child);
+                        app.settings.is_dir_context_menu = false;
+                        app.settings.dir_context_pos = None;
+                    }
+                    if ui.add(egui::Button::new("Rename").min_size(button_width)).clicked() {
+                        println!("Rename");
+                        app.settings.is_dir_context_menu = false;
+                        app.settings.dir_context_pos = None;
+                    }
+                    if ui.add(egui::Button::new("Close").min_size(button_width)).clicked() {
+                        println!("Close ");
+                        app.settings.is_dir_context_menu = false;
+                        app.settings.dir_context_pos = None;
+                    }
+                });
+                //ctx.set_style(app.settings.styles.def_style.clone());
+            }
+        }
+
+        if response.clicked_elsewhere() {
+            if let Some(internal_file) = &app.internal_sarc_file {
+                if internal_file.path.full_path == child.path.full_path {
+                    println!("CLosed context menu");
+                    app.settings.is_dir_context_menu = false;
+                    app.settings.dir_context_pos = None;
+                }
+            }
         }
     }
 
+    pub fn display_dir_context_menu_bg(app: &mut TotkBitsApp, ui: &mut egui::Ui, pos: Pos2) {
+        let mut rect_pos = pos.clone();
+        let margin = Vec2::new(10.0, 10.0); // Additional margin for width and height
+                                            //let rect_size = response_rect.response.rect.size() + 2.0 * margin;
+        let mut rect_size = Vec2::new(68.8, 102.0);
+        rect_pos -= margin;
+        // Draw the rectangle
+        rect_size += margin * 2.0;
+        let rect = Rect::from_min_size(rect_pos, rect_size);
+        //println!("{:?} {:?}", rect, rect_size);
+        ui.painter()
+            .rect_filled(rect, 0.0, app.settings.window_color);
+    }
+
     pub fn is_internal_file_selected(app: &mut TotkBitsApp, child: &Rc<TreeNode<String>>) -> bool {
-        match &app.internal_sarc_file {
-            Some(x) => {
-                if x.path.full_path == child.path.full_path {
-                    return true;
-                }
-                return false;
-            }
-            None => {
-                return false;
+        if let Some(internal_file) = &app.internal_sarc_file {
+            if internal_file.path.full_path == child.path.full_path {
+                return true;
             }
         }
+        return false;
     }
 
     pub fn safe_open_file_from_opened_sarc(
@@ -207,8 +328,6 @@ impl SarcLabel {
     }
 }
 
-
-
 #[must_use = "You should put this widget in an ui with `ui.add(widget);`"]
 pub struct SelectableLabelSarc {
     selected: bool,
@@ -250,14 +369,14 @@ impl Widget for SelectableLabelSarc {
             let visuals = ui.style().interact_selectable(&response, selected);
 
             //if selected || response.hovered() || response.highlighted() || response.has_focus() {
-                let rect = rect.expand(visuals.expansion);
+            let rect = rect.expand(visuals.expansion);
 
-                ui.painter().rect(
-                    rect,
-                    visuals.rounding,
-                    visuals.weak_bg_fill,
-                    visuals.bg_stroke,
-                );
+            ui.painter().rect(
+                rect,
+                visuals.rounding,
+                visuals.weak_bg_fill,
+                visuals.bg_stroke,
+            );
             //}
 
             ui.painter().galley(text_pos, galley, visuals.text_color());

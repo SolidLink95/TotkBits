@@ -23,70 +23,227 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::{fs, io};
 
-pub fn remove_click(app: &mut TotkBitsApp, child: &Rc<TreeNode<String>>,) -> io::Result<()> {
-    if let Some(pack) = &mut app.pack {
-        if let Some(opened) = &mut pack.opened {
-            if MessageDialog::new()
-            .set_title("Warning")
-            .set_description(format!(
-                "The following file will be deleted:\n{}\nProceed?",
-                &child.path.full_path
-            ))
-            .set_buttons(rfd::MessageButtons::YesNo)
-            .show() == rfd::MessageDialogResult::Yes {
-                app.settings.is_tree_loaded = false; //reload tree
-                opened.writer.remove_file(&child.path.full_path);
-                opened.reload();
-                child.remove_itself();
+pub struct ButtonOperations {}
+
+impl ButtonOperations {
+    pub fn add_click(app: &mut TotkBitsApp, child: &Rc<TreeNode<String>>) -> io::Result<()> {
+        if let Some(pack) = &mut app.pack {
+            if let Some(opened) = &mut pack.opened {
+                let file = FileDialog::new().set_title("Add file").pick_file();
+                if let Some(file) = &file {
+                    let file_path = Pathlib::new(file.to_string_lossy().to_string());
+                    if !file_path.full_path.is_empty() && file.exists() {
+                        let mut f = fs::File::open(file_path.full_path)?;
+                        let mut buf: Vec<u8> = Vec::new();
+                        f.read_to_end(&mut buf)?;
+                        let mut parent_dir = &child.path.full_path; //selected node is a directory
+                        if child.is_file() {
+                            parent_dir = &child.path.parent; //selected node is a parent
+                        }
+                        let internal_path = format!("{}/{}", parent_dir, file_path.name);
+                        opened.writer.add_file(&internal_path, buf); //file added to writer
+                        opened.reload(); //reload .sarc from .writer
+                        app.settings.is_tree_loaded = false; //reload tree to watch effects
+                    }
+                }
             }
         }
-    }
-    Ok(())
-}
 
-pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
-    match app.active_tab {
-        ActiveTab::DiretoryTree => {
-            if let Some(internal_file) = &mut app.internal_sarc_file {
-                if let Some(pack) = &mut app.pack {
-                    if let Some(opened) = &mut pack.opened {
-                        let path = FileDialog::new()
-                            .set_file_name(&internal_file.path.name)
-                            .set_title("Extract")
-                            .save_file();
-                        println!("{}", &path.clone().unwrap().to_string_lossy().into_owned());
-                        if let Some(dest_file) = &path {
-                            if let Some(data) = opened.sarc.get_data(&internal_file.path.full_path) {
-                                match bytes_to_file(data.to_vec(), &dest_file.to_string_lossy()) {
-                                    Ok(_) => {
-                                        app.status_text = format!(
-                                            "Saved: {}",
-                                            dest_file.to_string_lossy().into_owned()
-                                        );
+        Ok(())
+    }
+
+    pub fn remove_click(app: &mut TotkBitsApp, child: &Rc<TreeNode<String>>) -> io::Result<()> {
+        if let Some(pack) = &mut app.pack {
+            if let Some(opened) = &mut pack.opened {
+                let mut message = format!(
+                    "The following file will be deleted:\n{}\nProceed?",
+                    &child.path.full_path
+                );
+                if TreeNode::is_leaf(&child) || !child.is_file() {
+                    message = format!(
+                        "All files from this directory will be deleted:\n{}\nProceed?",
+                        &child.path.full_path
+                    );
+                }
+                if MessageDialog::new()
+                    .set_title("Warning")
+                    .set_description(message)
+                    .set_buttons(rfd::MessageButtons::YesNo)
+                    .show()
+                    == rfd::MessageDialogResult::Yes
+                {
+                    if TreeNode::is_leaf(&child) {
+                        opened.writer.remove_file(&child.path.full_path);
+                    }
+                    else {
+                        for file in opened.sarc.files() {
+                            let file_name= file.name.unwrap_or("");
+                            if file_name.starts_with(&child.path.full_path) {
+                                opened.writer.remove_file(file_name);
+                            }
+                        }
+                    }
+                    app.settings.is_tree_loaded = false; //reload tree
+                    opened.reload();
+                    child.remove_itself();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn extract_click(app: &mut TotkBitsApp) -> io::Result<()> {
+        match app.active_tab {
+            ActiveTab::DiretoryTree => {
+                if let Some(internal_file) = &mut app.internal_sarc_file {
+                    if let Some(pack) = &mut app.pack {
+                        if let Some(opened) = &mut pack.opened {
+                            let path = FileDialog::new()
+                                .set_file_name(&internal_file.path.name)
+                                .set_title("Extract")
+                                .save_file();
+                            println!("{}", &path.clone().unwrap().to_string_lossy().into_owned());
+                            if let Some(dest_file) = &path {
+                                if let Some(data) =
+                                    opened.sarc.get_data(&internal_file.path.full_path)
+                                {
+                                    match bytes_to_file(data.to_vec(), &dest_file.to_string_lossy())
+                                    {
+                                        Ok(_) => {
+                                            app.status_text = format!(
+                                                "Saved: {}",
+                                                dest_file.to_string_lossy().into_owned()
+                                            );
+                                        }
+                                        Err(err) => {
+                                            app.status_text = format!(
+                                                "Error extracting: {}",
+                                                dest_file.to_string_lossy().into_owned()
+                                            );
+                                        }
                                     }
-                                    Err(err) => {
-                                        app.status_text = format!(
-                                            "Error extracting: {}",
-                                            dest_file.to_string_lossy().into_owned()
-                                        );
-                                    }
+                                } else {
+                                    app.status_text = format!(
+                                        "Error extracting: {} to {}",
+                                        &internal_file.path.name,
+                                        dest_file.to_string_lossy().into_owned()
+                                    );
                                 }
-                            } else {
-                                app.status_text = format!(
-                                    "Error extracting: {} to {}",
-                                    &internal_file.path.name,
-                                    dest_file.to_string_lossy().into_owned()
-                                );
                             }
                         }
                     }
                 }
             }
+            ActiveTab::TextBox => {}
         }
-        ActiveTab::TextBox => {}
+
+        Ok(())
     }
-    
-    Ok(())
+
+    pub fn edit_click(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
+        if let Some(child) = &mut app.internal_sarc_file.clone() {
+            SarcLabel::safe_open_file_from_opened_sarc(app, ui, child)
+        }
+        //app.internal_sarc_file = Some(child.clone());
+    }
+
+    pub fn save_click(app: &mut TotkBitsApp) {
+        match app.active_tab {
+            ActiveTab::DiretoryTree => {
+                save_tab_tree(app);
+            }
+            ActiveTab::TextBox => {
+                let _ = save_tab_text(app);
+            }
+        }
+    }
+
+    pub fn save_as_click(app: &mut TotkBitsApp) -> Result<(), roead::Error> {
+        let mut prob_file_name = String::new();
+        if app.opened_file.path.full_path.len() > 0 {
+            prob_file_name = Pathlib::new(app.opened_file.path.full_path.clone()).name;
+        }
+        let dest_file = save_file_dialog(Some(prob_file_name));
+        if !dest_file.is_empty() {
+            match app.active_tab {
+                ActiveTab::DiretoryTree => {
+                    if let Some(pack) = &mut app.pack {
+                        if let Some(opened) = &mut pack.opened {
+                            opened.save(dest_file)?;
+                            return Ok(());
+                        }
+                    }
+                }
+                ActiveTab::TextBox => {
+                    for ext in vec![".yml", ".yaml", ".json"] {
+                        if dest_file.to_lowercase().ends_with(ext) {
+                            let mut f = fs::File::create(dest_file)?;
+                            f.write_all(app.text.as_bytes())?;
+                            return Ok(());
+                        }
+                    }
+                    save_text_file_by_filetype(app, &dest_file);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn open_file_button_click(app: &mut TotkBitsApp) -> io::Result<()> {
+        // Logic for opening a file
+        if let Some(file) = FileDialog::new().pick_file() {
+            let file_name = file.to_string_lossy().to_string();
+            if !file.exists() {
+                //open dialog forbids opening
+                app.status_text = format!("File does not exist: {}", file_name);
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    app.status_text.clone(),
+                ));
+            }
+            if !file_name.is_empty() {
+                println!("Attempting to read {} file", &file_name);
+                app.opened_file = OpenedFile::from_path(file_name.clone(), FileType::Other);
+                app.opened_file.endian = None;
+                app.opened_file.msyt = None;
+                let mut f_handle = fs::File::open(&file_name)?;
+                let mut buffer: Vec<u8> = Vec::new(); //String::new();
+                match f_handle.read_to_end(&mut buffer) {
+                    Ok(_) => {
+                        app.status_text =
+                            format!("Opened file: {}", &app.opened_file.path.full_path);
+                        app.settings.is_file_loaded = false;
+                    }
+                    Err(_err) => {
+                        app.status_text = format!("Error reading file: {}", file_name);
+                        return Err(io::Error::new(
+                            io::ErrorKind::BrokenPipe,
+                            app.status_text.clone(),
+                        ));
+                    }
+                }
+            }
+        } else {
+            app.status_text = "No file selected".to_owned();
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "No file selected",
+            ));
+        }
+        return Ok(());
+    }
+
+    pub fn close_all_click(app: &mut TotkBitsApp) {
+        app.opened_file = OpenedFile::default();
+        app.pack = None;
+        app.root_node = TreeNode::new("ROOT".to_string(), "/".to_string());
+        app.text = String::new();
+        app.settings.is_file_loaded = true;
+        app.settings.is_tree_loaded = true;
+        app.settings.is_dir_context_menu = false;
+        app.settings.dir_context_pos = None;
+    }
 }
 
 pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io::Result<()>> {
@@ -152,24 +309,6 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
     app.settings.is_tree_loaded = true;
     app.status_text = format!("Failed to open: {}", app.opened_file.path.full_path.clone());
     return None;
-}
-
-pub fn edit_click(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
-    if let Some(child) = &mut app.internal_sarc_file.clone() {
-        SarcLabel::safe_open_file_from_opened_sarc(app, ui, child)
-    }
-    //app.internal_sarc_file = Some(child.clone());
-}
-
-pub fn save_click(app: &mut TotkBitsApp) {
-    match app.active_tab {
-        ActiveTab::DiretoryTree => {
-            save_tab_tree(app);
-        }
-        ActiveTab::TextBox => {
-            let _ = save_tab_text(app);
-        }
-    }
 }
 
 pub fn save_tab_text(app: &mut TotkBitsApp) -> Result<(), roead::Error> {
@@ -246,90 +385,6 @@ pub fn save_tab_tree(app: &mut TotkBitsApp) {
             let _ = opened.save_default();
         }
     }
-}
-
-pub fn save_as_click(app: &mut TotkBitsApp) -> Result<(), roead::Error> {
-    let mut prob_file_name = String::new();
-    if app.opened_file.path.full_path.len() > 0 {
-        prob_file_name = Pathlib::new(app.opened_file.path.full_path.clone()).name;
-    }
-    let dest_file = save_file_dialog(Some(prob_file_name));
-    if !dest_file.is_empty() {
-        match app.active_tab {
-            ActiveTab::DiretoryTree => {
-                if let Some(pack) = &mut app.pack {
-                    if let Some(opened) = &mut pack.opened {
-                        opened.save(dest_file)?;
-                        return Ok(());
-                    }
-                }
-            }
-            ActiveTab::TextBox => {
-                for ext in vec![".yml", ".yaml", ".json"] {
-                    if dest_file.to_lowercase().ends_with(ext) {
-                        let mut f = fs::File::create(dest_file)?;
-                        f.write_all(app.text.as_bytes())?;
-                        return Ok(());
-                    }
-                }
-                save_text_file_by_filetype(app, &dest_file);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-pub fn open_file_button_click(app: &mut TotkBitsApp) -> io::Result<()> {
-    // Logic for opening a file
-    if let Some(file) = FileDialog::new().pick_file() {
-        let file_name = file.to_string_lossy().to_string();
-        if !file.exists() {
-            //open dialog forbids opening
-            app.status_text = format!("File does not exist: {}", file_name);
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                app.status_text.clone(),
-            ));
-        }
-        if !file_name.is_empty() {
-            println!("Attempting to read {} file", &file_name);
-            app.opened_file = OpenedFile::from_path(file_name.clone(), FileType::Other);
-            app.opened_file.endian = None;
-            app.opened_file.msyt = None;
-            let mut f_handle = fs::File::open(&file_name)?;
-            let mut buffer: Vec<u8> = Vec::new(); //String::new();
-            match f_handle.read_to_end(&mut buffer) {
-                Ok(_) => {
-                    app.status_text = format!("Opened file: {}", &app.opened_file.path.full_path);
-                    app.settings.is_file_loaded = false;
-                }
-                Err(_err) => {
-                    app.status_text = format!("Error reading file: {}", file_name);
-                    return Err(io::Error::new(
-                        io::ErrorKind::BrokenPipe,
-                        app.status_text.clone(),
-                    ));
-                }
-            }
-        }
-    } else {
-        app.status_text = "No file selected".to_owned();
-        return Err(io::Error::new(
-            io::ErrorKind::BrokenPipe,
-            "No file selected",
-        ));
-    }
-    return Ok(());
-}
-
-pub fn close_all_click(app: &mut TotkBitsApp) {
-    app.opened_file = OpenedFile::default();
-    app.pack = None;
-    app.root_node = TreeNode::new("ROOT".to_string(), "/".to_string());
-    app.text = String::new();
-    app.settings.is_file_loaded = true;
-    app.settings.is_tree_loaded = true;
 }
 
 pub fn save_file_dialog(file_name: Option<String>) -> String {

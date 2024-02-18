@@ -1,8 +1,7 @@
 use crate::misc;
 use crate::BinTextFile::BymlFile;
 use crate::ButtonOperations::{
-    edit_click, extract_click, open_byml_or_sarc, open_file_button_click, save_as_click,
-    save_click, save_file_dialog,
+    ButtonOperations, open_byml_or_sarc,   save_file_dialog,
 };
 use crate::GuiMenuBar::MenuBar;
 use crate::GuiScroll::EfficientScroll;
@@ -182,21 +181,21 @@ impl Gui {
                     .on_hover_text("Open")
                     .clicked()
                 {
-                    let _ = open_file_button_click(app);
+                    let _ = ButtonOperations::open_file_button_click(app);
                 }
                 if ui
                     .add(Button::image(app.icons.save.clone()))
                     .on_hover_text("Save")
                     .clicked()
                 {
-                    save_click(app);
+                    ButtonOperations::save_click(app);
                 }
                 if ui
                     .add(Button::image(app.icons.save_as.clone()))
                     .on_hover_text("Save as")
                     .clicked()
                 {
-                    let _ = save_as_click(app);
+                    let _ = ButtonOperations::save_as_click(app);
                 }
 
                 if ui
@@ -204,7 +203,7 @@ impl Gui {
                     .on_hover_text("Edit")
                     .clicked()
                 {
-                    edit_click(app, ui);
+                    ButtonOperations::edit_click(app, ui);
                 }
                 if ui
                     .add(Button::image(app.icons.add_sarc.clone()))
@@ -216,7 +215,7 @@ impl Gui {
                     .on_hover_text("Extract")
                     .clicked()
                 {
-                    extract_click(app);
+                    ButtonOperations::extract_click(app);
                 }
             });
             ui.add_space(2.0);

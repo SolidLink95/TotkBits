@@ -1,4 +1,4 @@
-use crate::ButtonOperations::{close_all_click, edit_click, extract_click, open_file_button_click, save_as_click, save_click};
+use crate::ButtonOperations::ButtonOperations;
 use crate::Gui::{OpenedFile, TotkBitsApp};
 use crate::Tree::{TreeNode};
 
@@ -32,19 +32,19 @@ impl MenuBar {
             ui.horizontal(|ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Open").clicked() {
-                        let _ = open_file_button_click(app);
+                        let _ = ButtonOperations::open_file_button_click(app);
                         ui.close_menu();
                     }
                     if ui.button("Save").clicked() {
-                        save_click(app);
+                        ButtonOperations::save_click(app);
                         ui.close_menu();
                     }
                     if ui.button("Save as").clicked() {
-                        let _ = save_as_click(app);
+                        let _ = ButtonOperations::save_as_click(app);
                         ui.close_menu();
                     }
                     if ui.button("Close all").clicked() {
-                        close_all_click(app);
+                        ButtonOperations::close_all_click(app);
                         ui.close_menu();
                     }
                     if ui.button("Exit").clicked() {}
@@ -52,11 +52,11 @@ impl MenuBar {
 
                 ui.menu_button("Tools", |ui| {
                     if ui.button("Edit").clicked() {
-                        edit_click(app, ui);
+                        ButtonOperations::edit_click(app, ui);
                         ui.close_menu();
                     }
                     if ui.button("Extract").clicked() {
-                        extract_click(app);
+                        ButtonOperations::extract_click(app);
                         ui.close_menu();
                     }
                     if ui.button("Find").clicked() {}
