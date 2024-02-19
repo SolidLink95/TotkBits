@@ -5,7 +5,7 @@ use egui::{
 };
 use egui_code_editor::Syntax;
 
-use crate::{Gui::TotkBitsApp, Tree::TreeNode};
+use crate::{Gui::TotkBitsApp, GuiMenuBar::FpsCounter, Tree::TreeNode};
 
 pub struct Settings {
     pub lines_count: usize,
@@ -23,6 +23,7 @@ pub struct Settings {
     pub is_dir_context_menu: bool, //is context menu for dir opened
     pub dir_context_pos: Option<egui::Pos2>, //
     pub dir_context_size: Option<Response>,
+    pub fps_counter: FpsCounter
 }
 
 impl Default for Settings {
@@ -44,6 +45,7 @@ impl Default for Settings {
             is_dir_context_menu: false,
             dir_context_pos: None, //
             dir_context_size: None,
+            fps_counter: FpsCounter::new(),
         }
     }
 }

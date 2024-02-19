@@ -1,28 +1,21 @@
 use crate::ButtonOperations::ButtonOperations;
 use crate::Gui::{OpenedFile, TotkBitsApp};
-use crate::Tree::{TreeNode};
+use crate::Tree::TreeNode;
 
 //use crate::SarcFileLabel::ScrollAreaPub;
-use eframe::egui::{
-    self, Style, TopBottomPanel
-};
+use eframe::egui::{self, Style, TopBottomPanel};
 
-
-
-
+use std::io;
 use std::sync::Arc;
-use std::{io};
 
 pub struct MenuBar {
     //app: &'a TotkBitsApp<'a>,
-    style: Arc<Style>
+    style: Arc<Style>,
 }
 
 impl MenuBar {
     pub fn new(style: Arc<Style>) -> io::Result<MenuBar> {
-        Ok(MenuBar {
-                style: style
-            })
+        Ok(MenuBar { style: style })
     }
 
     pub fn display(&self, app: &mut TotkBitsApp, ctx: &egui::Context) {
@@ -63,23 +56,61 @@ impl MenuBar {
                     if ui.button("Settings").clicked() {}
                     if ui.button("Zoom in").clicked() {}
                     if ui.button("Zoom out").clicked() {}
-                    /*let egui_icon = include_image!("../res/open_icon.png"); 
-                    if ui.add(Button::image(egui::Image::new(egui_icon.clone()).fit_to_exact_size(Vec2::new(32.0, 32.0)))).clicked() {
-                            println!("Test");
-                        }; image button example*/
                 });
+
+                app.settings.fps_counter.display(ui);
             });
             ui.add_space(1.0);
-        //let _ = ui.set_style(original_style);
         });
+
         let _ = ctx.set_style(original_style);
     }
-
 }
 
 struct DirContextMenu {
-pub style: Arc<Style>
+    pub style: Arc<Style>,
 }
 
+pub struct FpsCounter {
+    last_update: std::time::Instant,
+    frame_count: usize,
+    fps: f32,
+    is_shown: bool,
+}
 
+impl FpsCounter {
+    pub fn new() -> Self {
+        FpsCounter {
+            last_update: std::time::Instant::now(),
+            frame_count: 0,
+            fps: 0.0,
+            is_shown: false,
+        }
+    }
 
+    fn update(&mut self) {
+        self.frame_count += 1;
+        let now = std::time::Instant::now();
+        if now.duration_since(self.last_update).as_secs_f32() > 0.2 {
+            self.fps = self.frame_count as f32 / now.duration_since(self.last_update).as_secs_f32();
+            self.frame_count = 0;
+            self.last_update = now;
+        }
+    }
+
+    fn display(&mut self, ui: &mut egui::Ui) {
+        if self.is_shown {
+            self.update();
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                ui.label(format!("FPS: {}", self.fps() as i32));
+            });
+        }
+    }
+
+    fn fps(&self) -> f32 {
+        if self.fps > 60.0 {
+            return 60.0
+        }
+        self.fps
+    }
+}

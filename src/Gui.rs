@@ -111,7 +111,6 @@ pub struct TotkBitsApp<'a> {
     pub icons: Icons<'a>,                                             //cached icons for buttons
     pub settings: Settings,                                           //various settings
     pub code_editor: CodeEditor,
-    pub input_state: InputState,
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -134,7 +133,6 @@ impl Default for TotkBitsApp<'_> {
             icons: Icons::new(&settings.icon_size.clone()),
             settings: settings,
             code_editor: CodeEditor::default(),
-            input_state: InputState::default(),
         }
     }
 }

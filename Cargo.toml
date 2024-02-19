@@ -24,9 +24,7 @@ native-dialog = "0.7.0"
 natord = "1.0.9"
 egui_extras = { version = "*", features = ["all_loaders"] }
 image = { version = "0.24", features = ["jpeg", "png"] }
-#msbt = {path = "W:/coding/msbt-rs-master"}
-#msyt = {path = "./msyt-master"}
-#msyt = { git = "https://github.com/NiceneNerd/msyt" }
+bitvec = "1.0.1"
 rayon = "1"
 serde = "1"
 serde_derive = "1"

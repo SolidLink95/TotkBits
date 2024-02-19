@@ -3,6 +3,7 @@ use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, is_msyt, FileType, TotkZstd};
 use anyhow;
 use byteordered::Endianness;
+use egui::epaint::tessellator::path;
 use failure::ResultExt;
 use indexmap::IndexMap;
 use msbt::builder::MsbtBuilder;
@@ -12,6 +13,7 @@ use msyt::model::Msyt;
 use msyt::model::{self, Content, Entry, MsbtInfo};
 use msyt::Result as MsbtResult;
 use roead::byml::Byml;
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 use std::path::{Path, PathBuf};
@@ -45,7 +47,6 @@ pub struct MsytFile {
     pub msbt: std::pin::Pin<Box<Msbt>>,
     pub zstd: Arc<TotkZstd<'a>>,*/
 }
-
 
 pub struct BymlFile<'a> {
     pub endian: Option<roead::Endian>,
@@ -187,6 +188,9 @@ impl<'a> BymlFile<'_> {
                 Ok(res) => {
                     data.data = res;
                     data.file_type = FileType::Byml;
+                    if is_byml(&data.data) {
+                        data.file_type = FileType::Bcett;
+                    }
                 }
                 _ => {}
             }
@@ -199,10 +203,7 @@ impl<'a> BymlFile<'_> {
                     data.data = res;
                     data.file_type = FileType::Other;
                 }
-                Err(err) => {
-                    println!("Error during zstd decompress, {}", line!());
-                    return Err(err);
-                }
+                Err(err) => {}
             }
         }
         if data.data.starts_with(b"Yaz0") {
@@ -214,6 +215,7 @@ impl<'a> BymlFile<'_> {
             }
         }
         if is_byml(&data.data) {
+            data.file_type = FileType::Byml;
             return Ok(data);
         }
         return Err(io::Error::new(
@@ -223,18 +225,117 @@ impl<'a> BymlFile<'_> {
     }
 }
 
-
 pub fn bytes_to_file(data: Vec<u8>, path: &str) -> io::Result<()> {
-    let mut f = fs::File::create(&path);//TODO check if the ::create is sufficient
+    let mut f = fs::File::create(&path); //TODO check if the ::create is sufficient
     match f {
-        Ok(mut f_handle) => {//file does not exist
+        Ok(mut f_handle) => {
+            //file does not exist
             f_handle.write_all(&data);
-        },
-        Err(_) => { //file exist, overwrite
+        }
+        Err(_) => {
+            //file exist, overwrite
             let mut f_handle = OpenOptions::new().write(true).open(&path)?;
             f_handle.write_all(&data);
-
         }
     }
     Ok(())
+}
+
+pub struct TagProduct<'a> {
+    pub byml: BymlFile<'a>,
+    pub path_list: roead::byml::Byml,
+    pub tag_list: roead::byml::Byml,
+    pub rank_table: roead::byml::Byml,
+    pub file_name: String,
+    pub actor_tag_data: roead::byml::Byml,
+    pub cached_tag_list: roead::byml::Byml,
+    pub bit_table_bytes: roead::byml::Byml,
+    pub yaml: String,
+}
+
+impl<'a> TagProduct<'a> {
+    pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
+        let byml = BymlFile::new(path, zstd)?;
+        Ok(Self {
+            byml: byml,
+            path_list: roead::byml::Byml::default(),
+            tag_list: roead::byml::Byml::default(),
+            rank_table: roead::byml::Byml::default(),
+            file_name: String::new(),
+            actor_tag_data: roead::byml::Byml::default(),
+            cached_tag_list: roead::byml::Byml::default(),
+            bit_table_bytes: roead::byml::Byml::default(),
+            yaml: String::new(),
+        })
+    }
+
+    pub fn parse(&mut self) -> Result<(), roead::Error> {
+        let p = self.byml.pio.as_map();
+        if let Ok(pio) = p {
+            self.path_list = pio["PathList"].clone();
+            let mut path_list_count = 0;
+            match self.path_list.as_array() {
+                Ok(path_list) => {
+                    path_list_count = path_list.len();
+                }
+                Err(err) => {
+                    return Err(err);
+                }
+            }
+            self.bit_table_bytes = pio["BitTable"].clone();
+            match self.bit_table_bytes.as_array() {
+                Ok(arr) => {
+                    if arr.is_empty() {
+                        return Err(roead::Error::InsufficientData(0, 0));
+                    }
+                }
+                Err(err) => {
+                    return Err(err);
+                }
+            }
+
+            let tag_list = pio["TagList"].as_array();
+            match tag_list {
+                Ok(tag_list) => {self.tag_list = tag_list.into();},
+                Err(err) => {return Err(err);}
+            }
+            let tag_list_count = self.tag_list.len();
+
+            self.rank_table = pio["RankTable"].clone();
+            let mut bit_table_bits = self.bit_table_bytes.view_bits::<Lsb0>().to_bitvec();
+            bit_table_bits.reverse();
+
+            // Debug
+            println!("INFO: Parsed Bits Count: {}", bit_table_bits.len());
+            let mut actor_tag_data_map = std::collections::HashMap::new();
+
+
+            for i in 0..(path_list_count / 3) {
+                let actor_path = format!("{}/{}/{}", self.path_list[i*3], self.path_list[(i*3)+1],self.path_list[(i*3)+2]);
+                let mut actor_tag_list: Vec<_> = Vec::new();
+                for k in 0..tag_list_count {
+                    if bit_table_bits[i * tag_list_count + k] != 0 {
+                        actor_tag_list.append(self.tag_list[k]);
+                    }
+                }
+                actor_tag_data_map.insert(actor_path, actor_tag_list);
+            }
+
+            let data = MyData {
+                FileName: &self.byml.path.name,
+                ActorTagData: actor_tag_data_map,
+                CachedTagList: self.tag_list,
+                CachedRankTable: self.rank_table.clone(),
+
+            };
+            let yaml_string = serde_yaml::to_string(&data)?;
+            self.yaml = yaml_string;
+        }
+        Ok(())
+    }
+
+}
+
+pub fn generic_error(text: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, text)
 }

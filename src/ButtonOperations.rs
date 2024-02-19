@@ -1,4 +1,4 @@
-use crate::BinTextFile::{bytes_to_file, BymlFile};
+use crate::BinTextFile::{bytes_to_file, BymlFile, TagProduct};
 use crate::Gui::{ActiveTab, OpenedFile, TotkBitsApp};
 use crate::Pack::{PackComparer, PackFile};
 use crate::SarcFileLabel::SarcLabel;
@@ -252,7 +252,21 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
     }
     app.settings.is_file_loaded = true;
     let path = app.opened_file.path.full_path.clone();
-    println!("Is {} a msyt?", &path.clone());
+    if app.opened_file.path.name.to_lowercase().starts_with("tag.product") {
+        println!("Is {} a Tag product?", &path);
+        let mut tag = TagProduct::new(app.opened_file.path.full_path.clone(), app.zstd.clone());
+        match tag {
+            Ok(mut tag) => {
+                tag.parse();
+                app.text = tag.yaml;
+            },
+            Err(err) => {
+                println!("{:?}", err);
+                return None;
+            }
+        }
+    }
+    println!("Is {} a msyt?", &path);
     match MsytFile::file_to_text(path.clone()) {
         Ok(text) => {
             app.text = text;

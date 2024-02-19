@@ -1,5 +1,5 @@
 //use std::fs::File;
-use std::{fs::File, io::{self, BufReader, BufWriter, Cursor}};
+use std::{fs::{self, File}, io::{self, BufReader, BufWriter, Cursor, Write}, sync::Arc};
 
 //mod TestCases;
 mod BinTextFile;
@@ -20,7 +20,9 @@ use msyt::{model::{Content, Msyt}, Result as MsbtResult};
 //use msyt;
 use egui::output;
 use msbt::{section::Atr1, Msbt};
-use BinTextFile::MsytFile;
+use roead::byml::Byml;
+use BinTextFile::{BymlFile, MsytFile};
+use Zstd::TotkZstd;
 
 //use TestCases::test_case1;
 /*
@@ -35,6 +37,7 @@ TODO:
 
 fn main() -> io::Result<()> {
     //MsytFile::file_to_text("res/Attachment.msbt".to_string());
+
     Gui::run();
     Ok(())
 }
