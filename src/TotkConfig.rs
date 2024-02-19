@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Pack::PackFile;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct TotkConfig {
     pub romfs: PathBuf,
     pub bfres: PathBuf,

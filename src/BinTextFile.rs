@@ -1,25 +1,27 @@
 use crate::Pack::PackFile;
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, is_msyt, FileType, TotkZstd};
-use anyhow;
+use bitvec::order::LocalBits;
 use byteordered::Endianness;
 use egui::epaint::tessellator::path;
-use failure::ResultExt;
 use indexmap::IndexMap;
 use msbt::builder::MsbtBuilder;
 use msbt::section::Atr1;
-use msbt::Msbt;
 use msyt::model::Msyt;
 use msyt::model::{self, Content, Entry, MsbtInfo};
-use msyt::Result as MsbtResult;
 use roead::byml::Byml;
+use serde_json::Value;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Cursor, Read, Write};
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
+use bitvec::prelude::*;
 
+#[derive(Debug)]
 pub struct FileData {
     pub file_type: FileType,
     pub data: Vec<u8>,
@@ -243,14 +245,16 @@ pub fn bytes_to_file(data: Vec<u8>, path: &str) -> io::Result<()> {
 
 pub struct TagProduct<'a> {
     pub byml: BymlFile<'a>,
-    pub path_list: roead::byml::Byml,
+    pub path_list: Vec<String>,
     pub tag_list: roead::byml::Byml,
     pub rank_table: roead::byml::Byml,
     pub file_name: String,
-    pub actor_tag_data: roead::byml::Byml,
-    pub cached_tag_list: roead::byml::Byml,
+    pub actor_tag_data: HashMap<String, Vec<String>>,
+    pub cached_tag_list: Vec<String>,
+    pub cached_rank_table: String,
     pub bit_table_bytes: roead::byml::Byml,
     pub yaml: String,
+    pub endian: roead::Endian,
 }
 
 impl<'a> TagProduct<'a> {
@@ -258,84 +262,133 @@ impl<'a> TagProduct<'a> {
         let byml = BymlFile::new(path, zstd)?;
         Ok(Self {
             byml: byml,
-            path_list: roead::byml::Byml::default(),
+            path_list: Vec::new(),
             tag_list: roead::byml::Byml::default(),
             rank_table: roead::byml::Byml::default(),
             file_name: String::new(),
-            actor_tag_data: roead::byml::Byml::default(),
-            cached_tag_list: roead::byml::Byml::default(),
+            actor_tag_data: HashMap::default(),
+            cached_tag_list: Vec::new(),
+            cached_rank_table: String::new(),
             bit_table_bytes: roead::byml::Byml::default(),
             yaml: String::new(),
+            endian: roead::Endian::Little,
         })
     }
 
     pub fn parse(&mut self) -> Result<(), roead::Error> {
         let p = self.byml.pio.as_map();
         if let Ok(pio) = p {
-            self.path_list = pio["PathList"].clone();
-            let mut path_list_count = 0;
-            match self.path_list.as_array() {
-                Ok(path_list) => {
-                    path_list_count = path_list.len();
-                }
+            //Get path list
+            println!("Parsing PathList");
+            for p in pio["PathList"].as_array().unwrap() {
+                self.path_list.push(p.as_string().unwrap().to_string());
+            }
+            let mut path_list_count = self.path_list.len();
+            // Get Tag list
+            println!("Parsing tag_list");
+            let tag_list = pio["TagList"].as_array();
+            match tag_list {
+                Ok(tl) => {self.tag_list = tl.into();},
                 Err(err) => {
+                    eprintln!("ERROR: {:?} line: {}", err, line!());
                     return Err(err);
                 }
             }
-            self.bit_table_bytes = pio["BitTable"].clone();
-            match self.bit_table_bytes.as_array() {
+            let tag_list_count = pio["TagList"].as_array().unwrap().len();
+
+            // Get Bit Table
+            let mut bit_table_bytes: Vec<u8> = Vec::new();
+            for byte in pio["BitTable"].as_binary_data().unwrap() {
+                bit_table_bytes.push(*byte);
+            }
+            /*match self.bit_table_bytes.as_array() {
                 Ok(arr) => {
                     if arr.is_empty() {
                         return Err(roead::Error::InsufficientData(0, 0));
                     }
                 }
                 Err(err) => {
+                    eprintln!("ERROR: {:?} line: {}", err, line!());
                     return Err(err);
                 }
-            }
+            }*/
+            // Valid Check
+            /*if let Ok(btb) = self.bit_table_bytes.as_array() {
+                if btb.is_empty() {
+                    return Err(roead::Error::InvalidData("Bittable empty"));
+                }
+            }*/
 
-            let tag_list = pio["TagList"].as_array();
-            match tag_list {
-                Ok(tag_list) => {self.tag_list = tag_list.into();},
-                Err(err) => {return Err(err);}
-            }
-            let tag_list_count = self.tag_list.len();
-
+            // Get Rank Table
+            println!("Parsing RankTable");
             self.rank_table = pio["RankTable"].clone();
-            let mut bit_table_bits = self.bit_table_bytes.view_bits::<Lsb0>().to_bitvec();
+            let mut bit_table_bits = bit_table_bytes.view_bits::<Lsb0>().to_bitvec();
             bit_table_bits.reverse();
-
+            let bit_array_count = bit_table_bits.len();
             // Debug
-            println!("INFO: Parsed Bits Count: {}", bit_table_bits.len());
-            let mut actor_tag_data_map = std::collections::HashMap::new();
+            println!("INFO: Parsed Bits Count: {}", bit_array_count);
+            let mut actor_tag_data_map: HashMap<String, Vec<String>> = std::collections::HashMap::new();
+            
 
-
+            // Get Actors and Tags
             for i in 0..(path_list_count / 3) {
-                let actor_path = format!("{}/{}/{}", self.path_list[i*3], self.path_list[(i*3)+1],self.path_list[(i*3)+2]);
-                let mut actor_tag_list: Vec<_> = Vec::new();
+                let actor_path = format!("{}|{}|{}", self.path_list[i*3], self.path_list[(i*3)+1],self.path_list[(i*3)+2]);
+                let mut actor_tag_list: Vec<String> = Vec::new();
                 for k in 0..tag_list_count {
-                    if bit_table_bits[i * tag_list_count + k] != 0 {
-                        actor_tag_list.append(self.tag_list[k]);
+                    if bit_table_bits[i * tag_list_count + k] == true {
+                        actor_tag_list.push(self.tag_list[k].as_string().unwrap().to_string());
                     }
                 }
                 actor_tag_data_map.insert(actor_path, actor_tag_list);
             }
-
-            let data = MyData {
-                FileName: &self.byml.path.name,
-                ActorTagData: actor_tag_data_map,
-                CachedTagList: self.tag_list,
-                CachedRankTable: self.rank_table.clone(),
-
-            };
-            let yaml_string = serde_yaml::to_string(&data)?;
-            self.yaml = yaml_string;
+            self.actor_tag_data = actor_tag_data_map;
+            
+            self.cached_tag_list.extend(tag_list.unwrap_or(&[roead::byml::Byml::default()]).iter().map(|t| t.as_string().unwrap().to_string()));
+            for b in self.rank_table.as_binary_data().unwrap() {
+                self.cached_rank_table.push_str(&format!("{:02X}", b));
+            }
         }
         Ok(())
+    }
+
+    pub fn print(&self) {
+        //println!("ActorTagData:\n\n{:?}", self.actor_tag_data);
+        let json_data = serde_json::to_string_pretty(&self.actor_tag_data).unwrap_or_else(|_| String::from("{}"));
+        //println!("ActorTagData:\n\n{:?}", serde_json::to_string_pretty(&self.actor_tag_data).unwrap_or_else(|_| String::from("{}")));
+        //println!("\n\nCachedTagList:\n\n{:?}", self.cached_tag_list);
+        //println!("\n\nCachedRankTable:\n\n{:?}", self.cached_rank_table);
+        let mut f = fs::File::create("log.json").unwrap();
+        f.write_all(json_data.as_bytes());
+
+    }
+
+    fn is_bit_table_bytes_empty(&mut self) -> bool {
+        if let Ok(btb) = self.bit_table_bytes.as_array() {
+            if btb.is_empty() {
+                return true;
+            }
+        }
+        return false;
     }
 
 }
 
 pub fn generic_error(text: &str) -> io::Error {
     io::Error::new(io::ErrorKind::Other, text)
+}
+
+pub fn sort_hashmap(h: HashMap<String, Vec<String>>) -> HashMap<String, Vec<String>> {
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+
+    // Extract keys and sort them
+    let mut keys: Vec<_> = h.keys().cloned().collect();
+    keys.sort();
+
+    // Sort each Vec<String> in the HashMap
+    for key in keys.iter() {
+        let value = h.get(key).unwrap().to_vec();
+        map.insert(key.to_string(), value);
+    }
+    map
+
 }

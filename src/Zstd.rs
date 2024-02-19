@@ -16,6 +16,7 @@ use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
 
 #[derive(Debug)]
 pub enum FileType {
+    TagProduct,
     Sarc,
     MalsSarc,
     Byml,

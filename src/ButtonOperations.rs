@@ -134,7 +134,8 @@ impl ButtonOperations {
                     }
                 }
             }
-            ActiveTab::TextBox => {}
+            ActiveTab::TextBox => {},
+            ActiveTab::Advanced => {},
         }
 
         Ok(())
@@ -154,7 +155,8 @@ impl ButtonOperations {
             }
             ActiveTab::TextBox => {
                 let _ = save_tab_text(app);
-            }
+            },
+            ActiveTab::Advanced => {}
         }
     }
 
@@ -183,7 +185,8 @@ impl ButtonOperations {
                         }
                     }
                     save_text_file_by_filetype(app, &dest_file);
-                }
+                },
+                ActiveTab::Advanced => {}
             }
         }
 
@@ -257,8 +260,25 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
         let mut tag = TagProduct::new(app.opened_file.path.full_path.clone(), app.zstd.clone());
         match tag {
             Ok(mut tag) => {
-                tag.parse();
-                app.text = tag.yaml;
+                match tag.parse() {
+                    Ok(_) => {
+                        println!("Tag parsed!");
+                    },
+                    Err(err) => {
+                        eprintln!("Error parsing tag! {:?}", err);
+                        return None;
+                    }
+                }
+                //tag.print();
+                app.text = serde_json::to_string_pretty(&tag.actor_tag_data).unwrap_or_else(|_| String::from("{}"));
+                app.tag_product = Some(tag);
+                app.active_tab = ActiveTab::Advanced;
+                app.opened_file.file_type = FileType::TagProduct;
+                app.opened_file.endian = Some(roead::Endian::Little);
+                app.opened_file.msyt = None;
+                app.opened_file.byml = None;
+                app.internal_sarc_file = None;
+                return None;
             },
             Err(err) => {
                 println!("{:?}", err);

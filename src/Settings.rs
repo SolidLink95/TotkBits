@@ -322,6 +322,7 @@ impl Styles {
     }
 }
 
+#[derive(Debug)]
 pub struct Pathlib {
     pub parent: String,
     pub name: String,

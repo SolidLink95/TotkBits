@@ -1,8 +1,6 @@
 use crate::misc;
-use crate::BinTextFile::BymlFile;
-use crate::ButtonOperations::{
-    ButtonOperations, open_byml_or_sarc,   save_file_dialog,
-};
+use crate::BinTextFile::{BymlFile, TagProduct};
+use crate::ButtonOperations::{open_byml_or_sarc, save_file_dialog, ButtonOperations};
 use crate::GuiMenuBar::MenuBar;
 use crate::GuiScroll::EfficientScroll;
 use crate::Pack::{PackComparer, PackFile};
@@ -12,9 +10,11 @@ use crate::TotkConfig::TotkConfig;
 use crate::Tree::{self, TreeNode};
 use crate::Zstd::{FileType, TotkZstd};
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
+use egui::mutex::Mutex;
 use egui::text::LayoutJob;
 use egui::{
-    Align, Button, Context, FontId, InputState, Label, Layout, Pos2, Rect, Response, Shape,
+    Align, Button, CollapsingHeader, Context, FontId, InputState, Label, Layout, Pos2, Rect,
+    Response, Shape, TextEdit,
 };
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use egui_extras::install_image_loaders;
@@ -27,6 +27,7 @@ use std::{fs, io};
 pub enum ActiveTab {
     DiretoryTree,
     TextBox,
+    Advanced,
 }
 
 pub struct OpenedFile<'a> {
@@ -111,6 +112,8 @@ pub struct TotkBitsApp<'a> {
     pub icons: Icons<'a>,                                             //cached icons for buttons
     pub settings: Settings,                                           //various settings
     pub code_editor: CodeEditor,
+    pub tag_product: Option<TagProduct<'a>>,
+    pub text_loader: LargeTextLoader,
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -133,6 +136,8 @@ impl Default for TotkBitsApp<'_> {
             icons: Icons::new(&settings.icon_size.clone()),
             settings: settings,
             code_editor: CodeEditor::default(),
+            tag_product: None,
+            text_loader: LargeTextLoader::new("res/Tag.Product.120.rstbl.byml.zs.json"),
         }
     }
 }
@@ -235,34 +240,25 @@ impl Gui {
         match app.active_tab {
             ActiveTab::TextBox => {
                 //scrollbar
-                app.scroll_resp = Some(app.scroll.clone().show(ui, |ui| {
+                app.scroll_resp = Some(ScrollArea::vertical().show(ui, |ui| {
                     ui.set_style(app.settings.styles.text_editor.clone());
+                    //app.text_loader.ui(ui,ctx);
+                    //ui.add(TextEdit::multiline(&mut app.text.clone()).desired_width(f32::INFINITY).code_editor());
+                    
                     app.code_editor
                         .clone()
                         .id_source("code editor")
                         .with_rows(12)
                         .with_fontsize(12.0)
-                        .vscroll(true)
-                        .with_theme(ColorTheme::GRUVBOX)
-                        .with_syntax(app.settings.syntax.clone())
+                        //.vscroll(true)
+                        //.with_theme(ColorTheme::GRUVBOX)
+                        //.with_syntax(app.settings.syntax.clone())
                         .with_numlines(false)
                         .show(ui, &mut app.text, ctx.clone());
                     open_byml_or_sarc(app, ui);
-                    //TODO: get scrollbar position and render only that part of text
-                    //println!("{:?}", app.scroll.clone().show_viewport(ui, add_contents))
                 }));
                 let r = app.scroll_resp.as_ref().unwrap();
                 let _p = (r.state.offset.y * 100.0) / r.content_size.y;
-                /*app.status_text = format!(
-                    "Scroll: {:?} [{:?}%] size {:?}, cur. height: {:?}, {:?} lines",
-                    r.state.offset.y as i32,
-                    p,
-                    r.content_size,
-                    r.inner_rect.height(),
-                    app.settings.lines_count //app.text.chars().filter(|&c| c == '\n').count()
-                );*/
-                //println!("{:?} \n\n\n", r.state);
-                //ctx.set_style(app.settings.styles.def_style.clone());
             }
             ActiveTab::DiretoryTree => {
                 app.scroll_resp = Some(
@@ -293,10 +289,29 @@ impl Gui {
                         }),
                 );
             }
+            ActiveTab::Advanced => {
+                app.scroll_resp = Some(
+                    ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .max_height(ui.available_height())
+                        .max_width(ui.available_width())
+                        .show(ui, |ui| {
+                            Gui::display_tree_background(app, ui);
+                            open_byml_or_sarc(app, ui);
+                            if let Some(tag) = &mut app.tag_product {
+                                for (key, item) in tag.actor_tag_data.iter() {
+                                    CollapsingHeader::new(key)
+                                        .default_open(false)
+                                        .show(ui, |ui| {
+                                            ui.text_edit_multiline(&mut format!("{:?}", item));
+                                        });
+                                }
+                            }
+                        }),
+                );
+            }
         }
     }
-
-
 
     pub fn display_tree_background(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
         let mut height = 0.0;
@@ -329,6 +344,15 @@ impl Gui {
                 .clicked()
             {
                 app.active_tab = ActiveTab::TextBox;
+            }
+            if ui
+                .add(SelectableLabel::new(
+                    app.active_tab == ActiveTab::Advanced,
+                    "Advanced",
+                ))
+                .clicked()
+            {
+                app.active_tab = ActiveTab::Advanced;
             }
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 Gui::display_filename_endian(app, ui);
@@ -364,6 +388,11 @@ impl Gui {
                 }
 
                 display_infolabels(ui, label_endian, label_path);
+            }
+            ActiveTab::Advanced => {
+                let label_path: Option<String> = Some(app.opened_file.path.name.clone());
+                let label_endian = if label_path.is_some() { "LE" } else { "" };
+                display_infolabels(ui, label_endian.to_string(), label_path);
             }
         }
     }
@@ -401,4 +430,47 @@ pub fn run() {
         Box::new(|_cc| Box::<TotkBitsApp>::default()),
     )
     .unwrap();
+}
+
+pub struct LargeTextLoader {
+    pub text: Arc<Mutex<String>>,
+    pub code_editor: CodeEditor,
+    // Other fields to manage loaded text, cache, etc.
+}
+
+impl LargeTextLoader {
+    fn new(file_path: &str) -> Self {
+        let text = Arc::new(Mutex::new(String::new()));
+        let text_clone = text.clone();
+        let ff = file_path.clone().to_string();
+        // Simulate background loading
+        std::thread::spawn(move || {
+            if let Ok(mut file_text) = std::fs::read_to_string(ff.clone()) {
+                // Perform chunked loading here...
+                // For now, we'll just load the entire file as an example.
+                *text_clone.lock() = file_text;
+            }
+        });
+
+        LargeTextLoader {
+            text: text,
+            code_editor: CodeEditor::default(),
+        }
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ScrollArea::vertical().show(ui, |ui| {
+            // Here we would only render the visible portion of the text.
+            // For simplicity, we'll show a TextEdit with all the text.
+            let text_lock = self.text.lock();
+            if ui.add(
+                TextEdit::multiline(&mut text_lock.clone())
+                    .desired_width(f32::INFINITY)
+                    //.code_editor(),
+            ).changed() {
+                
+                //self.text = Arc::new(Mutex::new(text_lock.clone().to_string())) ;
+            };
+        });
+    }
 }

@@ -40,4 +40,5 @@ egui_code_editor = { path = "src/egui_code_editor" , default-features = true }
 colorful = "0.2.2"
 sha2 = "0.10"
 digest = "0.10"
+druid = "0.7.0"
 
