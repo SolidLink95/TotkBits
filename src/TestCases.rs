@@ -53,3 +53,68 @@ pub fn test_case1(totk_config: &TotkConfig::TotkConfig) -> io::Result<String>{
     x.save("res/asdf/zxcv.pack.zs")?;
     Ok(ret_res)
 }
+
+use std::fs::File;
+use std::io::{self, BufReader, Read, Seek, SeekFrom};
+use std::env;
+
+fn main() -> io::Result<()> {
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
+        eprintln!("Usage: {} <file_path>", args[0]);
+        return Ok(());
+    }
+
+    let file_path = &args[1];
+    let file = File::open(file_path)?;
+    let mut reader = BufReader::new(file);
+
+    let chunk_size = 1024; // Size of each chunk in bytes
+    let mut buffer = vec![0; chunk_size];
+
+    loop {
+        println!("Press Page Up/Page Down to scroll, or any other key to exit.");
+        
+        // Here, you would have code to detect key presses.
+        // This is a placeholder for the actual key press handling logic.
+        let key_pressed = get_key_press(); // Implement this function based on your environment
+
+        match key_pressed {
+            Key::PageUp => {
+                // Move the cursor back by twice the chunk size, then read one chunk
+                let current_pos = reader.stream_position()?;
+                let new_pos = current_pos.saturating_sub(2 * chunk_size as u64);
+                reader.seek(SeekFrom::Start(new_pos))?;
+            }
+            Key::PageDown => {
+                // Continue reading the next chunk
+            }
+            _ => break,
+        }
+
+        let bytes_read = reader.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break; // End of file reached
+        }
+
+        // Display the text chunk
+        let text_chunk = String::from_utf8_lossy(&buffer[..bytes_read]);
+        println!("{}", text_chunk);
+    }
+
+    Ok(())
+}
+
+// Dummy function to represent key press handling
+fn get_key_press() -> Key {
+    // Implement your key press detection logic here
+    // For the sake of example, let's just return PageDown
+    Key::PageDown
+}
+
+// Enum to represent different key presses
+enum Key {
+    PageUp,
+    PageDown,
+    // Include other keys as needed
+}
