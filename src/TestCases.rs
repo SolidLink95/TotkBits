@@ -12,6 +12,11 @@ use crate::Zstd::{self, ZsDic};
 use crate::BymlEntries;
 use misc::{print_as_hex};
 use Pack::PackFile;
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind},
+    execute,
+    terminal::{enable_raw_mode, disable_raw_mode},
+};
 
 
 pub fn test_case1(totk_config: &TotkConfig::TotkConfig) -> io::Result<String>{
@@ -117,4 +122,55 @@ enum Key {
     PageUp,
     PageDown,
     // Include other keys as needed
+}
+
+
+pub fn test_key_listener() {
+    enable_raw_mode()?;
+
+    // Enable mouse event capturing
+    execute!(io::stdout(), EnableMouseCapture)?;
+
+    loop {
+        match event::read()? {
+            Event::Key(KeyEvent { code, modifiers, .. }) => {
+                match code {
+                    KeyCode::Esc => break,
+                    _ => {
+                        print!("Key pressed: {:?}", code);
+                        if modifiers.contains(KeyModifiers::SHIFT) {
+                            print!(" + Shift");
+                        }
+                        if modifiers.contains(KeyModifiers::CONTROL) {
+                            print!(" + Ctrl");
+                        }
+                        if modifiers.contains(KeyModifiers::ALT) {
+                            print!(" + Alt");
+                        }
+                        println!();
+                        io::stdout().flush()?;
+                    }
+                }
+            },
+            Event::Mouse(MouseEvent { kind, .. }) => {
+                match kind {
+                    MouseEventKind::ScrollUp => {
+                        println!("Mouse scrolled up");
+                        io::stdout().flush()?;
+                    },
+                    MouseEventKind::ScrollDown => {
+                        println!("Mouse scrolled down");
+                        io::stdout().flush()?;
+                    },
+                    _ => {}
+                }
+            },
+            _ => {}
+        }
+    }
+
+    // Disable mouse event capturing before exiting
+    execute!(io::stdout(), DisableMouseCapture)?;
+
+    disable_raw_mode()?;
 }

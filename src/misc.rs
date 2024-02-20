@@ -3,8 +3,6 @@ use std::{env};
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::io::{self, Error, ErrorKind, Read, Write};
-extern crate nfd;
-use nfd::Response;
 //use std::io;
 
 pub fn get_example_yaml() -> String{
