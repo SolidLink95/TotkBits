@@ -72,6 +72,9 @@ impl Shared {
 
 
 fn main() {
+
+    Gui::run();
+    return;
     let (tx, rx): (Sender<String>, Receiver<String>) = mpsc::channel();
     let key_listener_handle = start_key_listener(tx);
 
