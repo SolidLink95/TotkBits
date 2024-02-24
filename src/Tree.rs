@@ -112,14 +112,14 @@ where
 pub fn update_from_sarc_paths(root_node: &Rc<TreeNode<String>>, sarc_file: &PackFile) {
     let mut  paths: Vec<String> = Default::default();
     for file in sarc_file.sarc.files() {
-        match file.name() {
-            Some(f) => {paths.push(f.to_string())},
-            None => {}
+        if let Some(name) = &file.name() {
+            paths.push(name.to_string());
         }
     }
     
     //paths.sort(); doesnt sort like windows
-    paths.sort_by(|a, b| compare(&a, &b));
+   // paths.sort_by(|a, b| compare(&a, &b));
+    paths.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
     update_from_paths(&root_node, paths);
 }
 

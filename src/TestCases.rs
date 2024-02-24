@@ -174,3 +174,50 @@ pub fn test_key_listener() {
 
     disable_raw_mode()?;
 }
+
+
+
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
+fn main1() {
+    // Create two channels for two-way communication
+    let (tx, rx) = mpsc::channel();
+    let (processed_tx, processed_rx) = mpsc::channel();
+
+    // Spawn a new thread
+    thread::spawn(move || {
+        let mut last_string = String::new();
+        loop {
+            let new_string = rx.recv().unwrap();
+            if new_string != last_string {
+                let modified_string = format!("{}{}", new_string, new_string.len());
+                processed_tx.send(modified_string).unwrap();
+                last_string = new_string;
+            }
+        }
+    });
+
+    // Simulate sending strings to the child thread
+    tx.send("Hello".to_string()).unwrap();
+    thread::sleep(Duration::from_secs(1));
+    // Receive processed string
+    println!("Processed: {}", processed_rx.recv().unwrap());
+
+    tx.send("World".to_string()).unwrap();
+    thread::sleep(Duration::from_secs(1));
+    // Receive processed string
+    println!("Processed: {}", processed_rx.recv().unwrap());
+
+    tx.send("World".to_string()).unwrap();
+    thread::sleep(Duration::from_secs(1));
+    // Attempt to receive processed string
+    match processed_rx.try_recv() {
+        Ok(s) => println!("Processed: {}", s),
+        Err(_) => println!("No new processed string received"),
+    }
+
+    // Close the channel
+    drop(tx);
+}

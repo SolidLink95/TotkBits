@@ -1,12 +1,12 @@
 use std::io;
 use std::rc::Rc;
 
-use crate::BinTextFile::{BymlFile, FileData};
+use crate::BinTextFile::{BymlFile, FileData, OpenedFile};
 use crate::ButtonOperations::ButtonOperations;
 use crate::Settings::Styles;
 use msyt::converter::MsytFile;
 
-use crate::Gui::{ActiveTab, OpenedFile, TotkBitsApp};
+use crate::Gui::{ActiveTab, TotkBitsApp};
 use crate::Tree::TreeNode;
 use crate::Zstd::{is_aamp, is_byml, is_msyt, FileType};
 
@@ -103,18 +103,17 @@ impl SarcLabel {
             .show(ui, |ui| {
                 let children: Vec<_> = root_node.children.borrow().iter().cloned().collect(); //prevents borrowing issues
                 for child in children {
-                    if !TreeNode::is_leaf(&child) && !child.is_file() {
-                        SarcLabel::display_tree_in_egui(app, &child, ui, ctx);
-                    } else {
+                    if TreeNode::is_leaf(&child) && child.is_file() {
                         SarcLabel::display_leaf_node(app, &child, ui, ctx);
+                    } else {
+                        SarcLabel::display_tree_in_egui(app, &child, ui, ctx);
                     }
                 }
-            });
-
-        SarcLabel::display_dir_context_menu(app, &root_node, ui, ctx, response.header_response);
+            }).header_response;
+            SarcLabel::display_dir_context_menu(app, root_node, ui, ctx, response);
     }
 
-    pub fn display_dir_context_menu(
+    pub fn display_dir_context_menu( //TODO: make as separate widget
         app: &mut TotkBitsApp,
         child: &Rc<TreeNode<String>>,
         ui: &mut egui::Ui,

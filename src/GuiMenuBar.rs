@@ -1,5 +1,5 @@
 use crate::ButtonOperations::ButtonOperations;
-use crate::Gui::{OpenedFile, TotkBitsApp};
+use crate::Gui::TotkBitsApp;
 use crate::Tree::TreeNode;
 
 //use crate::SarcFileLabel::ScrollAreaPub;
@@ -84,7 +84,7 @@ impl FpsCounter {
             last_update: std::time::Instant::now(),
             frame_count: 0,
             fps: 0.0,
-            is_shown: false,
+            is_shown: true,
         }
     }
 

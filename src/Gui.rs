@@ -1,11 +1,11 @@
 use crate::misc;
-use crate::BinTextFile::{BymlFile, TagProduct};
+use crate::BinTextFile::{BymlFile, OpenedFile, TagProduct};
 use crate::ButtonOperations::{open_byml_or_sarc, save_file_dialog, ButtonOperations};
 use crate::GuiMenuBar::MenuBar;
 use crate::GuiScroll::EfficientScroll;
 use crate::Pack::{PackComparer, PackFile};
 use crate::SarcFileLabel::SarcLabel;
-use crate::Settings::{Icons, Pathlib, Settings};
+use crate::Settings::{FileReader, Icons, Pathlib, Settings};
 use crate::TotkConfig::TotkConfig;
 use crate::Tree::{self, TreeNode};
 use crate::Zstd::{FileType, TotkZstd};
@@ -13,8 +13,7 @@ use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::mutex::Mutex;
 use egui::text::LayoutJob;
 use egui::{
-    Align, Button, CollapsingHeader, Context, FontId, InputState, Label, Layout, Pos2, Rect,
-    Response, Shape, TextEdit,
+    Align, Button, CollapsingHeader, Context, FontId, InputState, Key, Label, Layout, Pos2, Rect, Response, Shape, TextEdit
 };
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use egui_extras::install_image_loaders;
@@ -30,77 +29,12 @@ pub enum ActiveTab {
     Advanced,
 }
 
-pub struct OpenedFile<'a> {
-    pub file_type: FileType,
-    pub path: Pathlib,
-    pub byml: Option<BymlFile<'a>>,
-    pub endian: Option<roead::Endian>,
-    pub msyt: Option<String>,
-}
-
-impl Default for OpenedFile<'_> {
-    fn default() -> Self {
-        Self {
-            file_type: FileType::None,
-            path: Pathlib::new("".to_string()),
-            byml: None,
-            endian: None,
-            msyt: None,
-        }
-    }
-}
-
-impl<'a> OpenedFile<'_> {
-    pub fn new(
-        path: String,
-        file_type: FileType,
-        endian: Option<roead::Endian>,
-        msyt: Option<String>,
-    ) -> Self {
-        Self {
-            file_type: file_type,
-            path: Pathlib::new(path),
-            byml: None,
-            endian: endian,
-            msyt: msyt,
-        }
-    }
-
-    pub fn from_path(path: String, file_type: FileType) -> Self {
-        Self {
-            file_type: file_type,
-            path: Pathlib::new(path),
-            byml: None,
-            endian: None,
-            msyt: None,
-        }
-    }
-}
-
-impl<'a> OpenedFile<'_> {
-    pub fn get_endian_label(&self) -> String {
-        match self.endian {
-            Some(endian) => match endian {
-                roead::Endian::Big => {
-                    return "BE".to_string();
-                }
-                roead::Endian::Little => {
-                    return "LE".to_string();
-                }
-            },
-            None => {
-                return "".to_string();
-            }
-        }
-    }
-}
-
 pub struct TotkBitsApp<'a> {
     pub opened_file: OpenedFile<'a>,     //path to opened file in string
     pub text: String,                    //content of the text editor
     pub status_text: String,             //bottom bar text
     pub scroll: ScrollArea,              //scroll area
-    pub scroll_updater: EfficientScroll, //scroll area
+   // pub scroll_updater: EfficientScroll, //scroll area
     pub active_tab: ActiveTab,           //active tab, either sarc file or text editor
     language: String, //language for highlighting, no option for yaml yet, toml is closest
     pub zstd: Arc<TotkZstd<'a>>, //zstd compressors and decompressors
@@ -112,19 +46,22 @@ pub struct TotkBitsApp<'a> {
     pub icons: Icons<'a>,                                             //cached icons for buttons
     pub settings: Settings,                                           //various settings
     pub code_editor: CodeEditor,
-    pub tag_product: Option<TagProduct<'a>>,
-    pub text_loader: LargeTextLoader,
+    pub file_reader: FileReader,
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
         let totk_config = Arc::new(TotkConfig::new());
         let settings = Settings::default();
+        let mut file_reader = FileReader::default();
+        file_reader.buf_size = 8192;
+        file_reader.set_pos(0, file_reader.buf_size as i32);
+        file_reader.reload = true;
         Self {
             opened_file: OpenedFile::default(),
             text: misc::get_example_yaml(),
             status_text: "Ready".to_owned(),
             scroll: ScrollArea::vertical(),
-            scroll_updater: EfficientScroll::new(),
+            //scroll_updater: EfficientScroll::new(),
             active_tab: ActiveTab::TextBox,
             language: "toml".into(),
             zstd: Arc::new(TotkZstd::new(totk_config, settings.comp_level).unwrap()),
@@ -136,8 +73,7 @@ impl Default for TotkBitsApp<'_> {
             icons: Icons::new(&settings.icon_size.clone()),
             settings: settings,
             code_editor: CodeEditor::default(),
-            tag_product: None,
-            text_loader: LargeTextLoader::new("res/Tag.Product.120.rstbl.byml.zs.json"),
+            file_reader: file_reader
         }
     }
 }
@@ -227,7 +163,7 @@ impl Gui {
     }
 
     pub fn display_main(app: &mut TotkBitsApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let theme: egui_extras::syntax_highlighting::CodeTheme =
+        /*let theme: egui_extras::syntax_highlighting::CodeTheme =
             egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
         let language = app.language.clone();
         let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
@@ -235,30 +171,37 @@ impl Gui {
                 egui_extras::syntax_highlighting::highlight(ui.ctx(), &theme, string, &language);
             layout_job.wrap.max_width = wrap_width;
             ui.fonts(|f| f.layout_job(layout_job))
-        };
+        };*/
 
         match app.active_tab {
             ActiveTab::TextBox => {
                 //scrollbar
-                app.scroll_resp = Some(ScrollArea::vertical().show(ui, |ui| {
+                //app.scroll.clone().show(ui, |ui| {
                     ui.set_style(app.settings.styles.text_editor.clone());
                     //app.text_loader.ui(ui,ctx);
                     //ui.add(TextEdit::multiline(&mut app.text.clone()).desired_width(f32::INFINITY).code_editor());
-                    
-                    app.code_editor
+                    app.file_reader.check_for_changes(ctx, &ui, &app.scroll_resp);
+                    //app.file_reader.update_scroll_pos(&app.scroll_resp);
+                    if let Err(err) = &app.file_reader.update() {
+                        println!("Error parsing {}", &app.opened_file.path.full_path);
+                    }
+                    app.scroll_resp = app.code_editor
                         .clone()
                         .id_source("code editor")
                         .with_rows(12)
                         .with_fontsize(12.0)
-                        //.vscroll(true)
+                        .vscroll(true)
                         //.with_theme(ColorTheme::GRUVBOX)
                         //.with_syntax(app.settings.syntax.clone())
                         .with_numlines(false)
-                        .show(ui, &mut app.text, ctx.clone());
+                        //.show(ui, &mut app.text, ctx.clone());
+                        .show(ui, &mut app.file_reader.displayed_text, ctx.clone());
                     open_byml_or_sarc(app, ui);
-                }));
+                //});
                 let r = app.scroll_resp.as_ref().unwrap();
                 let _p = (r.state.offset.y * 100.0) / r.content_size.y;
+                //app.status_text = format!("  {:.1} {:.1}  {:.1}%", r.state.offset.y, r.content_size.y, _p);
+                app.status_text = app.file_reader.get_status(format!("  {:.1} {:.1}  {:.1}% {:?}", r.state.offset.y, r.content_size.y, _p, r.inner_rect));
             }
             ActiveTab::DiretoryTree => {
                 app.scroll_resp = Some(
@@ -298,7 +241,7 @@ impl Gui {
                         .show(ui, |ui| {
                             Gui::display_tree_background(app, ui);
                             open_byml_or_sarc(app, ui);
-                            if let Some(tag) = &mut app.tag_product {
+                            /*if let Some(tag) = &mut app.opened_file.tag {
                                 for (key, item) in tag.actor_tag_data.iter() {
                                     CollapsingHeader::new(key)
                                         .default_open(false)
@@ -306,7 +249,7 @@ impl Gui {
                                             ui.text_edit_multiline(&mut format!("{:?}", item));
                                         });
                                 }
-                            }
+                            }*/
                         }),
                 );
             }

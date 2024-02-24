@@ -1,4 +1,4 @@
-use crate::Pack::PackFile;
+use crate::Pack::{PackComparer, PackFile};
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, is_msyt, FileType, TotkZstd};
 use bitvec::order::LocalBits;
@@ -20,6 +20,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
 use bitvec::prelude::*;
+
+
 
 #[derive(Debug)]
 pub struct FileData {
@@ -391,4 +393,78 @@ pub fn sort_hashmap(h: HashMap<String, Vec<String>>) -> HashMap<String, Vec<Stri
     }
     map
 
+}
+
+
+pub struct OpenedFile<'a> {
+    pub file_type: FileType,
+    pub path: Pathlib,
+    pub byml: Option<BymlFile<'a>>,
+    pub endian: Option<roead::Endian>,
+    pub msyt: Option<String>,
+    pub aamp: Option<()>,
+    pub tag: Option<TagProduct<'a>>,
+}
+
+impl Default for OpenedFile<'_> {
+    fn default() -> Self {
+        Self {
+            file_type: FileType::None,
+            path: Pathlib::new("".to_string()),
+            byml: None,
+            endian: None,
+            msyt: None,
+            aamp: None,
+            tag: None,
+        }
+    }
+}
+
+impl<'a> OpenedFile<'_> {
+    pub fn new(
+        path: String,
+        file_type: FileType,
+        endian: Option<roead::Endian>,
+        msyt: Option<String>,
+    ) -> Self {
+        Self {
+            file_type: file_type,
+            path: Pathlib::new(path),
+            byml: None,
+            endian: endian,
+            msyt: msyt,
+            aamp: None,
+            tag: None,
+        }
+    }
+
+    pub fn from_path(path: String, file_type: FileType) -> Self {
+        Self {
+            file_type: file_type,
+            path: Pathlib::new(path),
+            byml: None,
+            endian: None,
+            msyt: None,
+            aamp: None,
+            tag: None,
+        }
+    }
+}
+
+impl<'a> OpenedFile<'_> {
+    pub fn get_endian_label(&self) -> String {
+        match self.endian {
+            Some(endian) => match endian {
+                roead::Endian::Big => {
+                    return "BE".to_string();
+                }
+                roead::Endian::Little => {
+                    return "LE".to_string();
+                }
+            },
+            None => {
+                return "".to_string();
+            }
+        }
+    }
 }

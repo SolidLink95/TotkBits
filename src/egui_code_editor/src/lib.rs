@@ -68,6 +68,9 @@
 //! }
 //! ```
 
+use egui::Response;
+use egui::scroll_area::ScrollAreaOutput;
+
 pub mod highlighting;
 mod syntax;
 #[cfg(test)]
@@ -317,7 +320,11 @@ impl CodeEditor {
 
     #[cfg(feature = "egui")]
     /// Show Code Editor
-    pub fn show(&mut self, ui: &mut egui::Ui, text: &mut String, ctx: egui::Context) {
+    pub fn show(&mut self, ui: &mut egui::Ui, text: &mut String, ctx: egui::Context) -> Option<egui::scroll_area::ScrollAreaOutput<()>> {
+
+
+
+        let mut resp: Option<egui::scroll_area::ScrollAreaOutput<()>> = None;
         //-> TextEditOutput {
         let vscroll = self.vscroll;
         let stick_to_bottom = self.stick_to_bottom;
@@ -350,9 +357,9 @@ impl CodeEditor {
                     );
                 }*/
 
-                /*egui::ScrollArea::horizontal()
+                egui::ScrollArea::horizontal()
                 .id_source(format!("{}_inner_scroll", self.id))
-                .show(h, |ui| {*/
+                .show(ui, |ui| {
 
                 let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
                     let mut layout_job = highlight(ui.ctx(), self, string);
@@ -370,17 +377,19 @@ impl CodeEditor {
                         .layouter(&mut layouter), //.show(ui);
                 );
                 //self.scroll_position = scrolled + self.scroll_position;
-                //});
+                });
             });
         };
         if vscroll {
-            egui::ScrollArea::vertical()
+            let r: egui::scroll_area::ScrollAreaOutput<()> = egui::ScrollArea::vertical()
                 .id_source(format!("_outer_scroll"))
                 .stick_to_bottom(stick_to_bottom)
                 .show(ui, code_editor);
+            resp = Some(r);
         } else {
             code_editor(ui);
         }
+        resp
         //self.total_line_count = text.chars().filter(|&c| c == '\n').count();
         //text_edit_output.expect("TextEditOutput should exist at this point")
     }

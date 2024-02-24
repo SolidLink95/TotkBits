@@ -42,4 +42,3 @@ sha2 = "0.10"
 digest = "0.10"
 #druid = "0.7.0"
 crossterm = "0.27.0"  # testing key pressing
-

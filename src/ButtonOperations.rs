@@ -1,8 +1,8 @@
-use crate::BinTextFile::{bytes_to_file, BymlFile, TagProduct};
-use crate::Gui::{ActiveTab, OpenedFile, TotkBitsApp};
+use crate::BinTextFile::{bytes_to_file, BymlFile, OpenedFile, TagProduct};
+use crate::Gui::{ActiveTab, TotkBitsApp};
 use crate::Pack::{PackComparer, PackFile};
 use crate::SarcFileLabel::SarcLabel;
-use crate::Settings::{Icons, Pathlib, Settings};
+use crate::Settings::{FileReader, Icons, Pathlib, Settings};
 use crate::Tree::{self, TreeNode};
 use crate::Zstd::{is_msyt, FileType, TotkZstd};
 use msyt::converter::MsytFile;
@@ -18,10 +18,10 @@ use roead::sarc::File;
 use std::error::Error;
 use std::fmt::format;
 use std::fs::OpenOptions;
-use std::io::{Read, Write};
+use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::{fs, io};
+use std::{fs, io, thread};
 
 pub struct ButtonOperations {}
 
@@ -55,15 +55,13 @@ impl ButtonOperations {
     pub fn remove_click(app: &mut TotkBitsApp, child: &Rc<TreeNode<String>>) -> io::Result<()> {
         if let Some(pack) = &mut app.pack {
             if let Some(opened) = &mut pack.opened {
+                let p = &child.path.full_path;
                 let mut message = format!(
-                    "The following file will be deleted:\n{}\nProceed?",
-                    &child.path.full_path
+                    "All files from this directory will be deleted:\n{}\nProceed?",
+                    p
                 );
-                if TreeNode::is_leaf(&child) || !child.is_file() {
-                    message = format!(
-                        "All files from this directory will be deleted:\n{}\nProceed?",
-                        &child.path.full_path
-                    );
+                if TreeNode::is_leaf(&child) && child.is_file() {
+                    message = format!("The following file will be deleted:\n{}\nProceed?", p);
                 }
                 if MessageDialog::new()
                     .set_title("Warning")
@@ -73,12 +71,11 @@ impl ButtonOperations {
                     == rfd::MessageDialogResult::Yes
                 {
                     if TreeNode::is_leaf(&child) {
-                        opened.writer.remove_file(&child.path.full_path);
-                    }
-                    else {
+                        opened.writer.remove_file(p);
+                    } else {
                         for file in opened.sarc.files() {
-                            let file_name= file.name.unwrap_or("");
-                            if file_name.starts_with(&child.path.full_path) {
+                            let file_name = file.name.unwrap_or("");
+                            if file_name.starts_with(p) {
                                 opened.writer.remove_file(file_name);
                             }
                         }
@@ -104,29 +101,22 @@ impl ButtonOperations {
                                 .save_file();
                             println!("{}", &path.clone().unwrap().to_string_lossy().into_owned());
                             if let Some(dest_file) = &path {
+                                let dst = dest_file.to_string_lossy().into_owned();
                                 if let Some(data) =
                                     opened.sarc.get_data(&internal_file.path.full_path)
                                 {
-                                    match bytes_to_file(data.to_vec(), &dest_file.to_string_lossy())
-                                    {
+                                    match bytes_to_file(data.to_vec(), &dst) {
                                         Ok(_) => {
-                                            app.status_text = format!(
-                                                "Saved: {}",
-                                                dest_file.to_string_lossy().into_owned()
-                                            );
+                                            app.status_text = format!("Saved: {}", &dst);
                                         }
                                         Err(err) => {
-                                            app.status_text = format!(
-                                                "Error extracting: {}",
-                                                dest_file.to_string_lossy().into_owned()
-                                            );
+                                            app.status_text = format!("Error extracting: {}", &dst);
                                         }
                                     }
                                 } else {
                                     app.status_text = format!(
                                         "Error extracting: {} to {}",
-                                        &internal_file.path.name,
-                                        dest_file.to_string_lossy().into_owned()
+                                        &internal_file.path.name, &dst
                                     );
                                 }
                             }
@@ -134,8 +124,7 @@ impl ButtonOperations {
                     }
                 }
             }
-            ActiveTab::TextBox => {},
-            ActiveTab::Advanced => {},
+            _ => {}
         }
 
         Ok(())
@@ -155,7 +144,7 @@ impl ButtonOperations {
             }
             ActiveTab::TextBox => {
                 let _ = save_tab_text(app);
-            },
+            }
             ActiveTab::Advanced => {}
         }
     }
@@ -185,7 +174,7 @@ impl ButtonOperations {
                         }
                     }
                     save_text_file_by_filetype(app, &dest_file);
-                },
+                }
                 ActiveTab::Advanced => {}
             }
         }
@@ -239,7 +228,7 @@ impl ButtonOperations {
 
     pub fn close_all_click(app: &mut TotkBitsApp) {
         app.opened_file = OpenedFile::default();
-        app.pack = None;
+        //app.pack = None;
         app.root_node = TreeNode::new("ROOT".to_string(), "/".to_string());
         app.text = String::new();
         app.settings.is_file_loaded = true;
@@ -255,7 +244,13 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
     }
     app.settings.is_file_loaded = true;
     let path = app.opened_file.path.full_path.clone();
-    if app.opened_file.path.name.to_lowercase().starts_with("tag.product") {
+    if app
+        .opened_file
+        .path
+        .name
+        .to_lowercase()
+        .starts_with("tag.product")
+    {
         println!("Is {} a Tag product?", &path);
         let mut tag = TagProduct::new(app.opened_file.path.full_path.clone(), app.zstd.clone());
         match tag {
@@ -263,23 +258,24 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
                 match tag.parse() {
                     Ok(_) => {
                         println!("Tag parsed!");
-                    },
+                    }
                     Err(err) => {
                         eprintln!("Error parsing tag! {:?}", err);
                         return None;
                     }
                 }
                 //tag.print();
-                app.text = serde_json::to_string_pretty(&tag.actor_tag_data).unwrap_or_else(|_| String::from("{}"));
-                app.tag_product = Some(tag);
-                app.active_tab = ActiveTab::Advanced;
+                app.opened_file = OpenedFile::default();
+                let text = serde_json::to_string_pretty(&tag.actor_tag_data)
+                    .unwrap_or_else(|_| String::from("{}"));
+                app.file_reader.from_string(text);
+                app.opened_file.tag = Some(tag);
+                app.active_tab = ActiveTab::TextBox;
                 app.opened_file.file_type = FileType::TagProduct;
                 app.opened_file.endian = Some(roead::Endian::Little);
-                app.opened_file.msyt = None;
-                app.opened_file.byml = None;
                 app.internal_sarc_file = None;
                 return None;
-            },
+            }
             Err(err) => {
                 println!("{:?}", err);
                 return None;
@@ -287,20 +283,17 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
         }
     }
     println!("Is {} a msyt?", &path);
-    match MsytFile::file_to_text(path.clone()) {
-        Ok(text) => {
-            app.text = text;
-            app.opened_file = OpenedFile::from_path(path.clone(), FileType::Msbt);
-            app.opened_file.endian = Some(roead::Endian::Little);
-            app.opened_file.msyt = None;
-            app.opened_file.byml = None;
-            app.internal_sarc_file = None;
-            app.active_tab = ActiveTab::TextBox;
-            app.status_text = format!("Opened: {}", app.opened_file.path.full_path);
-            return Some(Ok(()));
-        }
-        Err(err) => {}
+    if let Ok(text) = MsytFile::file_to_text(path.clone()) {
+        //app.text = text;
+        app.file_reader.from_string(text);
+        app.opened_file = OpenedFile::from_path(path.clone(), FileType::Msbt);
+        app.opened_file.endian = Some(roead::Endian::Little);
+        app.internal_sarc_file = None;
+        app.active_tab = ActiveTab::TextBox;
+        app.status_text = format!("Opened: {}", app.opened_file.path.full_path);
+        return Some(Ok(()));
     }
+
     println!("Is {} a sarc?", path.clone());
     match PackFile::new(path.clone(), app.zstd.clone()) {
         Ok(pack) => {
@@ -320,7 +313,8 @@ pub fn open_byml_or_sarc(app: &mut TotkBitsApp, _ui: &mut egui::Ui) -> Option<io
     println!("Is {} a byml?", path.clone());
     let res_byml = BymlFile::new(path.clone(), app.zstd.clone());
     if let Ok(b) = res_byml {
-        app.text = Byml::to_text(&b.pio);
+        let text = Byml::to_text(&b.pio);
+        app.file_reader.from_string(text);
         println!(
             "{}, {} {}",
             &app.text.len(),
@@ -432,4 +426,26 @@ pub fn save_file_dialog(file_name: Option<String>) -> String {
             return "".to_string();
         }
     }
+}
+
+
+pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
+    let file = fs::File::create(path)?;
+    let mut writer = BufWriter::new(file);
+
+    writer.write_all(content.as_bytes())?;
+
+    // The buffer is automatically flushed when writer goes out of scope,
+    // but you can manually flush it if needed.
+    writer.flush()?;
+
+    Ok(())
+}
+
+pub fn read_string_from_file(path: &str) -> io::Result<String> {
+    let mut file = fs::File::open(path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    Ok(contents)
 }
