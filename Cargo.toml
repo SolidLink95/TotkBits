@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-msyt = { path = "src/msyt" }
+msyt = { git = "https://github.com/SolidLink95/msyt-lib" }
 msbt = { git = "https://github.com/jkcclemens/msbt-rs" }
 zstd = "0.13"
 roead = { version = "0.23.1", features = ["yaml","sarc","byml"] }

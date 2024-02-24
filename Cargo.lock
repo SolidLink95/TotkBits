@@ -2594,6 +2594,7 @@ dependencies = [
 [[package]]
 name = "msyt"
 version = "1.1.0"
+source = "git+https://github.com/SolidLink95/msyt-lib#653efa23cc403162999025ac2965e23667c763b6"
 dependencies = [
  "base64 0.10.1",
  "byteordered",
