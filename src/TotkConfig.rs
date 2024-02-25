@@ -9,7 +9,7 @@ use std::env;
 //use roead::byml::HashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::Pack::PackFile;
+use crate::file_format::Pack::PackFile;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct TotkConfig {
@@ -56,6 +56,16 @@ impl TotkConfig {
     }
     pub fn get_pack_path(&self, name: &str) -> Option<PathBuf> {
         let pack_local_path = format!("Pack/Actor/{}.pack.zs", name);
+        let mut pack_path = self.romfs.clone();
+        pack_path.push(pack_local_path);
+        if pack_path.exists() {
+            return Some(pack_path);
+        }
+        None
+    }
+
+    pub fn get_mals_path(&self, name: &str) -> Option<PathBuf> {
+        let pack_local_path = format!("Mals/{}", name);
         let mut pack_path = self.romfs.clone();
         pack_path.push(pack_local_path);
         if pack_path.exists() {

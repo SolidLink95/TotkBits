@@ -5,8 +5,8 @@ use crate::Tree::TreeNode;
 //use crate::SarcFileLabel::ScrollAreaPub;
 use eframe::egui::{self, Style, TopBottomPanel};
 
-use std::io;
 use std::sync::Arc;
+use std::{io, process};
 
 pub struct MenuBar {
     //app: &'a TotkBitsApp<'a>,
@@ -40,7 +40,9 @@ impl MenuBar {
                         ButtonOperations::close_all_click(app);
                         ui.close_menu();
                     }
-                    if ui.button("Exit").clicked() {}
+                    if ui.button("Exit").clicked() {
+                        process::exit(0); // Replace 0 with the desired exit code
+                    }
                 });
 
                 ui.menu_button("Tools", |ui| {
@@ -109,7 +111,7 @@ impl FpsCounter {
 
     fn fps(&self) -> f32 {
         if self.fps > 60.0 {
-            return 60.0
+            return 60.0;
         }
         self.fps
     }

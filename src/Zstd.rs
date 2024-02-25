@@ -15,7 +15,7 @@ use zstd::dict::{DecoderDictionary, EncoderDictionary};
 use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
 
 #[derive(Debug)]
-pub enum FileType {
+pub enum TotkFileType {
     TagProduct,
     Sarc,
     MalsSarc,
@@ -23,6 +23,7 @@ pub enum FileType {
     Aamp,
     Msbt,
     Bcett,
+    Text,
     Other,
     None,
 }
@@ -67,25 +68,25 @@ impl<'a> TotkZstd<'_> {
     }
 
 
-    pub fn identify_file_from_binary(zstd: TotkZstd, data: &Vec<u8>) -> FileType {
+    pub fn identify_file_from_binary(zstd: TotkZstd, data: &Vec<u8>) -> TotkFileType {
         match zstd.try_decompress(&data) {
             Ok(raw_data) => {
                 //try to decompress with everything
                 if is_byml(&raw_data) {
-                    return FileType::Bcett;
+                    return TotkFileType::Bcett;
                 }
                 if is_sarc(&raw_data) {
-                    return FileType::Sarc;
+                    return TotkFileType::Sarc;
                 }
                 if is_aamp(&raw_data) {
-                    return FileType::Aamp;
+                    return TotkFileType::Aamp;
                 }
 
             },
-            _ => {return FileType::Other;}
+            _ => {return TotkFileType::Other;}
         }
         //all validations failed
-        return FileType::Other;
+        return TotkFileType::Other;
     }
 }
 
@@ -288,7 +289,7 @@ pub fn is_msyt(data: &[u8]) -> bool {
 }
 
 
-pub fn SHA256(data: Vec<u8>) -> String {
+pub fn sha256(data: Vec<u8>) -> String {
     // Create a Sha256 object
     let mut hasher = Sha256::new();
 

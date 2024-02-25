@@ -8,24 +8,24 @@ use std::sync::Arc;
 use std::thread::sleep;
 //mod Zstd;
 
-use crate::BinTextFile::FileData;
+use crate::file_format::BinTextFile::FileData;
 use crate::Settings::Pathlib;
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{is_sarc, FileType, TotkZstd, SHA256};
+use crate::Zstd::{is_sarc, TotkFileType, TotkZstd, sha256};
 
 pub struct PackComparer<'a> {
     pub opened: Option<PackFile<'a>>,
     pub vanila: Option<PackFile<'a>>,
     pub totk_config: Arc<TotkConfig>,
     pub zstd: Arc<TotkZstd<'a>>,
-    pub added: HashMap<String,String>,
-    pub modded: HashMap<String,String>,
+    pub added: HashMap<String, String>,
+    pub modded: HashMap<String, String>,
 }
 
 impl<'a> PackComparer<'a> {
     pub fn from_pack(pack: PackFile<'a>, zstd: Arc<TotkZstd<'a>>) -> Self {
         let config = zstd.clone().totk_config.clone();
-        let vanila = PackComparer::get_vanila_pack(pack.path.stem.clone(), zstd.clone());
+        let vanila = PackComparer::get_vanila_sarc(&pack.path, zstd.clone());
         //let vanila_path = config.get_pack_path_from_sarc(pack);
         Self {
             opened: Some(pack),
@@ -35,13 +35,22 @@ impl<'a> PackComparer<'a> {
             added: HashMap::default(),
             modded: HashMap::default(),
         }
-        
     }
+
+    pub fn compare_and_reload(&mut self) {
+        if let Some(opened) = &mut self.opened {
+            opened.reload();
+            opened.self_populate_hashes();
+        }
+
+        self.compare();
+    }
+
     pub fn compare(&mut self) {
         if let Some(vanila) = &self.vanila {
             if let Some(opened) = &self.opened {
-                let mut added: HashMap<String,String> = HashMap::default();
-                let mut modded: HashMap<String,String> = HashMap::default();
+                let mut added: HashMap<String, String> = HashMap::default();
+                let mut modded: HashMap<String, String> = HashMap::default();
                 for (file, Hash) in opened.hashes.iter() {
                     let van_hash = vanila.hashes.get(file);
                     match van_hash {
@@ -49,39 +58,63 @@ impl<'a> PackComparer<'a> {
                             if h != Hash {
                                 modded.insert(file.to_string(), Hash.to_string());
                             }
-                        },
+                        }
                         None => {
                             added.insert(file.to_string(), Hash.to_string());
                         }
                     }
-    
                 }
                 self.added = added;
                 self.modded = modded;
                 println!("Added {:?}\nModded {:?}", self.added, self.modded);
             }
-
-        } else { //custom actor
+        } else {
+            //custom actor
             self.added.clear();
             self.modded.clear();
         }
     }
 
-    pub fn get_vanila_pack(name: String, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile> {
-        println!("Getting the pack: {}", &name);
-        let path = zstd.clone().totk_config.clone().get_pack_path(&name);
+    pub fn get_vanila_mals(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
+        println!("Getting the mals: {}", &path.name);
+        let path = zstd.clone().totk_config.clone().get_mals_path(&path.name);
         if let Some(path) = &path {
             match PackFile::new(path.to_string_lossy().to_string(), zstd.clone()) {
-                Ok(pack) => {return  Some(pack);},
-                _ => {return None;}
+                Ok(pack) => {
+                    println!("Got the mals!");
+                    return Some(pack);
+                }
+                _ => {
+                    return None;
+                }
             }
         }
         None
+    }
+    pub fn get_vanila_sarc(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
+        let pack = PackComparer::get_vanila_pack(path, zstd.clone());
+        if pack.is_some() {return Some(pack.unwrap());}
+        let mals = PackComparer::get_vanila_mals(path, zstd.clone());
+        if mals.is_some() {return Some(mals.unwrap());}
+        None
+    }
 
-
+    pub fn get_vanila_pack(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
+        println!("Getting the pack: {}", &path.name);
+        let path = zstd.clone().totk_config.clone().get_pack_path(&path.stem);
+        if let Some(path) = &path {
+            match PackFile::new(path.to_string_lossy().to_string(), zstd.clone()) {
+                Ok(pack) => {
+                    return Some(pack);
+                }
+                _ => {
+                    return None;
+                }
+            }
+        }
+        None
     }
 }
-
 
 pub struct PackFile<'a> {
     pub path: Pathlib,
@@ -118,17 +151,39 @@ impl<'a> PackFile<'_> {
         })
     }
 
+    pub fn rename(&mut self, old_name: &str, new_name: &str) -> io::Result<()>{
+        let some_data = self.writer.get_file(old_name);
+        match some_data {
+            Some(data) => {
+                let d = data.clone();
+                self.writer.add_file(new_name, d.to_vec());
+                self.writer.remove_file(old_name);
+                self.reload();
+                self.self_populate_hashes();
+            },
+            None => {
+                let e = format!("File {} absent in sarc {}", &old_name, &self.path.full_path);
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, e));
+            }
+        }
+        Ok(())
+    }
+
     pub fn reload(&mut self) {
         let data: Vec<u8> = self.writer.to_binary();
         self.sarc = Sarc::new(data).expect("Failed");
     }
-    
+
+    pub fn self_populate_hashes(&mut self) {
+        self.hashes = PackFile::populate_hashes(&self.sarc);
+    }
+
     pub fn populate_hashes(sarc: &Sarc) -> HashMap<String, String> {
         let mut hashes: HashMap<String, String> = HashMap::default();
         for file in sarc.files() {
             let file_name = file.name.unwrap_or("");
             if !file_name.is_empty() {
-                let Hash = SHA256(file.data().to_vec());
+                let Hash = sha256(file.data().to_vec());
                 hashes.insert(file_name.to_string(), Hash);
             }
         }
@@ -136,21 +191,21 @@ impl<'a> PackFile<'_> {
     }
 
     //Save the sarc file, compress if file ends with .zs, create directory if needed
-    pub fn save_default(&mut self)-> io::Result<()> {
+    pub fn save_default(&mut self) -> io::Result<()> {
         let dest_file = self.path.full_path.clone();
         self.save(dest_file)
     }
 
     fn compress(&self) -> Vec<u8> {
         match self.data.file_type {
-            FileType::Sarc => {
-                return  self.zstd.compressor.compress_pack(&self.data.data).unwrap();
-            },
-            FileType::MalsSarc => {
-                return  self.zstd.compressor.compress_zs(&self.data.data).unwrap();
-            },
+            TotkFileType::Sarc => {
+                return self.zstd.compressor.compress_pack(&self.data.data).unwrap();
+            }
+            TotkFileType::MalsSarc => {
+                return self.zstd.compressor.compress_zs(&self.data.data).unwrap();
+            }
             _ => {
-                return  self.zstd.compressor.compress_zs(&self.data.data).unwrap();
+                return self.zstd.compressor.compress_zs(&self.data.data).unwrap();
             }
         }
     }
@@ -174,46 +229,54 @@ impl<'a> PackFile<'_> {
         let mut buffer: Vec<u8> = Vec::new();
         //let mut returned_result: Vec<u8> = Vec::new();
         let mut file_data: FileData = FileData::new();
-        file_data.file_type = FileType::Sarc;
+        file_data.file_type = TotkFileType::Sarc;
         f_handle.read_to_end(&mut buffer)?;
-        if is_sarc(&buffer) { //buffer.as_slice().starts_with(b"SARC") {
+        if is_sarc(&buffer) {
+            //buffer.as_slice().starts_with(b"SARC") {
             file_data.data = buffer;
             return Ok(file_data);
-        } 
+        }
         match zstd.decompressor.decompress_pack(&buffer) {
             Ok(res) => {
-                if is_sarc(&res) {file_data.data = res;}
-            },
+                if is_sarc(&res) {
+                    file_data.data = res;
+                }
+            }
             Err(_) => {
-                match zstd.decompressor.decompress_zs(&buffer) {//try decompressing with other dicts
+                match zstd.decompressor.decompress_zs(&buffer) {
+                    //try decompressing with other dicts
                     Ok(res) => {
                         if is_sarc(&res) {
                             file_data.data = res;
-                            file_data.file_type = FileType::MalsSarc;
+                            file_data.file_type = TotkFileType::MalsSarc;
                         }
                     }
                     Err(err) => {
-                        eprintln!("Error during zstd decompress {}", &path.to_str().unwrap_or("UNKNOWN"));
+                        eprintln!(
+                            "Error during zstd decompress {}",
+                            &path.to_str().unwrap_or("UNKNOWN")
+                        );
                         return Err(err);
                     }
                 }
             }
-            
-        
         }
-        if  file_data.data.starts_with(b"Yaz0") {
+        if file_data.data.starts_with(b"Yaz0") {
             match roead::yaz0::decompress(&file_data.data) {
                 Ok(dec_data) => {
                     file_data.data = dec_data;
                     return Ok(file_data);
-                },
+                }
                 Err(_) => {}
             }
         }
         if is_sarc(&file_data.data) {
             return Ok(file_data);
         }
-        return Err(io::Error::new(io::ErrorKind::Other, "Invalid data, not a sarc"));
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Invalid data, not a sarc",
+        ));
     }
 }
 

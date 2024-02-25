@@ -1,0 +1,458 @@
+Npc_Wanderer_InstantTips: |
+  Impa's profile has been added.
+TwnObj_Village_Korok_DekuTree_A_01_Alias: |
+  Great Spirit of Korok Forest
+Npc_Kakariko002_InstantTips: |
+  Paya's profile has been added.
+Npc_Zora003_Name: |
+  Dorephan
+Npc_ZoraB001_Sage_Alias: |
+  The Sage of Water
+Npc_AncientAssistant003_K1_InstantTips: |
+  Tauro's profile has been added.
+Npc_HighMountain001_Normal_Caption: |
+  The son of the Rito elder, Teba.
+  
+  When Link first visited his village, Tulin was still
+  a child growing up in his father's shadow, and
+  his eyes would light up when he watched Link
+  and Teba practice at the Flight Range.
+Npc_HatenoVillage031_Caption: |
+  This married couple runs the company that
+  has been key to projects during the long
+  reconstruction of Hyrule, including the creation
+  of Lookout Landing and the Skyview Towers.
+  
+  Hudson has unparalleled skill as a builder, and
+  together with the Gerudo tailor Rhondson, they
+  helped found Tarrey Town. They also have a
+  daughter named Mattison.
+Npc_ValleyVillage010_InstantTips: |
+  Teba's profile has been added.
+Npc_AncientDoctor_Name: |
+  Purah
+Npc_ValleyVillage010_Retire_Alias: |
+  The New Rito Elder
+Npc_ZoraFencer_Sage_Alias: |
+  Queen of the Zora
+Npc_AncientAssistant003_K1_Name: |
+  Tauro
+Npc_BaseCamp_Assistant_Caption: |
+  A young scientist whose genius earned her
+  the role of heading up Depths research.
+  
+  Josha finds it thrilling to be working with Purah,
+  and though she helps with various investigations
+  into Princess Zelda's disappearance, she's
+  glad to focus her time on the Depths.
+Npc_BaseCamp_Assistant_Name: |
+  Josha
+Npc_Goron020_Sage_Alias: |
+  The Sage of Fire
+Enemy_Ganondorf_Caption: |
+  An evil man who lived long ago in the era of
+  Hyrule's founding. His legend claims that this
+  Gerudo man fed his bottomless ambition with
+  great power and became a king of demons.
+  
+  He was imprisoned beneath Hyrule Castle for
+  ages, but the magic holding him weakened when
+  the castle was damaged during the Calamity a
+  century ago, and his power has steadily been
+  growing since. Now he has revived as a threat
+  beyond the knowledge of any.
+Npc_oasis003_InstantTips: |
+  Riju's profile has been added.
+Npc_OldKorok_Name: |
+  Hestu
+Npc_Wanderer_Caption: |
+  Former chief of the Sheikah who served the
+  royal family of Hyrule for generations and is a
+  living witness to its near extinction. Sometime
+  after guiding Link through the Calamity, Impa
+  made her granddaughter Paya the new chief.
+  
+  Being over a century old hasn't stopped Impa
+  from doing her part in the search for Princess
+  Zelda. She's investigating the geoglyphs
+  around Hyrule—certain they will provide clues
+  to where the princess is.
+Npc_Wanderer_Name: |
+  Impa
+Npc_ZoraB001_InstantTips: |
+  Sidon's profile has been added.
+Dm_Npc_Raul_First_Caption: |
+  Someone who shares a name with the first king
+  of Hyrule. He claims the strange arm Link finds
+  himself with was once his. 
+  
+  He and Zelda appeared to Link in a vision.
+  Learning more about him may lead to clues
+  about the princess's disappearance...
+Dm_Npc_Raul_Second_Caption: |
+  The first king of Hyrule. The strange arm was
+  once his.
+  
+  As king, he did not hesitate to risk his own life
+  for his people. After Zelda traversed time to the
+  era of Hyrule's founding, he worked with her and
+  the other five sages to imprison the Demon King.
+Npc_oasis003_Normal_Alias: |
+  Chief of the Gerudo
+TwnObj_Village_Korok_DekuTree_A_01_InstantTips: |
+  The Deku Tree's profile has
+  been added.
+Npc_AncientDoctor_Hateno_Alias: |
+  Head of Purah Pad Development
+Npc_AncientDoctor_Hateno_Caption: |
+  An engineer whose eccentric style adds a lot
+  to his reputation as a wild genius.
+  
+  He once helped Link from his research facility
+  at the Akkala Ancient Tech Lab. Since then, he's
+  moved to the Hateno Ancient Tech Lab to help
+  Purah develop the Purah Pad. Robbie thinks he
+  did much of the work on the device, so he's a
+  bit grumbly that it's not named after him.
+Npc_oasis003_Name: |
+  Riju
+Npc_AncientAssistant003_K1_Alias: |
+  Zonai Survey Team Leader
+Npc_HighMountain001_Name: |
+  Tulin
+Npc_ZoraFencer_Name: |
+  <2 Type='35'/>
+Dm_Npc_Zelda_Search_Improve_Alias: |
+  Princess of Hyrule
+Npc_Goron020_Normal_Alias: |
+  YunoboCo President
+Npc_HighMountain001_Normal_Alias: |
+  Young Rito Warrior
+Npc_ValleyVillage010_Normal_Caption: |
+  A Rito warrior who once helped Link save
+  Rito Village. He took up the mantle of village
+  elder from Kaneli to become the new leader of
+  his people.
+  
+  As the new elder, he is under pressure to deal
+  with the strange weather assailing Rito Village.
+Enemy_Assassin_Senior_Alias: |
+  Leader of the Yiga Clan
+Npc_oasis007_Name: |
+  Buliara
+Enemy_Assassin_Senior_Name: |
+  Master Kohga
+Npc_oasis003_Sage_Caption: |
+  After fighting beside Link once again, she
+  inherited a secret stone and awakened as
+  the Sage of Lightning.
+  
+  Under her increasingly confident leadership,
+  Gerudo Town was freed from the threat of the
+  Gibdos and the sand shroud. Though the
+  Gerudo have returned to the surface, men
+  are still barred from the town—Link, who has
+  earned their trust, is the sole exception.
+Enemy_Ganondorf_Alias: |
+  The Menace Unleashed
+Npc_ZoraFencer_Normal_Caption: |
+  A royal Zora from another domain. Known for
+  her kindness, she was Sidon's childhood friend
+  and is now his fiancée.
+  
+  She began assisting the residents of Zora's
+  Domain in their efforts to combat the sludge
+  as soon as she arrived. A match for Sidon's
+  selfless compassion, she dedicates herself to
+  helping the citizens of the domain.
+Dm_Npc_Raul_Normal_Caption: |
+  Someone who shares a name with the first king
+  of Hyrule. He claims the strange arm Link finds
+  himself with was once his.
+  
+  Before he disappeared, leaving more questions
+  than answers, he also said that he'd learned
+  of Link's existence from Princess Zelda.
+Npc_Zora003_InstantTips: |
+  Dorephan's profile has
+  been added.
+Dm_Npc_Raumi_Name: |
+  Mineru
+Dm_Npc_Zelda_Search_Improve_Name: |
+  Zelda
+Npc_oasis003_Normal_Caption: |
+  The Gerudo leader. She once fought by Link's
+  side astride her trusty sand seal, Patricia, to
+  save the Gerudo Desert.
+  
+  She became chief at a young age following her
+  mother's death, so she works hard to prove
+  herself. Focused on saving her home from a
+  new threat, she's dedicated to mastering her
+  newly discovered lightning powers.
+Npc_HatenoVillage031_Alias: |
+  The Owners of Hudson Construction
+Npc_Wanderer_Alias: |
+  The Sheikah Elder
+Npc_Goron020_Sage_Caption: |
+  A longtime ally of Link's who inherited a secret
+  stone and awakened as the Sage of Fire.
+  
+  Shamed by his part in the uproar over marbled
+  rock roast, he is eager to use YunoboCo to help
+  Gorons and restore the trust of his supporters.
+Npc_HighMountain001_InstantTips: |
+  Tulin's profile has been added.
+Npc_HighMountain001_Sage_Caption: |
+  A young Rito who fought at Link's side to save
+  his village from a strange phenomenon.
+  
+  When Link first visited the village, Tulin was still
+  a child growing up in his father's shadow, and
+  his eyes would light up seeing Link in action.
+  Now, he has shown true growth and proved
+  himself a Rito warrior.
+  
+  Tulin has inherited a secret stone and awakened
+  as the Sage of Wind.
+Dm_Npc_Raumi_InstantTips: |
+  Mineru's profile has been added.
+Npc_OldKorok_InstantTips: |
+  Hestu's profile has been added.
+Npc_ZoraB001_Normal_Alias: |
+  Prince of the Zora
+Enemy_Ganondorf_InstantTips: |
+  Demon King Ganondorf's profile
+  has been added.
+Npc_AncientDoctor_Caption: |
+  The highest authority on ancient technology.
+  She has served Princess Zelda's family for much
+  of her life and has worked with the princess to
+  research the Zonai civilization. Most recently,
+  they started an investigation into the outbreak
+  of gloom.
+  
+  She has used herself as a test subject in her
+  experiments. Despite being over a century in
+  age, she reversed her aging to the extreme and
+  actually looked like a child not too long ago.
+Npc_ZoraFencer_Normal_Alias: |
+  Caretaker to the Zora
+Npc_OldKorok_Caption: |
+  A tree fairy with a song in his heart. He is only
+  visible to certain people.
+  
+  The power of his dance can increase the size of
+  Link's pouches, but he has trouble keeping track
+  of the Korok seeds his magical maracas require.
+Npc_ZoraB001_Name: |
+  Sidon
+Dm_Npc_Raumi_Caption: |
+  Elder sister of Rauru. She helped her brother,
+  the source of Link's right arm, fight the Demon
+  King in her role as the Sage of Spirit long ago.
+  
+  When she was struck down in battle, she used
+  her powers to preserve her spirit in the Purah
+  Pad. She feels responsible for a Zonai secret
+  stone giving rise to the Demon King and swore
+  to Zelda she would do everything in her power
+  to defeat him in the present day.
+Npc_BaseCamp_Assistant_Alias: |
+  Head of Depths Research
+Npc_Zora003_Recovery_Caption: |
+  The former king of Zora's Domain. While
+  assisting Hyrule during the Calamity a hundred
+  years prior, his daughter, the Champion Mipha,
+  fell in battle. With an open mind and heart,
+  he overcame his grief and helped Link finally
+  defeat the Calamity.
+  
+  After his son, Sidon, proved himself worthy by
+  putting an end to the foul sludge terrorizing the
+  domain, he at last passed his crown to him and
+  became the Exalted Dorephan.
+Enemy_Assassin_Senior_InstantTips: |
+  Master Kohga's profile has
+  been added.
+Npc_HatenoVillage031_Name: |
+  Rhondson and Hudson
+Npc_Kakariko002_Name: |
+  Paya
+Npc_ValleyVillage010_Name: |
+  Teba
+Npc_Zora003_Pollution_Caption: |
+  The ruler of Zora's Domain for the last several
+  centuries. While assisting Hyrule during the
+  Calamity a hundred years ago, he lost his
+  daughter, the Champion Mipha. He overcame
+  his sorrow to help Link defeat the Calamity.
+  
+  He was recently injured when a figure resembling
+  Zelda set a monster upon him. He is spending
+  time away from the domain to recuperate.
+TwnObj_Village_Korok_DekuTree_A_01_Caption: |
+  A great tree spirit who has stood long vigil
+  over Korok Forest and the sword that seals
+  the darkness.
+  
+  An old friend of Princess Zelda and Link, he
+  gently guided their efforts against the Calamity.
+  To the Koroks living in the forest, he is both
+  a father figure and a home.
+Dm_Npc_Raumi_Alias: |
+  The Sage of Spirit
+Dm_Npc_Zelda_Search_Improve_Caption: |
+  The heir to a power that imprisons darkness.
+  She sacrificed her freedom over 100 years ago
+  to keep Calamity Ganon sealed away and
+  prevent him from further destroying Hyrule.
+  
+  After Link helped free her from that long duty,
+  she committed herself to rebuilding and
+  restoring Hyrule—but has now gone missing.
+Npc_HatenoVillage031_InstantTips: |
+  Hudson and Rhondson's profile
+  has been added.
+Npc_Zora003_Recovery_Alias: |
+  Former King of the Zora
+Npc_ZoraB001_Sage_Caption: |
+  After joining forces with Link once again, he
+  inherited a secret stone and awakened as the
+  Sage of Water. In recognition of Sidon's role in
+  saving the domain, Dorephan crowned his son
+  as the new king of the Zora. He and Yona are
+  now officially married.
+  
+  Sidon's older sister, the Champion Mipha, fought
+  Calamity Ganon one hundred years ago.
+Npc_ZoraFencer_InstantTips: |
+  Yona's profile has been added.
+Dm_Npc_Raul_Second_Alias: |
+  Founding King
+Npc_oasis007_Caption: |
+  A strong warrior who guards Chief Riju. She is
+  familiar with Link from his previous visits.
+  
+  One glance at her giant claymore deters most
+  troublemakers. Her concern for Riju is one of
+  the few things that softens the stern demeanor
+  she shows her soldiers.
+Npc_Kakariko002_Caption: |
+  The chief of the Sheikah tribe. She takes the
+  duties she inherited from her grandmother Impa
+  seriously, and she draws strength in her own
+  way from being a gentle soul at heart.
+  
+  She has considerable affection for Link, in part
+  because of her grandmother's many tales about
+  the hero who defeated the Calamity.
+Npc_oasis003_Sage_Alias: |
+  The Sage of Lightning
+Enemy_Ganondorf_Name: |
+  Demon King Ganondorf
+TwnObj_Village_Korok_DekuTree_A_01_Name: |
+  Deku Tree
+Npc_AncientDoctor_Hateno_InstantTips: |
+  Robbie's profile has been added.
+Dm_Npc_Raul_Name: |
+  Rauru
+Npc_Goron020_Name: |
+  Yunobo
+Npc_OldKorok_Alias: |
+  Spirited Musician of Korok Forest
+Npc_oasis007_InstantTips: |
+  Buliara's profile has been added.
+Dm_Npc_Raul_Normal_Alias: |
+  Source of the Right Arm
+Npc_AncientDoctor_Alias: |
+  Head of Lookout Landing
+Npc_Goron020_Puppet_Alias: |
+  YunoboCo President
+Dm_Npc_Raul_First_Alias: |
+  Source of the Right Arm
+Npc_Goron020_Normal_Caption: |
+  A young Goron with big ambitions. After saving
+  Goron City with Link, he turned his attention to
+  the ore made accessible when Death Mountain
+  stopped erupting. He formed YunoboCo with a
+  group of people who look up to him, to help the
+  Gorons continue to prosper through mining.
+  
+  After his suspicious mask was removed, he
+  returned to his compassionate self.
+Npc_AncientAssistant003_K1_Caption: |
+  An explorer whose passion for field research is
+  unrivaled. He lives to make big discoveries, and
+  he spent a long time traveling solo, investigating
+  ruins. He is also an expert in reading Zonai
+  writing. Princess Zelda found him to be the
+  perfect choice for leading the Zonai Survey
+  Team.
+Npc_ValleyVillage010_Retire_Caption: |
+  A Rito warrior who once helped Link save
+  Rito Village. He took up the mantle of village
+  elder from Kaneli to become the new leader of
+  his people.
+  
+  After his son, Tulin, joined with Link to confront
+  the strange phenomenon, he acknowledged him
+  as a fully fledged warrior and entrusted him with
+  his precious bow.
+Npc_ZoraFencer_Sage_Caption: |
+  A royal Zora from another domain. Known for
+  her kindness, she was Sidon's childhood friend.
+  
+  When the crisis of the sludge subsided, she and
+  her beloved Sidon finally wed. As queen, she
+  offers Sidon her unwavering support and works
+  tirelessly at his side for the good of the domain.
+Npc_Zora003_Pollution_Alias: |
+  King of the Zora
+Npc_Goron020_Puppet_Caption: |
+  A young Goron who once saved his home with
+  Link. After helping Goron City, he turned his
+  attention to mining the ore made accessible
+  when Death Mountain stopped erupting. He
+  formed YunoboCo from a group of admirers
+  in order to bring continued prosperity to
+  his people.
+  
+  He was once a kind and compassionate
+  young Goron...
+Npc_Kakariko002_Alias: |
+  Chief of Kakariko Village
+Npc_oasis007_Alias: |
+  Gerudo Captain of the Guard
+Npc_ValleyVillage010_Normal_Alias: |
+  The New Rito Elder
+Npc_BaseCamp_Assistant_InstantTips: |
+  Josha's profile has been added.
+Npc_HighMountain001_Sage_Alias: |
+  The Sage of Wind
+Npc_ZoraB001_Normal_Caption: |
+  The son of King Dorephan. An enthusiastic Zora
+  with a zeal for justice, he selflessly protects the
+  domain with integrity and passion. His older
+  sister, the Champion Mipha, fought Calamity
+  Ganon a hundred years ago.
+  
+  Link earned his complete trust when they worked
+  together to save the domain years before. He
+  now considers him his closest companion.
+Enemy_Assassin_Senior_Caption: |
+  Head of the Yiga Clan, an organization with a
+  grudge against Hyrule. His grandiosity and
+  inexplicable charisma inspire passionate loyalty.
+  Originally thought to have been killed in battle
+  with Link, he survived after falling into the
+  depths of the world.
+  
+  Burning with ambition to join the "Magnificent
+  One" and guide the world to its end, he has sent
+  his acolytes to all corners of Hyrule.
+Npc_AncientDoctor_Hateno_Name: |
+  Robbie
+Npc_Goron020_InstantTips: |
+  Yunobo's profile has
+  been added.

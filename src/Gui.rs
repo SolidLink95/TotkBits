@@ -1,14 +1,15 @@
 use crate::misc;
-use crate::BinTextFile::{BymlFile, OpenedFile, TagProduct};
-use crate::ButtonOperations::{open_byml_or_sarc, save_file_dialog, ButtonOperations};
+use crate::file_format::BinTextFile::{BymlFile, OpenedFile, TagProduct};
+use crate::ButtonOperations::{save_file_dialog, ButtonOperations};
+use crate::Open_Save::FileOpener;
 use crate::GuiMenuBar::MenuBar;
 use crate::GuiScroll::EfficientScroll;
-use crate::Pack::{PackComparer, PackFile};
+use crate::file_format::Pack::{PackComparer, PackFile};
 use crate::SarcFileLabel::SarcLabel;
-use crate::Settings::{FileReader, Icons, Pathlib, Settings};
+use crate::Settings::{FileReader, FileRenamer, Icons, Pathlib, Settings};
 use crate::TotkConfig::TotkConfig;
 use crate::Tree::{self, TreeNode};
-use crate::Zstd::{FileType, TotkZstd};
+use crate::Zstd::{TotkFileType, TotkZstd};
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::mutex::Mutex;
 use egui::text::LayoutJob;
@@ -31,7 +32,7 @@ pub enum ActiveTab {
 
 pub struct TotkBitsApp<'a> {
     pub opened_file: OpenedFile<'a>,     //path to opened file in string
-    pub text: String,                    //content of the text editor
+    //pub text: String,                    //content of the text editor
     pub status_text: String,             //bottom bar text
     pub scroll: ScrollArea,              //scroll area
    // pub scroll_updater: EfficientScroll, //scroll area
@@ -47,6 +48,7 @@ pub struct TotkBitsApp<'a> {
     pub settings: Settings,                                           //various settings
     pub code_editor: CodeEditor,
     pub file_reader: FileReader,
+    pub file_renamer: FileRenamer,
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -58,7 +60,7 @@ impl Default for TotkBitsApp<'_> {
         file_reader.reload = true;
         Self {
             opened_file: OpenedFile::default(),
-            text: misc::get_example_yaml(),
+           // text: misc::get_example_yaml(),
             status_text: "Ready".to_owned(),
             scroll: ScrollArea::vertical(),
             //scroll_updater: EfficientScroll::new(),
@@ -73,7 +75,8 @@ impl Default for TotkBitsApp<'_> {
             icons: Icons::new(&settings.icon_size.clone()),
             settings: settings,
             code_editor: CodeEditor::default(),
-            file_reader: file_reader
+            file_reader: file_reader,
+            file_renamer: FileRenamer::default(),
         }
     }
 }
@@ -183,8 +186,9 @@ impl Gui {
                     app.file_reader.check_for_changes(ctx, &ui, &app.scroll_resp);
                     //app.file_reader.update_scroll_pos(&app.scroll_resp);
                     if let Err(err) = &app.file_reader.update() {
-                        println!("Error parsing {}", &app.opened_file.path.full_path);
+                        //println!("Error parsing {}\n{:?}", &app.opened_file.path.full_path, err);
                     }
+                    //println!("{}", &app.opened_file.path.full_path);
                     app.scroll_resp = app.code_editor
                         .clone()
                         .id_source("code editor")
@@ -196,12 +200,12 @@ impl Gui {
                         .with_numlines(false)
                         //.show(ui, &mut app.text, ctx.clone());
                         .show(ui, &mut app.file_reader.displayed_text, ctx.clone());
-                    open_byml_or_sarc(app, ui);
+                    FileOpener::open_byml_or_sarc(app, false);
                 //});
                 let r = app.scroll_resp.as_ref().unwrap();
                 let _p = (r.state.offset.y * 100.0) / r.content_size.y;
                 //app.status_text = format!("  {:.1} {:.1}  {:.1}%", r.state.offset.y, r.content_size.y, _p);
-                app.status_text = app.file_reader.get_status(format!("  {:.1} {:.1}  {:.1}% {:?}", r.state.offset.y, r.content_size.y, _p, r.inner_rect));
+                //app.status_text = app.file_reader.get_status(format!("  {:.1} {:.1}  {:.1}% {:?}", r.state.offset.y, r.content_size.y, _p, r.inner_rect));
             }
             ActiveTab::DiretoryTree => {
                 app.scroll_resp = Some(
@@ -211,12 +215,20 @@ impl Gui {
                         .max_width(ui.available_width())
                         .show(ui, |ui| {
                             Gui::display_tree_background(app, ui);
-                            open_byml_or_sarc(app, ui);
-                            if let Some(pack) = &app.pack {
+                            FileOpener::open_byml_or_sarc(app, false);
+                            if let Some(pack) = &mut app.pack {
                                 //Comparer opened
-                                if let Some(opened) = &pack.opened {
+                                if app.file_renamer.is_renamed || app.settings.do_i_compare_and_reload{
+                                    pack.compare_and_reload();
+                                    app.file_renamer.is_renamed = false;
+                                    app.settings.do_i_compare_and_reload = false;
+                                }
+                                if let Some(opened) = &mut pack.opened {
+                                    let internal_file = &app.internal_sarc_file;
+                                    
+                                    app.file_renamer.show( opened, internal_file.as_ref(), ctx, ui);
                                     //Sarc is opened
-                                    if !app.settings.is_tree_loaded {
+                                    if !app.settings.is_tree_loaded || app.file_renamer.is_renamed  {
                                         Tree::update_from_sarc_paths(&app.root_node, opened);
                                         app.settings.is_tree_loaded = true;
                                         //Tree::TreeNode::print(&app.root_node, 1);
@@ -228,7 +240,6 @@ impl Gui {
                                     SarcLabel::display_tree_in_egui(app, &child, ui, &ctx);
                                 }
                             }
-                            if !app.pack.is_none() {}
                         }),
                 );
             }
@@ -240,7 +251,7 @@ impl Gui {
                         .max_width(ui.available_width())
                         .show(ui, |ui| {
                             Gui::display_tree_background(app, ui);
-                            open_byml_or_sarc(app, ui);
+                            FileOpener::open_byml_or_sarc(app, false);
                             /*if let Some(tag) = &mut app.opened_file.tag {
                                 for (key, item) in tag.actor_tag_data.iter() {
                                     CollapsingHeader::new(key)
@@ -315,27 +326,27 @@ impl Gui {
                         };
                         display_infolabels(
                             ui,
-                            label_endian.to_string(),
-                            Some(opened.path.name.clone()),
+                            label_endian,
+                            Some(&opened.path.name),
                         );
                     }
                 }
             }
             ActiveTab::TextBox => {
-                let mut label_path: Option<String> = None;
-                let label_endian = app.opened_file.get_endian_label();
+                let mut label_path: Option<&str> = None;
+                let label_endian = &app.opened_file.get_endian_label();
                 if let Some(internal_file) = &app.internal_sarc_file {
-                    label_path = Some(internal_file.path.name.clone());
+                    label_path = Some(&internal_file.path.name);
                 } else {
-                    label_path = Some(app.opened_file.path.name.clone());
+                    label_path = Some(&app.opened_file.path.name);
                 }
 
                 display_infolabels(ui, label_endian, label_path);
             }
             ActiveTab::Advanced => {
-                let label_path: Option<String> = Some(app.opened_file.path.name.clone());
+                let label_path: Option<&str> = Some(&app.opened_file.path.name);
                 let label_endian = if label_path.is_some() { "LE" } else { "" };
-                display_infolabels(ui, label_endian.to_string(), label_path);
+                display_infolabels(ui, label_endian, label_path);
             }
         }
     }
@@ -347,16 +358,13 @@ fn calc_labels_width(label: &str) -> f32 {
 
 fn are_infolables_shown(ui: &mut egui::Ui, label: &str) -> bool {
     let perc = calc_labels_width(label) / ui.available_width();
-    if perc < 0.79 {
-        return true;
-    }
-    return false;
+    return perc < 0.79;
 }
-pub fn display_infolabels(ui: &mut egui::Ui, endian: String, path: Option<String>) {
+pub fn display_infolabels(ui: &mut egui::Ui, endian: &str, path: Option<&str>) {
     if let Some(path) = &path {
         if are_infolables_shown(ui, path) {
             ui.add(Label::new(endian));
-            ui.add(Label::new(path));
+            ui.add(Label::new(path.to_string()));
         }
     }
 }
@@ -375,45 +383,3 @@ pub fn run() {
     .unwrap();
 }
 
-pub struct LargeTextLoader {
-    pub text: Arc<Mutex<String>>,
-    pub code_editor: CodeEditor,
-    // Other fields to manage loaded text, cache, etc.
-}
-
-impl LargeTextLoader {
-    fn new(file_path: &str) -> Self {
-        let text = Arc::new(Mutex::new(String::new()));
-        let text_clone = text.clone();
-        let ff = file_path.clone().to_string();
-        // Simulate background loading
-        std::thread::spawn(move || {
-            if let Ok(mut file_text) = std::fs::read_to_string(ff.clone()) {
-                // Perform chunked loading here...
-                // For now, we'll just load the entire file as an example.
-                *text_clone.lock() = file_text;
-            }
-        });
-
-        LargeTextLoader {
-            text: text,
-            code_editor: CodeEditor::default(),
-        }
-    }
-
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ScrollArea::vertical().show(ui, |ui| {
-            // Here we would only render the visible portion of the text.
-            // For simplicity, we'll show a TextEdit with all the text.
-            let text_lock = self.text.lock();
-            if ui.add(
-                TextEdit::multiline(&mut text_lock.clone())
-                    .desired_width(f32::INFINITY)
-                    //.code_editor(),
-            ).changed() {
-                
-                //self.text = Arc::new(Mutex::new(text_lock.clone().to_string())) ;
-            };
-        });
-    }
-}

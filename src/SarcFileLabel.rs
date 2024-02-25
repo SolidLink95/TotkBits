@@ -1,14 +1,14 @@
 use std::io;
 use std::rc::Rc;
 
-use crate::BinTextFile::{BymlFile, FileData, OpenedFile};
+use crate::file_format::BinTextFile::{BymlFile, FileData, OpenedFile};
 use crate::ButtonOperations::ButtonOperations;
-use crate::Settings::Styles;
+use crate::Settings::{FileReader, Styles};
 use msyt::converter::MsytFile;
 
 use crate::Gui::{ActiveTab, TotkBitsApp};
 use crate::Tree::TreeNode;
-use crate::Zstd::{is_aamp, is_byml, is_msyt, FileType};
+use crate::Zstd::{is_aamp, is_byml, is_msyt, TotkFileType};
 
 use egui::{
     CollapsingHeader, Id, Response, Sense, TextStyle, Widget, WidgetInfo, WidgetText, WidgetType,
@@ -55,7 +55,7 @@ impl SarcLabel {
             }
             ctx.set_style(app.settings.styles.context_menu.clone());
             file_label.context_menu(|ui| {
-                if ui.button("Open").clicked() {
+                if ui.button("Edit").clicked() {
                     SarcLabel::safe_open_file_from_opened_sarc(app, ui, &child);
                     ui.close_menu();
                 }
@@ -79,6 +79,7 @@ impl SarcLabel {
                 }
                 if ui.button("Rename").clicked() {
                     println!("Rename");
+                    app.file_renamer.is_shown = true;
                     ui.close_menu();
                 }
             });
@@ -288,16 +289,17 @@ impl SarcLabel {
             //For now assume only byml and msyt files will be opened
             let raw_data = data.unwrap().to_vec();
             if is_msyt(&raw_data) {
-                app.text = MsytFile::binary_to_text(raw_data).expect("Error getting file msyt");
+                let text = MsytFile::binary_to_text(raw_data).expect("Error getting file msyt");
+                app.file_reader.from_string(&text);
                 app.opened_file = OpenedFile::new(
                     path.to_string(),
-                    FileType::Msbt,
+                    TotkFileType::Msbt,
                     Some(roead::Endian::Little),
                     None,
                 );
                 app.settings.is_file_loaded = true; //precaution
             } else if is_byml(&raw_data) {
-                let file_data = FileData::from(raw_data, FileType::Byml);
+                let file_data = FileData::from(raw_data, TotkFileType::Byml);
                 let the_byml = BymlFile::from_binary(
                     file_data,
                     app.zstd.clone(),
@@ -305,11 +307,12 @@ impl SarcLabel {
                 )?;
                 app.opened_file = OpenedFile::new(
                     path.to_string(),
-                    FileType::Byml,
+                    TotkFileType::Byml,
                     Some(roead::Endian::Little),
                     None,
                 );
-                app.text = Byml::to_text(&the_byml.pio);
+                let text = Byml::to_text(&the_byml.pio);
+                app.file_reader.from_string(&text);
                 app.opened_file.byml = Some(the_byml);
                 app.settings.is_file_loaded = true; //precaution
             } else if is_aamp(&raw_data) {

@@ -1,12 +1,15 @@
-use crate::ButtonOperations::write_string_to_file;
+use crate::file_format::Pack::{PackComparer, PackFile};
+use crate::Open_Save::write_string_to_file;
 use crate::{Gui::TotkBitsApp, GuiMenuBar::FpsCounter, Tree::TreeNode};
 use egui::scroll_area::ScrollAreaOutput;
 use egui::{
     epaint::Shadow, include_image, style::HandleShape, Color32, Margin, Pos2, Rect, Response,
     Style, TextStyle, Vec2,
 };
-use egui::{Align, Key};
+use egui::{Align, Area, Key, TopBottomPanel};
 use egui_code_editor::Syntax;
+use fs2::FileExt;
+use roead::sarc;
 use std::io::{self, BufReader, BufWriter, Read};
 use std::{fs, io::Seek, path::Path, rc::Rc, sync::Arc};
 
@@ -22,11 +25,13 @@ pub struct FileReader {
     //pub writer: BufWriter<std::fs::File>,
     pub in_file: String,
     pub out_file: String,
+    pub f: fs::File,
     pub len: u64,
     pub pos: Pos,
     pub reload: bool, //flag to prevent read file in every frame
     pub displayed_text: String,
     pub buf_size: u64,
+    pub default_buf_size: u64,
     pub scroll_pos: f32,
     pub full_text: String,
     pub old_text: String,
@@ -40,17 +45,19 @@ impl Default for FileReader {
         let f = fs::File::create(in_file).unwrap();
         //fs::copy(in_file, out_file);
         let g = fs::File::create(out_file).unwrap();
-        let len = f.metadata().unwrap().len();
+        let len = 0 as u64;
         Self {
-            reader: BufReader::new(f),
+            reader: BufReader::new(f.try_clone().unwrap()),
             //writer: BufWriter::new(g),
             in_file: in_file.to_string(),
             out_file: out_file.to_string(),
+            f: f,
             len: len,
             pos: Pos { x: 0, y: 0 },
             reload: false,
             displayed_text: String::new(),
-            buf_size: 0 as u64,
+            buf_size: 8192 as u64,
+            default_buf_size: 8192 as u64,
             scroll_pos: 0.0,
             full_text: String::new(),
             old_text: String::new(),
@@ -60,28 +67,29 @@ impl Default for FileReader {
 }
 
 impl FileReader {
-    pub fn from_string(&mut self, text: String) -> io::Result<()> {
+    pub fn from_string(&mut self, text: &str) -> io::Result<()> {
         write_string_to_file(&self.in_file, &text)?;
         fs::copy(&self.in_file, &self.out_file)?;
-        let f = fs::File::open(&self.in_file)?;
-        let g = fs::File::open(&self.out_file)?;
-        let len = f.metadata().unwrap().len();
-        self.reader = BufReader::new(f);
+        self.f = fs::File::open(&self.in_file)?;
+        //self.f.lock_exclusive()?;
+        let len = self.f.metadata().unwrap().len();
+        self.reader = BufReader::new(self.f.try_clone().unwrap());
         //self.writer = BufWriter::new(g);
         self.pos = Pos { x: 0, y: 0 };
         self.len = len;
-        self.displayed_text = text.clone();
-        self.full_text = text;
+        self.displayed_text = text.to_string();
+        self.full_text = text.to_string();
         self.old_text = self.displayed_text.clone();
         self.scroll_pos = 0.0;
         self.reload = true;
+        self.buf_size = self.buf_size.max(len).min(self.default_buf_size);
         Ok(())
     }
 
     pub fn update(&mut self) -> io::Result<()> {
-        if self.reload {
+        if self.reload && !self.full_text.is_empty() {
             if self.update_pos() {
-                println!("Reloading buffer {:?}", self.pos);
+                //println!("Reloading buffer {:?}", self.pos);
                 self.reader
                     .seek(std::io::SeekFrom::Start(self.pos.x as u64))?;
                 let mut buffer = vec![0; (self.pos.y - self.pos.x) as usize];
@@ -93,23 +101,36 @@ impl FileReader {
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                 self.old_text = self.displayed_text.clone();
             }
+
             self.reload = false; //make sure updates only once by itself
         }
         Ok(())
     }
 
     pub fn update_text_changed(&mut self) -> io::Result<()> {
-        let chunk_1st = &self.full_text[0..self.pos.x as usize];
-        let mut chunk_end = "";
-        if self.pos.y < self.full_text.len() as i32{
-            chunk_end = &self.full_text[self.pos.y as usize..];
+        //self.f.unlock()?;
+        if self.displayed_text.len() < self.buf_size as usize {
+            write_string_to_file(&self.in_file, &self.displayed_text)?;
+            println!("Text updated!");
+        } else {
+            let chunk_1st = &self.full_text[0..self.pos.x as usize];
+            let mut chunk_end = "";
+            if self.pos.y < self.full_text.len() as i32 {
+                chunk_end = &self.full_text[self.pos.y as usize..];
+            }
+            let new_text = format!("{}{}{}", chunk_1st, self.displayed_text, chunk_end);
+            write_string_to_file(&self.in_file, &new_text)?;
+            self.len = new_text.len() as u64;
+            self.full_text = new_text;
+            println!("Text updated! {:?}", self.pos);
         }
-        let new_text = format!("{}{}{}", chunk_1st, self.displayed_text, chunk_end);
-        write_string_to_file(&self.in_file, &new_text)?;
-        self.len = new_text.len() as u64;
-        println!("Text updated! {:?}", self.pos);
 
         self.old_text = self.displayed_text.clone();
+        if self.buf_size < self.default_buf_size {
+            self.buf_size = self.default_buf_size.clone();
+        }
+        //self.buf_size = self.default_buf_size.max(self.full_text.len() as u64);
+        //self.f.lock_exclusive()?;
         Ok(())
     }
 
@@ -151,16 +172,8 @@ impl FileReader {
         self.pos.y = self.pos.y.min(max_size);
         self.pos.y = self.pos.y.max(self.pos.x);
         self.pos.y = self.pos.y.max(self.buf_size as i32);
-        /*if self.pos.y < self.buf_size as i32 {
-            self.pos.y = self.pos.y.max(self.buf_size as i32);
-            return true;
-        }*/
-        //let diff = (self.len as i32 - 1 - self.buf_size as i32);
         self.pos.x = self.pos.x.min(self.len as i32 - 1 - self.buf_size as i32);
-        /*if self.pos.x >= diff {
-            self.pos.x = self.pos.x.min(diff);
-            return true;
-        }*/
+        self.pos.x = self.pos.x.max(0);
         return true;
     }
 
@@ -225,15 +238,10 @@ impl FileReader {
         let spacing_y = ui.spacing().item_spacing.y;
         let area_offset = ui.cursor();
         let y = area_offset.top() + 1.0 as f32 * (row_height + spacing_y);
-        let target_rect = Rect {//[[8.0 107.5] - [690.5 349
-            min: Pos2 {
-                x: 8.0,
-                y: 107.5,
-            },
-            max: Pos2 {
-                x: 680.0,
-                y: 340.0,
-            },
+        let target_rect = Rect {
+            //[[8.0 107.5] - [690.5 349
+            min: Pos2 { x: 8.0, y: 107.5 },
+            max: Pos2 { x: 680.0, y: 340.0 },
         };
         ui.scroll_to_rect(target_rect, Some(Align::Center));
     }
@@ -265,6 +273,7 @@ pub struct Settings {
     pub syntax: Arc<Syntax>, //syntax for code editor
     pub modded_color: Color32,
     pub is_dir_context_menu: bool, //is context menu for dir opened
+    pub do_i_compare_and_reload: bool, //is context menu for dir opened
     pub dir_context_pos: Option<egui::Pos2>, //
     pub dir_context_size: Option<Response>,
     pub fps_counter: FpsCounter,
@@ -288,6 +297,7 @@ impl Default for Settings {
             syntax: Arc::new(Syntax::rust()),
             modded_color: Color32::from_rgb(204, 153, 16),
             is_dir_context_menu: false,
+            do_i_compare_and_reload: false,
             dir_context_pos: None, //
             dir_context_size: None,
             fps_counter: FpsCounter::new(),
@@ -637,5 +647,90 @@ impl Pathlib {
         path.to_str()
             .map(|s| s.to_string())
             .unwrap_or("".to_string())
+    }
+}
+
+pub struct FileRenamer {
+    pub old_name: String,
+    pub new_name: String,
+    pub is_shown: bool,
+    pub is_renamed: bool,
+}
+
+impl Default for FileRenamer {
+    fn default() -> Self {
+        Self {
+            old_name: String::new(),
+            new_name: String::new(),
+            is_shown: false,
+            is_renamed: false,
+        }
+    }
+}
+
+impl FileRenamer {
+    pub fn reset(&mut self) {
+        self.old_name = String::new();
+        self.new_name = String::new();
+        self.is_shown = false;
+        self.is_renamed = false;
+    }
+
+    pub fn rename(&mut self, opened: &mut PackFile, node: &Rc<TreeNode<std::string::String>>) -> String {
+        let new_name = format!("{}/{}",&node.path.parent, &self.new_name);
+        if opened.rename(&node.path.full_path, &new_name).is_err() {
+            return format!("Failed to rename {}", &node.path.full_path);
+        }
+        node.remove_itself();
+        return format!("Renamed {}", &node.path.full_path);
+    }
+
+    pub fn show(
+        &mut self,
+        opened: &mut PackFile,
+        internal_sarc_file: Option<&Rc<TreeNode<String>>>,
+        ctx: &egui::Context,
+        ui: &egui::Ui,
+    ) {
+        if self.is_shown {
+            if let Some(internal_file) = &internal_sarc_file {
+                if TreeNode::is_leaf(internal_file) {
+                    if self.new_name.is_empty() {
+                        self.new_name = internal_file.path.name.clone();
+                    }
+                    TopBottomPanel::bottom("rename_panel").show(ctx, |ui| {
+                        ui.vertical(|ui| {
+                            ui.label("Rename file:");
+                            ui.label(format!("{}", internal_file.path.full_path));
+                            //ui.label("to:");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.new_name)
+                                    .desired_width(ui.available_width())
+                            );
+                            //ui.text_edit_singleline(&mut self.new_name);
+                            ui.horizontal(|ui| {
+                                if ui.button("Ok").clicked() {
+                                    println!(
+                                        "Attempting to rename {}",
+                                        internal_file.path.full_path
+                                    );
+                                    println!("{}",self.rename(opened, internal_file));
+                                    self.reset();
+                                    self.is_renamed = true;
+                                }
+                                else {
+                                    if ui.button("Cancel").clicked() {
+                                        println!("Cancel clicked!");
+                                        self.is_shown = false;
+                                        self.is_renamed = false;
+                                    }
+                                }
+                            });
+                        });
+                    });
+                   
+                }
+            }
+        }
     }
 }
