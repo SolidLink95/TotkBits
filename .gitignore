@@ -3,3 +3,5 @@
 /log*
 /in.txt
 /out.txt
+/tmp.txt
+/res/asdf/*

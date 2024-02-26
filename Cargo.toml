@@ -22,7 +22,7 @@ image = { version = "0.24", features = ["jpeg", "png"] }
 bitvec = "1.0.1"
 rayon = "1"
 serde = { version = "1.0", features = ["derive"] }
-#serde_derive = "1"
+#serde_derive = "1" rychnowska 1
 serde_yaml = "0.9.32"
 walkdir = "2"
 byteordered = "0.6.0"
@@ -30,3 +30,4 @@ egui_code_editor = { path = "src/egui_code_editor" , default-features = true }
 sha2 = "0.10"
 digest = "0.10"
 fs2 = "0.4"
+base64 = "0.13"

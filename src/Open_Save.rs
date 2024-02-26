@@ -176,9 +176,8 @@ impl FileOpener {
                     }
                     //tag.print();
                     app.opened_file = OpenedFile::from_path(path.to_string(), TotkFileType::TagProduct);
-                    let text = tag.to_text();
-                    app.file_reader.from_string(&text);
-                    //app.opened_file.tag = Some(tag);
+                    app.file_reader.from_string(&tag.text);
+                    app.opened_file.tag = Some(tag);
                     app.active_tab = ActiveTab::TextBox;
                     app.opened_file.file_type = TotkFileType::TagProduct;
                     app.opened_file.endian = Some(roead::Endian::Little);
@@ -304,9 +303,6 @@ impl FileSaver {
                     }
                 }
             }
-            TotkFileType::None => {
-                app.status_text = "No file opened to save!".to_string();
-            }
             TotkFileType::Text => match write_string_to_file(dest_file, &text) {
                 Ok(_) => {
                     app.status_text = format!("Saved text file: {}", dest_file);
@@ -315,6 +311,16 @@ impl FileSaver {
                     app.status_text = format!("Error saving text file: {}", dest_file);
                 }
             },
+            TotkFileType::TagProduct => {
+                if let Some(tag) = &mut app.opened_file.tag {
+                    tag.save_default(&text);
+                    println!("Tag saved!");
+                    app.status_text = format!("Saved tag file: : {}", dest_file);
+                }
+            }
+            TotkFileType::None => {
+                app.status_text = "No file opened to save!".to_string();
+            }
             _ => {}
         }
         Ok(())

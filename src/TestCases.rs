@@ -40,8 +40,8 @@ pub fn test_case1(totk_config: &TotkConfig::TotkConfig) -> io::Result<String>{
                 println!("  {:?}", e);
             }
             println!("  {:?}", pio["Components"]["ModelInfoRef"].as_string());
-            pio["Components"]["ModelInfoRef"] = roead::byml::Byml::String("DUPA".to_string().into());
-            let  t = pio["Components"].as_mut_map().expect("Dupa huj");
+            pio["Components"]["ModelInfoRef"] = roead::byml::Byml::String("XXXX".to_string().into());
+            let  t = pio["Components"].as_mut_map().expect("XXXXXX");
             t.remove("ModelInfoRef");
             t.remove("ASRef");
             //pio["Components"].as_mut_map().unwrap().remove("ModelInfoRef");
