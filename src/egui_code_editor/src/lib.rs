@@ -101,9 +101,7 @@ pub struct CodeEditor {
     vscroll: bool,
     stick_to_bottom: bool,
     shrink: bool,
-    scroll_position: f32,      // Track the current scroll position
-    visible_line_count: usize, // Number of lines visible in the editor at once
-    total_line_count: usize,   // Total number of lines in the text
+    pub line_offset: usize
 }
 
 impl Hash for CodeEditor {
@@ -127,9 +125,7 @@ impl Default for CodeEditor {
             vscroll: true,
             stick_to_bottom: false,
             shrink: false,
-            scroll_position: 0.0,
-            visible_line_count: 0,
-            total_line_count: 0,
+            line_offset: 0,
         }
     }
 }
@@ -233,7 +229,7 @@ impl CodeEditor {
         total = total.max(text.chars().filter(|&c| c == '\n').count().max(1)); //;
 
         let max_indent = total.to_string().len();
-        let mut counter = (1..=total)
+        let mut counter = (self.line_offset + 1..=self.line_offset + total + 1)
             .map(|i| {
                 let label = i.to_string();
                 format!(

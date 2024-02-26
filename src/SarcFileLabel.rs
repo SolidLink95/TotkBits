@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::file_format::BinTextFile::{BymlFile, FileData, OpenedFile};
 use crate::ButtonOperations::ButtonOperations;
-use crate::Settings::{FileReader, Styles};
+use crate::Settings::Styles;
 use msyt::converter::MsytFile;
 
 use crate::Gui::{ActiveTab, TotkBitsApp};

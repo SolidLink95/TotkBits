@@ -1,30 +1,20 @@
-use crate::file_format::BinTextFile::{bytes_to_file, BymlFile, OpenedFile};
-//use crate::BinTextFile::{bytes_to_file, BymlFile, OpenedFile, TagProduct};
-use crate::file_format::Pack::{PackComparer, PackFile};
-use crate::Gui::{ActiveTab, TotkBitsApp};
-use crate::Open_Save::{FileOpener, FileSaver};
-use crate::SarcFileLabel::SarcLabel;
-use crate::Settings::{FileReader, Icons, Pathlib, Settings};
-use crate::Tree::{self, TreeNode};
-use crate::Zstd::{is_msyt, TotkFileType, TotkZstd};
-use byteordered;
-use fs2::FileExt;
-use msyt::converter::MsytFile;
-//use crate::SarcFileLabel::ScrollAreaPub;
-use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
-use egui::{Align, Button, InnerResponse, Label, Layout, Pos2, Rect, Shape};
-use rfd::{FileDialog, MessageDialog};
-use roead::aamp::ParameterIO;
-//use nfd::Response;
-use roead::byml::Byml;
+use std::{
+    fs,
+    io::{self, Read},
+    rc::Rc,
+};
 
-use std::error::Error;
-use std::fmt::format;
-use std::fs::OpenOptions;
-use std::io::{BufWriter, Read, Write};
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
-use std::{fs, io, thread};
+use rfd::{FileDialog, MessageDialog};
+
+use crate::{
+    file_format::BinTextFile::{bytes_to_file, OpenedFile},
+    FileReader::FileReader,
+    Gui::{ActiveTab, TotkBitsApp},
+    Open_Save::{write_string_to_file, FileOpener, FileSaver},
+    SarcFileLabel::SarcLabel,
+    Settings::Pathlib,
+    Tree::TreeNode,
+};
 
 pub struct ButtonOperations {}
 
@@ -45,7 +35,7 @@ impl ButtonOperations {
                         }
                         let internal_path = format!("{}/{}", parent_dir, file_path.name);
                         opened.writer.add_file(&internal_path, buf); //file added to writer
-                        //opened.reload(); //reload .sarc from .writer
+                                                                     //opened.reload(); //reload .sarc from .writer
                         app.settings.do_i_compare_and_reload = true;
                         app.settings.is_tree_loaded = false; //reload tree to watch effects
                     }
@@ -152,7 +142,7 @@ impl ButtonOperations {
             ActiveTab::TextBox => {
                 let _ = FileSaver::save_tab_text(app);
             }
-            ActiveTab::Advanced => {}
+            ActiveTab::Settings => {}
         }
     }
 
@@ -192,8 +182,13 @@ impl ButtonOperations {
                 ActiveTab::TextBox => {
                     for ext in vec![".yml", ".yaml", ".json"] {
                         if dest_file.to_lowercase().ends_with(ext) {
+                            write_string_to_file(
+                                &dest_file,
+                                &String::from_utf8(app.file_reader.buffer.clone())
+                                    .unwrap_or("".to_string()),
+                            );
                             //app.file_reader.f.unlock()?;
-                            fs::copy(&app.file_reader.in_file, dest_file);
+                            //fs::copy(&app.file_reader.in_file, dest_file);
                             //app.file_reader.f.lock_exclusive()?;
                             //let mut f = fs::File::create(dest_file)?;
                             //f.write_all(app.text.as_bytes())?;
@@ -202,7 +197,7 @@ impl ButtonOperations {
                     }
                     FileSaver::save_text_file_by_file_type(app, &dest_file);
                 }
-                ActiveTab::Advanced => {}
+                ActiveTab::Settings => {}
             }
         }
 

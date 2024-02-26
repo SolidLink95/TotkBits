@@ -1,17 +1,21 @@
-use crate::file_format::BinTextFile::{BymlFile, OpenedFile, TagProduct};
+use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Pack::{PackComparer, PackFile};
+use crate::file_format::TagProduct::TagProduct;
 use crate::misc;
+use crate::widgets::TimedNotificationWidget::TimedNotification;
 use crate::ButtonOperations::{save_file_dialog, ButtonOperations};
+use crate::FileReader::FileReader;
 use crate::GuiMenuBar::MenuBar;
 use crate::GuiScroll::EfficientScroll;
 use crate::Open_Save::FileOpener;
 use crate::SarcFileLabel::SarcLabel;
-use crate::Settings::{FileReader, FileRenamer, Icons, Pathlib, Settings};
+use crate::Settings::{FileRenamer, Icons, Pathlib, Settings};
 use crate::TotkConfig::TotkConfig;
 use crate::Tree::{self, TreeNode};
 use crate::Zstd::{TotkFileType, TotkZstd};
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::mutex::Mutex;
+use egui::scroll_area::ScrollAreaOutput;
 use egui::text::{Fonts, LayoutJob};
 use egui::{
     Align, Button, CollapsingHeader, Context, FontId, FontSelection, InputState, Key, Label,
@@ -28,7 +32,7 @@ use std::{fs, io};
 pub enum ActiveTab {
     DiretoryTree,
     TextBox,
-    Advanced,
+    Settings,
 }
 
 pub struct TotkBitsApp<'a> {
@@ -153,21 +157,27 @@ impl Gui {
                     .on_hover_text("Add file")
                     .clicked()
                 {
-                    Gui::scroll_test(app, ui, 100.0);
+                    //app.settings.scroll_val = -99999999.0;
+                    //Gui::scroll_test(&app.scroll_resp, ui, 100.0);
                 }
                 if ui
-                .add(Button::image(app.icons.add_sarc.clone()))
-                .on_hover_text("Add file")
-                .clicked()
-            {
-                Gui::scroll_test(app, ui, -100.0);
-            }
+                    .add(Button::image(app.icons.add_sarc.clone()))
+                    .on_hover_text("Add file")
+                    .clicked()
+                {
+                    app.settings.scroll_val = -100.0;
+                    //Gui::scroll_test(&app.scroll_resp, ui, -100.0);
+                }
                 if ui
                     .add(Button::image(app.icons.extract.clone()))
                     .on_hover_text("Extract")
                     .clicked()
                 {
                     ButtonOperations::extract_click(app);
+                }
+                if app.settings.scroll_val.abs() > 49.0 {
+                    Gui::scroll_test(&app.scroll_resp, ui, app.settings.scroll_val);
+                    app.settings.scroll_val = 0.0;
                 }
             });
             ui.add_space(2.0);
@@ -178,10 +188,11 @@ impl Gui {
     pub fn display_main(app: &mut TotkBitsApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         match app.active_tab {
             ActiveTab::TextBox => {
-                app.file_reader
+                app.settings.scroll_val =                 app.file_reader
                     .check_for_changes(ctx, &ui, &app.scroll_resp);
                 //app.file_reader.update_scroll_pos(&app.scroll_resp);
                 if let Err(err) = &app.file_reader.update() {}
+                app.code_editor.line_offset = app.file_reader.lines_offset;
                 ui.set_style(app.settings.styles.text_editor.clone());
 
                 app.scroll_resp = app
@@ -199,11 +210,14 @@ impl Gui {
                 //});
                 let r = app.scroll_resp.as_ref().unwrap();
                 let _p = (r.state.offset.y * 100.0) / r.content_size.y;
-                app.status_text = format!(
+                /*app.status_text = format!(
                     "  {:.1}-{:.1} {:.1}  {:.1}% {:?}",
                     r.state.offset.x,r.state.offset.y, r.content_size.y, _p, r.inner_rect
-                );
-                //app.status_text = app.file_reader.get_status(format!("  {:.1} {:.1}  {:.1}% {:?}", r.state.offset.y, r.content_size.y, _p, r.inner_rect));
+                );*/
+                app.status_text = app.file_reader.get_status(format!(
+                    "  {:.1} {:.1}  {:.1}% {:?}",
+                    r.state.offset.y, r.content_size.y, _p, r.inner_rect
+                ));
                 //ctx.set_style(app.settings.styles.def_style.clone());
             }
             ActiveTab::DiretoryTree => {
@@ -245,7 +259,7 @@ impl Gui {
                         }),
                 );
             }
-            ActiveTab::Advanced => {
+            ActiveTab::Settings => {
                 app.scroll_resp = Some(
                     ScrollArea::vertical()
                         .auto_shrink([false, false])
@@ -281,19 +295,23 @@ impl Gui {
         painter.add(shape);
     }
 
-    pub fn scroll_test(app: &mut TotkBitsApp,ui: &egui::Ui, scroll_offset: f32) {
-        let r = app.scroll_resp.as_ref().unwrap();
-        //let offset = if scroll_offset.is_sign_positive() {scroll_offset + 3.0} else { scroll_offset -3.0};
-        let visible_rect = r.inner_rect.clone();
-
-        // Create a new rectangle adjusted by the offset
-        let target_rect = egui::Rect::from_min_size(
-            visible_rect.min + egui::vec2(0.0, scroll_offset + 3.0), 
-            visible_rect.size(),
-        );
-    
-        // Scroll to the new rectangle
-        ui.scroll_to_rect(target_rect, Some(egui::Align::Center));
+    //pub fn scroll_test(app: &mut TotkBitsApp,ui: &egui::Ui, scroll_offset: f32) {
+    pub fn scroll_top_test(resp: &Option<ScrollAreaOutput<()>>, ui: &egui::Ui) {
+        Gui::scroll_test(resp, ui, 99999999.0)
+    }
+    pub fn scroll_test(resp: &Option<ScrollAreaOutput<()>>, ui: &egui::Ui, scroll_offset: f32) {
+        if let Some(r) = resp {
+            //let r = app.scroll_resp.as_ref().unwrap();
+            let visible_rect = r.inner_rect.clone();
+            // Create a new rectangle adjusted by the offset
+            let target_rect = egui::Rect::from_min_size(
+                visible_rect.min + egui::vec2(0.0, scroll_offset + 3.0),
+                visible_rect.size(),
+            );
+            // Scroll to the new rectangle
+            ui.scroll_to_rect(target_rect, Some(egui::Align::Center));
+            println!("Scrolled {}", scroll_offset);
+        }
     }
 
     pub fn display_labels(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
@@ -318,12 +336,12 @@ impl Gui {
             }
             if ui
                 .add(SelectableLabel::new(
-                    app.active_tab == ActiveTab::Advanced,
-                    "Advanced",
+                    app.active_tab == ActiveTab::Settings,
+                    "Settings",
                 ))
                 .clicked()
             {
-                app.active_tab = ActiveTab::Advanced;
+                app.active_tab = ActiveTab::Settings;
             }
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 Gui::display_filename_endian(app, ui);
@@ -356,7 +374,7 @@ impl Gui {
 
                 display_infolabels(ui, label_endian, label_path);
             }
-            ActiveTab::Advanced => {
+            ActiveTab::Settings => {
                 let label_path: Option<&str> = Some(&app.opened_file.path.name);
                 let label_endian = if label_path.is_some() { "LE" } else { "" };
                 display_infolabels(ui, label_endian, label_path);
@@ -376,8 +394,9 @@ fn are_infolables_shown(ui: &mut egui::Ui, label: &str) -> bool {
 pub fn display_infolabels(ui: &mut egui::Ui, endian: &str, path: Option<&str>) {
     if let Some(path) = &path {
         if are_infolables_shown(ui, path) {
-            ui.add(Label::new(endian));
-            ui.add(Label::new(path.to_string()));
+            //ui.add(Label::new(endian));
+            ui.add(Label::new(format!("{} {}", path, endian)));
+            //ui.add(Label::new(path.to_string()));
         }
     }
 }

@@ -8,7 +8,8 @@ use fs2::FileExt;
 use msyt::converter::MsytFile;
 use roead::byml::Byml;
 
-use crate::file_format::BinTextFile::{BymlFile, OpenedFile, TagProduct};
+use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
+use crate::file_format::TagProduct::TagProduct;
 use crate::file_format::Pack::{PackComparer, PackFile};
 use crate::{
     Gui::{ActiveTab, TotkBitsApp},
@@ -203,7 +204,8 @@ impl FileSaver {
             if let Some(pack) = &mut app.pack {
                 if let Some(opened) = &mut pack.opened {
                     app.file_reader.update_text_changed();
-                    let text = read_string_from_file(&app.file_reader.in_file)?;
+                    //let text = read_string_from_file(&app.file_reader.in_file)?;
+                    let text = String::from_utf8(app.file_reader.buffer.clone()).unwrap_or("".to_string());
                     let endian = app.opened_file.endian.unwrap_or(roead::Endian::Little);
                     let mut data: Vec<u8> = Vec::new();
                     match app.opened_file.file_type {
@@ -261,7 +263,8 @@ impl FileSaver {
     pub fn save_text_file_by_file_type(app: &mut TotkBitsApp, dest_file: &str) -> io::Result<()> {
         //Save the content of the text editor. Check if app.text and dest_file are not empty beforehand!
         //app.file_reader.f.unlock()?;
-        let text = read_string_from_file(&app.file_reader.in_file)?;
+        //let text = read_string_from_file(&app.file_reader.in_file)?;
+        let text = String::from_utf8(app.file_reader.buffer.clone()).unwrap_or("".to_string());
         //app.file_reader.f.lock_exclusive()?;
         match app.opened_file.file_type {
             TotkFileType::Bcett => {
