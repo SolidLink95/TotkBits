@@ -1,10 +1,10 @@
-use crate::misc;
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile, TagProduct};
+use crate::file_format::Pack::{PackComparer, PackFile};
+use crate::misc;
 use crate::ButtonOperations::{save_file_dialog, ButtonOperations};
-use crate::Open_Save::FileOpener;
 use crate::GuiMenuBar::MenuBar;
 use crate::GuiScroll::EfficientScroll;
-use crate::file_format::Pack::{PackComparer, PackFile};
+use crate::Open_Save::FileOpener;
 use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{FileReader, FileRenamer, Icons, Pathlib, Settings};
 use crate::TotkConfig::TotkConfig;
@@ -12,9 +12,10 @@ use crate::Tree::{self, TreeNode};
 use crate::Zstd::{TotkFileType, TotkZstd};
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::mutex::Mutex;
-use egui::text::LayoutJob;
+use egui::text::{Fonts, LayoutJob};
 use egui::{
-    Align, Button, CollapsingHeader, Context, FontId, InputState, Key, Label, Layout, Pos2, Rect, Response, Shape, TextEdit
+    Align, Button, CollapsingHeader, Context, FontId, FontSelection, InputState, Key, Label,
+    Layout, Pos2, Rect, Response, Shape, TextEdit, Vec2,
 };
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use egui_extras::install_image_loaders;
@@ -31,13 +32,13 @@ pub enum ActiveTab {
 }
 
 pub struct TotkBitsApp<'a> {
-    pub opened_file: OpenedFile<'a>,     //path to opened file in string
+    pub opened_file: OpenedFile<'a>, //path to opened file in string
     //pub text: String,                    //content of the text editor
-    pub status_text: String,             //bottom bar text
-    pub scroll: ScrollArea,              //scroll area
-   // pub scroll_updater: EfficientScroll, //scroll area
-    pub active_tab: ActiveTab,           //active tab, either sarc file or text editor
-    language: String, //language for highlighting, no option for yaml yet, toml is closest
+    pub status_text: String, //bottom bar text
+    pub scroll: ScrollArea,  //scroll area
+    // pub scroll_updater: EfficientScroll, //scroll area
+    pub active_tab: ActiveTab, //active tab, either sarc file or text editor
+    language: String,          //language for highlighting, no option for yaml yet, toml is closest
     pub zstd: Arc<TotkZstd<'a>>, //zstd compressors and decompressors
     pub pack: Option<PackComparer<'a>>, //opened sarc file object, none if none opened
     pub root_node: Rc<TreeNode<String>>, //root_node pf the sarc directory tree
@@ -60,7 +61,7 @@ impl Default for TotkBitsApp<'_> {
         file_reader.reload = true;
         Self {
             opened_file: OpenedFile::default(),
-           // text: misc::get_example_yaml(),
+            // text: misc::get_example_yaml(),
             status_text: "Ready".to_owned(),
             scroll: ScrollArea::vertical(),
             //scroll_updater: EfficientScroll::new(),
@@ -151,7 +152,16 @@ impl Gui {
                     .add(Button::image(app.icons.add_sarc.clone()))
                     .on_hover_text("Add file")
                     .clicked()
-                {}
+                {
+                    Gui::scroll_test(app, ui, 100.0);
+                }
+                if ui
+                .add(Button::image(app.icons.add_sarc.clone()))
+                .on_hover_text("Add file")
+                .clicked()
+            {
+                Gui::scroll_test(app, ui, -100.0);
+            }
                 if ui
                     .add(Button::image(app.icons.extract.clone()))
                     .on_hover_text("Extract")
@@ -166,46 +176,35 @@ impl Gui {
     }
 
     pub fn display_main(app: &mut TotkBitsApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-        /*let theme: egui_extras::syntax_highlighting::CodeTheme =
-            egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
-        let language = app.language.clone();
-        let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
-            let mut layout_job: LayoutJob =
-                egui_extras::syntax_highlighting::highlight(ui.ctx(), &theme, string, &language);
-            layout_job.wrap.max_width = wrap_width;
-            ui.fonts(|f| f.layout_job(layout_job))
-        };*/
-
         match app.active_tab {
             ActiveTab::TextBox => {
-                //scrollbar
-                //app.scroll.clone().show(ui, |ui| {
-                    ui.set_style(app.settings.styles.text_editor.clone());
-                    //app.text_loader.ui(ui,ctx);
-                    //ui.add(TextEdit::multiline(&mut app.text.clone()).desired_width(f32::INFINITY).code_editor());
-                    app.file_reader.check_for_changes(ctx, &ui, &app.scroll_resp);
-                    //app.file_reader.update_scroll_pos(&app.scroll_resp);
-                    if let Err(err) = &app.file_reader.update() {
-                        //println!("Error parsing {}\n{:?}", &app.opened_file.path.full_path, err);
-                    }
-                    //println!("{}", &app.opened_file.path.full_path);
-                    app.scroll_resp = app.code_editor
-                        .clone()
-                        .id_source("code editor")
-                        .with_rows(12)
-                        .with_fontsize(12.0)
-                        .vscroll(true)
-                        //.with_theme(ColorTheme::GRUVBOX)
-                        //.with_syntax(app.settings.syntax.clone())
-                        .with_numlines(false)
-                        //.show(ui, &mut app.text, ctx.clone());
-                        .show(ui, &mut app.file_reader.displayed_text, ctx.clone());
-                    FileOpener::open_byml_or_sarc(app, false);
+                app.file_reader
+                    .check_for_changes(ctx, &ui, &app.scroll_resp);
+                //app.file_reader.update_scroll_pos(&app.scroll_resp);
+                if let Err(err) = &app.file_reader.update() {}
+                ui.set_style(app.settings.styles.text_editor.clone());
+
+                app.scroll_resp = app
+                    .code_editor
+                    .clone()
+                    .id_source("code editor")
+                    .with_rows(12)
+                    .with_fontsize(12.0)
+                    .vscroll(true)
+                    //.with_theme(ColorTheme::GRUVBOX)
+                    //.with_syntax(app.settings.syntax.clone())
+                    .with_numlines(false)
+                    .show(ui, &mut app.file_reader.displayed_text, ctx.clone());
+                FileOpener::open_byml_or_sarc(app, false);
                 //});
                 let r = app.scroll_resp.as_ref().unwrap();
                 let _p = (r.state.offset.y * 100.0) / r.content_size.y;
-                //app.status_text = format!("  {:.1} {:.1}  {:.1}%", r.state.offset.y, r.content_size.y, _p);
+                app.status_text = format!(
+                    "  {:.1}-{:.1} {:.1}  {:.1}% {:?}",
+                    r.state.offset.x,r.state.offset.y, r.content_size.y, _p, r.inner_rect
+                );
                 //app.status_text = app.file_reader.get_status(format!("  {:.1} {:.1}  {:.1}% {:?}", r.state.offset.y, r.content_size.y, _p, r.inner_rect));
+                //ctx.set_style(app.settings.styles.def_style.clone());
             }
             ActiveTab::DiretoryTree => {
                 app.scroll_resp = Some(
@@ -218,17 +217,20 @@ impl Gui {
                             FileOpener::open_byml_or_sarc(app, false);
                             if let Some(pack) = &mut app.pack {
                                 //Comparer opened
-                                if app.file_renamer.is_renamed || app.settings.do_i_compare_and_reload{
+                                if app.file_renamer.is_renamed
+                                    || app.settings.do_i_compare_and_reload
+                                {
                                     pack.compare_and_reload();
                                     app.file_renamer.is_renamed = false;
                                     app.settings.do_i_compare_and_reload = false;
                                 }
                                 if let Some(opened) = &mut pack.opened {
                                     let internal_file = &app.internal_sarc_file;
-                                    
-                                    app.file_renamer.show( opened, internal_file.as_ref(), ctx, ui);
+
+                                    app.file_renamer
+                                        .show(opened, internal_file.as_ref(), ctx, ui);
                                     //Sarc is opened
-                                    if !app.settings.is_tree_loaded || app.file_renamer.is_renamed  {
+                                    if !app.settings.is_tree_loaded || app.file_renamer.is_renamed {
                                         Tree::update_from_sarc_paths(&app.root_node, opened);
                                         app.settings.is_tree_loaded = true;
                                         //Tree::TreeNode::print(&app.root_node, 1);
@@ -279,6 +281,21 @@ impl Gui {
         painter.add(shape);
     }
 
+    pub fn scroll_test(app: &mut TotkBitsApp,ui: &egui::Ui, scroll_offset: f32) {
+        let r = app.scroll_resp.as_ref().unwrap();
+        //let offset = if scroll_offset.is_sign_positive() {scroll_offset + 3.0} else { scroll_offset -3.0};
+        let visible_rect = r.inner_rect.clone();
+
+        // Create a new rectangle adjusted by the offset
+        let target_rect = egui::Rect::from_min_size(
+            visible_rect.min + egui::vec2(0.0, scroll_offset + 3.0), 
+            visible_rect.size(),
+        );
+    
+        // Scroll to the new rectangle
+        ui.scroll_to_rect(target_rect, Some(egui::Align::Center));
+    }
+
     pub fn display_labels(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui
@@ -324,11 +341,7 @@ impl Gui {
                             roead::Endian::Big => "BE",
                             roead::Endian::Little => "LE",
                         };
-                        display_infolabels(
-                            ui,
-                            label_endian,
-                            Some(&opened.path.name),
-                        );
+                        display_infolabels(ui, label_endian, Some(&opened.path.name));
                     }
                 }
             }
@@ -382,4 +395,3 @@ pub fn run() {
     )
     .unwrap();
 }
-

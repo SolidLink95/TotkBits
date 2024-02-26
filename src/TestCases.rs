@@ -18,6 +18,22 @@ use crossterm::{
     terminal::{enable_raw_mode, disable_raw_mode},
 };
 
+        /*let theme: egui_extras::syntax_highlighting::CodeTheme =
+            egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
+
+        //let language = app.language.clone();
+        let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
+            let mut layout_job: LayoutJob = egui_extras::syntax_highlighting::highlight(
+                ui.ctx(),
+                &theme,
+                string,
+                &app.language,
+            );
+            layout_job.wrap.max_width = wrap_width;
+
+            ui.fonts(|f| f.layout_job(layout_job))
+        };
+*/
 
 pub fn test_case1(totk_config: &TotkConfig::TotkConfig) -> io::Result<String>{
     //let mut zsdic = Arc::new(ZsDic::new(&totk_config)?);

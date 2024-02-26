@@ -6,7 +6,7 @@ use egui::{
     epaint::Shadow, include_image, style::HandleShape, Color32, Margin, Pos2, Rect, Response,
     Style, TextStyle, Vec2,
 };
-use egui::{Align, Area, Key, TopBottomPanel};
+use egui::{Align, Area, FontFamily, FontId, Key, TopBottomPanel};
 use egui_code_editor::Syntax;
 use fs2::FileExt;
 use roead::sarc;
@@ -486,6 +486,9 @@ impl Styles {
         style.visuals.widgets.active.rounding = square_rounding; // No rounding on buttons
         style.visuals.widgets.open.rounding = square_rounding; // No rounding on buttons
         style.visuals.window_rounding = square_rounding;
+        for (_text_style, font_id) in style.text_styles.iter_mut() {
+            font_id.size = 12.0; // whatever size you want here
+        }
 
         return style;
     }
