@@ -1,5 +1,6 @@
 use crate::file_format::Pack::{PackComparer, PackFile};
 use crate::Open_Save::write_string_to_file;
+use crate::SarcFileLabel::FramedRect;
 use crate::{Gui::TotkBitsApp, GuiMenuBar::FpsCounter, Tree::TreeNode};
 use egui::scroll_area::ScrollAreaOutput;
 use egui::{
@@ -28,10 +29,12 @@ pub struct Settings {
     pub modded_color: Color32,
     pub is_dir_context_menu: bool,     //is context menu for dir opened
     pub do_i_compare_and_reload: bool, //is context menu for dir opened
+    pub is_loading: bool, //is context menu for dir opened
     pub scroll_val: f32,               //is context menu for dir opened
     pub dir_context_pos: Option<egui::Pos2>, //
     pub dir_context_size: Option<Response>,
     pub fps_counter: FpsCounter,
+    pub dir_rect: FramedRect
     //pub asdf: bool,
 }
 
@@ -53,10 +56,12 @@ impl Default for Settings {
             modded_color: Color32::from_rgb(204, 153, 16),
             is_dir_context_menu: false,
             do_i_compare_and_reload: false,
+            is_loading: false,
             scroll_val: 0.0,
             dir_context_pos: None, //
             dir_context_size: None,
             fps_counter: FpsCounter::new(),
+            dir_rect: FramedRect::default()
             //asdf: true
         }
     }
@@ -381,6 +386,7 @@ pub struct Pathlib {
     pub name: String,
     pub stem: String,
     pub extension: String,
+    pub ext_last: String,
     pub full_path: String,
 }
 
@@ -392,8 +398,17 @@ impl Pathlib {
             name: Pathlib::get_name(&path),
             stem: Pathlib::get_stem(&path),
             extension: Pathlib::get_extension(&path),
+            ext_last: Self::get_ext_last(&path),
             full_path: path,
         }
+    }
+    pub fn get_ext_last(path: &str) -> String {
+        let extension = Pathlib::get_extension(&path);
+        if !extension.contains(".") {
+            return "".to_string();
+        }
+        return extension.split(".").last().unwrap_or("").to_string();
+
     }
     pub fn get_parent(path: &str) -> String {
         //parent dir

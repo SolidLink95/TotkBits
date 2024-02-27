@@ -110,11 +110,13 @@ impl SarcLabel {
                         SarcLabel::display_tree_in_egui(app, &child, ui, ctx);
                     }
                 }
-            }).header_response;
-            SarcLabel::display_dir_context_menu(app, root_node, ui, ctx, response);
+            })
+            .header_response;
+        SarcLabel::display_dir_context_menu(app, root_node, ui, ctx, response);
     }
 
-    pub fn display_dir_context_menu( //TODO: make as separate widget
+    pub fn display_dir_context_menu(
+        //TODO: make as separate widget
         app: &mut TotkBitsApp,
         child: &Rc<TreeNode<String>>,
         ui: &mut egui::Ui,
@@ -149,72 +151,79 @@ impl SarcLabel {
                 app.settings.dir_context_pos = ui.input(|i| i.pointer.interact_pos());
             }
             if let Some(pos) = &app.settings.dir_context_pos {
-                let margin = Vec2::new(5.0, 5.0); // Additional margin for width and height
-                let little_margin = Vec2::new(1.0, 1.0); // Additional margin for width and height
-                    
-                let mut rect_pos = pos.clone();
-                let mut dir_pos = pos.clone() + margin;
-                
+                //let margin = Vec2::new(5.0, 5.0); // Additional margin for width and height
+                //let little_margin = Vec2::new(1.0, 1.0); // Additional margin for width and height
 
+                app.settings.dir_rect.rect_pos = pos.clone();
+                app.settings.dir_rect.fixed_pos = pos.clone() + app.settings.dir_rect.margin;
 
-                egui::Area::new(ui.id()).fixed_pos(dir_pos).show(ctx, |ui| {
-                    ui.set_style(app.settings.styles.context_menu.clone());
-                    if app.settings.dir_context_size.is_none() {
-                        app.settings.dir_context_size = Some(
-                            ui.allocate_ui(Vec2::new(ui.available_width(), 0.0), |ui| {
-                                ui.vertical(|ui| {
-                                    ui.button("Button 1");
-                                    ui.button("Button 2");
-                                    ui.button("Button 3");
-                                    ui.button("Button 4");
-                                });
-                            })
-                            .response,
+                egui::Area::new(ui.id())
+                    .fixed_pos(app.settings.dir_rect.fixed_pos)
+                    .show(ctx, |ui| {
+                        ui.set_style(app.settings.styles.context_menu.clone());
+                        if app.settings.dir_context_size.is_none() {
+                            app.settings.dir_context_size = Some(
+                                ui.allocate_ui(Vec2::new(ui.available_width(), 0.0), |ui| {
+                                    ui.vertical(|ui| {
+                                        ui.button("Button 1");
+                                        ui.button("Button 2");
+                                        ui.button("Button 3");
+                                        ui.button("Button 4");
+                                    });
+                                })
+                                .response,
+                            );
+                        }
+
+                        //let margin = Vec2::new(10.0, 10.0); // Additional margin for width and height
+                        app.settings.dir_rect.rect_size =
+                            app.settings.dir_context_size.as_ref().unwrap().rect.size()
+                                + (app.settings.dir_rect.margin * 2.0);
+
+                        let button_width = egui::vec2(
+                            app.settings.dir_rect.rect_size.x - (app.settings.dir_rect.margin * 2.0).x,
+                            ui.spacing().interact_size.y,
                         );
-                    }
+                        //let mut app.settings.dir_rect = FramedRect::new(rect_pos, (margin*2.0), little_margin,rect_size);
+                        app.settings.dir_rect.paint(ui);
 
-                    let margin = Vec2::new(10.0, 10.0); // Additional margin for width and height
-                    let mut rect_size = app.settings.dir_context_size.as_ref().unwrap().rect.size() +  margin;
-
-                    // Calculate the position for the rectangle
-                    //let mut rect_pos = response.rect.min - margin;
-
-                    // Draw the rectangle
-                    let rect = Rect::from_min_size(rect_pos, rect_size);
-
-                    let outer_rect = Rect::from_min_size(rect_pos-little_margin, rect_size+(2.0*little_margin));
-                    let button_width = egui::vec2(rect.width() - margin.x, ui.spacing().interact_size.y);
-
-                    ui.painter().rect_filled(outer_rect, 0.0, Color32::from_gray(60));
-                    ui.painter().rect_filled(rect, 0.0, app.settings.window_color);
-                    
-                    //SarcLabel::display_dir_context_menu_bg(app, ui, rect_pos);
-
-                    //if ui.button("Add   ").clicked() {
-                    if ui.add(egui::Button::new("Add").min_size(button_width)).clicked() {
-                        println!("Add   ");
-                        let _ = ButtonOperations::add_click(app, &child);
-                        app.settings.is_dir_context_menu = false;
-                        app.settings.dir_context_pos = None;
-                    }
-                    //if ui.button("Remove").clicked() {
-                    if ui.add(egui::Button::new("Remove").min_size(button_width)).clicked() {
-                        println!("Remove"); //fix this ugly code
-                        let _ = ButtonOperations::remove_click(app, &child);
-                        app.settings.is_dir_context_menu = false;
-                        app.settings.dir_context_pos = None;
-                    }
-                    if ui.add(egui::Button::new("Rename").min_size(button_width)).clicked() {
-                        println!("Rename");
-                        app.settings.is_dir_context_menu = false;
-                        app.settings.dir_context_pos = None;
-                    }
-                    if ui.add(egui::Button::new("Close").min_size(button_width)).clicked() {
-                        println!("Close ");
-                        app.settings.is_dir_context_menu = false;
-                        app.settings.dir_context_pos = None;
-                    }
-                });
+                        //if ui.button("Add   ").clicked() {
+                        if ui
+                            .add(egui::Button::new("Add").min_size(button_width))
+                            .clicked()
+                        {
+                            println!("Add   ");
+                            let _ = ButtonOperations::add_click(app, &child);
+                            app.settings.is_dir_context_menu = false;
+                            app.settings.dir_context_pos = None;
+                        }
+                        //if ui.button("Remove").clicked() {
+                        if ui
+                            .add(egui::Button::new("Remove").min_size(button_width))
+                            .clicked()
+                        {
+                            println!("Remove"); //fix this ugly code
+                            let _ = ButtonOperations::remove_click(app, &child);
+                            app.settings.is_dir_context_menu = false;
+                            app.settings.dir_context_pos = None;
+                        }
+                        if ui
+                            .add(egui::Button::new("Rename").min_size(button_width))
+                            .clicked()
+                        {
+                            println!("Rename");
+                            app.settings.is_dir_context_menu = false;
+                            app.settings.dir_context_pos = None;
+                        }
+                        if ui
+                            .add(egui::Button::new("Close").min_size(button_width))
+                            .clicked()
+                        {
+                            println!("Close ");
+                            app.settings.is_dir_context_menu = false;
+                            app.settings.dir_context_pos = None;
+                        }
+                    });
                 //ctx.set_style(app.settings.styles.def_style.clone());
             }
         }
@@ -327,6 +336,62 @@ impl SarcLabel {
         }
 
         Ok(())
+    }
+}
+
+pub struct FramedRect {
+    rect_pos: Pos2,
+    margin: Vec2,
+    little_margin: Vec2,
+    rect_size: Vec2,
+    fixed_pos: Pos2,
+    rounding: f32,
+    outer_color: Color32,
+    inner_color: Color32,
+}
+
+impl Default for FramedRect {
+    fn default() -> Self {
+        let margin = Vec2::new(5.0, 5.0);
+        Self {
+            rect_pos: Pos2::default(),
+            margin: margin.clone(),
+            little_margin: Vec2::new(1.0, 1.0),
+            rect_size: Vec2::default(),
+            fixed_pos: Pos2::default() + margin,
+            rounding: 0.0,
+            outer_color: Color32::from_gray(60),
+            inner_color: Color32::from_gray(27),
+        }
+    }
+}
+
+impl FramedRect {
+    pub fn new(rect_pos: Pos2, margin: Vec2, little_margin: Vec2, rect_size: Vec2) -> Self {
+        let fixed_pos = rect_size.clone() + margin;
+        Self {
+            rect_pos: rect_pos,
+            margin: margin.clone(),
+            little_margin: little_margin,
+            rect_size: rect_size,
+            fixed_pos: Pos2::default(),
+            rounding: 0.0,
+            outer_color: Color32::from_gray(60),
+            inner_color: Color32::from_gray(27),
+        }
+    }
+    pub fn paint(&mut self, ui: &mut egui::Ui) {
+        let rect = Rect::from_min_size(self.rect_pos, self.rect_size);
+
+        let outer_rect = Rect::from_min_size(
+            self.rect_pos - self.little_margin,
+            self.rect_size + (2.0 * self.little_margin),
+        );
+
+        ui.painter()
+            .rect_filled(outer_rect, self.rounding, self.outer_color);
+        ui.painter()
+            .rect_filled(rect, self.rounding, self.inner_color);
     }
 }
 

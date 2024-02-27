@@ -8,7 +8,7 @@ use crate::FileReader::FileReader;
 use crate::GuiMenuBar::MenuBar;
 use crate::GuiScroll::EfficientScroll;
 use crate::Open_Save::FileOpener;
-use crate::SarcFileLabel::SarcLabel;
+use crate::SarcFileLabel::{FramedRect, SarcLabel};
 use crate::Settings::{FileRenamer, Icons, Pathlib, Settings};
 use crate::TotkConfig::TotkConfig;
 use crate::Tree::{self, TreeNode};
@@ -18,8 +18,7 @@ use egui::mutex::Mutex;
 use egui::scroll_area::ScrollAreaOutput;
 use egui::text::{Fonts, LayoutJob};
 use egui::{
-    Align, Button, CollapsingHeader, Context, FontId, FontSelection, InputState, Key, Label,
-    Layout, Pos2, Rect, Response, Shape, TextEdit, Vec2,
+    pos2, Align, Button, CollapsingHeader, Color32, Context, FontId, FontSelection, InputState, Key, Label, Layout, Pos2, Rect, Response, Shape, TextEdit, Vec2
 };
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use egui_extras::install_image_loaders;
@@ -37,10 +36,8 @@ pub enum ActiveTab {
 
 pub struct TotkBitsApp<'a> {
     pub opened_file: OpenedFile<'a>, //path to opened file in string
-    //pub text: String,                    //content of the text editor
     pub status_text: String, //bottom bar text
     pub scroll: ScrollArea,  //scroll area
-    // pub scroll_updater: EfficientScroll, //scroll area
     pub active_tab: ActiveTab, //active tab, either sarc file or text editor
     language: String,          //language for highlighting, no option for yaml yet, toml is closest
     pub zstd: Arc<TotkZstd<'a>>, //zstd compressors and decompressors
@@ -61,14 +58,12 @@ impl Default for TotkBitsApp<'_> {
         let settings = Settings::default();
         let mut file_reader = FileReader::default();
         file_reader.buf_size = 8192;
-        file_reader.set_pos(0, file_reader.buf_size);
+        file_reader.set_pos(0, file_reader.buf_size as i32);
         file_reader.reload = true;
         Self {
             opened_file: OpenedFile::default(),
-            // text: misc::get_example_yaml(),
             status_text: "Ready".to_owned(),
             scroll: ScrollArea::vertical(),
-            //scroll_updater: EfficientScroll::new(),
             active_tab: ActiveTab::TextBox,
             language: "toml".into(),
             zstd: Arc::new(TotkZstd::new(totk_config, settings.comp_level).unwrap()),
@@ -113,7 +108,7 @@ impl Gui {
     pub fn display_status_bar(app: &mut TotkBitsApp, ctx: &egui::Context) {
         TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(&app.status_text);
+                ui.label(if app.settings.is_loading {""} else {&app.status_text});
                 //ui.label(if app.settings.is_dir_context_menu {""} else {&app.status_text});
             });
         });
@@ -124,7 +119,7 @@ impl Gui {
             ui.set_style(app.settings.styles.toolbar.clone());
             ui.horizontal(|ui| {
                 //if ui.add(Button::image(app.icons.new.clone())).on_hover_text("New").clicked(){}
-                
+
                 if ui
                     .add(Button::image(app.icons.open.clone()))
                     .on_hover_text("Open")
@@ -169,8 +164,14 @@ impl Gui {
                 {
                     ButtonOperations::extract_click(app);
                 }
+                ui.add_space(20.0);
+                if app.settings.is_loading {
+                    ui.add(egui::Spinner::new());
+                }
+                ui.add_space(20.0);
+
                 if app.active_tab == ActiveTab::TextBox {
-                    ui.with_layout(egui::Layout::right_to_left(Align::Min), |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                         // Right-aligned part
                         //ui.add(egui::Slider::new(&mut app.settings.styles.font_size, app.settings.styles.min_font_size..=app.settings.styles.max_font_size).suffix(""));
                         ui.add(egui::DragValue::new(&mut app.settings.styles.font_size).speed(0.5));
@@ -179,10 +180,7 @@ impl Gui {
                     });
                 }
 
-                /*if app.settings.scroll_val.abs() > 49.0 {
-                    Gui::scroll_test(&app.scroll_resp, ui, app.settings.scroll_val);
-                    app.settings.scroll_val = 0.0;
-                }*/
+                
             });
             ui.add_space(2.0);
             ui.set_style(egui::Style::default());
@@ -233,6 +231,7 @@ impl Gui {
                         .max_width(ui.available_width())
                         .show(ui, |ui| {
                             Gui::display_tree_background(app, ui);
+
                             FileOpener::open_byml_or_sarc(app, false);
                             if let Some(pack) = &mut app.pack {
                                 //Comparer opened
@@ -255,9 +254,7 @@ impl Gui {
                                         //Tree::TreeNode::print(&app.root_node, 1);
                                     }
                                 }
-
-                                let children: Vec<_> =
-                                    app.root_node.children.borrow().iter().cloned().collect();
+                                let children: Vec<_> = app.root_node.children.borrow().iter().cloned().collect();
                                 for child in children {
                                     SarcLabel::display_tree_in_egui(app, &child, ui, &ctx);
                                 }

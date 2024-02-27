@@ -1,4 +1,3 @@
-use crate::{Gui::{Gui, TotkBitsApp}, Open_Save::write_string_to_file};
 use egui::{scroll_area::ScrollAreaOutput, Align, Key, Pos2, Rect};
 use std::{
     fs,
@@ -6,18 +5,14 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct Pos {
-    x: usize,
-    y: usize,
+pub struct Pos { //MUST BE i32, PANIC WHILE UPDATING OTHERWISE!
+    x: i32,
+    y: i32,
 }
 
 #[derive(Debug)]
 pub struct FileReader {
     pub reader: BufReader<Cursor<Vec<u8>>>,
-    //pub writer: BufWriter<std::fs::File>,
-    //pub in_file: String,
-    //pub out_file: String,
-    //pub f: fs::File,
     pub buffer: Vec<u8>,
     pub len: usize,
     pub pos: Pos,
@@ -82,10 +77,10 @@ impl FileReader {
             if self.update_pos() {
                 println!("Reloading buffer {:?}", self.pos);
                 
-                self.lines_offset = self.buffer[0..self.pos.x].iter().filter(|&&c| c == b'\n').count();
+                self.lines_offset = self.buffer[0..self.pos.x as usize].iter().filter(|&&c| c == b'\n').count();
                 self.reader
                     .seek(std::io::SeekFrom::Start(self.pos.x as u64))?;
-                let mut buffer = vec![0; self.pos.y - self.pos.x];
+                let mut buffer = vec![0; (self.pos.y - self.pos.x) as usize];
 
                 self.reader.read_exact(&mut buffer)?;
 
@@ -108,10 +103,10 @@ impl FileReader {
             //write_string_to_file(&self.in_file, &self.displayed_text)?;
             println!("Text updated!");
         } else {
-            let chunk_1st = &self.full_text[0..self.pos.x];
+            let chunk_1st = &self.full_text[0..self.pos.x as usize];
             let mut chunk_end = "";
-            if self.pos.y < self.full_text.len() {
-                chunk_end = &self.full_text[self.pos.y..];
+            if self.pos.y < self.full_text.len() as i32 {
+                chunk_end = &self.full_text[self.pos.y as usize..];
             }
             let new_text = format!("{}{}{}", chunk_1st, self.displayed_text, chunk_end);
             //write_string_to_file(&self.in_file, &new_text)?;
@@ -134,20 +129,18 @@ impl FileReader {
     }
 
     pub fn add_pos(&mut self, val: i32) {
-        let x = self.pos.x as i32 + val;
-        let y = self.pos.y as i32 + val;
-        self.pos.x = x as usize;
-        self.pos.y = y as usize;
+        self.pos.x += val ;
+        self.pos.y += val;
     }
 
-    pub fn set_pos(&mut self, x: usize, y: usize) {
+    pub fn set_pos(&mut self, x: i32, y: i32) {
         self.pos.x = x;
         self.pos.y = y;
     }
     pub fn pos_at_top(&mut self) -> bool {
         if self.pos.x <= 0 {
             self.pos.x = 0;
-            self.pos.y = self.buf_size;
+            self.pos.y = self.buf_size as i32;
             return true;
         }
         return false;
@@ -155,9 +148,9 @@ impl FileReader {
 
     pub fn pos_at_bottom(&mut self) -> bool {
         let max_size = (self.len - 1).max(0);
-        if self.pos.y >= max_size {
-            self.pos.y = max_size;
-            self.pos.x = max_size - self.buf_size;
+        if self.pos.y >= max_size as i32 {
+            self.pos.y = max_size as i32;
+            self.pos.x = (max_size - self.buf_size) as i32;
             return true;
         }
         false
@@ -166,14 +159,16 @@ impl FileReader {
     pub fn update_pos(&mut self) -> bool {
         //if self.pos_at_top() {return false;}
         //if self.pos_at_bottom() {return false;}
-        let max_size = (self.len).max(0);
+        let max_size = (self.len).max(0) as i32;
         self.pos.x = self.pos.x.max(0);
         self.pos.x = self.pos.x.min(max_size);
         self.pos.y = self.pos.y.max(0);
         self.pos.y = self.pos.y.min(max_size);
         self.pos.y = self.pos.y.max(self.pos.x);
-        self.pos.y = self.pos.y.max(self.buf_size);
-        self.pos.x = self.pos.x.min(self.len  - 1 - self.buf_size );
+        self.pos.y = self.pos.y.max(self.buf_size as i32);
+        self.pos.x = self.pos.x.min(self.len as i32  - 1 - self.buf_size as i32 );
+
+        
         self.pos.x = self.pos.x.max(0);
         return true;
     }
@@ -211,7 +206,7 @@ impl FileReader {
                 //Self::scroll_test( ui, resp, i.raw_scroll_delta.y);
             } else if i.key_pressed(Key::PageDown) {
                 scrolled = ScrollValues::PageDown.value();
-                if self.pos.y == self.buffer.len() as usize {
+                if self.pos.y == self.buffer.len() as i32 {
                     res = ScrollValues::ScrollBottom.value() as f32;
                 }
                 //Gui::scroll_test(resp, ui, -(scrolled as f32));

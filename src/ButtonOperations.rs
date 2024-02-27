@@ -90,8 +90,12 @@ impl ButtonOperations {
                     if internal_file.is_file() && TreeNode::is_leaf(internal_file) {
                         if let Some(pack) = &mut app.pack {
                             if let Some(opened) = &mut pack.opened {
+                                let ext = if internal_file.path.ext_last.is_empty() {&internal_file.path.extension} else {&internal_file.path.ext_last};
                                 let path = FileDialog::new()
                                     .set_file_name(&internal_file.path.name)
+                                    .add_filter(ext, &vec![ext])
+                                    .add_filter("yaml", &vec!["yml", "yaml"])
+                                    .add_filter("All", &vec![""])
                                     .set_title("Extract")
                                     .save_file();
                                 //println!("{}", &path.clone().unwrap().to_string_lossy().into_owned());
@@ -187,11 +191,6 @@ impl ButtonOperations {
                                 &String::from_utf8(app.file_reader.buffer.clone())
                                     .unwrap_or("".to_string()),
                             );
-                            //app.file_reader.f.unlock()?;
-                            //fs::copy(&app.file_reader.in_file, dest_file);
-                            //app.file_reader.f.lock_exclusive()?;
-                            //let mut f = fs::File::create(dest_file)?;
-                            //f.write_all(app.text.as_bytes())?;
                             return Ok(());
                         }
                     }
@@ -252,13 +251,14 @@ impl ButtonOperations {
 
     pub fn close_all_click(app: &mut TotkBitsApp) {
         if MessageDialog::new()
-                    .set_title("Warning")
-                    .set_description("All opened files will close. Proceed?")
-                    .set_buttons(rfd::MessageButtons::YesNo)
-                    .show()
-                    == rfd::MessageDialogResult::No {
-                        return;
-                    }
+            .set_title("Warning")
+            .set_description("All opened files will close. Proceed?")
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show()
+            == rfd::MessageDialogResult::No
+        {
+            return;
+        }
         app.opened_file = OpenedFile::default();
         //app.pack = None;
         app.root_node = TreeNode::new("ROOT".to_string(), "/".to_string());
