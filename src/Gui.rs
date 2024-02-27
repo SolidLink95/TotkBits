@@ -61,7 +61,7 @@ impl Default for TotkBitsApp<'_> {
         let settings = Settings::default();
         let mut file_reader = FileReader::default();
         file_reader.buf_size = 8192;
-        file_reader.set_pos(0, file_reader.buf_size as i32);
+        file_reader.set_pos(0, file_reader.buf_size);
         file_reader.reload = true;
         Self {
             opened_file: OpenedFile::default(),
@@ -114,6 +114,7 @@ impl Gui {
         TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(&app.status_text);
+                //ui.label(if app.settings.is_dir_context_menu {""} else {&app.status_text});
             });
         });
     }
@@ -123,6 +124,7 @@ impl Gui {
             ui.set_style(app.settings.styles.toolbar.clone());
             ui.horizontal(|ui| {
                 //if ui.add(Button::image(app.icons.new.clone())).on_hover_text("New").clicked(){}
+                
                 if ui
                     .add(Button::image(app.icons.open.clone()))
                     .on_hover_text("Open")
@@ -161,24 +163,26 @@ impl Gui {
                     //Gui::scroll_test(&app.scroll_resp, ui, 100.0);
                 }
                 if ui
-                    .add(Button::image(app.icons.add_sarc.clone()))
-                    .on_hover_text("Add file")
-                    .clicked()
-                {
-                    app.settings.scroll_val = -100.0;
-                    //Gui::scroll_test(&app.scroll_resp, ui, -100.0);
-                }
-                if ui
                     .add(Button::image(app.icons.extract.clone()))
                     .on_hover_text("Extract")
                     .clicked()
                 {
                     ButtonOperations::extract_click(app);
                 }
-                if app.settings.scroll_val.abs() > 49.0 {
+                if app.active_tab == ActiveTab::TextBox {
+                    ui.with_layout(egui::Layout::right_to_left(Align::Min), |ui| {
+                        // Right-aligned part
+                        //ui.add(egui::Slider::new(&mut app.settings.styles.font_size, app.settings.styles.min_font_size..=app.settings.styles.max_font_size).suffix(""));
+                        ui.add(egui::DragValue::new(&mut app.settings.styles.font_size).speed(0.5));
+                        ui.label("Font size:");
+                        app.settings.styles.adj_font_size(0.0);
+                    });
+                }
+
+                /*if app.settings.scroll_val.abs() > 49.0 {
                     Gui::scroll_test(&app.scroll_resp, ui, app.settings.scroll_val);
                     app.settings.scroll_val = 0.0;
-                }
+                }*/
             });
             ui.add_space(2.0);
             ui.set_style(egui::Style::default());
@@ -188,10 +192,11 @@ impl Gui {
     pub fn display_main(app: &mut TotkBitsApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         match app.active_tab {
             ActiveTab::TextBox => {
-                app.settings.scroll_val =                 app.file_reader
-                    .check_for_changes(ctx, &ui, &app.scroll_resp);
+                app.settings.scroll_val =
+                    app.file_reader
+                        .check_for_changes(ctx, &ui, &app.scroll_resp);
                 //app.file_reader.update_scroll_pos(&app.scroll_resp);
-                if let Err(err) = &app.file_reader.update() {}
+                let _ = app.file_reader.update();
                 app.code_editor.line_offset = app.file_reader.lines_offset;
                 ui.set_style(app.settings.styles.text_editor.clone());
 
@@ -200,7 +205,7 @@ impl Gui {
                     .clone()
                     .id_source("code editor")
                     .with_rows(12)
-                    .with_fontsize(12.0)
+                    .with_fontsize(app.settings.styles.font_size)
                     .vscroll(true)
                     //.with_theme(ColorTheme::GRUVBOX)
                     //.with_syntax(app.settings.syntax.clone())
@@ -250,11 +255,13 @@ impl Gui {
                                         //Tree::TreeNode::print(&app.root_node, 1);
                                     }
                                 }
+
                                 let children: Vec<_> =
                                     app.root_node.children.borrow().iter().cloned().collect();
                                 for child in children {
                                     SarcLabel::display_tree_in_egui(app, &child, ui, &ctx);
                                 }
+                                //ctx.set_style(app.settings.styles.text_editor.clone());
                             }
                         }),
                 );

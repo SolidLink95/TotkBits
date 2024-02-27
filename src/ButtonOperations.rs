@@ -251,6 +251,14 @@ impl ButtonOperations {
     }
 
     pub fn close_all_click(app: &mut TotkBitsApp) {
+        if MessageDialog::new()
+                    .set_title("Warning")
+                    .set_description("All opened files will close. Proceed?")
+                    .set_buttons(rfd::MessageButtons::YesNo)
+                    .show()
+                    == rfd::MessageDialogResult::No {
+                        return;
+                    }
         app.opened_file = OpenedFile::default();
         //app.pack = None;
         app.root_node = TreeNode::new("ROOT".to_string(), "/".to_string());

@@ -316,7 +316,7 @@ impl FileSaver {
             },
             TotkFileType::TagProduct => {
                 if let Some(tag) = &mut app.opened_file.tag {
-                    tag.save_default(&text);
+                    let _ =tag.save_default(&text);
                     println!("Tag saved!");
                     app.status_text = format!("Saved tag file: : {}", dest_file);
                 }

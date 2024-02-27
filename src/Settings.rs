@@ -13,7 +13,6 @@ use roead::sarc;
 use std::io::{self, BufReader, BufWriter, Read};
 use std::{fs, io::Seek, path::Path, rc::Rc, sync::Arc};
 
-
 pub struct Settings {
     //pub lines_count: usize,
     pub comp_level: i32,
@@ -27,9 +26,9 @@ pub struct Settings {
     pub styles: Styles,
     pub syntax: Arc<Syntax>, //syntax for code editor
     pub modded_color: Color32,
-    pub is_dir_context_menu: bool, //is context menu for dir opened
+    pub is_dir_context_menu: bool,     //is context menu for dir opened
     pub do_i_compare_and_reload: bool, //is context menu for dir opened
-    pub scroll_val: f32, //is context menu for dir opened
+    pub scroll_val: f32,               //is context menu for dir opened
     pub dir_context_pos: Option<egui::Pos2>, //
     pub dir_context_size: Option<Response>,
     pub fps_counter: FpsCounter,
@@ -102,6 +101,7 @@ impl<'a> Icons<'_> {
 }
 
 pub struct Styles {
+    pub def_style_non_arc: Style, //default style
     pub def_style: Arc<Style>,    //default style
     pub tree: Arc<Style>,         //sarc directory tree
     pub text_editor: Arc<Style>,  //text editor textedit
@@ -111,11 +111,15 @@ pub struct Styles {
     pub modded_file: Arc<Style>,  //the menu bar at the top
     pub added_file: Arc<Style>,   //the menu bar at the top
     pub vanila_file: Arc<Style>,  //the menu bar at the top
+    pub font_size: f32,
+    pub max_font_size: f32,
+    pub min_font_size: f32,
 }
 
 impl Styles {
     pub fn new(def_style: Style) -> Self {
         Self {
+            def_style_non_arc: def_style.clone(),
             def_style: Arc::new(def_style.clone()),
             tree: Arc::new(def_style.clone()),
             text_editor: Arc::new(Styles::get_text_editor_style(def_style.clone())),
@@ -125,7 +129,25 @@ impl Styles {
             modded_file: Arc::new(Styles::get_modded_file_style(def_style.clone())),
             added_file: Arc::new(Styles::get_added_file_style(def_style.clone())),
             vanila_file: Arc::new(Styles::get_vanila_file_style(def_style)),
+            font_size: 12.0,
+            max_font_size: 30.0,
+            min_font_size: 5.0,
         }
+    }
+
+    pub fn adj_font_size(&mut self, val: f32) { 
+        self.font_size += val;
+        self.font_size = self
+            .font_size
+            .min(self.max_font_size)
+            .max(self.min_font_size);
+    }
+    pub fn inc_font_size(&mut self) {
+       self.adj_font_size(1.0);
+    }
+
+    pub fn dec_font_size(&mut self) {
+        self.adj_font_size(-1.0);
     }
 
     pub fn get_style_from_comparer(
@@ -144,6 +166,18 @@ impl Styles {
         }
 
         app.settings.styles.vanila_file.clone()
+    }
+
+    pub fn update_font_size(&mut self, new_font_size: f32) {
+        if new_font_size != self.font_size {
+            let mut new_style = Self::get_text_editor_style(self.def_style_non_arc.clone());
+            new_style
+                .text_styles
+                .get_mut(&egui::TextStyle::Body)
+                .unwrap()
+                .size = new_font_size;
+            self.text_editor = Arc::new(new_style);
+        }
     }
 
     pub fn get_vanila_file_style(def_style: Style) -> Style {
@@ -436,8 +470,12 @@ impl FileRenamer {
         self.is_renamed = false;
     }
 
-    pub fn rename(&mut self, opened: &mut PackFile, node: &Rc<TreeNode<std::string::String>>) -> String {
-        let new_name = format!("{}/{}",&node.path.parent, &self.new_name);
+    pub fn rename(
+        &mut self,
+        opened: &mut PackFile,
+        node: &Rc<TreeNode<std::string::String>>,
+    ) -> String {
+        let new_name = format!("{}/{}", &node.path.parent, &self.new_name);
         if opened.rename(&node.path.full_path, &new_name).is_err() {
             return format!("Failed to rename {}", &node.path.full_path);
         }
@@ -465,7 +503,7 @@ impl FileRenamer {
                             //ui.label("to:");
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.new_name)
-                                    .desired_width(ui.available_width())
+                                    .desired_width(ui.available_width()),
                             );
                             //ui.text_edit_singleline(&mut self.new_name);
                             ui.horizontal(|ui| {
@@ -474,11 +512,10 @@ impl FileRenamer {
                                         "Attempting to rename {}",
                                         internal_file.path.full_path
                                     );
-                                    println!("{}",self.rename(opened, internal_file));
+                                    println!("{}", self.rename(opened, internal_file));
                                     self.reset();
                                     self.is_renamed = true;
-                                }
-                                else {
+                                } else {
                                     if ui.button("Cancel").clicked() {
                                         println!("Cancel clicked!");
                                         self.is_shown = false;
@@ -488,7 +525,6 @@ impl FileRenamer {
                             });
                         });
                     });
-                   
                 }
             }
         }

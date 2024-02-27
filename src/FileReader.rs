@@ -7,8 +7,8 @@ use std::{
 
 #[derive(Debug)]
 pub struct Pos {
-    x: i32,
-    y: i32,
+    x: usize,
+    y: usize,
 }
 
 #[derive(Debug)]
@@ -19,12 +19,12 @@ pub struct FileReader {
     //pub out_file: String,
     //pub f: fs::File,
     pub buffer: Vec<u8>,
-    pub len: u64,
+    pub len: usize,
     pub pos: Pos,
     pub reload: bool, //flag to prevent read file in every frame
     pub displayed_text: String,
-    pub buf_size: u64,
-    pub default_buf_size: u64,
+    pub buf_size: usize,
+    pub default_buf_size: usize,
     pub scroll_pos: f32,
     pub full_text: String,
     pub old_text: String,
@@ -39,7 +39,7 @@ impl Default for FileReader {
         let f = fs::File::create(in_file).unwrap();
         //fs::copy(in_file, out_file);
         let g = fs::File::create(out_file).unwrap();
-        let len = 0 as u64;
+        let len = 0 as usize;
         let buffer = Vec::new(); // Initialize an empty buffer
         let cursor = Cursor::new(buffer.clone());
         let reader = BufReader::new(cursor);
@@ -54,8 +54,8 @@ impl Default for FileReader {
             pos: Pos { x: 0, y: 0 },
             reload: false,
             displayed_text: String::new(),
-            buf_size: 8192 as u64,
-            default_buf_size: 8192 as u64,
+            buf_size: 8192 as usize,
+            default_buf_size: 8192 as usize,
             scroll_pos: 0.0,
             full_text: String::new(),
             old_text: String::new(),
@@ -69,7 +69,7 @@ impl FileReader {
     pub fn from_string(&mut self, text: &str) -> io::Result<()> {
         self.buffer = text.as_bytes().to_vec();
         self.reader = BufReader::new(Cursor::new(self.buffer.clone()));
-        self.len = text.len() as u64;
+        self.len = text.len() as usize;
         self.displayed_text = text.to_string();
         self.full_text = text.to_string();
         self.old_text = self.displayed_text.clone();
@@ -82,10 +82,10 @@ impl FileReader {
             if self.update_pos() {
                 println!("Reloading buffer {:?}", self.pos);
                 
-                self.lines_offset = self.buffer[0..self.pos.x as usize].iter().filter(|&&c| c == b'\n').count();
+                self.lines_offset = self.buffer[0..self.pos.x].iter().filter(|&&c| c == b'\n').count();
                 self.reader
                     .seek(std::io::SeekFrom::Start(self.pos.x as u64))?;
-                let mut buffer = vec![0; (self.pos.y - self.pos.x) as usize];
+                let mut buffer = vec![0; self.pos.y - self.pos.x];
 
                 self.reader.read_exact(&mut buffer)?;
 
@@ -104,19 +104,19 @@ impl FileReader {
         //self.f.unlock()?;
         if self.displayed_text.len() < self.buf_size as usize {
             self.buffer = self.displayed_text.as_bytes().to_vec();
-            self.len = self.displayed_text.len() as u64;
+            self.len = self.displayed_text.len() as usize;
             //write_string_to_file(&self.in_file, &self.displayed_text)?;
             println!("Text updated!");
         } else {
-            let chunk_1st = &self.full_text[0..self.pos.x as usize];
+            let chunk_1st = &self.full_text[0..self.pos.x];
             let mut chunk_end = "";
-            if self.pos.y < self.full_text.len() as i32 {
-                chunk_end = &self.full_text[self.pos.y as usize..];
+            if self.pos.y < self.full_text.len() {
+                chunk_end = &self.full_text[self.pos.y..];
             }
             let new_text = format!("{}{}{}", chunk_1st, self.displayed_text, chunk_end);
             //write_string_to_file(&self.in_file, &new_text)?;
             self.buffer = new_text.as_bytes().to_vec();
-            self.len = new_text.len() as u64;
+            self.len = new_text.len() as usize;
             self.full_text = new_text;
             println!("Text updated! {:?}", self.pos);
         }
@@ -128,34 +128,36 @@ impl FileReader {
         if self.buf_size < self.default_buf_size {
             self.buf_size = self.default_buf_size.clone();
         }
-        //self.buf_size = self.default_buf_size.max(self.full_text.len() as u64);
+        //self.buf_size = self.default_buf_size.max(self.full_text.len() as usize);
         //self.f.lock_exclusive()?;
         Ok(())
     }
 
     pub fn add_pos(&mut self, val: i32) {
-        self.pos.x += val;
-        self.pos.y += val;
+        let x = self.pos.x as i32 + val;
+        let y = self.pos.y as i32 + val;
+        self.pos.x = x as usize;
+        self.pos.y = y as usize;
     }
 
-    pub fn set_pos(&mut self, x: i32, y: i32) {
+    pub fn set_pos(&mut self, x: usize, y: usize) {
         self.pos.x = x;
         self.pos.y = y;
     }
     pub fn pos_at_top(&mut self) -> bool {
         if self.pos.x <= 0 {
             self.pos.x = 0;
-            self.pos.y = self.buf_size as i32;
+            self.pos.y = self.buf_size;
             return true;
         }
         return false;
     }
 
     pub fn pos_at_bottom(&mut self) -> bool {
-        let max_size = (self.len as i32 - 1).max(0);
+        let max_size = (self.len - 1).max(0);
         if self.pos.y >= max_size {
             self.pos.y = max_size;
-            self.pos.x = max_size - self.buf_size as i32;
+            self.pos.x = max_size - self.buf_size;
             return true;
         }
         false
@@ -164,14 +166,14 @@ impl FileReader {
     pub fn update_pos(&mut self) -> bool {
         //if self.pos_at_top() {return false;}
         //if self.pos_at_bottom() {return false;}
-        let max_size = (self.len as i32).max(0);
+        let max_size = (self.len).max(0);
         self.pos.x = self.pos.x.max(0);
         self.pos.x = self.pos.x.min(max_size);
         self.pos.y = self.pos.y.max(0);
         self.pos.y = self.pos.y.min(max_size);
         self.pos.y = self.pos.y.max(self.pos.x);
-        self.pos.y = self.pos.y.max(self.buf_size as i32);
-        self.pos.x = self.pos.x.min(self.len as i32 - 1 - self.buf_size as i32);
+        self.pos.y = self.pos.y.max(self.buf_size);
+        self.pos.x = self.pos.x.min(self.len  - 1 - self.buf_size );
         self.pos.x = self.pos.x.max(0);
         return true;
     }
@@ -209,7 +211,7 @@ impl FileReader {
                 //Self::scroll_test( ui, resp, i.raw_scroll_delta.y);
             } else if i.key_pressed(Key::PageDown) {
                 scrolled = ScrollValues::PageDown.value();
-                if self.pos.y == self.buffer.len() as i32 {
+                if self.pos.y == self.buffer.len() as usize {
                     res = ScrollValues::ScrollBottom.value() as f32;
                 }
                 //Gui::scroll_test(resp, ui, -(scrolled as f32));
