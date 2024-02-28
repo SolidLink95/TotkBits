@@ -1,6 +1,5 @@
 use egui::{scroll_area::ScrollAreaOutput, Align, Key};
 use std::{
-    fs,
     io::{self, BufReader, Cursor, Read, Seek},
 };
 

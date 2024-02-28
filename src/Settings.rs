@@ -5,7 +5,7 @@ use crate::SarcFileLabel::FramedRect;
 use crate::{Gui::TotkBitsApp, GuiMenuBar::FpsCounter, Tree::TreeNode};
 
 use egui::{epaint::Shadow, include_image, Color32, Margin, Response, Style, TextStyle, Vec2};
-use egui::{TopBottomPanel, Widget};
+use egui::{TopBottomPanel};
 use egui_code_editor::Syntax;
 
 use std::env;

@@ -7,7 +7,7 @@ use std::rc::{Rc, Weak};
 
 
 use crate::file_format::Pack::PackFile;
-use crate::Gui::TotkBitsApp;
+
 use crate::Settings::Pathlib;
 
 pub struct TreeNode<T> {

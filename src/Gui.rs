@@ -47,7 +47,7 @@ impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
         let totk_config = Arc::new(TotkConfig::new());
         let settings = Settings::default();
-        let mut opened_file = OpenedFile::default();
+        let _opened_file = OpenedFile::default();
         let mut file_reader = FileReader::default();
         file_reader.buf_size = 8192;
         file_reader.set_pos(0, file_reader.buf_size as i32);
