@@ -11,9 +11,9 @@ use crate::Tree::TreeNode;
 use crate::Zstd::{is_aamp, is_byml, is_msyt, TotkFileType};
 
 use egui::{
-    CollapsingHeader, Id, Response, Sense, TextStyle, Widget, WidgetInfo, WidgetText, WidgetType,
+    CollapsingHeader, Response, Sense, TextStyle, Widget, WidgetInfo, WidgetText, WidgetType,
 };
-use egui::{Color32, Pos2, Rect, SelectableLabel, Vec2};
+use egui::{Color32, Pos2, Rect, Vec2};
 use roead::byml::Byml;
 
 pub struct SarcLabel {
@@ -34,6 +34,13 @@ impl SarcLabel {
         ui: &mut egui::Ui,
         ctx: &egui::Context,
     ) {
+        
+        if !app.text_searcher.text.is_empty() {
+            if !child.value.to_lowercase().contains(&app.text_searcher.text.to_lowercase()) {
+                return;
+            }
+        }
+
         let style = Styles::get_style_from_comparer(app, ui, &child);
         //ctx.set_style(Styles::get_style_from_comparer(app,ui,&child));
         ui.horizontal(|ui: &mut egui::Ui| {
@@ -94,18 +101,26 @@ impl SarcLabel {
         ui: &mut egui::Ui,
         ctx: &egui::Context,
     ) {
-        if TreeNode::is_leaf(&root_node) && root_node.is_file() {
-            //rarely files in sarc are in root directory
-            SarcLabel::display_leaf_node(app, root_node, ui, ctx);
-            return;
+
+        if TreeNode::is_leaf(&root_node)  {
+            if root_node.is_shown(&app.text_searcher.text) {
+                //rarely files in sarc are in root directory
+                SarcLabel::display_leaf_node(app, root_node, ui, ctx);
+                return;
+            }
         }
-        let response = CollapsingHeader::new(&root_node.value)
+        //let children: Vec<_> = root_node.children.borrow().iter().filter(|&x| x.contains_value_in_any_child(&app.text_searcher.text.to_lowercase())).cloned().collect(); //prevents borrowing issues
+        let children: Vec<_> = root_node.children.borrow().iter().cloned().collect(); //prevents borrowing issues
+            
+        
+        let response = CollapsingHeader::new(&root_node.value)//.open(Some(app.settings.is_sarclabel_wrapped))
             .default_open(false)
             .show(ui, |ui| {
-                let children: Vec<_> = root_node.children.borrow().iter().cloned().collect(); //prevents borrowing issues
                 for child in children {
                     if TreeNode::is_leaf(&child) && child.is_file() {
-                        SarcLabel::display_leaf_node(app, &child, ui, ctx);
+                     //   if child.is_shown(&app.text_searcher.text) {
+                            SarcLabel::display_leaf_node(app, &child, ui, ctx);
+                     //   }
                     } else {
                         SarcLabel::display_tree_in_egui(app, &child, ui, ctx);
                     }
@@ -299,7 +314,7 @@ impl SarcLabel {
             let raw_data = data.unwrap().to_vec();
             if is_msyt(&raw_data) {
                 let text = MsytFile::binary_to_text(raw_data).expect("Error getting file msyt");
-                app.file_reader.from_string(&text);
+                let _ = app.file_reader.from_string(&text);
                 app.opened_file = OpenedFile::new(
                     path.to_string(),
                     TotkFileType::Msbt,
@@ -321,7 +336,7 @@ impl SarcLabel {
                     None,
                 );
                 let text = Byml::to_text(&the_byml.pio);
-                app.file_reader.from_string(&text);
+                let _ = app.file_reader.from_string(&text);
                 app.opened_file.byml = Some(the_byml);
                 app.settings.is_file_loaded = true; //precaution
             } else if is_aamp(&raw_data) {
@@ -368,7 +383,7 @@ impl Default for FramedRect {
 
 impl FramedRect {
     pub fn new(rect_pos: Pos2, margin: Vec2, little_margin: Vec2, rect_size: Vec2) -> Self {
-        let fixed_pos = rect_size.clone() + margin;
+        let _fixed_pos = rect_size.clone() + margin;
         Self {
             rect_pos: rect_pos,
             margin: margin.clone(),

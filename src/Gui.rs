@@ -1,31 +1,21 @@
-use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
-use crate::file_format::Pack::{PackComparer, PackFile};
-use crate::file_format::TagProduct::TagProduct;
-use crate::misc;
-use crate::widgets::TimedNotificationWidget::TimedNotification;
-use crate::ButtonOperations::{save_file_dialog, ButtonOperations};
+use crate::file_format::BinTextFile::OpenedFile;
+use crate::file_format::Pack::PackComparer;
+use crate::ButtonOperations::ButtonOperations;
 use crate::FileReader::FileReader;
 use crate::GuiMenuBar::MenuBar;
-use crate::GuiScroll::EfficientScroll;
 use crate::Open_Save::FileOpener;
-use crate::SarcFileLabel::{FramedRect, SarcLabel};
-use crate::Settings::{FileRenamer, Icons, Pathlib, Settings};
+use crate::SarcFileLabel::SarcLabel;
+use crate::Settings::{FileRenamer, Icons, Settings, TextSearcher};
 use crate::TotkConfig::TotkConfig;
 use crate::Tree::{self, TreeNode};
-use crate::Zstd::{TotkFileType, TotkZstd};
+use crate::Zstd::TotkZstd;
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
-use egui::mutex::Mutex;
 use egui::scroll_area::ScrollAreaOutput;
-use egui::text::{Fonts, LayoutJob};
-use egui::{
-    pos2, Align, Button, CollapsingHeader, Color32, Context, FontId, FontSelection, InputState, Key, Label, Layout, Pos2, Rect, Response, Shape, TextEdit, Vec2
-};
-use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
+use egui::{Align, Button, Label, Layout};
+use egui_code_editor::CodeEditor;
 use egui_extras::install_image_loaders;
-use roead::sarc::File;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::{fs, io};
 
 #[derive(PartialEq)]
 pub enum ActiveTab {
@@ -35,11 +25,11 @@ pub enum ActiveTab {
 }
 
 pub struct TotkBitsApp<'a> {
-    pub opened_file: OpenedFile<'a>, //path to opened file in string
-    pub status_text: String, //bottom bar text
-    pub scroll: ScrollArea,  //scroll area
-    pub active_tab: ActiveTab, //active tab, either sarc file or text editor
-    language: String,          //language for highlighting, no option for yaml yet, toml is closest
+    pub opened_file: OpenedFile<'a>,     //path to opened file in string
+    pub status_text: String,             //bottom bar text
+    pub scroll: ScrollArea,              //scroll area
+    pub active_tab: ActiveTab,           //active tab, either sarc file or text editor
+    language: String, //language for highlighting, no option for yaml yet, toml is closest
     pub zstd: Arc<TotkZstd<'a>>, //zstd compressors and decompressors
     pub pack: Option<PackComparer<'a>>, //opened sarc file object, none if none opened
     pub root_node: Rc<TreeNode<String>>, //root_node pf the sarc directory tree
@@ -51,6 +41,7 @@ pub struct TotkBitsApp<'a> {
     pub code_editor: CodeEditor,
     pub file_reader: FileReader,
     pub file_renamer: FileRenamer,
+    pub text_searcher: TextSearcher,
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -77,12 +68,14 @@ impl Default for TotkBitsApp<'_> {
             code_editor: CodeEditor::default(),
             file_reader: file_reader,
             file_renamer: FileRenamer::default(),
+            text_searcher: TextSearcher::default(),
         }
     }
 }
 
 impl eframe::App for TotkBitsApp<'_> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.set_pixels_per_point(self.settings.styles.scale.val);
         //let x = ctx.input(|i| i.raw_scroll_delta.y);
         //self.status_text = format!("{}", x);
         install_image_loaders(ctx);
@@ -108,7 +101,11 @@ impl Gui {
     pub fn display_status_bar(app: &mut TotkBitsApp, ctx: &egui::Context) {
         TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(if app.settings.is_loading {""} else {&app.status_text});
+                ui.label(if app.settings.is_loading {
+                    ""
+                } else {
+                    &app.status_text
+                });
                 //ui.label(if app.settings.is_dir_context_menu {""} else {&app.status_text});
             });
         });
@@ -162,7 +159,7 @@ impl Gui {
                     .on_hover_text("Extract")
                     .clicked()
                 {
-                    ButtonOperations::extract_click(app);
+                    let _ = ButtonOperations::extract_click(app);
                 }
                 ui.add_space(20.0);
                 if app.settings.is_loading {
@@ -174,13 +171,11 @@ impl Gui {
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                         // Right-aligned part
                         //ui.add(egui::Slider::new(&mut app.settings.styles.font_size, app.settings.styles.min_font_size..=app.settings.styles.max_font_size).suffix(""));
-                        ui.add(egui::DragValue::new(&mut app.settings.styles.font_size).speed(0.5));
+                        ui.add(egui::DragValue::new(&mut app.settings.styles.font.val).speed(0.5));
+                        app.settings.styles.font.update();
                         ui.label("Font size:");
-                        app.settings.styles.adj_font_size(0.0);
                     });
                 }
-
-                
             });
             ui.add_space(2.0);
             ui.set_style(egui::Style::default());
@@ -203,7 +198,7 @@ impl Gui {
                     .clone()
                     .id_source("code editor")
                     .with_rows(12)
-                    .with_fontsize(app.settings.styles.font_size)
+                    .with_fontsize(app.settings.styles.font.val)
                     .vscroll(true)
                     //.with_theme(ColorTheme::GRUVBOX)
                     //.with_syntax(app.settings.syntax.clone())
@@ -251,10 +246,22 @@ impl Gui {
                                     if !app.settings.is_tree_loaded || app.file_renamer.is_renamed {
                                         Tree::update_from_sarc_paths(&app.root_node, opened);
                                         app.settings.is_tree_loaded = true;
+                                        println!("Reloading tree");
                                         //Tree::TreeNode::print(&app.root_node, 1);
                                     }
                                 }
-                                let children: Vec<_> = app.root_node.children.borrow().iter().cloned().collect();
+                                let tmp = app.text_searcher.show(ctx, ui); //TODO cleanup
+                                if !&app.text_searcher.text.is_empty() {
+                                    TreeNode::clean_up_tree(
+                                        &app.root_node,
+                                        &app.text_searcher.text,
+                                    );
+                                }
+                                if tmp {
+                                    app.settings.is_tree_loaded = false;
+                                }
+                                let children: Vec<_> =
+                                    app.root_node.children.borrow().iter().cloned().collect();
                                 for child in children {
                                     SarcLabel::display_tree_in_egui(app, &child, ui, &ctx);
                                 }

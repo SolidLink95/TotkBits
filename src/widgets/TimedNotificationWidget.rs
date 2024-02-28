@@ -42,7 +42,7 @@ impl Widget for TimedNotification {
         if self.is_active() {
             let opacity = self.current_opacity();
             let color = egui::Color32::from_black_alpha((opacity * 255.0) as u8);
-            let text_style = egui::TextStyle::Body;
+            let _text_style = egui::TextStyle::Body;
 
             ui.colored_label(color, &self.message)
         } else {

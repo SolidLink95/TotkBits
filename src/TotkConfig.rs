@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::Read;
+
 use std::io::Write;
 
 use std::env;
@@ -60,8 +60,8 @@ impl TotkConfig {
         match env::var("APPDATA") {
             Ok(appdata) => {
                 let config_path = format!("{}/Totk/config.json", &appdata);
-                let mut config_str = read_string_from_file(&config_path)?;
-                let mut config: HashMap<String, String> = serde_json::from_str(&config_str)?;
+                let config_str = read_string_from_file(&config_path)?;
+                let config: HashMap<String, String> = serde_json::from_str(&config_str)?;
                 if let Some(romfs) = config.get("GamePath") {
                     if let Ok(romfs_path) = PathBuf::from_str(&romfs.replace("\\", "/")) {
                         return Ok(
@@ -75,7 +75,7 @@ impl TotkConfig {
                     }
                 }
             }
-            Err(err) => {
+            Err(_err) => {
                 return Err(io::Error::new(
                     io::ErrorKind::NotFound,
                     "Cannot access localappdata",
@@ -141,7 +141,7 @@ impl TotkConfig {
             let config: HashMap<String, String> = Default::default();
             return Ok(config);
         }
-        let mut config_str = read_string_from_file(&config_path.to_string_lossy())?;
+        let config_str = read_string_from_file(&config_path.to_string_lossy())?;
         let mut config: HashMap<String, String> = serde_json::from_str(&config_str)?;
         if !config.contains_key("config_path") {
             config.insert(

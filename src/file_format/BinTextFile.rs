@@ -1,13 +1,13 @@
 use crate::file_format::TagProduct::TagProduct;
 use crate::Settings::Pathlib;
-use crate::Zstd::{is_byml, is_msyt, TotkFileType, TotkZstd};
+use crate::Zstd::{is_byml, TotkFileType, TotkZstd};
 use roead::byml::Byml;
 use std::any::type_name;
-use std::collections::{BTreeMap, HashMap};
-use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, Cursor, Read, Write};
+
+use std::fs::{OpenOptions};
+use std::io::{Read, Write};
 use std::panic::AssertUnwindSafe;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::sync::Arc;
 use std::{fs, io, panic};
 
@@ -193,7 +193,7 @@ impl<'a> BymlFile<'_> {
                     data.data = res;
                     data.file_type = TotkFileType::Other;
                 }
-                Err(err) => {}
+                Err(_err) => {}
             }
         }
         if data.data.starts_with(b"Yaz0") {
@@ -216,7 +216,7 @@ impl<'a> BymlFile<'_> {
 }
 
 pub fn bytes_to_file(data: Vec<u8>, path: &str) -> io::Result<()> {
-    let mut f = fs::File::create(&path); //TODO check if the ::create is sufficient
+    let f = fs::File::create(&path); //TODO check if the ::create is sufficient
     match f {
         Ok(mut f_handle) => {
             //file does not exist

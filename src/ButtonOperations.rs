@@ -12,7 +12,7 @@ use crate::{
     Gui::{ActiveTab, TotkBitsApp},
     Open_Save::{write_string_to_file, FileOpener, FileSaver},
     SarcFileLabel::SarcLabel,
-    Settings::Pathlib,
+    Settings::{FileRenamer, Pathlib, TextSearcher},
     Tree::TreeNode,
 };
 
@@ -108,7 +108,7 @@ impl ButtonOperations {
                                             Ok(_) => {
                                                 app.status_text = format!("Saved: {}", &dst);
                                             }
-                                            Err(err) => {
+                                            Err(_err) => {
                                                 app.status_text =
                                                     format!("Error extracting: {}", &dst);
                                             }
@@ -268,6 +268,8 @@ impl ButtonOperations {
         app.settings.is_dir_context_menu = false;
         app.settings.dir_context_pos = None;
         app.file_reader = FileReader::default();
+        app.file_renamer = FileRenamer::default();
+        app.text_searcher = TextSearcher::default();
         app.status_text = "All files closed".to_string();
     }
 }

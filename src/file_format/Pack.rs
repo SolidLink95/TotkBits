@@ -5,7 +5,7 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::thread::sleep;
+
 //mod Zstd;
 
 use crate::file_format::BinTextFile::FileData;

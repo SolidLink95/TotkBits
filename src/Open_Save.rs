@@ -1,10 +1,10 @@
 
 
-use std::collections::BTreeMap;
+
 use std::io::{BufWriter, Read, Write};
 use std::{fs, io};
 
-use fs2::FileExt;
+
 use msyt::converter::MsytFile;
 use roead::byml::Byml;
 
@@ -42,19 +42,19 @@ impl FileOpener {
         app.settings.is_file_loaded = true;
         let path = app.opened_file.path.full_path.clone();
         println!("Guessing file type: {}", &path);
-        if let Some(res) = &FileOpener::open_tag(app, &path) {
+        if let Some(_res) = &FileOpener::open_tag(app, &path) {
             return Some(Ok(()));
         }
-        if let Some(res) = &FileOpener::open_msbt(app, &path) {
+        if let Some(_res) = &FileOpener::open_msbt(app, &path) {
             return Some(Ok(()));
         }
-        if let Some(res) = &FileOpener::open_sarc(app, &path) {
+        if let Some(_res) = &FileOpener::open_sarc(app, &path) {
             return Some(Ok(()));
         }
-        if let Some(res) = &FileOpener::open_byml(app, &path) {
+        if let Some(_res) = &FileOpener::open_byml(app, &path) {
             return Some(Ok(()));
         }
-        if let Ok(res) = &FileOpener::open_text(app, &path) {
+        if let Ok(_res) = &FileOpener::open_text(app, &path) {
             return Some(Ok(()));
         }
         app.settings.is_tree_loaded = true;
@@ -72,7 +72,7 @@ impl FileOpener {
         match String::from_utf8(buffer) {
             Ok(contents) => {
                 // Check if most of the characters are printable or whitespace
-                app.file_reader.from_string(&contents);
+                let _ = app.file_reader.from_string(&contents);
                 app.active_tab = ActiveTab::TextBox;
                 app.internal_sarc_file = None;
                 app.status_text = format!("Opened: {}", &path);
@@ -87,10 +87,10 @@ impl FileOpener {
     }
 
     pub fn open_byml(app: &mut TotkBitsApp, path: &str) -> Option<()> {
-        println!("Is {} a byml?", path.clone());
+        println!("Is {} a byml?", path);
         if let Ok(b) = BymlFile::new(path.to_string(), app.zstd.clone()) {
             let text = Byml::to_text(&b.pio);
-            app.file_reader.from_string(&text);
+            let _  = app.file_reader.from_string(&text);
             /*println!(
                 "{}, {} {}",
                 &app.text.len(),
@@ -114,7 +114,7 @@ impl FileOpener {
     }
 
     pub fn open_sarc(app: &mut TotkBitsApp, path: &str) -> Option<()> {
-        println!("Is {} a sarc?", path.clone());
+        println!("Is {} a sarc?", path);
         match PackFile::new(path.to_string(), app.zstd.clone()) {
             Ok(inner_pack) => {
                 let mut pack = PackComparer::from_pack(inner_pack, app.zstd.clone());
@@ -134,7 +134,7 @@ impl FileOpener {
                 );
                 return Some(());
             }
-            Err(err) => {}
+            Err(_err) => {}
         }
         None
     }
@@ -143,7 +143,7 @@ impl FileOpener {
         println!("Is {} a msyt?", &path);
         if let Ok(text) = MsytFile::file_to_text(path.to_string()) {
             //app.text = text;
-            app.file_reader.from_string(&text);
+            let _ = app.file_reader.from_string(&text);
             app.internal_sarc_file = None;
             app.active_tab = ActiveTab::TextBox;
             app.status_text = format!("Opened: {}", app.opened_file.path.full_path);
@@ -177,7 +177,7 @@ impl FileOpener {
                     }
                     //tag.print();
                     app.opened_file = OpenedFile::from_path(path.to_string(), TotkFileType::TagProduct);
-                    app.file_reader.from_string(&tag.text);
+                    let _ = app.file_reader.from_string(&tag.text);
                     app.opened_file.tag = Some(tag);
                     app.active_tab = ActiveTab::TextBox;
                     app.opened_file.file_type = TotkFileType::TagProduct;
@@ -203,7 +203,7 @@ impl FileSaver {
             //file is from sarc
             if let Some(pack) = &mut app.pack {
                 if let Some(opened) = &mut pack.opened {
-                    app.file_reader.update_text_changed();
+                    let _ = app.file_reader.update_text_changed();
                     //let text = read_string_from_file(&app.file_reader.in_file)?;
                     let text = String::from_utf8(app.file_reader.buffer.clone()).unwrap_or("".to_string());
                     let endian = app.opened_file.endian.unwrap_or(roead::Endian::Little);
@@ -248,12 +248,12 @@ impl FileSaver {
                 //app.status_text = format!("Saved: {}", internal_file.path.full_path.clone());
             }
         } else {
-            app.file_reader.update_text_changed();
+            let _  = app.file_reader.update_text_changed();
             app.file_reader.reload = true;
             //file is independent byml/msyt/aamp
             //if !app.text.is_empty() {
             let dest_file = app.opened_file.path.full_path.clone();
-            Self::save_text_file_by_file_type(app, &dest_file);
+            let _ = Self::save_text_file_by_file_type(app, &dest_file);
             return Ok(());
             //} //nothing to save
         }

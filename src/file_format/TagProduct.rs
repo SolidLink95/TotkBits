@@ -1,25 +1,25 @@
-use crate::file_format::Pack::{PackComparer, PackFile};
+
 use crate::Open_Save::write_string_to_file;
-use crate::Settings::Pathlib;
-use crate::Zstd::{is_byml, is_msyt, TotkFileType, TotkZstd};
-use bitvec::order::LocalBits;
+
+use crate::Zstd::{TotkZstd};
+
 use crate::file_format::BinTextFile::{bytes_to_file,BymlFile};
 //use byteordered::Endianness;
 //use indexmap::IndexMap;
 use bitvec::prelude::*;
-use msyt::model::{self, Content, Entry, MsbtInfo};
+
 use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use serde_yaml;
-use std::any::type_name;
+
+
 use std::collections::{BTreeMap, HashMap};
-use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, Cursor, Read, Write};
-use std::ops::Deref;
-use std::os::raw;
+
+use std::io::{Write};
+
+
 use std::panic::AssertUnwindSafe;
-use std::path::{Path, PathBuf};
+
 use std::sync::Arc;
 use std::{fs, io, panic};
 
@@ -79,7 +79,7 @@ impl<'a> TagProduct<'a> {
         let mut data: Vec<u8> = Vec::new();
         match self.to_binary(text) {
             Ok(rawdata) => data = rawdata,
-            Err(err) => {
+            Err(_err) => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "Bytes from tag invalid",
@@ -102,14 +102,14 @@ impl<'a> TagProduct<'a> {
     pub fn to_binary(&mut self, text: &str) -> Result<Vec<u8>, serde_json::Error> {
         //let data: Config = serde_yaml::from_str(text)?;
         //Header
-        let mut res : Byml = Byml::from_text("{}").unwrap();
+        let _res : Byml = Byml::from_text("{}").unwrap();
         let mut path_list: Vec<String> = Default::default();
         let mut tag_list: Vec<Byml> = Default::default();
         let json_data: TagJsonData = serde_json::from_str(text)?;
         //PathList
         println!("Work/Actor/|Animal_Boar_A|.engine__actor__ActorParam.gyml {:?}", &json_data.PathList.contains_key("Work/Actor/|Animal_Boar_A|.engine__actor__ActorParam.gyml"));
         println!("Work/Actor/|Animal_Boar_C|.engine__actor__ActorParam.gyml {:?}", &json_data.PathList.contains_key("Work/Actor/|Animal_Boar_C|.engine__actor__ActorParam.gyml"));
-        for (path, plist) in &json_data.PathList {
+        for (path, _plist) in &json_data.PathList {
             if path.contains("|") {
                 for slice in path.split("|") {
                     //let entry = roead::byml::Byml::String(slice.to_string().into());
@@ -120,7 +120,7 @@ impl<'a> TagProduct<'a> {
         //Bittable
         let mut bit_table_bits = Vec::new();
 
-        for (actor_tag, tag_entries) in &json_data.PathList  {
+        for (_actor_tag, tag_entries) in &json_data.PathList  {
             for tag in &self.cached_tag_list {
                 let bit = if tag_entries.contains(tag) {
                     true
@@ -181,7 +181,7 @@ impl<'a> TagProduct<'a> {
     }
 
     pub fn to_text(&mut self)  {
-        let actor_tag_data = &self.actor_tag_data;
+        let _actor_tag_data = &self.actor_tag_data;
         let json_data = TagJsonData {
             PathList: self.actor_tag_data.clone(),
             TagList: self.tag_list.clone(),
@@ -216,7 +216,7 @@ impl<'a> TagProduct<'a> {
                         _ => "".to_string(),
                     }),
             );
-            let mut path_list_count = self.path_list.len();
+            let path_list_count = self.path_list.len();
             // Get Tag list
             println!("Parsing tag_list");
             self.tag_list.extend(
@@ -257,7 +257,7 @@ impl<'a> TagProduct<'a> {
             // Get Rank Table
             println!("Parsing RankTable");
             self.rank_table = pio["RankTable"].clone();
-            let mut bit_table_bits = bit_table_bytes.view_bits::<Lsb0>().to_bitvec();
+            let bit_table_bits = bit_table_bytes.view_bits::<Lsb0>().to_bitvec();
             //bit_table_bits.reverse();
             let bit_array_count = bit_table_bits.len();
             // Debug

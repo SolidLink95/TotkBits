@@ -1,4 +1,4 @@
-use egui::{scroll_area::ScrollAreaOutput, Align, Key, Pos2, Rect};
+use egui::{scroll_area::ScrollAreaOutput, Align, Key};
 use std::{
     fs,
     io::{self, BufReader, Cursor, Read, Seek},
@@ -25,15 +25,17 @@ pub struct FileReader {
     pub old_text: String,
     pub is_text_changed: bool,
     pub lines_offset: usize,
+    pub max_line_chars: usize,
+    pub dir: bool,
 }
 
 impl Default for FileReader {
     fn default() -> Self {
         let in_file = "in.txt";
         let out_file = "out.txt";
-        let f = fs::File::create(in_file).unwrap();
+        let _f = fs::File::create(in_file).unwrap();
         //fs::copy(in_file, out_file);
-        let g = fs::File::create(out_file).unwrap();
+        let _g = fs::File::create(out_file).unwrap();
         let len = 0 as usize;
         let buffer = Vec::new(); // Initialize an empty buffer
         let cursor = Cursor::new(buffer.clone());
@@ -56,6 +58,8 @@ impl Default for FileReader {
             old_text: String::new(),
             is_text_changed: false,
             lines_offset: 0,
+            max_line_chars: 2048,
+            dir: false
         }
     }
 }
@@ -75,7 +79,7 @@ impl FileReader {
     pub fn update(&mut self) -> io::Result<()> {
         if self.reload && !self.full_text.is_empty() {
             if self.update_pos() {
-                println!("Reloading buffer {:?}", self.pos);
+                println!("Reloading buffer {:?} ({}-{})", self.pos, self.pos.y-self.pos.x, self.buf_size);
                 
                 self.lines_offset = self.buffer[0..self.pos.x as usize].iter().filter(|&&c| c == b'\n').count();
                 self.reader
@@ -170,7 +174,36 @@ impl FileReader {
 
         
         self.pos.x = self.pos.x.max(0);
+        //self.advance_to_newline();
         return true;
+    }
+
+    pub fn advance_to_newline (&mut self) {
+        let max_chars:i32 = 2048; //if the line is too long get this many bytes
+        let mut ind: i32 = 0;
+        let mut x = self.pos.x.clone();
+        let mut y = self.pos.y.clone();
+        let len = self.buffer.len() as i32;
+        let mut change: i32 = -1;
+        if self.dir {
+            change = 1;
+        }
+        self.dir = !self.dir;
+        loop {
+            if x == 0 || ind >= max_chars {break;}
+            if self.buffer.get(x as usize) == Some(&b'\n') {break;}
+            x -= change;
+            ind += 1;
+        }
+        self.pos.x = x as i32;
+        ind = 0;
+        loop {
+            if y >= len || ind >= max_chars {break;}
+            if self.buffer.get(y as usize) == Some(&b'\n') {break;}
+            y += change;
+            ind +=1;
+        }
+        self.pos.y = y as i32;
     }
 
     pub fn scroll_test(
@@ -194,7 +227,7 @@ impl FileReader {
     pub fn check_for_changes(
         &mut self,
         ctx: &egui::Context,
-        ui: &egui::Ui,
+        _ui: &egui::Ui,
         resp: &Option<ScrollAreaOutput<()>>,
     ) -> f32 {
         let mut res: f32 = 0.0;

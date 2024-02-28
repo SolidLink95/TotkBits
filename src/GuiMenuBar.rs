@@ -1,6 +1,6 @@
 use crate::ButtonOperations::ButtonOperations;
 use crate::Gui::TotkBitsApp;
-use crate::Tree::TreeNode;
+
 
 //use crate::SarcFileLabel::ScrollAreaPub;
 use eframe::egui::{self, Style, TopBottomPanel};
@@ -46,7 +46,7 @@ impl MenuBar {
     pub fn display(&self, app: &mut TotkBitsApp, ctx: &egui::Context) {
         let original_style = ctx.style().clone();
         ctx.set_style(self.style.clone());
-        let x = self.padding;
+        let _x = self.padding;
         TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.menu_button("File", |ui| {
@@ -86,20 +86,32 @@ impl MenuBar {
                         ui.close_menu();
                     }
                     if ui.button("Extract").clicked() {
-                        ButtonOperations::extract_click(app);
+                        let _ = ButtonOperations::extract_click(app);
                         ui.close_menu();
                     }
-                    if ui.button("Find").clicked() {}
+                    if ui.button("Find").clicked() {
+                        app.text_searcher.is_shown = true;
+                        ui.close_menu();
+                    }
                     if ui.button("Settings").clicked() {}
                     if ui.button("Zoom in").clicked() {
-                        app.settings.styles.inc_font_size();
+                        app.settings.styles.scale.add(0.1);
                         ui.close_menu();
                     }
                     if ui.button("Zoom out").clicked() {
-                        app.settings.styles.dec_font_size();
+                        app.settings.styles.scale.add(-0.1);
                         ui.close_menu();
                     }
+
+                    /*if ui.button("Wrap/unwrap all").clicked() {
+                        app.settings.is_sarclabel_wrapped = !app.settings.is_sarclabel_wrapped;
+                        //app.settings.is_tree_loaded = false;
+                        ui.close_menu();
+                    }*/
+
                 });
+
+                //ui.label(format!("{:?}", ctx.pixels_per_point()));
 
                 app.settings.fps_counter.display(ui);
             });
@@ -155,5 +167,29 @@ impl FpsCounter {
             return 60.0;
         }
         self.fps
+    }
+}
+
+pub struct GenericF32 {
+    pub val: f32,
+    pub max: f32,
+    pub min: f32
+}
+
+impl GenericF32 {
+    pub fn new(val: f32, min: f32, max: f32) -> Self {
+        Self {
+            val: val,
+            min: min,
+            max: max
+        }
+    }
+    pub fn update(&mut self) {
+        self.val = self.val.max(self.min).min(self.max);
+    }
+
+    pub fn add(&mut self, x: f32) {
+        self.val += x;
+        self.update();
     }
 }

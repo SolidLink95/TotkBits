@@ -1,5 +1,5 @@
 
-use natord::compare;
+
 use std::cell::{RefCell};
 use std::fmt::Debug;
 
@@ -7,13 +7,15 @@ use std::rc::{Rc, Weak};
 
 
 use crate::file_format::Pack::PackFile;
+use crate::Gui::TotkBitsApp;
 use crate::Settings::Pathlib;
 
 pub struct TreeNode<T> {
     pub value: T,
     pub parent: RefCell<Weak<TreeNode<T>>>,
     pub children: RefCell<Vec<Rc<TreeNode<T>>>>,
-    pub path: Pathlib
+    pub path: Pathlib,
+    //pub is_shown:bool,
 }
 
 impl<T> TreeNode<T>
@@ -25,9 +27,62 @@ where
             value: value,
             parent: RefCell::new(Weak::new()),
             children: RefCell::new(vec![]),
-            path: Pathlib::new(full_path)
+            path: Pathlib::new(full_path),
+            //is_shown: true,
         })
     }
+
+    pub fn clean_up_tree(node: &Rc<Self>, val: &str) {
+        let mut children_to_keep = Vec::new();
+
+        // Iterate over children to decide which ones to keep
+        for child in node.children.borrow().iter() {
+            // Recursively clean up the tree first, so we work our way up from the leaves
+            Self::clean_up_tree(child, val);
+
+            let is_leaf_node = child.children.borrow().is_empty();
+            let has_asdf = child.path.name.contains(val);
+            let has_dot = child.path.name.contains(".");
+
+            // Decide whether to keep the child
+            if is_leaf_node && !has_asdf {
+                // Do not keep leaf nodes that do not contain "asdf"
+                continue;
+            }
+
+            if is_leaf_node && !has_dot {
+                // Do not keep leaf nodes that do not have "." in their name
+                continue;
+            }
+
+            // If none of the conditions for removal are met, keep the node
+            children_to_keep.push(Rc::clone(child));
+        }
+
+        // Replace the children with the filtered list
+        *node.children.borrow_mut() = children_to_keep;
+    }
+
+    pub fn contains_value_in_any_child(&self, search_value: &str) -> bool {
+        if search_value.is_empty() {
+            return true;
+        }
+        for child in self.children.borrow().iter() {
+            if child.path.name.to_lowercase().contains(search_value) {
+                println!("{}", &child.path.name);
+                return true;
+            }
+            if child.contains_value_in_any_child(search_value) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn is_shown(&self, text: &str) -> bool {
+        text.is_empty() || self.is_leaf() && self.is_file() && self.path.full_path.to_lowercase().contains(&text.to_lowercase())
+    }
+
     pub fn remove_child(&self, value: &T) {
         // Retain only those children that do not match the specified value
         self.children.borrow_mut().retain(|child| child.value != *value);

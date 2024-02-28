@@ -1,18 +1,14 @@
-use crate::file_format::Pack::{PackComparer, PackFile};
-use crate::Open_Save::write_string_to_file;
+use crate::file_format::Pack::PackFile;
+
+use crate::GuiMenuBar::GenericF32;
 use crate::SarcFileLabel::FramedRect;
 use crate::{Gui::TotkBitsApp, GuiMenuBar::FpsCounter, Tree::TreeNode};
-use egui::scroll_area::ScrollAreaOutput;
-use egui::{
-    epaint::Shadow, include_image, style::HandleShape, Color32, Margin, Pos2, Rect, Response,
-    Style, TextStyle, Vec2,
-};
-use egui::{Align, Area, FontFamily, FontId, Key, TopBottomPanel};
+
+use egui::{epaint::Shadow, include_image, Color32, Margin, Response, Style, TextStyle, Vec2};
+use egui::{TopBottomPanel, Widget};
 use egui_code_editor::Syntax;
-use fs2::FileExt;
-use roead::sarc;
-use std::io::{self, BufReader, BufWriter, Read};
-use std::{fs, io::Seek, path::Path, rc::Rc, sync::Arc};
+
+use std::{path::Path, rc::Rc, sync::Arc};
 
 pub struct Settings {
     //pub lines_count: usize,
@@ -29,12 +25,13 @@ pub struct Settings {
     pub modded_color: Color32,
     pub is_dir_context_menu: bool,     //is context menu for dir opened
     pub do_i_compare_and_reload: bool, //is context menu for dir opened
-    pub is_loading: bool, //is context menu for dir opened
+    pub is_loading: bool,              //is context menu for dir opened
     pub scroll_val: f32,               //is context menu for dir opened
     pub dir_context_pos: Option<egui::Pos2>, //
     pub dir_context_size: Option<Response>,
     pub fps_counter: FpsCounter,
-    pub dir_rect: FramedRect
+    pub dir_rect: FramedRect,
+    pub is_sarclabel_wrapped: bool,
     //pub asdf: bool,
 }
 
@@ -61,7 +58,8 @@ impl Default for Settings {
             dir_context_pos: None, //
             dir_context_size: None,
             fps_counter: FpsCounter::new(),
-            dir_rect: FramedRect::default()
+            dir_rect: FramedRect::default(),
+            is_sarclabel_wrapped: false,
             //asdf: true
         }
     }
@@ -116,9 +114,8 @@ pub struct Styles {
     pub modded_file: Arc<Style>,  //the menu bar at the top
     pub added_file: Arc<Style>,   //the menu bar at the top
     pub vanila_file: Arc<Style>,  //the menu bar at the top
-    pub font_size: f32,
-    pub max_font_size: f32,
-    pub min_font_size: f32,
+    pub font: GenericF32,
+    pub scale: GenericF32,
 }
 
 impl Styles {
@@ -134,30 +131,14 @@ impl Styles {
             modded_file: Arc::new(Styles::get_modded_file_style(def_style.clone())),
             added_file: Arc::new(Styles::get_added_file_style(def_style.clone())),
             vanila_file: Arc::new(Styles::get_vanila_file_style(def_style)),
-            font_size: 12.0,
-            max_font_size: 30.0,
-            min_font_size: 5.0,
+            font: GenericF32::new(12.0, 5.0, 30.0),
+            scale: GenericF32::new(1.25, 0.2, 5.0),
         }
-    }
-
-    pub fn adj_font_size(&mut self, val: f32) { 
-        self.font_size += val;
-        self.font_size = self
-            .font_size
-            .min(self.max_font_size)
-            .max(self.min_font_size);
-    }
-    pub fn inc_font_size(&mut self) {
-       self.adj_font_size(1.0);
-    }
-
-    pub fn dec_font_size(&mut self) {
-        self.adj_font_size(-1.0);
     }
 
     pub fn get_style_from_comparer(
         app: &mut TotkBitsApp,
-        ui: &mut egui::Ui,
+        _ui: &mut egui::Ui,
         child: &Rc<TreeNode<String>>,
     ) -> Arc<Style> {
         if let Some(pack) = &mut app.pack {
@@ -173,20 +154,8 @@ impl Styles {
         app.settings.styles.vanila_file.clone()
     }
 
-    pub fn update_font_size(&mut self, new_font_size: f32) {
-        if new_font_size != self.font_size {
-            let mut new_style = Self::get_text_editor_style(self.def_style_non_arc.clone());
-            new_style
-                .text_styles
-                .get_mut(&egui::TextStyle::Body)
-                .unwrap()
-                .size = new_font_size;
-            self.text_editor = Arc::new(new_style);
-        }
-    }
-
     pub fn get_vanila_file_style(def_style: Style) -> Style {
-        let mut style: Style = def_style;
+        let style: Style = def_style;
         /*let dark_yellow = Color32::from_rgb(84, 62, 6);
         let yellow = Color32::from_rgb(145, 111, 0);
         //let font_color = Color32::from_gray(27);
@@ -392,7 +361,7 @@ pub struct Pathlib {
 
 impl Pathlib {
     pub fn new(path: String) -> Self {
-        let p = Path::new(&path);
+        let _p = Path::new(&path);
         Self {
             parent: Pathlib::get_parent(&path),
             name: Pathlib::get_name(&path),
@@ -408,7 +377,6 @@ impl Pathlib {
             return "".to_string();
         }
         return extension.split(".").last().unwrap_or("").to_string();
-
     }
     pub fn get_parent(path: &str) -> String {
         //parent dir
@@ -428,7 +396,7 @@ impl Pathlib {
     }
     pub fn get_stem(path: &str) -> String {
         //just file name
-        let mut res = Path::new(path)
+        let res = Path::new(path)
             .file_stem()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
@@ -460,7 +428,6 @@ impl Pathlib {
 }
 
 pub struct FileRenamer {
-    pub old_name: String,
     pub new_name: String,
     pub is_shown: bool,
     pub is_renamed: bool,
@@ -469,7 +436,6 @@ pub struct FileRenamer {
 impl Default for FileRenamer {
     fn default() -> Self {
         Self {
-            old_name: String::new(),
             new_name: String::new(),
             is_shown: false,
             is_renamed: false,
@@ -479,7 +445,6 @@ impl Default for FileRenamer {
 
 impl FileRenamer {
     pub fn reset(&mut self) {
-        self.old_name = String::new();
         self.new_name = String::new();
         self.is_shown = false;
         self.is_renamed = false;
@@ -503,7 +468,7 @@ impl FileRenamer {
         opened: &mut PackFile,
         internal_sarc_file: Option<&Rc<TreeNode<String>>>,
         ctx: &egui::Context,
-        ui: &egui::Ui,
+        _ui: &egui::Ui,
     ) {
         if self.is_shown {
             if let Some(internal_file) = &internal_sarc_file {
@@ -545,3 +510,64 @@ impl FileRenamer {
         }
     }
 }
+
+pub struct TextSearcher {
+    pub disp_text: String,
+    pub text: String,
+    pub is_shown: bool,
+}
+
+impl Default for TextSearcher {
+    fn default() -> Self {
+        Self {
+            disp_text: String::new(),
+            text: String::new(),
+            is_shown: false,
+        }
+    }
+}
+
+impl TextSearcher {
+    pub fn reset(&mut self) {
+        self.disp_text = String::new();
+        self.text = String::new();
+        self.is_shown = false;
+    }
+
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        _ui: &egui::Ui,
+    ) -> bool {
+        let mut res = false;
+        if self.is_shown {
+                TopBottomPanel::bottom("rename_panel").show(ctx, |ui| {
+                    ui.vertical(|ui| {
+                        //ui.label("Search:");
+                        //ui.label("to:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.disp_text)
+                                .desired_width(ui.available_width()),
+                        );
+                        //ui.text_edit_singleline(&mut self.new_name);
+                        ui.horizontal(|ui| {
+                            if ui.button("Find").clicked() {
+                                println!("Searching {}", &self.disp_text);
+                                self.text = self.disp_text.clone();
+                                //self.reset();
+
+                            } 
+                            if ui.button("Close").clicked() {
+                                    println!("Cancel clicked!");
+                                    self.reset();
+                                    res=  true;
+                            }
+                            
+                        });
+                    });
+                });
+            }
+            res
+        }
+    }
+
