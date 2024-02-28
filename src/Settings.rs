@@ -8,6 +8,7 @@ use egui::{epaint::Shadow, include_image, Color32, Margin, Response, Style, Text
 use egui::{TopBottomPanel, Widget};
 use egui_code_editor::Syntax;
 
+use std::env;
 use std::{path::Path, rc::Rc, sync::Arc};
 
 pub struct Settings {
@@ -32,6 +33,7 @@ pub struct Settings {
     pub fps_counter: FpsCounter,
     pub dir_rect: FramedRect,
     pub is_sarclabel_wrapped: bool,
+    pub def_scale: Option<f32>,
     //pub asdf: bool,
 }
 
@@ -60,8 +62,22 @@ impl Default for Settings {
             fps_counter: FpsCounter::new(),
             dir_rect: FramedRect::default(),
             is_sarclabel_wrapped: false,
+            def_scale: None,
             //asdf: true
         }
+    }
+}
+
+impl Settings {
+    pub fn get_arg1() -> Option<String> {
+        let argv: Vec<String> = env::args().collect();
+        println!("{:?}", argv);
+        if argv.len() > 1 {
+            if Path::new(&argv[1]).exists() {
+                return Some(argv[1].clone());
+            }
+        }
+        None
     }
 }
 

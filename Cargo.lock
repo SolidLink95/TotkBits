@@ -6,7 +6,7 @@ version = 3
 name = "TotkBits"
 version = "0.1.0"
 dependencies = [
- "base64 0.13.1",
+ "base64 0.21.7",
  "bitvec",
  "byteordered 0.6.0",
  "digest",
@@ -637,12 +637,6 @@ checksum = "0b25d992356d2eb0ed82172f5248873db5560c4721f564b13cb5193bda5e668e"
 dependencies = [
  "byteorder",
 ]
-
-[[package]]
-name = "base64"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
 name = "base64"

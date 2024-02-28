@@ -166,7 +166,6 @@ impl<'a> TagProduct<'a> {
         }
 
         let yml_string = yml.join("\n");
-        write_string_to_file("tmp.txt", &yml_string);
         let raw_data = Byml::from_text(yml_string).unwrap().to_binary(self.endian);
 
         //res[roead::byml::BymlIndex("PathList")] = roead::byml::Byml::Array(path_list);

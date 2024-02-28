@@ -1,16 +1,12 @@
-
-
-
 use std::io::{BufWriter, Read, Write};
-use std::{fs, io};
-
+use std::{env, fs, io};
 
 use msyt::converter::MsytFile;
 use roead::byml::Byml;
 
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
-use crate::file_format::TagProduct::TagProduct;
 use crate::file_format::Pack::{PackComparer, PackFile};
+use crate::file_format::TagProduct::TagProduct;
 use crate::{
     Gui::{ActiveTab, TotkBitsApp},
     Settings::Pathlib,
@@ -63,6 +59,35 @@ impl FileOpener {
         None
     }
 
+    pub fn try_open_argv1(app: &mut TotkBitsApp) -> io::Result<()> {
+        let argv: Vec<String> = env::args().collect();
+        if argv.len() < 2 {
+            return Err(io::Error::new(io::ErrorKind::NotFound, ""));
+        }
+        let file_name = &argv[1];
+        let old_path = app.opened_file.path.full_path.clone();
+        let path = file_name.clone();
+        let mut f_handle = fs::File::open(&file_name)?;
+        let mut buffer: Vec<u8> = Vec::new(); //String::new();
+        match f_handle.read_to_end(&mut buffer) {
+            Ok(_) => {
+                app.status_text = format!("Opened file: {}", &file_name);
+
+                FileOpener::open_byml_or_sarc_alt(app, path, old_path);
+                //app.settings.is_file_loaded = false; //this flag lets FileOpener to determine the file type
+            }
+
+            Err(_err) => {
+                app.status_text = format!("Error reading file: {}", file_name);
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    app.status_text.clone(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn open_text(app: &mut TotkBitsApp, path: &str) -> io::Result<()> {
         let mut file = fs::File::open(path)?;
         let mut buffer = Vec::new();
@@ -90,7 +115,7 @@ impl FileOpener {
         println!("Is {} a byml?", path);
         if let Ok(b) = BymlFile::new(path.to_string(), app.zstd.clone()) {
             let text = Byml::to_text(&b.pio);
-            let _  = app.file_reader.from_string(&text);
+            let _ = app.file_reader.from_string(&text);
             /*println!(
                 "{}, {} {}",
                 &app.text.len(),
@@ -176,7 +201,8 @@ impl FileOpener {
                         }
                     }
                     //tag.print();
-                    app.opened_file = OpenedFile::from_path(path.to_string(), TotkFileType::TagProduct);
+                    app.opened_file =
+                        OpenedFile::from_path(path.to_string(), TotkFileType::TagProduct);
                     let _ = app.file_reader.from_string(&tag.text);
                     app.opened_file.tag = Some(tag);
                     app.active_tab = ActiveTab::TextBox;
@@ -205,7 +231,8 @@ impl FileSaver {
                 if let Some(opened) = &mut pack.opened {
                     let _ = app.file_reader.update_text_changed();
                     //let text = read_string_from_file(&app.file_reader.in_file)?;
-                    let text = String::from_utf8(app.file_reader.buffer.clone()).unwrap_or("".to_string());
+                    let text =
+                        String::from_utf8(app.file_reader.buffer.clone()).unwrap_or("".to_string());
                     let endian = app.opened_file.endian.unwrap_or(roead::Endian::Little);
                     let mut data: Vec<u8> = Vec::new();
                     match app.opened_file.file_type {
@@ -248,7 +275,7 @@ impl FileSaver {
                 //app.status_text = format!("Saved: {}", internal_file.path.full_path.clone());
             }
         } else {
-            let _  = app.file_reader.update_text_changed();
+            let _ = app.file_reader.update_text_changed();
             app.file_reader.reload = true;
             //file is independent byml/msyt/aamp
             //if !app.text.is_empty() {
@@ -316,7 +343,7 @@ impl FileSaver {
             },
             TotkFileType::TagProduct => {
                 if let Some(tag) = &mut app.opened_file.tag {
-                    let _ =tag.save_default(&text);
+                    let _ = tag.save_default(&text);
                     println!("Tag saved!");
                     app.status_text = format!("Saved tag file: : {}", dest_file);
                 }
@@ -338,9 +365,6 @@ impl FileSaver {
         }
     }
 }
-
-
-
 
 pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
     let file = fs::File::create(path)?;

@@ -8,7 +8,7 @@ use crate::SarcFileLabel::SarcLabel;
 use crate::Settings::{FileRenamer, Icons, Settings, TextSearcher};
 use crate::TotkConfig::TotkConfig;
 use crate::Tree::{self, TreeNode};
-use crate::Zstd::TotkZstd;
+use crate::Zstd::{TotkFileType, TotkZstd};
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::scroll_area::ScrollAreaOutput;
 use egui::{Align, Button, Label, Layout};
@@ -47,6 +47,7 @@ impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
         let totk_config = Arc::new(TotkConfig::new());
         let settings = Settings::default();
+        let mut opened_file = OpenedFile::default();
         let mut file_reader = FileReader::default();
         file_reader.buf_size = 8192;
         file_reader.set_pos(0, file_reader.buf_size as i32);
@@ -73,8 +74,46 @@ impl Default for TotkBitsApp<'_> {
     }
 }
 
+impl<'a> TotkBitsApp<'_> {
+    pub fn new(path: Option<String>) -> Self {
+        let totk_config = Arc::new(TotkConfig::new());
+        let mut settings = Settings::default();
+        let mut opened_file = OpenedFile::default();
+        if let Some(p) = path {
+            opened_file = OpenedFile::from_path(p, TotkFileType::Other);
+            settings.is_file_loaded = false;
+        }
+        let mut file_reader = FileReader::default();
+        file_reader.buf_size = 8192;
+        file_reader.set_pos(0, file_reader.buf_size as i32);
+        file_reader.reload = true;
+        Self {
+            opened_file: opened_file,
+            status_text: "Ready".to_owned(),
+            scroll: ScrollArea::vertical(),
+            active_tab: ActiveTab::TextBox,
+            language: "toml".into(),
+            zstd: Arc::new(TotkZstd::new(totk_config, settings.comp_level).unwrap()),
+            pack: None,
+            root_node: TreeNode::new("ROOT".to_string(), "/".to_string()),
+            internal_sarc_file: None,
+            scroll_resp: None,
+            menu_bar: Arc::new(MenuBar::new(settings.styles.menubar.clone()).unwrap()),
+            icons: Icons::new(&settings.icon_size.clone()),
+            settings: settings,
+            code_editor: CodeEditor::default(),
+            file_reader: file_reader,
+            file_renamer: FileRenamer::default(),
+            text_searcher: TextSearcher::default(),
+    }
+}
+}
 impl eframe::App for TotkBitsApp<'_> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.settings.def_scale.is_none() {
+            self.settings.def_scale = Some(ctx.pixels_per_point());
+            self.settings.styles.scale.val = ctx.pixels_per_point();
+        }
         ctx.set_pixels_per_point(self.settings.styles.scale.val);
         //let x = ctx.input(|i| i.raw_scroll_delta.y);
         //self.status_text = format!("{}", x);
@@ -416,12 +455,13 @@ pub fn display_infolabels(ui: &mut egui::Ui, endian: &str, path: Option<&str>) {
 
 pub fn run() {
     let mut options = eframe::NativeOptions::default();
+    let argv1 = Settings::get_arg1();
     //options::viewport::initial_window_size(Some(egui::vec2(1000.0, 1000.0)));
     options.viewport.inner_size = Some(egui::vec2(700.0, 700.0));
     eframe::run_native(
         "Totkbits",
         options,
-        Box::new(|_cc| Box::<TotkBitsApp>::default()),
+        Box::new(|_cc| Box::new(TotkBitsApp::new(argv1))),
     )
     .unwrap();
 }

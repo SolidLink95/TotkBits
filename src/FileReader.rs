@@ -31,11 +31,6 @@ pub struct FileReader {
 
 impl Default for FileReader {
     fn default() -> Self {
-        let in_file = "in.txt";
-        let out_file = "out.txt";
-        let _f = fs::File::create(in_file).unwrap();
-        //fs::copy(in_file, out_file);
-        let _g = fs::File::create(out_file).unwrap();
         let len = 0 as usize;
         let buffer = Vec::new(); // Initialize an empty buffer
         let cursor = Cursor::new(buffer.clone());

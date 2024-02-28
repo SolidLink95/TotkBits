@@ -122,9 +122,6 @@ impl MenuBar {
     }
 }
 
-struct DirContextMenu {
-    pub style: Arc<Style>,
-}
 
 pub struct FpsCounter {
     last_update: std::time::Instant,
