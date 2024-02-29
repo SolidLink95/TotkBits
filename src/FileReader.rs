@@ -87,22 +87,21 @@ impl FileReader {
                     self.pos.y - self.pos.x,
                     self.buf_size
                 );
-                let smiling_face = String::from("\u{1F60A}");
+                let pos: Pos = self.advance_to_newline();
 
-                self.lines_offset = self.buffer[0..self.pos.x as usize]
+                self.lines_offset = self.buffer[0..pos.x as usize]
                     .iter()
                     .filter(|&&c| c == b'\n')
                     .count();
                 self.reader
-                    .seek(std::io::SeekFrom::Start(self.pos.x as u64))?;
-                let mut buffer = vec![0; (self.pos.y - self.pos.x) as usize];
+                    .seek(std::io::SeekFrom::Start(pos.x as u64))?;
+                let mut buffer = vec![0; (pos.y - pos.x) as usize];
 
                 self.reader.read_exact(&mut buffer)?;
 
                 // Convert bytes to String
                 self.displayed_text = String::from_utf8(buffer)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-                self.displayed_text = self.displayed_text.replace(&smiling_face, "");
                 self.old_text = self.displayed_text.clone();
             }
 
@@ -189,40 +188,28 @@ impl FileReader {
         return true;
     }
 
-    pub fn advance_to_newline(&mut self) {
+    pub fn advance_to_newline(&mut self) -> Pos {
         let max_chars: i32 = 2048; //if the line is too long get this many bytes
         let mut ind: i32 = 0;
         let mut x = self.pos.x.clone();
         let mut y = self.pos.y.clone();
         let len = self.buffer.len() as i32;
-        let mut change: i32 = -1;
-        if self.dir {
-            change = 1;
-        }
-        self.dir = !self.dir;
+        let change: i32 = 1;
         loop {
-            if x == 0 || ind >= max_chars {
-                break;
-            }
-            if self.buffer.get(x as usize) == Some(&b'\n') {
-                break;
-            }
+            if x == 0 || ind >= max_chars {break;}
+            if self.buffer.get(x as usize) == Some(&b'\n') {break;}
             x -= change;
             ind += 1;
         }
-        self.pos.x = x as i32;
         ind = 0;
         loop {
-            if y >= len || ind >= max_chars {
-                break;
-            }
-            if self.buffer.get(y as usize) == Some(&b'\n') {
-                break;
-            }
+            if y >= len || ind >= max_chars {break;}
+            if self.buffer.get(y as usize) == Some(&b'\n') {break;}
             y += change;
             ind += 1;
         }
-        self.pos.y = y as i32;
+        x = (x + 1).min(len);
+        return Pos { x:x, y: y };
     }
 
     pub fn scroll_test(ui: &egui::Ui, resp: &Option<ScrollAreaOutput<()>>, scroll_offset: f32) {

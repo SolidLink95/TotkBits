@@ -327,6 +327,7 @@ impl Gui {
             }
             ActiveTab::Settings => {
                 app.scroll_resp = Some(
+                    
                     ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .max_height(ui.available_height())

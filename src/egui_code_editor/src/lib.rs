@@ -354,7 +354,7 @@ impl CodeEditor {
                     );
                 }*/
 
-                egui::ScrollArea::horizontal()
+                egui::ScrollArea::horizontal()//.scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                 .id_source(format!("{}_inner_scroll", self.id))
                 .show(ui, |ui| {
 
@@ -378,7 +378,7 @@ impl CodeEditor {
             });
         };
         if vscroll {
-            let r: egui::scroll_area::ScrollAreaOutput<()> = egui::ScrollArea::vertical()
+            let r: egui::scroll_area::ScrollAreaOutput<()> = egui::ScrollArea::vertical()//.scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                 .id_source(format!("_outer_scroll"))
                 .stick_to_bottom(stick_to_bottom)
                 .show(ui, code_editor);
