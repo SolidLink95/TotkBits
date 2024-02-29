@@ -554,18 +554,28 @@ impl TextSearcher {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        _ui: &egui::Ui,
+        style: Arc<Style>,
     ) -> bool {
         let mut res = false;
         if self.is_shown {
                 TopBottomPanel::bottom("rename_panel").show(ctx, |ui| {
+                    //ui.set_style(style);
                     ui.vertical(|ui| {
-                        //ui.label("Search:");
+                        ui.add_space(2.0);
+                        ui.label("Filter sarc files:");
+                        ui.add_space(2.0);
                         //ui.label("to:");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.disp_text)
                                 .desired_width(ui.available_width()),
                         );
+                        ctx.input(|i| {
+                            if i.key_pressed(egui::Key::Enter) {
+                                println!("Searching {}", &self.disp_text);
+                                self.text = self.disp_text.clone();
+                            }
+                         });
+                         ui.add_space(2.0);
                         //ui.text_edit_singleline(&mut self.new_name);
                         ui.horizontal(|ui| {
                             if ui.button("Find").clicked() {
@@ -574,6 +584,7 @@ impl TextSearcher {
                                 //self.reset();
 
                             } 
+                            ui.add_space(1.0);
                             if ui.button("Close").clicked() {
                                     println!("Cancel clicked!");
                                     self.reset();
@@ -581,6 +592,7 @@ impl TextSearcher {
                             }
                             
                         });
+                        ui.add_space(2.0);
                     });
                 });
             }

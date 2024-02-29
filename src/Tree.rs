@@ -41,7 +41,7 @@ where
             Self::clean_up_tree(child, val);
 
             let is_leaf_node = child.children.borrow().is_empty();
-            let has_asdf = child.path.name.contains(val);
+            let has_asdf = child.path.name.to_lowercase().contains(&val.to_lowercase());
             let has_dot = child.path.name.contains(".");
 
             // Decide whether to keep the child

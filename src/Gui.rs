@@ -123,8 +123,20 @@ impl eframe::App for TotkBitsApp<'_> {
         //GuiMenuBar::MenuBar::display(self, ctx);
         Gui::display_main_buttons(self, ctx);
 
+
         // Bottom panel (status bar)
         Gui::display_status_bar(self, ctx);
+
+        if !&self.text_searcher.text.is_empty() {
+            TreeNode::clean_up_tree(
+                &self.root_node,
+                &self.text_searcher.text,
+            );
+        }
+        if self.text_searcher.show(ctx, self.settings.styles.toolbar.clone()) {
+            self.settings.is_tree_loaded = false;
+        }
+
         // Central panel (text area)
         egui::CentralPanel::default().show(ctx, |ui| {
             Gui::display_labels(self, ui);
@@ -293,27 +305,21 @@ impl Gui {
                                         .show(opened, internal_file.as_ref(), ctx, ui);
                                     //Sarc is opened
                                     if !app.settings.is_tree_loaded || app.file_renamer.is_renamed {
+                                        app.root_node = TreeNode::new("ROOT".to_string(), "/".to_string());
                                         Tree::update_from_sarc_paths(&app.root_node, opened);
                                         app.settings.is_tree_loaded = true;
                                         println!("Reloading tree");
                                         //Tree::TreeNode::print(&app.root_node, 1);
                                     }
                                 }
-                                let tmp = app.text_searcher.show(ctx, ui); //TODO cleanup
-                                if !&app.text_searcher.text.is_empty() {
-                                    TreeNode::clean_up_tree(
-                                        &app.root_node,
-                                        &app.text_searcher.text,
-                                    );
-                                }
-                                if tmp {
-                                    app.settings.is_tree_loaded = false;
-                                }
+
                                 let children: Vec<_> =
                                     app.root_node.children.borrow().iter().cloned().collect();
                                 for child in children {
                                     SarcLabel::display_tree_in_egui(app, &child, ui, &ctx);
                                 }
+
+                                
                                 //ctx.set_style(app.settings.styles.text_editor.clone());
                             }
                         }),
