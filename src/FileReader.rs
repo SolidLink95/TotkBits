@@ -4,7 +4,8 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct Pos { //MUST BE i32, PANIC WHILE UPDATING OTHERWISE!
+pub struct Pos {
+    //MUST BE i32, PANIC WHILE UPDATING OTHERWISE!
     x: i32,
     y: i32,
 }
@@ -53,7 +54,7 @@ impl Default for FileReader {
             is_text_changed: false,
             lines_offset: 0,
             max_line_chars: 2048,
-            dir: false
+            dir: false,
         }
     }
 }
@@ -70,12 +71,28 @@ impl FileReader {
         Ok(())
     }
 
+    pub fn refresh_buffer(&mut self) -> io::Result<()> {
+        let smiling_face = String::from("\u{1F60A}");
+        self.displayed_text = format!("{}{}", self.displayed_text.clone(), smiling_face);
+        //self.displayed_text = self.displayed_text[1..].to_string();
+        Ok(())
+    }
+
     pub fn update(&mut self) -> io::Result<()> {
         if self.reload && !self.full_text.is_empty() {
             if self.update_pos() {
-                println!("Reloading buffer {:?} ({}-{})", self.pos, self.pos.y-self.pos.x, self.buf_size);
-                
-                self.lines_offset = self.buffer[0..self.pos.x as usize].iter().filter(|&&c| c == b'\n').count();
+                println!(
+                    "Reloading buffer {:?} ({}-{})",
+                    self.pos,
+                    self.pos.y - self.pos.x,
+                    self.buf_size
+                );
+                let smiling_face = String::from("\u{1F60A}");
+
+                self.lines_offset = self.buffer[0..self.pos.x as usize]
+                    .iter()
+                    .filter(|&&c| c == b'\n')
+                    .count();
                 self.reader
                     .seek(std::io::SeekFrom::Start(self.pos.x as u64))?;
                 let mut buffer = vec![0; (self.pos.y - self.pos.x) as usize];
@@ -85,6 +102,7 @@ impl FileReader {
                 // Convert bytes to String
                 self.displayed_text = String::from_utf8(buffer)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                self.displayed_text = self.displayed_text.replace(&smiling_face, "");
                 self.old_text = self.displayed_text.clone();
             }
 
@@ -127,7 +145,7 @@ impl FileReader {
     }
 
     pub fn add_pos(&mut self, val: i32) {
-        self.pos.x += val ;
+        self.pos.x += val;
         self.pos.y += val;
     }
 
@@ -164,16 +182,15 @@ impl FileReader {
         self.pos.y = self.pos.y.min(max_size);
         self.pos.y = self.pos.y.max(self.pos.x);
         self.pos.y = self.pos.y.max(self.buf_size as i32);
-        self.pos.x = self.pos.x.min(self.len as i32  - 1 - self.buf_size as i32 );
+        self.pos.x = self.pos.x.min(self.len as i32 - 1 - self.buf_size as i32);
 
-        
         self.pos.x = self.pos.x.max(0);
         //self.advance_to_newline();
         return true;
     }
 
-    pub fn advance_to_newline (&mut self) {
-        let max_chars:i32 = 2048; //if the line is too long get this many bytes
+    pub fn advance_to_newline(&mut self) {
+        let max_chars: i32 = 2048; //if the line is too long get this many bytes
         let mut ind: i32 = 0;
         let mut x = self.pos.x.clone();
         let mut y = self.pos.y.clone();
@@ -184,27 +201,31 @@ impl FileReader {
         }
         self.dir = !self.dir;
         loop {
-            if x == 0 || ind >= max_chars {break;}
-            if self.buffer.get(x as usize) == Some(&b'\n') {break;}
+            if x == 0 || ind >= max_chars {
+                break;
+            }
+            if self.buffer.get(x as usize) == Some(&b'\n') {
+                break;
+            }
             x -= change;
             ind += 1;
         }
         self.pos.x = x as i32;
         ind = 0;
         loop {
-            if y >= len || ind >= max_chars {break;}
-            if self.buffer.get(y as usize) == Some(&b'\n') {break;}
+            if y >= len || ind >= max_chars {
+                break;
+            }
+            if self.buffer.get(y as usize) == Some(&b'\n') {
+                break;
+            }
             y += change;
-            ind +=1;
+            ind += 1;
         }
         self.pos.y = y as i32;
     }
 
-    pub fn scroll_test(
-        ui: &egui::Ui,
-        resp: &Option<ScrollAreaOutput<()>>,
-        scroll_offset: f32
-    ) {
+    pub fn scroll_test(ui: &egui::Ui, resp: &Option<ScrollAreaOutput<()>>, scroll_offset: f32) {
         if let Some(r) = resp {
             let visible_rect = r.inner_rect.clone();
             // Create a new rectangle adjusted by the offset
@@ -299,7 +320,6 @@ impl FileReader {
     }
 }
 
-
 enum ScrollValues {
     PageDown,
     PageUp,
@@ -319,7 +339,7 @@ impl ScrollValues {
             ScrollValues::ScrollUp => -50,
             ScrollValues::ScrollTop => -9999999,
             ScrollValues::ScrollBottom => 9999999,
-            ScrollValues::Segment => 200
+            ScrollValues::Segment => 200,
         }
     }
 }

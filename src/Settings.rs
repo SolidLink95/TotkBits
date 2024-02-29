@@ -8,6 +8,7 @@ use egui::{epaint::Shadow, include_image, Color32, Margin, Response, Style, Text
 use egui::{TopBottomPanel};
 use egui_code_editor::Syntax;
 
+use std::collections::BTreeSet;
 use std::env;
 use std::{path::Path, rc::Rc, sync::Arc};
 
@@ -22,7 +23,7 @@ pub struct Settings {
     pub is_file_loaded: bool, //flag for loading file, prevents the program from loading file from disk in every frame
     pub is_tree_loaded: bool, //flag to reload gui (collapsingheaders) from tree, prevents from traversing tree in every frame
     pub styles: Styles,
-    pub syntax: Arc<Syntax>, //syntax for code editor
+    pub syntax: Syntax, //syntax for code editor
     pub modded_color: Color32,
     pub is_dir_context_menu: bool,     //is context menu for dir opened
     pub do_i_compare_and_reload: bool, //is context menu for dir opened
@@ -51,7 +52,7 @@ impl Default for Settings {
             is_file_loaded: true,
             is_tree_loaded: true,
             styles: Styles::new(def_style),
-            syntax: Arc::new(Syntax::rust()),
+            syntax: Syntax::yaml(),
             modded_color: Color32::from_rgb(204, 153, 16),
             is_dir_context_menu: false,
             do_i_compare_and_reload: false,

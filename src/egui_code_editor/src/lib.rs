@@ -94,7 +94,7 @@ pub use themes::DEFAULT_THEMES;
 pub struct CodeEditor {
     id: String,
     theme: ColorTheme,
-    syntax: Arc<Syntax>,
+    pub syntax: Syntax,
     numlines: bool,
     fontsize: f32,
     rows: usize,
@@ -118,7 +118,8 @@ impl Default for CodeEditor {
         CodeEditor {
             id: String::from("Code Editor"),
             theme: ColorTheme::GRUVBOX,
-            syntax: Arc::new(Syntax::rust()),
+            //syntax: Syntax::rust(),
+            syntax: Syntax::yaml(),
             numlines: true,
             fontsize: 10.0,
             rows: 10,
@@ -178,7 +179,7 @@ impl CodeEditor {
     /// Use custom syntax for highlighting
     ///
     /// **Default: Rust**
-    pub fn with_syntax(self, syntax: Arc<Syntax>) -> Self {
+    pub fn with_syntax(self, syntax: Syntax) -> Self {
         CodeEditor { syntax, ..self }
     }
 

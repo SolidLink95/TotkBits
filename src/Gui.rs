@@ -12,8 +12,9 @@ use crate::Zstd::{TotkFileType, TotkZstd};
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::scroll_area::ScrollAreaOutput;
 use egui::{Align, Button, Label, Layout};
-use egui_code_editor::CodeEditor;
+use egui_code_editor::{CodeEditor, Syntax};
 use egui_extras::install_image_loaders;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -47,7 +48,6 @@ impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
         let totk_config = Arc::new(TotkConfig::new());
         let settings = Settings::default();
-        let _opened_file = OpenedFile::default();
         let mut file_reader = FileReader::default();
         file_reader.buf_size = 8192;
         file_reader.set_pos(0, file_reader.buf_size as i32);
@@ -190,9 +190,18 @@ impl Gui {
                     .on_hover_text("Add file")
                     .clicked()
                 {
-                    //app.settings.scroll_val = -99999999.0;
-                    //Gui::scroll_test(&app.scroll_resp, ui, 100.0);
+                    //app.code_editor.syntax.keywords = BTreeSet::from(["Spiny"]);  
+                    app.code_editor.syntax = Syntax::yaml_find(BTreeSet::from(["Spiny"]));     
                 }
+                if ui
+                .add(Button::image(app.icons.add_sarc.clone()))
+                .on_hover_text("Add file")
+                .clicked()
+            {
+               // app.code_editor.syntax = Syntax::yaml(BTreeSet::from(["Bone"]));     
+                app.code_editor.syntax = Syntax::yaml();     
+         
+            }
                 if ui
                     .add(Button::image(app.icons.extract.clone()))
                     .on_hover_text("Extract")
@@ -232,6 +241,7 @@ impl Gui {
                 app.code_editor.line_offset = app.file_reader.lines_offset;
                 ui.set_style(app.settings.styles.text_editor.clone());
 
+
                 app.scroll_resp = app
                     .code_editor
                     .clone()
@@ -240,7 +250,7 @@ impl Gui {
                     .with_fontsize(app.settings.styles.font.val)
                     .vscroll(true)
                     //.with_theme(ColorTheme::GRUVBOX)
-                    //.with_syntax(app.settings.syntax.clone())
+                    .with_syntax(app.code_editor.syntax.clone())
                     .with_numlines(false)
                     .show(ui, &mut app.file_reader.displayed_text, ctx.clone());
                 FileOpener::open_byml_or_sarc(app, false);

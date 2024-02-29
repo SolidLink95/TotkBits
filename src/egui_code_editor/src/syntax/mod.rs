@@ -3,6 +3,8 @@ pub mod asm;
 pub mod lua;
 pub mod python;
 pub mod rust;
+pub mod yaml;
+pub mod yaml_find;
 pub mod shell;
 pub mod sql;
 

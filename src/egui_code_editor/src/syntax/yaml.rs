@@ -2,21 +2,17 @@ use super::Syntax;
 use std::collections::BTreeSet;
 
 impl Syntax {
-    pub fn rust() -> Self {
+    pub fn yaml() -> Self {
         Syntax {
-            language: "Rust",
+            language: "Yaml",
             case_sensitive: true,
             comment: "//",
             comment_multiline: ["/*", "*/"],
             hyperlinks: BTreeSet::from(["http"]),
-            keywords: BTreeSet::from([
-                "as", "break", "const", "continue", "crate", "else", "enum", "extern", "fn", "for",
-                "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref",
-                "return", "self", "struct", "super", "trait", "type", "use", "where", "while",
-                "async", "await", "abstract", "become", "box", "do", "final", "macro", "override",
-                "priv", "typeof", "unsized", "virtual", "yield", "try", "unsafe", "dyn"
-            ]),
+            keywords: Default::default(),
             types: BTreeSet::from([
+                "text",
+                "contents",
                 "Option",
                 "Result",
                 "Error",
