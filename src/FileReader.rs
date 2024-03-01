@@ -6,8 +6,8 @@ use std::{
 #[derive(Debug)]
 pub struct Pos {
     //MUST BE i32, PANIC WHILE UPDATING OTHERWISE!
-    x: i32,
-    y: i32,
+    pub x: i32,
+    pub y: i32,
 }
 
 #[derive(Debug)]

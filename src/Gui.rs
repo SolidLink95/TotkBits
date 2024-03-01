@@ -44,6 +44,7 @@ pub struct TotkBitsApp<'a> {
     pub file_reader: FileReader,
     pub file_renamer: FileRenamer,
     pub text_searcher: TextSearcher,
+    pub drag_rect: DraggableRect,
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -71,12 +72,14 @@ impl Default for TotkBitsApp<'_> {
             file_reader: file_reader,
             file_renamer: FileRenamer::default(),
             text_searcher: TextSearcher::default(),
+            drag_rect: DraggableRect::new(0.0, 0.0),
         }
     }
 }
 
 impl<'a> TotkBitsApp<'_> {
     pub fn new(path: Option<String>) -> Self {
+        let mut res = Self::default();
         let totk_config = Arc::new(TotkConfig::new());
         let mut settings = Settings::default();
         let mut opened_file = OpenedFile::default();
@@ -88,25 +91,10 @@ impl<'a> TotkBitsApp<'_> {
         file_reader.buf_size = 8192;
         file_reader.set_pos(0, file_reader.buf_size as i32);
         file_reader.reload = true;
-        Self {
-            opened_file: opened_file,
-            status_text: "Ready".to_owned(),
-            scroll: ScrollArea::vertical(),
-            active_tab: ActiveTab::TextBox,
-            language: "toml".into(),
-            zstd: Arc::new(TotkZstd::new(totk_config, settings.comp_level).unwrap()),
-            pack: None,
-            root_node: TreeNode::new("ROOT".to_string(), "/".to_string()),
-            internal_sarc_file: None,
-            scroll_resp: None,
-            menu_bar: Arc::new(MenuBar::new(settings.styles.menubar.clone()).unwrap()),
-            icons: Icons::new(&settings.icon_size.clone()),
-            settings: settings,
-            code_editor: CodeEditor::default(),
-            file_reader: file_reader,
-            file_renamer: FileRenamer::default(),
-            text_searcher: TextSearcher::default(),
-        }
+        res.file_reader = file_reader;
+        res.settings = settings;
+        res.opened_file = opened_file;
+        res
     }
 }
 impl eframe::App for TotkBitsApp<'_> {
@@ -124,6 +112,9 @@ impl eframe::App for TotkBitsApp<'_> {
         //GuiMenuBar::MenuBar::display(self, ctx);
         Gui::display_main_buttons(self, ctx);
 
+
+        
+
         // Bottom panel (status bar)
         Gui::display_status_bar(self, ctx);
 
@@ -137,6 +128,13 @@ impl eframe::App for TotkBitsApp<'_> {
             self.settings.is_tree_loaded = false;
         }
 
+        egui::SidePanel::right("sidepanek")
+            .resizable(false)
+            .max_width(self.drag_rect.size.x + 10.0)
+            .show(ctx, |ui| {
+                //ui.label("Right side panel");
+                self.drag_rect.show(ctx);
+            });
         // Central panel (text area)
         egui::CentralPanel::default().show(ctx, |ui| {
             Gui::display_labels(self, ui);
@@ -318,9 +316,13 @@ impl Gui {
                     "  {:.1}-{:.1} {:.1}  {:.1}% {:?}",
                     r.state.offset.x,r.state.offset.y, r.content_size.y, _p, r.inner_rect
                 );*/
+                app.drag_rect.update_from_percent((app.file_reader.pos.y as f32 - (app.file_reader.buf_size as f32 /2.0)) / app.file_reader.len as f32);
+                app.drag_rect.position.x = r.inner_rect.max.x + app.drag_rect.size.x;
+                app.drag_rect.position.y = app.drag_rect.position.y.max(r.inner_rect.min.y);
+                app.drag_rect.height_border = Vec2::new(r.inner_rect.min.y, r.inner_rect.max.y);
                 app.status_text = app.file_reader.get_status(format!(
-                    "  {:.1} {:.1}  {:.1}% {:?}",
-                    r.state.offset.y, r.content_size.y, _p, r.inner_rect
+                    "  {:.1} {:.1}  {:.1}% {:?} {:?}",
+                    r.state.offset.y, r.content_size.y, _p, r.inner_rect, app.drag_rect.position
                 ));
                 //ctx.set_style(app.settings.styles.def_style.clone());
             }
@@ -460,7 +462,6 @@ impl Gui {
         });
         ui.add_space(10.0);
     }
-
 }
 //TODO: saving byml file,
 
@@ -479,11 +480,17 @@ pub fn run() {
 
 struct DraggableRect {
     // Initial position of the rectangle
-    position: Vec2,
+    pub position: Vec2,
     // Offset from the initial position (how far it has been dragged)
     drag_offset: f32,
     // Whether the rectangle is currently being dragged
     is_dragging: bool,
+    pub size: Vec2,
+    pub height_border: Vec2,
+    pub perc: f32,
+    pub color: egui::Color32,
+    pub hover_color: egui::Color32,
+    pub def_color: egui::Color32,
 }
 
 impl DraggableRect {
@@ -492,43 +499,49 @@ impl DraggableRect {
             position: Vec2::new(x, y),
             drag_offset: 0.0,
             is_dragging: false,
+            size: Vec2::new(20.0, 50.0),
+            height_border: Vec2::default(),
+            perc: 0.0,
+            color: egui::Color32::from_gray(180),
+            hover_color: egui::Color32::from_gray(240),
+            def_color: egui::Color32::from_gray(180),
         }
     }
 
+    pub fn update_from_percent(&mut self, perc: f32) {
+        self.perc = perc;
+        self.position.y = perc * (self.height_border.y - self.height_border.x) + self.height_border.x;
+    }
+
     fn show(&mut self, ctx: &egui::Context) {
+        self.perc = (self.position.y - self.height_border.x) / (self.height_border.y-self.height_border.x);
         egui::CentralPanel::default().show(ctx, |ui| {
             // The area where the rectangle will be drawn and interacted with
             let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::drag());
-
-            // Current mouse position
-            let mouse_pos = response.hover_pos().unwrap_or_default();
-            // Check if the rectangle is being dragged
-            if response.dragged() && self.is_dragging {
-                // Update the rectangle's vertical position based on the drag
-                let delta = mouse_pos.y - self.position.y;
-                self.drag_offset += delta;
-                self.position.y = mouse_pos.y;
+            self.color =  if response.contains_pointer() {self.hover_color} else {self.def_color};
+            if response.dragged()  {
+                ui.input(|i| {
+                    let delta = i.pointer.delta().y;
+                    self.drag_offset += delta;
+                    //println!("dragged {:?}", delta);
+                    if let Some(pos) = i.pointer.latest_pos() {
+                        self.position.y = pos.y;
+                        if self.height_border.x <= pos.y && pos.y <= self.height_border.y {
+                            println!("position {:?} {:.1}", pos.y, self.perc*100.0);
+                        }
+                    }
+                });
             }
-
-            // Check for mouse down to start dragging
-            if response.clicked() {
-                self.is_dragging = true;
-            }
-
-            // Check for mouse release to stop dragging
-            if response.drag_released() {
-                self.is_dragging = false;
-            }
-
-            // Draw the rectangle
+            let mut y = self.position.y + self.size.y / 2.0; //mouse targets center of the rectangle
+            //y = y.max(self.height_border.x).min(self.height_border.y) - self.size.y;
+            y = y.clamp(self.height_border.x, self.height_border.y) - self.size.y;
+            y = y.max(self.height_border.x);
             let rect = Rect::from_min_size(
-                pos2(self.position.x, self.position.y + self.drag_offset),
-                Vec2::new(100.0, 50.0), // Width and height of the rectangle
+                pos2(self.position.x,  y),
+                self.size, // Width and height of the rectangle
             );
-            painter.rect_filled(rect, 0.0, egui::Color32::GREEN);
+            painter.rect_filled(rect, 0.0, self.color);
 
-            // Display drag offset
-            ui.label(format!("Drag offset: {:.2}", self.drag_offset));
         });
     }
 }

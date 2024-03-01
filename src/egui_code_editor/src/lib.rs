@@ -318,6 +318,8 @@ impl CodeEditor {
     #[cfg(feature = "egui")]
     /// Show Code Editor
     pub fn show(&mut self, ui: &mut egui::Ui, text: &mut String, ctx: egui::Context) -> Option<egui::scroll_area::ScrollAreaOutput<()>> {
+        use egui::Vec2;
+
 
 
 
