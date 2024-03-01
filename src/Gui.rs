@@ -11,7 +11,7 @@ use crate::Tree::{self, TreeNode};
 use crate::Zstd::{TotkFileType, TotkZstd};
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::scroll_area::ScrollAreaOutput;
-use egui::{Align, Button, Label, Layout};
+use egui::{pos2, Align, Button, Label, Layout, Rect, Vec2};
 use egui_code_editor::{CodeEditor, Syntax};
 use egui_extras::install_image_loaders;
 use std::collections::BTreeSet;
@@ -105,8 +105,8 @@ impl<'a> TotkBitsApp<'_> {
             file_reader: file_reader,
             file_renamer: FileRenamer::default(),
             text_searcher: TextSearcher::default(),
+        }
     }
-}
 }
 impl eframe::App for TotkBitsApp<'_> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -123,17 +123,16 @@ impl eframe::App for TotkBitsApp<'_> {
         //GuiMenuBar::MenuBar::display(self, ctx);
         Gui::display_main_buttons(self, ctx);
 
-
         // Bottom panel (status bar)
         Gui::display_status_bar(self, ctx);
 
         if !&self.text_searcher.text.is_empty() {
-            TreeNode::clean_up_tree(
-                &self.root_node,
-                &self.text_searcher.text,
-            );
+            TreeNode::clean_up_tree(&self.root_node, &self.text_searcher.text);
         }
-        if self.text_searcher.show(ctx, self.settings.styles.toolbar.clone()) {
+        if self
+            .text_searcher
+            .show(ctx, self.settings.styles.toolbar.clone())
+        {
             self.settings.is_tree_loaded = false;
         }
 
@@ -202,18 +201,17 @@ impl Gui {
                     .on_hover_text("Add file")
                     .clicked()
                 {
-                    //app.code_editor.syntax.keywords = BTreeSet::from(["Spiny"]);  
-                    app.code_editor.syntax = Syntax::yaml_find(BTreeSet::from(["Spiny"]));     
+                    //app.code_editor.syntax.keywords = BTreeSet::from(["Spiny"]);
+                    app.code_editor.syntax = Syntax::yaml_find(BTreeSet::from(["Spiny"]));
                 }
                 if ui
-                .add(Button::image(app.icons.add_sarc.clone()))
-                .on_hover_text("Add file")
-                .clicked()
-            {
-               // app.code_editor.syntax = Syntax::yaml(BTreeSet::from(["Bone"]));     
-                app.code_editor.syntax = Syntax::yaml();     
-         
-            }
+                    .add(Button::image(app.icons.add_sarc.clone()))
+                    .on_hover_text("Add file")
+                    .clicked()
+                {
+                    // app.code_editor.syntax = Syntax::yaml(BTreeSet::from(["Bone"]));
+                    app.code_editor.syntax = Syntax::yaml();
+                }
                 if ui
                     .add(Button::image(app.icons.extract.clone()))
                     .on_hover_text("Extract")
@@ -222,6 +220,23 @@ impl Gui {
                     let _ = ButtonOperations::extract_click(app);
                 }
                 ui.add_space(20.0);
+
+                if ui
+                    .add(Button::image(app.icons.zoomin.clone()))
+                    .on_hover_text("Zoom in")
+                    .clicked()
+                {
+                    app.settings.styles.scale.add(0.1);
+                }
+                if ui
+                    .add(Button::image(app.icons.zoomout.clone()))
+                    .on_hover_text("Zoom out")
+                    .clicked()
+                {
+                    app.settings.styles.scale.add(-0.1);
+                } //TODO: make them NOT overlap blue buttons
+
+                ui.add_space(20.0);
                 if app.settings.is_loading {
                     ui.add(egui::Spinner::new());
                 }
@@ -229,11 +244,41 @@ impl Gui {
 
                 if app.active_tab == ActiveTab::TextBox {
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                        let available_width = ui.available_width();
+                        let button_size = 40.0; // Approximate width of each button, adjust based on your actual UI
+                        let total_required_width = button_size * 5.0 + 20.0; // Adjust the multiplier based on number of buttons and spaces
+
                         // Right-aligned part
                         //ui.add(egui::Slider::new(&mut app.settings.styles.font_size, app.settings.styles.min_font_size..=app.settings.styles.max_font_size).suffix(""));
-                        ui.add(egui::DragValue::new(&mut app.settings.styles.font.val).speed(0.5));
-                        app.settings.styles.font.update();
-                        ui.label("Font size:");
+                        if available_width > total_required_width {
+                            ui.add(
+                                egui::DragValue::new(&mut app.settings.styles.font.val).speed(0.5),
+                            );
+                            app.settings.styles.font.update();
+                            ui.label("Font size:");
+                            ui.add_space(20.0);
+                            if ui
+                                .add(Button::image(app.icons.replace.clone()))
+                                .on_hover_text("Replace")
+                                .clicked()
+                            {}
+                            if ui
+                                .add(Button::image(app.icons.lupa.clone()))
+                                .on_hover_text("Find")
+                                .clicked()
+                            {}
+                            if ui
+                                .add(Button::image(app.icons.forward.clone()))
+                                .on_hover_text("Find next")
+                                .clicked()
+                            {}
+                            if ui
+                                .add(Button::image(app.icons.back.clone()))
+                                .on_hover_text("Find previous")
+                                .clicked()
+                            {}
+                            ui.add_space(20.0); //TODO: add  zoom in out buttons
+                        }
                     });
                 }
             });
@@ -252,7 +297,6 @@ impl Gui {
                 let _ = app.file_reader.update();
                 app.code_editor.line_offset = app.file_reader.lines_offset;
                 ui.set_style(app.settings.styles.text_editor.clone());
-
 
                 app.scroll_resp = app
                     .code_editor
@@ -305,7 +349,8 @@ impl Gui {
                                         .show(opened, internal_file.as_ref(), ctx, ui);
                                     //Sarc is opened
                                     if !app.settings.is_tree_loaded || app.file_renamer.is_renamed {
-                                        app.root_node = TreeNode::new("ROOT".to_string(), "/".to_string());
+                                        app.root_node =
+                                            TreeNode::new("ROOT".to_string(), "/".to_string());
                                         Tree::update_from_sarc_paths(&app.root_node, opened);
                                         app.settings.is_tree_loaded = true;
                                         println!("Reloading tree");
@@ -319,7 +364,6 @@ impl Gui {
                                     SarcLabel::display_tree_in_egui(app, &child, ui, &ctx);
                                 }
 
-                                
                                 //ctx.set_style(app.settings.styles.text_editor.clone());
                             }
                         }),
@@ -327,7 +371,6 @@ impl Gui {
             }
             ActiveTab::Settings => {
                 app.scroll_resp = Some(
-                    
                     ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .max_height(ui.available_height())
@@ -481,4 +524,60 @@ pub fn run() {
         Box::new(|_cc| Box::new(TotkBitsApp::new(argv1))),
     )
     .unwrap();
+}
+
+struct DraggableRect {
+    // Initial position of the rectangle
+    position: Vec2,
+    // Offset from the initial position (how far it has been dragged)
+    drag_offset: f32,
+    // Whether the rectangle is currently being dragged
+    is_dragging: bool,
+}
+
+impl DraggableRect {
+    fn new(x: f32, y: f32) -> Self {
+        Self {
+            position: Vec2::new(x, y),
+            drag_offset: 0.0,
+            is_dragging: false,
+        }
+    }
+
+    fn show(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            // The area where the rectangle will be drawn and interacted with
+            let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::drag());
+
+            // Current mouse position
+            let mouse_pos = response.hover_pos().unwrap_or_default();
+            // Check if the rectangle is being dragged
+            if response.dragged() && self.is_dragging {
+                // Update the rectangle's vertical position based on the drag
+                let delta = mouse_pos.y - self.position.y;
+                self.drag_offset += delta;
+                self.position.y = mouse_pos.y;
+            }
+
+            // Check for mouse down to start dragging
+            if response.clicked() {
+                self.is_dragging = true;
+            }
+
+            // Check for mouse release to stop dragging
+            if response.drag_released() {
+                self.is_dragging = false;
+            }
+
+            // Draw the rectangle
+            let rect = Rect::from_min_size(
+                pos2(self.position.x, self.position.y + self.drag_offset),
+                Vec2::new(100.0, 50.0), // Width and height of the rectangle
+            );
+            painter.rect_filled(rect, 0.0, egui::Color32::GREEN);
+
+            // Display drag offset
+            ui.label(format!("Drag offset: {:.2}", self.drag_offset));
+        });
+    }
 }

@@ -94,6 +94,12 @@ pub struct Icons<'a> {
     pub save: egui::Image<'a>,
     pub update_from_folder: egui::Image<'a>,
     pub edit: egui::Image<'a>,
+    pub back: egui::Image<'a>,
+    pub forward: egui::Image<'a>,
+    pub lupa: egui::Image<'a>,
+    pub replace: egui::Image<'a>,
+    pub zoomin: egui::Image<'a>,
+    pub zoomout: egui::Image<'a>,
 }
 
 impl<'a> Icons<'_> {
@@ -116,6 +122,12 @@ impl<'a> Icons<'_> {
             update_from_folder: egui::Image::new(include_image!("../icon/update_from_folder.png"))
                 .fit_to_exact_size(*size),
             edit: egui::Image::new(include_image!("../icon/edit.png")).fit_to_exact_size(*size),
+            back: egui::Image::new(include_image!("../icon/back.png")).fit_to_exact_size(*size),
+            forward: egui::Image::new(include_image!("../icon/forward.png")).fit_to_exact_size(*size),
+            lupa: egui::Image::new(include_image!("../icon/lupa.png")).fit_to_exact_size(*size),
+            replace: egui::Image::new(include_image!("../icon/replace.png")).fit_to_exact_size(*size),
+            zoomin: egui::Image::new(include_image!("../icon/zoomin.png")).fit_to_exact_size(*size),
+            zoomout: egui::Image::new(include_image!("../icon/zoomout.png")).fit_to_exact_size(*size),
         }
     }
 }
