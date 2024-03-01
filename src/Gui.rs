@@ -1,5 +1,6 @@
 use crate::file_format::BinTextFile::OpenedFile;
 use crate::file_format::Pack::PackComparer;
+use crate::ui_elements::InfoLabel::InfoLabel;
 use crate::ButtonOperations::ButtonOperations;
 use crate::FileReader::FileReader;
 use crate::GuiMenuBar::MenuBar;
@@ -454,63 +455,13 @@ impl Gui {
                 app.active_tab = ActiveTab::Settings;
             }
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                Gui::display_filename_endian(app, ui);
+                InfoLabel::display_filename_endian(app, ui);
             })
         });
         ui.add_space(10.0);
     }
 
-    fn display_filename_endian(app: &mut TotkBitsApp, ui: &mut egui::Ui) {
-        match app.active_tab {
-            ActiveTab::DiretoryTree => {
-                if let Some(pack) = &app.pack {
-                    if let Some(opened) = &pack.opened {
-                        let label_endian = match opened.endian {
-                            roead::Endian::Big => "BE",
-                            roead::Endian::Little => "LE",
-                        };
-                        display_infolabels(ui, label_endian, Some(&opened.path.name));
-                    }
-                }
-            }
-            ActiveTab::TextBox => {
-                let mut label_path: Option<&str> = None;
-                let label_endian = &app.opened_file.get_endian_label();
-                if let Some(internal_file) = &app.internal_sarc_file {
-                    label_path = Some(&internal_file.path.name);
-                } else {
-                    label_path = Some(&app.opened_file.path.name);
-                }
-
-                display_infolabels(ui, label_endian, label_path);
-            }
-            ActiveTab::Settings => {
-                let label_path: Option<&str> = Some(&app.opened_file.path.name);
-                let label_endian = if label_path.is_some() { "LE" } else { "" };
-                display_infolabels(ui, label_endian, label_path);
-            }
-        }
-    }
 }
-
-fn calc_labels_width(label: &str) -> f32 {
-    (label.len() + 3) as f32 * 6.0 //very rough calculation based on default Style
-}
-
-fn are_infolables_shown(ui: &mut egui::Ui, label: &str) -> bool {
-    let perc = calc_labels_width(label) / ui.available_width();
-    return perc < 0.79;
-}
-pub fn display_infolabels(ui: &mut egui::Ui, endian: &str, path: Option<&str>) {
-    if let Some(path) = &path {
-        if are_infolables_shown(ui, path) {
-            //ui.add(Label::new(endian));
-            ui.add(Label::new(format!("{} {}", path, endian)));
-            //ui.add(Label::new(path.to_string()));
-        }
-    }
-}
-
 //TODO: saving byml file,
 
 pub fn run() {

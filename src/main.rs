@@ -12,6 +12,7 @@ mod SarcFileLabel;
 mod Settings;
 mod FileReader;
 mod TotkConfig;
+mod ui_elements;
 mod widgets;
 mod Tree;
 mod Zstd;
