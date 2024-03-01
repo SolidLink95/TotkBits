@@ -12,7 +12,7 @@ use crate::Tree::{self, TreeNode};
 use crate::Zstd::{TotkFileType, TotkZstd};
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
 use egui::scroll_area::ScrollAreaOutput;
-use egui::{pos2, Align, Button, Label, Layout, Rect, Vec2};
+use egui::{pos2, Align, Button, Label, Layout, Rect, Response, Vec2};
 use egui_code_editor::{CodeEditor, Syntax};
 use egui_extras::install_image_loaders;
 use std::collections::BTreeSet;
@@ -310,20 +310,26 @@ impl Gui {
                     .show(ui, &mut app.file_reader.displayed_text, ctx.clone());
                 FileOpener::open_byml_or_sarc(app, false);
                 //});
-                let r = app.scroll_resp.as_ref().unwrap();
-                let _p = (r.state.offset.y * 100.0) / r.content_size.y;
-                /*app.status_text = format!(
-                    "  {:.1}-{:.1} {:.1}  {:.1}% {:?}",
-                    r.state.offset.x,r.state.offset.y, r.content_size.y, _p, r.inner_rect
-                );*/
-                app.drag_rect.update_from_percent((app.file_reader.pos.y as f32 - (app.file_reader.buf_size as f32 /2.0)) / app.file_reader.len as f32);
-                app.drag_rect.position.x = r.inner_rect.max.x + app.drag_rect.size.x;
-                app.drag_rect.position.y = app.drag_rect.position.y.max(r.inner_rect.min.y);
-                app.drag_rect.height_border = Vec2::new(r.inner_rect.min.y, r.inner_rect.max.y);
-                app.status_text = app.file_reader.get_status(format!(
-                    "  {:.1} {:.1}  {:.1}% {:?} {:?}",
-                    r.state.offset.y, r.content_size.y, _p, r.inner_rect, app.drag_rect.position
-                ));
+
+                if let Some(r) = app.scroll_resp.as_ref() {
+                    //how much inner scroll scrolled? at the bottom its never 100% due to scrollbar size
+                    let _p = (r.state.offset.y * 100.0) / r.content_size.y; 
+                    /*app.status_text = format!(
+                        "  {:.1}-{:.1} {:.1}  {:.1}% {:?}",
+                        r.state.offset.x,r.state.offset.y, r.content_size.y, _p, r.inner_rect
+                    );*/
+                    //update outer scroll from current buffer position
+                    app.drag_rect.update_from_percent((app.file_reader.pos.y as f32 - (app.file_reader.buf_size as f32 /2.0)) / app.file_reader.len as f32);
+                    app.drag_rect.set_from_response(r);
+                    //app.drag_rect.position.x = r.inner_rect.max.x + app.drag_rect.size.x; //adjust outer scroll horizontally
+                    //app.drag_rect.position.y = app.drag_rect.position.y.max(r.inner_rect.min.y); //adjust outer scroll vertically
+                    app.status_text = app.file_reader.get_status(format!(
+                        "  {:.1} {:.1}  {:.1}% {:?} {:?}",
+                        r.state.offset.y, r.content_size.y, _p, r.inner_rect, app.drag_rect.position
+                    ));
+                }
+                //let r = app.scroll_resp.as_ref().unwrap();
+                
                 //ctx.set_style(app.settings.styles.def_style.clone());
             }
             ActiveTab::DiretoryTree => {
@@ -479,15 +485,13 @@ pub fn run() {
 }
 
 struct DraggableRect {
-    // Initial position of the rectangle
     pub position: Vec2,
-    // Offset from the initial position (how far it has been dragged)
     drag_offset: f32,
-    // Whether the rectangle is currently being dragged
-    is_dragging: bool,
     pub size: Vec2,
     pub height_border: Vec2,
+    pub offset_y: f32,
     pub perc: f32,
+    pub center: f32,
     pub color: egui::Color32,
     pub hover_color: egui::Color32,
     pub def_color: egui::Color32,
@@ -498,23 +502,39 @@ impl DraggableRect {
         Self {
             position: Vec2::new(x, y),
             drag_offset: 0.0,
-            is_dragging: false,
             size: Vec2::new(20.0, 50.0),
             height_border: Vec2::default(),
+            offset_y: 0.0, //global r.offset.y
             perc: 0.0,
+            center: 0.0,
             color: egui::Color32::from_gray(180),
             hover_color: egui::Color32::from_gray(240),
             def_color: egui::Color32::from_gray(180),
         }
     }
 
+pub fn update_from_filereader(&mut self, fr: &FileReader) {
+        let cur_center_pos = (fr.pos.y as f32 - (fr.buf_size as f32 /2.0)) / fr.len as f32;
+        self.perc = (fr.pos.y - (fr.buf_size / 2) as f32) / fr.len as f32;
+        self.position.y = self.perc * (self.height_border.y - self.height_border.x) + self.height_border.x;
+    }
+
     pub fn update_from_percent(&mut self, perc: f32) {
-        self.perc = perc;
-        self.position.y = perc * (self.height_border.y - self.height_border.x) + self.height_border.x;
+        if perc != self.perc {
+            self.perc = perc;
+            self.position.y = perc * (self.height_border.y - self.height_border.x) + self.height_border.x;
+
+        }
+    }
+    pub fn set_from_response(&mut self, r: &ScrollAreaOutput<()>) {
+        self.offset_y = r.state.offset.y; //how much inner scroll scrolled? at the bottom its never 100% due to scrollbar size
+        self.position.x = r.inner_rect.max.x + self.size.x;
+        self.height_border = Vec2::new(r.inner_rect.min.y, r.inner_rect.max.y); //adjust outer scroll vertical borders
     }
 
     fn show(&mut self, ctx: &egui::Context) {
         self.perc = (self.position.y - self.height_border.x) / (self.height_border.y-self.height_border.x);
+        self.center = self.size.y * (1.0 - self.perc);
         egui::CentralPanel::default().show(ctx, |ui| {
             // The area where the rectangle will be drawn and interacted with
             let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::drag());
@@ -532,7 +552,8 @@ impl DraggableRect {
                     }
                 });
             }
-            let mut y = self.position.y + self.size.y / 2.0; //mouse targets center of the rectangle
+            //let mut y = self.position.y + self.size.y / 2.0; //mouse targets center of the rectangle
+            let mut y = self.position.y + self.center; //mouse targets center of the rectangle
             //y = y.max(self.height_border.x).min(self.height_border.y) - self.size.y;
             y = y.clamp(self.height_border.x, self.height_border.y) - self.size.y;
             y = y.max(self.height_border.x);
@@ -545,3 +566,7 @@ impl DraggableRect {
         });
     }
 }
+
+
+
+
