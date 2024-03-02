@@ -84,7 +84,7 @@ impl FileReader {
         
     }
     pub fn update(&mut self) -> io::Result<()> {
-        if self.reload && !self.full_text.is_empty() {
+        if self.reload && !self.buffer.is_empty() {
             if self.update_pos() {
                 println!(
                     "Reloading buffer {:?} ({}-{})",

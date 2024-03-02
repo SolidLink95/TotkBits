@@ -19,6 +19,8 @@ use std::collections::BTreeSet;
 use std::io;
 use std::rc::Rc;
 use std::sync::Arc;
+use web_view::Content;
+use web_view::*;
 
 #[derive(PartialEq)]
 pub enum ActiveTab {
@@ -46,7 +48,7 @@ pub struct TotkBitsApp<'a> {
     pub file_renamer: FileRenamer,
     pub text_searcher: TextSearcher,
     pub drag_rect: DraggableRect,
-    pub scroll_offset: Vec2
+    pub scroll_offset: Vec2,
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -75,7 +77,7 @@ impl Default for TotkBitsApp<'_> {
             file_renamer: FileRenamer::default(),
             text_searcher: TextSearcher::default(),
             drag_rect: DraggableRect::new(0.0, 0.0),
-            scroll_offset: Vec2::new(0.0, 0.0)
+            scroll_offset: Vec2::new(0.0, 0.0),
         }
     }
 }
@@ -114,9 +116,6 @@ impl eframe::App for TotkBitsApp<'_> {
         self.menu_bar.clone().display(self, ctx);
         //GuiMenuBar::MenuBar::display(self, ctx);
         Gui::display_main_buttons(self, ctx);
-
-
-        
 
         // Bottom panel (status bar)
         Gui::display_status_bar(self, ctx);
@@ -203,8 +202,19 @@ impl Gui {
                     .on_hover_text("Add file")
                     .clicked()
                 {
+                    
+                    let webview: WebView<'_, _> = builder().user_data("asdf")
+                    .title("My WebView Application")
+                    .content(Content::Html("<html><body><h1>Hello, world!</h1></body></html>"))
+                    .size(320, 240)
+                    .resizable(true)
+                    .invoke_handler(|_webview: &mut web_view::WebView<'_, &str>, _arg| Ok(()))
+                    .build()
+                    .expect("Failed to build webview");
+            
+                webview.run().expect("Failed to run webview");
                     //app.code_editor.syntax.keywords = BTreeSet::from(["Spiny"]);
-                    app.code_editor.syntax = Syntax::yaml_find(BTreeSet::from(["Spiny"]));
+                    //app.code_editor.syntax = Arc::new(Syntax::yaml_find(BTreeSet::from(["Spiny"])));
                 }
                 if ui
                     .add(Button::image(app.icons.add_sarc.clone()))
@@ -212,7 +222,7 @@ impl Gui {
                     .clicked()
                 {
                     // app.code_editor.syntax = Syntax::yaml(BTreeSet::from(["Bone"]));
-                    app.code_editor.syntax = Syntax::yaml();
+                    app.code_editor.syntax = Arc::new(Syntax::yaml());
                 }
                 if ui
                     .add(Button::image(app.icons.extract.clone()))
@@ -310,26 +320,36 @@ impl Gui {
                     //.with_theme(ColorTheme::GRUVBOX)
                     .with_syntax(app.code_editor.syntax.clone())
                     .with_numlines(false)
-                    .show(ui, &mut app.file_reader.displayed_text, ctx.clone(), Some(app.scroll_offset));
+                    .show(
+                        ui,
+                        &mut app.file_reader.displayed_text,
+                        ctx.clone(),
+                        Some(app.scroll_offset),
+                    );
                 FileOpener::open_byml_or_sarc(app, false);
-                
+
                 //});
                 if let Some(r) = app.scroll_resp.as_ref() {
-                /*   if app.drag_rect.drag_offset.abs() > 10.0 {
+                    /*   if app.drag_rect.drag_offset.abs() > 10.0 {
                         app.file_reader.update_from_perc(app.drag_rect.perc);
                         app.drag_rect.drag_offset = 0.0;
                         app.scroll_offset = Vec2::new(0.0, app.drag_rect.perc*r.content_size.y);
                     }*/
                     //how much inner scroll scrolled? at the bottom its never 100% due to scrollbar size
-                    let _p = (r.state.offset.y * 100.0) / r.content_size.y; 
-                      //app.drag_rect.set_from_response(r);
+                    let _p = (r.state.offset.y * 100.0) / r.content_size.y;
+                    //app.drag_rect.set_from_response(r);
                     app.status_text = app.file_reader.get_status(format!(
                         "  {:.1} {:.1}  {:.1}% {:?} {:?} {:.1}",
-                        r.state.offset.y, r.content_size.y, _p, r.inner_rect, app.drag_rect.position, app.drag_rect.drag_offset
+                        r.state.offset.y,
+                        r.content_size.y,
+                        _p,
+                        r.inner_rect,
+                        app.drag_rect.position,
+                        app.drag_rect.drag_offset
                     ));
                 }
                 //let r = app.scroll_resp.as_ref().unwrap();
-                
+
                 //ctx.set_style(app.settings.styles.def_style.clone());
             }
             ActiveTab::DiretoryTree => {
@@ -471,7 +491,7 @@ impl Gui {
 }
 //TODO: saving byml file,
 
-pub fn run() -> eframe::Result<()>{
+pub fn run() -> eframe::Result<()> {
     let mut options = eframe::NativeOptions::default();
     let argv1 = Settings::get_arg1();
     //options::viewport::initial_window_size(Some(egui::vec2(1000.0, 1000.0)));
@@ -481,7 +501,7 @@ pub fn run() -> eframe::Result<()>{
         options,
         Box::new(|_cc| Box::new(TotkBitsApp::new(argv1))),
     )
-   // .unwrap();
+    // .unwrap();
 }
 
 struct DraggableRect {
@@ -513,17 +533,18 @@ impl DraggableRect {
         }
     }
 
-pub fn update_from_filereader(&mut self, fr: &FileReader) {
-        let cur_center_pos = (fr.pos.y as f32 - (fr.buf_size as f32 /2.0)) / fr.len as f32;
+    pub fn update_from_filereader(&mut self, fr: &FileReader) {
+        let cur_center_pos = (fr.pos.y as f32 - (fr.buf_size as f32 / 2.0)) / fr.len as f32;
         self.perc = (fr.pos.y as f32 - (fr.buf_size / 2) as f32) / fr.len as f32;
-        self.position.y = self.perc * (self.height_border.y - self.height_border.x) + self.height_border.x;
+        self.position.y =
+            self.perc * (self.height_border.y - self.height_border.x) + self.height_border.x;
     }
 
     pub fn update_from_percent(&mut self, perc: f32) {
         if perc != self.perc {
             self.perc = perc;
-            self.position.y = perc * (self.height_border.y - self.height_border.x) + self.height_border.x;
-
+            self.position.y =
+                perc * (self.height_border.y - self.height_border.x) + self.height_border.x;
         }
     }
     pub fn set_from_response(&mut self, r: &ScrollAreaOutput<()>) {
@@ -533,13 +554,18 @@ pub fn update_from_filereader(&mut self, fr: &FileReader) {
     }
 
     fn show(&mut self, ctx: &egui::Context) {
-        self.perc = (self.position.y - self.height_border.x) / (self.height_border.y-self.height_border.x);
+        self.perc = (self.position.y - self.height_border.x)
+            / (self.height_border.y - self.height_border.x);
         self.center = self.size.y * (1.0 - self.perc);
         egui::CentralPanel::default().show(ctx, |ui| {
             // The area where the rectangle will be drawn and interacted with
             let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::drag());
-            self.color =  if response.contains_pointer() {self.hover_color} else {self.def_color};
-            if response.dragged()  {
+            self.color = if response.contains_pointer() {
+                self.hover_color
+            } else {
+                self.def_color
+            };
+            if response.dragged() {
                 ui.input(|i| {
                     let delta = i.pointer.delta().y;
                     self.drag_offset += delta;
@@ -547,26 +573,21 @@ pub fn update_from_filereader(&mut self, fr: &FileReader) {
                     if let Some(pos) = i.pointer.latest_pos() {
                         self.position.y = pos.y;
                         if self.height_border.x <= pos.y && pos.y <= self.height_border.y {
-                           // println!("position {:?} {:.1}", pos.y, self.perc*100.0);
+                            // println!("position {:?} {:.1}", pos.y, self.perc*100.0);
                         }
                     }
                 });
             }
             //let mut y = self.position.y + self.size.y / 2.0; //mouse targets center of the rectangle
             let mut y = self.position.y + self.center; //mouse targets center of the rectangle
-            //y = y.max(self.height_border.x).min(self.height_border.y) - self.size.y;
+                                                       //y = y.max(self.height_border.x).min(self.height_border.y) - self.size.y;
             y = y.clamp(self.height_border.x, self.height_border.y) - self.size.y;
             y = y.max(self.height_border.x);
             let rect = Rect::from_min_size(
-                pos2(self.position.x,  y),
+                pos2(self.position.x, y),
                 self.size, // Width and height of the rectangle
             );
             painter.rect_filled(rect, 0.0, self.color);
-
         });
     }
 }
-
-
-
-

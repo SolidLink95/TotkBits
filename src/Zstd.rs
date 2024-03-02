@@ -14,7 +14,7 @@ use std::io::{self, Cursor, Read, Write};
 use zstd::dict::{DecoderDictionary, EncoderDictionary};
 use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub enum TotkFileType {
     TagProduct,
     Sarc,
