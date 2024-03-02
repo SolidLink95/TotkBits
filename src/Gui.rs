@@ -515,7 +515,7 @@ impl DraggableRect {
 
 pub fn update_from_filereader(&mut self, fr: &FileReader) {
         let cur_center_pos = (fr.pos.y as f32 - (fr.buf_size as f32 /2.0)) / fr.len as f32;
-        self.perc = (fr.pos.y - (fr.buf_size / 2) as f32) / fr.len as f32;
+        self.perc = (fr.pos.y as f32 - (fr.buf_size / 2) as f32) / fr.len as f32;
         self.position.y = self.perc * (self.height_border.y - self.height_border.x) + self.height_border.x;
     }
 

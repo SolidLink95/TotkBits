@@ -40,7 +40,7 @@ pub fn save_bytes_to_file(file_path: &str, data: &[u8]) -> io::Result<()> {
 pub fn check_file_exists(path: &PathBuf) -> std::io::Result<()> {
     match fs::metadata(&path) {
         Ok(_) => Ok(()),
-        Err(_) => Err(Error::new(ErrorKind::NotFound, "File does not exist")),
+        Err(_) => Err(Error::new(ErrorKind::NotFound, format!("File {:?} does not exist", path))),
     }
 }
 

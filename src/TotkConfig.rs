@@ -5,6 +5,7 @@ use std::io::Write;
 use std::env;
 use std::fs;
 use std::io;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 //use roead::byml::HashMap;
@@ -12,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::file_format::Pack::PackFile;
 use crate::Open_Save::read_string_from_file;
+use crate::Open_Save::write_string_to_file;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct TotkConfig {
@@ -120,15 +122,18 @@ impl TotkConfig {
     }
 
     pub fn save(&self) -> io::Result<()> {
-        if !self.config_path.exists() {
+        if self.config_path.to_string_lossy().is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Empty config path",
             ));
         }
-        let mut file = fs::File::create(&self.config_path.clone().to_string_lossy().to_string())?;
+        if let Some(config_dir) = self.config_path.clone().parent() {
+            fs::create_dir_all(config_dir);
+        }
+        println!("{:?}", &self.config_path);
         let json_str: String = serde_json::to_string_pretty(self)?;
-        file.write_all(json_str.as_bytes())?;
+        write_string_to_file(&self.config_path.clone().to_string_lossy().to_string(), &json_str)?;
         Ok(())
     }
 
