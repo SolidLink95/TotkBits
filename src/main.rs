@@ -1,7 +1,10 @@
 //#![windows_subsystem = "windows"]
 //use std::fs::File;
 
-use std::{env, path::{Path, PathBuf}};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 //mod TestCases;
 mod ButtonOperations;
@@ -19,6 +22,18 @@ mod file_format;
 mod misc;
 mod ui_elements;
 mod widgets;
+
+fn main() {
+    if init() {
+        if let Err(err) = Gui::run() {
+            rfd::MessageDialog::new()
+                .set_buttons(rfd::MessageButtons::Ok)
+                .set_title("Critical error")
+                .set_description(format!("Critical error occured:\n{:?}", err))
+                .show();
+        }
+    }
+}
 
 fn init() -> bool {
     let mut c = TotkConfig::TotkConfig::new();
@@ -46,36 +61,33 @@ fn init() -> bool {
                 .set_description(format!(
                     "Invalid romfs path! File\n{}\ndoes not exist. Program will now exit",
                     &zsdic.to_string_lossy().to_string().replace("\\", "/")
-                )).show();
+                ))
+                .show();
             return false;
         }
         let appdata_str = env::var("APPDATA").unwrap_or("".to_string());
         if appdata_str.is_empty() {
             rfd::MessageDialog::new()
-            .set_buttons(rfd::MessageButtons::Ok)
-            .set_title("Error")
-            .set_description("Unable to access appdata, exiting").show();
+                .set_buttons(rfd::MessageButtons::Ok)
+                .set_title("Error")
+                .set_description("Unable to access appdata, exiting")
+                .show();
             return false;
         }
         c.config_path = PathBuf::from(appdata_str.to_string());
         c.config_path.push("Totk/config.json");
         println!("{:?}", &c.config_path);
         c.romfs = chosen.clone();
-         if let Err(err) = c.save(){
+        if let Err(err) = c.save() {
             rfd::MessageDialog::new()
-            .set_buttons(rfd::MessageButtons::Ok)
-            .set_title("Error")
-            .set_description(format!("{:?}", err)).show();
+                .set_buttons(rfd::MessageButtons::Ok)
+                .set_title("Error")
+                .set_description(format!("{:?}", err))
+                .show();
             return false;
-         }
+        }
     }
 
     true
 }
 //use msyt;
-
-fn main() {
-    if init() {
-        Gui::run();
-    }
-}

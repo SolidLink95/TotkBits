@@ -11,11 +11,12 @@ use crate::TotkConfig::TotkConfig;
 use crate::Tree::{self, TreeNode};
 use crate::Zstd::{TotkFileType, TotkZstd};
 use eframe::egui::{self, ScrollArea, SelectableLabel, TopBottomPanel};
-use egui::scroll_area::ScrollAreaOutput;
+use egui::scroll_area::{ScrollAreaOutput, State};
 use egui::{pos2, Align, Button, Label, Layout, Rect, Response, Vec2};
 use egui_code_editor::{CodeEditor, Syntax};
 use egui_extras::install_image_loaders;
 use std::collections::BTreeSet;
+use std::io;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -45,6 +46,7 @@ pub struct TotkBitsApp<'a> {
     pub file_renamer: FileRenamer,
     pub text_searcher: TextSearcher,
     pub drag_rect: DraggableRect,
+    pub scroll_offset: Vec2
 }
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -73,6 +75,7 @@ impl Default for TotkBitsApp<'_> {
             file_renamer: FileRenamer::default(),
             text_searcher: TextSearcher::default(),
             drag_rect: DraggableRect::new(0.0, 0.0),
+            scroll_offset: Vec2::new(0.0, 0.0)
         }
     }
 }
@@ -307,25 +310,22 @@ impl Gui {
                     //.with_theme(ColorTheme::GRUVBOX)
                     .with_syntax(app.code_editor.syntax.clone())
                     .with_numlines(false)
-                    .show(ui, &mut app.file_reader.displayed_text, ctx.clone());
+                    .show(ui, &mut app.file_reader.displayed_text, ctx.clone(), Some(app.scroll_offset));
                 FileOpener::open_byml_or_sarc(app, false);
+                
                 //});
-
                 if let Some(r) = app.scroll_resp.as_ref() {
+                /*   if app.drag_rect.drag_offset.abs() > 10.0 {
+                        app.file_reader.update_from_perc(app.drag_rect.perc);
+                        app.drag_rect.drag_offset = 0.0;
+                        app.scroll_offset = Vec2::new(0.0, app.drag_rect.perc*r.content_size.y);
+                    }*/
                     //how much inner scroll scrolled? at the bottom its never 100% due to scrollbar size
                     let _p = (r.state.offset.y * 100.0) / r.content_size.y; 
-                    /*app.status_text = format!(
-                        "  {:.1}-{:.1} {:.1}  {:.1}% {:?}",
-                        r.state.offset.x,r.state.offset.y, r.content_size.y, _p, r.inner_rect
-                    );*/
-                    //update outer scroll from current buffer position
-                    app.drag_rect.update_from_percent((app.file_reader.pos.y as f32 - (app.file_reader.buf_size as f32 /2.0)) / app.file_reader.len as f32);
-                    app.drag_rect.set_from_response(r);
-                    //app.drag_rect.position.x = r.inner_rect.max.x + app.drag_rect.size.x; //adjust outer scroll horizontally
-                    //app.drag_rect.position.y = app.drag_rect.position.y.max(r.inner_rect.min.y); //adjust outer scroll vertically
+                      //app.drag_rect.set_from_response(r);
                     app.status_text = app.file_reader.get_status(format!(
-                        "  {:.1} {:.1}  {:.1}% {:?} {:?}",
-                        r.state.offset.y, r.content_size.y, _p, r.inner_rect, app.drag_rect.position
+                        "  {:.1} {:.1}  {:.1}% {:?} {:?} {:.1}",
+                        r.state.offset.y, r.content_size.y, _p, r.inner_rect, app.drag_rect.position, app.drag_rect.drag_offset
                     ));
                 }
                 //let r = app.scroll_resp.as_ref().unwrap();
@@ -471,7 +471,7 @@ impl Gui {
 }
 //TODO: saving byml file,
 
-pub fn run() {
+pub fn run() -> eframe::Result<()>{
     let mut options = eframe::NativeOptions::default();
     let argv1 = Settings::get_arg1();
     //options::viewport::initial_window_size(Some(egui::vec2(1000.0, 1000.0)));
@@ -481,7 +481,7 @@ pub fn run() {
         options,
         Box::new(|_cc| Box::new(TotkBitsApp::new(argv1))),
     )
-    .unwrap();
+   // .unwrap();
 }
 
 struct DraggableRect {
@@ -547,7 +547,7 @@ pub fn update_from_filereader(&mut self, fr: &FileReader) {
                     if let Some(pos) = i.pointer.latest_pos() {
                         self.position.y = pos.y;
                         if self.height_border.x <= pos.y && pos.y <= self.height_border.y {
-                            println!("position {:?} {:.1}", pos.y, self.perc*100.0);
+                           // println!("position {:?} {:.1}", pos.y, self.perc*100.0);
                         }
                     }
                 });

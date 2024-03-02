@@ -68,8 +68,8 @@
 //! }
 //! ```
 
-use egui::Response;
 use egui::scroll_area::ScrollAreaOutput;
+use egui::Response;
 
 pub mod highlighting;
 mod syntax;
@@ -101,7 +101,7 @@ pub struct CodeEditor {
     vscroll: bool,
     stick_to_bottom: bool,
     shrink: bool,
-    pub line_offset: usize
+    pub line_offset: usize,
 }
 
 impl Hash for CodeEditor {
@@ -317,12 +317,13 @@ impl CodeEditor {
 
     #[cfg(feature = "egui")]
     /// Show Code Editor
-    pub fn show(&mut self, ui: &mut egui::Ui, text: &mut String, ctx: egui::Context) -> Option<egui::scroll_area::ScrollAreaOutput<()>> {
-        use egui::Vec2;
-
-
-
-
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        text: &mut String,
+        ctx: egui::Context,
+        offset: Option<egui::Vec2>,
+    ) -> Option<egui::scroll_area::ScrollAreaOutput<()>> {
         let mut resp: Option<egui::scroll_area::ScrollAreaOutput<()>> = None;
         //-> TextEditOutput {
         let vscroll = self.vscroll;
@@ -355,35 +356,40 @@ impl CodeEditor {
                         scrolled, self.scroll_position, start_line, end_line, self.visible_line_count, self.total_line_count
                     );
                 }*/
-
-                egui::ScrollArea::horizontal()//.scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
-                .id_source(format!("{}_inner_scroll", self.id))
-                .show(ui, |ui| {
-
-                let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
-                    let mut layout_job = highlight(ui.ctx(), self, string);
-                    layout_job.wrap.max_width = wrap_width;
-                    ui.fonts(|f| f.layout_job(layout_job))
+                let mut vert_scroll = if offset.is_none() {
+                    egui::ScrollArea::horizontal()
+                } else {
+                    egui::ScrollArea::horizontal().scroll_offset(offset.unwrap())
                 };
-                let output = ui.add_sized(
-                    ui.available_size(),
-                    egui::TextEdit::multiline(text)
-                        .id_source(&self.id)
-                        .lock_focus(true)
-                        .desired_rows(self.rows)
-                        .frame(true)
-                        .desired_width(if self.shrink { 0.0 } else { f32::MAX })
-                        .layouter(&mut layouter), //.show(ui);
-                );
-                //self.scroll_position = scrolled + self.scroll_position;
-                });
+                vert_scroll //.scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                    //.id_source(format!("{}_inner_scroll", self.id))
+                    .id_source("VERT_SCROLL")
+                    .show(ui, |ui| {
+                        let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
+                            let mut layout_job = highlight(ui.ctx(), self, string);
+                            layout_job.wrap.max_width = wrap_width;
+                            ui.fonts(|f| f.layout_job(layout_job))
+                        };
+                        let output = ui.add_sized(
+                            ui.available_size(),
+                            egui::TextEdit::multiline(text)
+                                .id_source(&self.id)
+                                .lock_focus(true)
+                                .desired_rows(self.rows)
+                                .frame(true)
+                                .desired_width(if self.shrink { 0.0 } else { f32::MAX })
+                                .layouter(&mut layouter), //.show(ui);
+                        );
+                        //self.scroll_position = scrolled + self.scroll_position;
+                    });
             });
         };
         if vscroll {
-            let r: egui::scroll_area::ScrollAreaOutput<()> = egui::ScrollArea::vertical()//.scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
-                .id_source(format!("_outer_scroll"))
-                .stick_to_bottom(stick_to_bottom)
-                .show(ui, code_editor);
+            let r: egui::scroll_area::ScrollAreaOutput<()> =
+                egui::ScrollArea::vertical() //.scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                    .id_source(format!("_outer_scroll"))
+                    .stick_to_bottom(stick_to_bottom)
+                    .show(ui, code_editor);
             resp = Some(r);
         } else {
             code_editor(ui);

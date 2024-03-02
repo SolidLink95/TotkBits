@@ -1,7 +1,5 @@
 use egui::{scroll_area::ScrollAreaOutput, Align, Key};
-use std::{
-    io::{self, BufReader, Cursor, Read, Seek},
-};
+use std::io::{self, BufReader, Cursor, Read, Seek};
 
 #[derive(Debug)]
 pub struct Pos {
@@ -13,20 +11,21 @@ pub struct Pos {
 #[derive(Debug)]
 pub struct FileReader {
     pub reader: BufReader<Cursor<Vec<u8>>>,
-    pub buffer: Vec<u8>,
-    pub len: usize,
-    pub pos: Pos,
-    pub reload: bool, //flag to prevent read file in every frame
-    pub displayed_text: String,
-    pub buf_size: usize,
-    pub default_buf_size: usize,
-    pub scroll_pos: f32,
-    pub full_text: String,
-    pub old_text: String,
-    pub is_text_changed: bool,
-    pub lines_offset: usize,
-    pub max_line_chars: usize,
-    pub dir: bool,
+    pub buffer: Vec<u8>,         //contains entire data
+    pub len: usize,              // size of the entire buffer
+    pub pos: Pos,                //current position of the displayed text buffer
+    pub reload: bool,            //flag to prevent read file in every frame
+    pub displayed_text: String,  //chunk of self.buffer currently displayed on screen
+    pub buf_size: usize,         //size of the buffer
+    pub default_buf_size: usize, //default size of buffer, usually 8192 fits
+    pub scroll_pos: f32,         //
+    pub full_text: String,       //basically self.buffer as String
+    pub old_text: String,        //previous state of self.full_text, used for comparison
+    pub is_text_changed: bool,   //a flag for controlling when text was changed
+    pub lines_offset: usize,     //at which offset does code editor need to start counting lines?
+    pub max_line_chars: usize, //while padding self.pos.clone() to next/previous b'\n' the loop wont cross this threshold
+    pub perc: f32,
+    pub scrolled: f32, //sum how much scrolling has changed
 }
 
 impl Default for FileReader {
@@ -37,10 +36,6 @@ impl Default for FileReader {
         let reader = BufReader::new(cursor);
         Self {
             reader: reader,
-            //writer: BufWriter::new(g),
-            //in_file: in_file.to_string(),
-            //out_file: out_file.to_string(),
-            //f: f,
             buffer: buffer,
             len: len,
             pos: Pos { x: 0, y: 0 },
@@ -54,7 +49,8 @@ impl Default for FileReader {
             is_text_changed: false,
             lines_offset: 0,
             max_line_chars: 2048,
-            dir: false,
+            perc: 0.0,
+            scrolled: 0.0,
         }
     }
 }
@@ -70,14 +66,23 @@ impl FileReader {
         self.reload = true;
         Ok(())
     }
+    pub fn update_from_perc(&mut self, p: f32) {
+            let len = self.len as f32;
+            let center = p * len;
+            let x = center - (self.buf_size as f32 * p);
+            let y = center + (self.buf_size as f32 * (1.0-p));
 
-    pub fn refresh_buffer(&mut self) -> io::Result<()> {
-        let smiling_face = String::from("\u{1F60A}");
-        self.displayed_text = format!("{}{}", self.displayed_text.clone(), smiling_face);
-        //self.displayed_text = self.displayed_text[1..].to_string();
-        Ok(())
+            //if !(x < 0.0 || y > len) && (y - self.pos.y as f32).abs() > 200.0 {
+                self.pos = Pos {
+                    x: x as i32,
+                    y: y as i32,
+                };
+                println!("{:?}", self.pos);
+                self.reload = true;
+                self.perc = p.clone();
+            //}
+        
     }
-
     pub fn update(&mut self) -> io::Result<()> {
         if self.reload && !self.full_text.is_empty() {
             if self.update_pos() {
@@ -93,8 +98,7 @@ impl FileReader {
                     .iter()
                     .filter(|&&c| c == b'\n')
                     .count();
-                self.reader
-                    .seek(std::io::SeekFrom::Start(pos.x as u64))?;
+                self.reader.seek(std::io::SeekFrom::Start(pos.x as u64))?;
                 let mut buffer = vec![0; (pos.y - pos.x) as usize];
 
                 self.reader.read_exact(&mut buffer)?;
@@ -104,7 +108,7 @@ impl FileReader {
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                 self.old_text = self.displayed_text.clone();
             }
-
+            self.scrolled = 0.0;
             self.reload = false; //make sure updates only once by itself
         }
         Ok(())
@@ -196,20 +200,28 @@ impl FileReader {
         let len = self.buffer.len() as i32;
         let change: i32 = 1;
         loop {
-            if x == 0 || ind >= max_chars {break;}
-            if self.buffer.get(x as usize) == Some(&b'\n') {break;}
+            if x == 0 || ind >= max_chars {
+                break;
+            }
+            if self.buffer.get(x as usize) == Some(&b'\n') {
+                break;
+            }
             x -= change;
             ind += 1;
         }
         ind = 0;
         loop {
-            if y >= len || ind >= max_chars {break;}
-            if self.buffer.get(y as usize) == Some(&b'\n') {break;}
+            if y >= len || ind >= max_chars {
+                break;
+            }
+            if self.buffer.get(y as usize) == Some(&b'\n') {
+                break;
+            }
             y += change;
             ind += 1;
         }
         x = (x + 1).min(len);
-        return Pos { x:x, y: y };
+        return Pos { x: x, y: y };
     }
 
     pub fn scroll_test(ui: &egui::Ui, resp: &Option<ScrollAreaOutput<()>>, scroll_offset: f32) {
@@ -235,25 +247,24 @@ impl FileReader {
         let mut res: f32 = 0.0;
         ctx.input(|i| {
             //handle scrolling and page up/down
-            let mut scrolled: i32 = 0;
             if i.raw_scroll_delta.y != 0.0 {
-                scrolled = -i.raw_scroll_delta.y as i32;
+                self.scrolled += -i.raw_scroll_delta.y;
                 //Self::scroll_test( ui, resp, i.raw_scroll_delta.y);
             } else if i.key_pressed(Key::PageDown) {
-                scrolled = ScrollValues::PageDown.value();
+                self.scrolled += ScrollValues::PageDown.value() as f32;
                 if self.pos.y == self.buffer.len() as i32 {
                     res = ScrollValues::ScrollBottom.value() as f32;
                 }
                 //Gui::scroll_test(resp, ui, -(scrolled as f32));
                 //Self::scroll_test( ui, resp, -scrolled as f32);
             } else if i.key_pressed(Key::PageUp) {
-                scrolled = ScrollValues::PageUp.value();
+                self.scrolled += ScrollValues::PageUp.value() as f32;
                 if self.pos.x == 0 {
                     res = ScrollValues::ScrollTop.value() as f32;
                 }
                 //Self::scroll_test( ui, resp, -scrolled as f32);
             }
-            if scrolled != 0 {
+            if self.scrolled.abs() > 200.0 {
                 if self.displayed_text != self.old_text {
                     println!("Text changed!");
                     //self.scroll(ui, 50.0);
@@ -261,35 +272,39 @@ impl FileReader {
                     self.update_text_changed();
                 }
                 //println!("Scrolled {}", scrolled);
-                self.add_pos(scrolled as i32);
+                self.add_pos(self.scrolled as i32);
                 //self.scroll(ui, -scrolled as f32);
                 self.reload = true;
                 if let Some(r) = resp {
                     //res = -(scrolled as f32);
                     self.scroll_pos = r.state.offset.y;
                 }
-            } else if let Some(r) = resp {
-                let offset: i32 = ScrollValues::Segment.value();
-                if r.state.offset.y.floor() != self.scroll_pos.floor() {
-                    let diff = (r.state.offset.y - self.scroll_pos) as i32;
-                    if diff.abs() > offset || (r.content_size.y - r.state.offset.y) < offset as f32
-                    {
-                        //res = -(diff as f32);
-                        self.add_pos(diff);
-                        //self.scroll(ui, -diff as f32);
-                        println!("{} - {} = {}", self.scroll_pos, r.state.offset.y, diff);
-                        self.reload = true;
-                        self.scroll_pos = r.state.offset.y;
+            } else if self.scrolled != 0.0 {
+                if let Some(r) = resp {
+                    let offset: i32 = ScrollValues::Segment.value();
+                    if r.state.offset.y.floor() != self.scroll_pos.floor() {
+                        let diff = (r.state.offset.y - self.scroll_pos) as i32;
+                        if diff.abs() > offset
+                            || (r.content_size.y - r.state.offset.y) < offset as f32
+                        {
+                            //res = -(diff as f32);
+                            self.add_pos(diff);
+                            //self.scroll(ui, -diff as f32);
+                            println!("{} - {} = {}", self.scroll_pos, r.state.offset.y, diff);
+                            self.reload = true;
+                            self.scroll_pos = r.state.offset.y;
 
-                        if self.displayed_text != self.old_text && !self.is_text_changed {
-                            println!("Text changed!");
-                            //self.is_text_changed = true;
-                            self.update_text_changed();
+                            if self.displayed_text != self.old_text && !self.is_text_changed {
+                                println!("Text changed!");
+                                //self.is_text_changed = true;
+                                self.update_text_changed();
+                            }
                         }
                     }
                 }
             }
         });
+
         res
         //handle manual scrollbar changes
     }
