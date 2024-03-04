@@ -133,3 +133,42 @@ button {
   margin-bottom: 20px;
   font-family: "codicon";
 }
+
+
+/* Updated styles in App.css */
+.menu-bar {
+  display: flex;
+  position: fixed;
+  top: 0;
+  width: 100%;
+  background-color: #333;
+  color: white;
+  justify-content: left;
+  padding: 10px 0;
+  z-index: 1000; /* Ensures menu bar is above other content */
+}
+
+.menu-item {
+  margin: 0 15px;
+  cursor: pointer;
+  position: relative;
+}
+
+.dropdown-content {
+  display: none; /* Initially hidden */
+  position: absolute;
+  background-color: #f9f9f9;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1001; /* Ensures dropdown content is above the menu bar */
+}
+
+.dropdown-content a {
+  color: black;
+  padding: 12px 16px;
+  text-decoration: none;
+  display: block;
+}
+
+.dropdown-content a:hover {background-color: #f1f1f1}
+

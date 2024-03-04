@@ -1,3 +1,29 @@
 /dist/
 /target/
 /Cargo.lock
+
+
+# Logs
+monaco_react/logs
+monaco_react/*.log
+monaco_react/npm-debug.log*
+monaco_react/yarn-debug.log*
+monaco_react/yarn-error.log*
+monaco_react/pnpm-debug.log*
+monaco_react/lerna-debug.log*
+
+monaco_react/node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+/monaco_react/.vscode/*
+monaco_react/!.vscode/extensions.json
+monaco_react/.idea
+monaco_react/.DS_Store
+monaco_react/*.suo
+monaco_react/*.ntvs*
+monaco_react/*.njsproj
+monaco_react/*.sln
+monaco_react/*.sw?
