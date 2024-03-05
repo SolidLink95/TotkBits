@@ -3,6 +3,7 @@
   font-size: 16px;
   line-height: 24px;
   font-weight: 400;
+  --menu-bar-padding: 10px;
 
   color: #0f0f0f;
   background-color: #f6f6f6;
@@ -144,7 +145,7 @@ button {
   background-color: #333;
   color: white;
   justify-content: left;
-  padding: 10px 0;
+  padding: var(--menu-bar-padding) 0;
   z-index: 1000; /* Ensures menu bar is above other content */
 }
 
@@ -155,6 +156,8 @@ button {
 }
 
 .dropdown-content {
+  /* left: -10px; */
+  left: calc(var(--menu-bar-padding) * -1);
   display: none; /* Initially hidden */
   position: absolute;
   background-color: #f9f9f9;
