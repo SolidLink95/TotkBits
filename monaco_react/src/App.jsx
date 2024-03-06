@@ -26,6 +26,17 @@ function App() {
     "folder2/subfolder1/file3.txt",
     "folder3/file4.txt",
   ];
+
+  const added_paths = [
+    "folder1/subfolder1/file11.txt",
+  ];
+  
+  const modded_paths = [
+    "folder3/file4.txt",
+  ];
+
+
+
   useEffect(() => {
     if (activeTab === BackendEnum.YAML) {
       editorRef.current = monaco.editor.create(editorContainerRef.current, {
@@ -84,7 +95,7 @@ function App() {
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} />
       <ButtonsDisplay />
-      {activeTab === 'SARC' && <DirectoryTree paths={paths} />}
+      {activeTab === 'SARC' && <DirectoryTree paths={paths} added_paths={added_paths} modded_paths={modded_paths} />}
       {activeTab === 'YAML' && <div ref={editorContainerRef} className="code_editor"></div>}
       <div className="statusbar">Status Bar</div>
     </div>

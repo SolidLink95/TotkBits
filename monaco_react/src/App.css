@@ -6,6 +6,7 @@
   filter: drop-shadow(0 0 2em #61dafb);
 }
 .directory-tree {
+  font-size: 20px;
   background-color: rgb(10, 10, 10);
   position: absolute;
   padding-top: 10px;
@@ -26,9 +27,32 @@
   max-height: 0;
   opacity: 0;
   margin-left: -10px;
+  padding-bottom: 2px;
 }
+
 
 .node-children.expanded {
   max-height: 1000px; /* Adjust based on the expected maximum height */
   opacity: 1;
+}
+
+.context-menu {
+  position: fixed;
+  left: 0;
+  top: 0;
+  margin: 10 10px;
+  background-color: #333;
+  color: white;
+  /* padding: var(--menu-bar-padding) 0; */
+}
+
+.context-menu-item {
+  cursor: pointer;
+  /* margin-bottom: 5px; */
+  padding: 2px 5px;
+}
+
+.context-menu-item:hover {
+  background-color: #444;
+  color: white; /* Optionally change the text color for better contrast */
 }

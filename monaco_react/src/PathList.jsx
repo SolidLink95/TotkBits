@@ -1,11 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
+const fontsize = '20px';
 const dirOpened = `dir_opened.png`;
 const dirClosed = `dir_closed.png`;
 const fileIcon = `file.png`;
 
-
-// Helper function to build the tree (unchanged)
+const ContextMenu = ({ x, y, onClose, actions }) => {
+  return (
+    <ul
+      className="context-menu"
+      style={{
+        position: 'absolute',
+        top: y,
+        left: x,
+        listStyleType: 'none',
+        padding: '6px',
+        // border: '1px solid #ddd',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+        zIndex: 100,
+      }}
+      onMouseLeave={onClose}
+    >
+      {actions.map((action, index) => (
+        <li
+          key={index}
+          className="context-menu-item"
+          onClick={() => action.method()}
+        >
+          {action.label}
+        </li>
+      ))}
+    </ul>
+  );
+};
+// Helper function to build the tree 
 const buildTree = (paths) => {
   const root = {};
   paths.forEach((path) => {
@@ -20,32 +48,82 @@ const buildTree = (paths) => {
 };
 
 // Recursive component to render nodes with smooth transitions
-const DirectoryNode = ({ node, name, path, onContextMenu }) => {
+const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_paths }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const toggleCollapse = () => setIsCollapsed(!isCollapsed);
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
   const isFile = node === null;
   const fullPath = path ? `${path}/${name}` : name;
+
+  const nodeStyle = {
+    borderRadius: '5px',
+    width: '95%',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    backgroundColor: added_paths.includes(fullPath)
+                      ? '#826C00'
+                      : modded_paths.includes(fullPath)
+                        ? 'purple'
+                        : 'transparent'
+  };
+
+
+  const toggleCollapse = () => setIsCollapsed(!isCollapsed);
 
   const handleIconClick = (e) => {
     if (!isFile) {
       toggleCollapse();
     }
-    e.stopPropagation(); // Prevents the click from bubbling to the div
+    e.stopPropagation();
   };
 
   const handleIconContextMenu = (e) => {
     e.preventDefault();
-    e.stopPropagation(); // Prevents the context menu from affecting other elements
-    onContextMenu(fullPath);
+    let offsetX = window.scrollX || document.documentElement.scrollLeft;
+    let offsetY = window.scrollY || document.documentElement.scrollTop;
+
+    // If the tree container itself has a scroll, add this offset too
+    // You need to replace '.tree-container' with the actual selector of your container
+    const treeContainer = document.querySelector('.directory-tree');
+    if (treeContainer) {
+      offsetX += treeContainer.scrollLeft - treeContainer.getBoundingClientRect().left;
+      offsetY += treeContainer.scrollTop - treeContainer.getBoundingClientRect().top;
+    }
+
+    setContextMenu({
+      visible: true,
+      x: e.clientX + offsetX,
+      y: e.clientY + offsetY,
+    });
+    e.stopPropagation();
+    onContextMenu && onContextMenu(fullPath);
   };
 
+  const closeContextMenu = () => {
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  };
+  
+  const contextMenuActions = isFile ? [
+    { label: 'Edit', method: () => console.log(`Edit clicked on ${fullPath}`) },
+    { label: 'Replace', method: () => console.log(`Replace clicked on ${fullPath}`) },
+    { label: 'Remove', method: () => console.log(`Remove clicked on ${fullPath}`) },
+    { label: 'Rename', method: () => console.log(`Rename clicked on ${fullPath}`) },
+    { label: 'Close', method: () => setContextMenu({ visible: false, x: 0, y: 0 }) },
+  ] : [
+    { label: 'Add', method: () => console.log(`Add clicked on ${fullPath}`) },
+    { label: 'Remove', method: () => console.log(`Remove clicked on ${fullPath}`) },
+    { label: 'Rename', method: () => console.log(`Rename clicked on ${fullPath}`) },
+    { label: 'Close', method: () => setContextMenu({ visible: false, x: 0, y: 0 }) },
+  ];
+
   return (
-    <li>
-      <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-        <img 
-          src={isFile ? fileIcon : isCollapsed ? dirClosed : dirOpened} 
-          alt={name} 
-          style={{ marginRight: '5px', width: '20px', height: '20px' }} 
+    <li onContextMenu={onContextMenu}>
+      <div style={nodeStyle}
+        onContextMenu={handleIconContextMenu}>
+        <img
+          src={isFile ? fileIcon : isCollapsed ? dirClosed : dirOpened}
+          alt={name}
+          style={{ marginRight: '5px', width: '32px', height: '32px'}}
           onClick={handleIconClick}
           onContextMenu={handleIconContextMenu}
         />
@@ -53,40 +131,54 @@ const DirectoryNode = ({ node, name, path, onContextMenu }) => {
       </div>
       {!isFile && (
         <div className={`node-children ${isCollapsed ? 'collapsed' : 'expanded'}`}>
-          <ul style={{ marginLeft: '0px', listStyleType: 'none' }}>
+          <ul style={{ marginLeft: '0px', listStyleType: 'none'}}>
             {Object.entries(node).map(([key, value]) => (
-              <DirectoryNode 
-                key={key} 
-                node={value} 
-                name={key} 
+              <DirectoryNode
+                key={key}
+                node={value}
+                name={key}
                 path={fullPath}
-                onContextMenu={onContextMenu} 
+                added_paths={added_paths}
+                modded_paths={modded_paths}
               />
             ))}
+            {contextMenu.visible && (
+              <ContextMenu className='context-menu' x={contextMenu.x} y={contextMenu.y} onClose={closeContextMenu} actions={contextMenuActions} />
+            )}
           </ul>
         </div>
+      )}
+      {contextMenu.visible && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={closeContextMenu}
+          actions={contextMenuActions}
+        />
       )}
     </li>
   );
 };
 
 // Main DirectoryTree component (unchanged)
-const DirectoryTree = ({ paths }) => {
+const DirectoryTree = ({ paths, added_paths, modded_paths }) => {
   const tree = buildTree(paths);
 
   const handleContextMenu = (fullPath) => {
-    alert(`Context menu for ${fullPath}`);
+    // alert(`Context menu for ${fullPath}`);
   };
 
   return (
     <ul className="directory-tree" style={{ listStyleType: 'none' }}>
       {Object.entries(tree).map(([key, value]) => (
-        <DirectoryNode 
-          key={key} 
-          node={value} 
-          name={key} 
-          path="" 
-          onContextMenu={handleContextMenu} 
+        <DirectoryNode
+          key={key}
+          node={value}
+          name={key}
+          path=""
+          onContextMenu={handleContextMenu}
+          added_paths={added_paths}
+          modded_paths={modded_paths}
         />
       ))}
     </ul>
