@@ -1,6 +1,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
+import DirectoryTree from "./PathList";
 import ButtonsDisplay from "./Buttons";
 import MenuBarDisplay from "./MenuBar";
 import ActiveTabDisplay from "./ActiveTab";
@@ -18,7 +19,13 @@ function App() {
   const editorRef = useRef(null);
   const [editorContent, setEditorContent] = useState("");
   const [greetMsg, setGreetMsg] = useState("");
-
+  const paths = [
+    "folder1/subfolder1/file1.txt",
+    "folder1/subfolder1/file11.txt",
+    "folder1/subfolder2/file2.txt",
+    "folder2/subfolder1/file3.txt",
+    "folder3/file4.txt",
+  ];
   useEffect(() => {
     if (activeTab === BackendEnum.YAML) {
       editorRef.current = monaco.editor.create(editorContainerRef.current, {
@@ -46,7 +53,7 @@ function App() {
   }, [activeTab]);
   //Variables
 
-//Functions
+  //Functions
   async function greet() {
     const name = editorRef.current.getValue();
     setGreetMsg(await invoke("greet", { name }));
@@ -77,6 +84,7 @@ function App() {
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} />
       <ButtonsDisplay />
+      {activeTab === 'SARC' && <DirectoryTree paths={paths} />}
       {activeTab === 'YAML' && <div ref={editorContainerRef} className="code_editor"></div>}
       <div className="statusbar">Status Bar</div>
     </div>

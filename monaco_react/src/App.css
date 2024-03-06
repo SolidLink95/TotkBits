@@ -5,3 +5,16 @@
 .logo.react:hover {
   filter: drop-shadow(0 0 2em #61dafb);
 }
+.directory-tree {
+  background-color: black;
+  position: absolute;
+  padding-top: 10px;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  text-align: left;
+  margin-top: 120px;
+  margin-bottom: 10px;
+  margin-left: -20px;
+}
