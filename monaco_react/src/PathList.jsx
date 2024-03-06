@@ -4,6 +4,7 @@ const fontsize = '20px';
 const dirOpened = `dir_opened.png`;
 const dirClosed = `dir_closed.png`;
 const fileIcon = `file.png`;
+const iconSize = '30px'; // Define the constant variable
 
 const ContextMenu = ({ x, y, onClose, actions }) => {
   return (
@@ -48,11 +49,19 @@ const buildTree = (paths) => {
 };
 
 // Recursive component to render nodes with smooth transitions
-const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_paths }) => {
+const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_paths, selected,
+  onSelect,}) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
   const isFile = node === null;
   const fullPath = path ? `${path}/${name}` : name;
+  const isSelected = selected === fullPath;
+  const handleSelect = (e) => {
+    e.stopPropagation(); // This stops the event from bubbling up further
+    console.log(`Selected: ${fullPath}`);
+    onSelect(fullPath); // Pass the fullPath to the onSelect function
+  };
+
 
   const nodeStyle = {
     borderRadius: '5px',
@@ -60,11 +69,13 @@ const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_pa
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
-    backgroundColor: added_paths.includes(fullPath)
-                      ? '#826C00'
-                      : modded_paths.includes(fullPath)
-                        ? 'purple'
-                        : 'transparent'
+    backgroundColor: isSelected
+                      ? 'darkgray' // Darker background for selected node
+                      : added_paths.includes(fullPath)
+                        ? '#826C00'
+                        : modded_paths.includes(fullPath)
+                          ? 'purple'
+                          : 'transparent'
   };
 
 
@@ -117,13 +128,13 @@ const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_pa
   ];
 
   return (
-    <li onContextMenu={onContextMenu}>
+    <li onContextMenu={onContextMenu} onClick={handleSelect}>
       <div style={nodeStyle}
         onContextMenu={handleIconContextMenu}>
         <img
           src={isFile ? fileIcon : isCollapsed ? dirClosed : dirOpened}
           alt={name}
-          style={{ marginRight: '5px', width: '32px', height: '32px'}}
+          style={{ marginRight: '5px', width: iconSize, height: iconSize}}
           onClick={handleIconClick}
           onContextMenu={handleIconContextMenu}
         />
@@ -131,20 +142,20 @@ const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_pa
       </div>
       {!isFile && (
         <div className={`node-children ${isCollapsed ? 'collapsed' : 'expanded'}`}>
-          <ul style={{ marginLeft: '0px', listStyleType: 'none'}}>
-            {Object.entries(node).map(([key, value]) => (
-              <DirectoryNode
-                key={key}
-                node={value}
-                name={key}
-                path={fullPath}
-                added_paths={added_paths}
-                modded_paths={modded_paths}
-              />
-            ))}
-            {contextMenu.visible && (
-              <ContextMenu className='context-menu' x={contextMenu.x} y={contextMenu.y} onClose={closeContextMenu} actions={contextMenuActions} />
-            )}
+          <ul style={{ marginLeft: '20px', listStyleType: 'none', padding: 0 }}>
+          {Object.entries(node).map(([key, value]) => (
+  <DirectoryNode
+    key={key}
+    node={value}
+    name={key}
+    path={fullPath}
+    onContextMenu={onContextMenu}
+    added_paths={added_paths}
+    modded_paths={modded_paths}
+    selected={selected} // Make sure this is passed correctly
+    onSelect={onSelect} // Make sure this is passed correctly
+  />
+))}
           </ul>
         </div>
       )}
@@ -163,10 +174,16 @@ const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_pa
 // Main DirectoryTree component (unchanged)
 const DirectoryTree = ({ paths, added_paths, modded_paths }) => {
   const tree = buildTree(paths);
+  const [selectedNode, setSelectedNode] = useState("");
+  const handleSelectNode = (fullPath) => {
+    setSelectedNode(fullPath);
+  };
 
   const handleContextMenu = (fullPath) => {
     // alert(`Context menu for ${fullPath}`);
+    setSelectedNode(fullPath);
   };
+  
 
   return (
     <ul className="directory-tree" style={{ listStyleType: 'none' }}>
@@ -179,6 +196,8 @@ const DirectoryTree = ({ paths, added_paths, modded_paths }) => {
           onContextMenu={handleContextMenu}
           added_paths={added_paths}
           modded_paths={modded_paths}
+          selected={selectedNode}
+          onSelect={handleSelectNode}
         />
       ))}
     </ul>
