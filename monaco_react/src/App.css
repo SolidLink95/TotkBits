@@ -16,5 +16,19 @@
   text-align: left;
   margin-top: 120px;
   margin-bottom: 10px;
-  margin-left: -20px;
+  margin-left: 0px;
+  padding-left: 15px;
+  padding-top: 15px;
+}
+.node-children {
+  overflow: hidden;
+  transition: max-height 0.2s ease, opacity 0.2s ease;
+  max-height: 0;
+  opacity: 0;
+  margin-left: -10px;
+}
+
+.node-children.expanded {
+  max-height: 1000px; /* Adjust based on the expected maximum height */
+  opacity: 1;
 }

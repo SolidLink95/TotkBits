@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
-const folderIcon = `dir_opened.png`;
+const dirOpened = `dir_opened.png`;
+const dirClosed = `dir_closed.png`;
 const fileIcon = `file.png`;
 
 
-// Helper function to build the tree
+// Helper function to build the tree (unchanged)
 const buildTree = (paths) => {
   const root = {};
   paths.forEach((path) => {
@@ -18,7 +19,7 @@ const buildTree = (paths) => {
   return root;
 };
 
-// Recursive component to render nodes
+// Recursive component to render nodes with smooth transitions
 const DirectoryNode = ({ node, name, path, onContextMenu }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const toggleCollapse = () => setIsCollapsed(!isCollapsed);
@@ -42,7 +43,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu }) => {
     <li>
       <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
         <img 
-          src={isFile ? fileIcon : folderIcon} 
+          src={isFile ? fileIcon : isCollapsed ? dirClosed : dirOpened} 
           alt={name} 
           style={{ marginRight: '5px', width: '20px', height: '20px' }} 
           onClick={handleIconClick}
@@ -50,24 +51,26 @@ const DirectoryNode = ({ node, name, path, onContextMenu }) => {
         />
         <span onClick={toggleCollapse}>{name}</span>
       </div>
-      {!isCollapsed && node && (
-        <ul style={{ marginLeft: '-10px', listStyleType: 'none' }}>
-          {Object.entries(node).map(([key, value]) => (
-            <DirectoryNode 
-              key={key} 
-              node={value} 
-              name={key} 
-              path={fullPath} // Pass down the full path
-              onContextMenu={onContextMenu} 
-            />
-          ))}
-        </ul>
+      {!isFile && (
+        <div className={`node-children ${isCollapsed ? 'collapsed' : 'expanded'}`}>
+          <ul style={{ marginLeft: '0px', listStyleType: 'none' }}>
+            {Object.entries(node).map(([key, value]) => (
+              <DirectoryNode 
+                key={key} 
+                node={value} 
+                name={key} 
+                path={fullPath}
+                onContextMenu={onContextMenu} 
+              />
+            ))}
+          </ul>
+        </div>
       )}
     </li>
   );
 };
 
-// Main DirectoryTree component
+// Main DirectoryTree component (unchanged)
 const DirectoryTree = ({ paths }) => {
   const tree = buildTree(paths);
 
@@ -82,7 +85,7 @@ const DirectoryTree = ({ paths }) => {
           key={key} 
           node={value} 
           name={key} 
-          path="" // Start with an empty string for the root path
+          path="" 
           onContextMenu={handleContextMenu} 
         />
       ))}
