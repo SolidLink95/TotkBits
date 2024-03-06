@@ -19,54 +19,72 @@ const buildTree = (paths) => {
 };
 
 // Recursive component to render nodes
-const DirectoryNode = ({ node, name, onContextMenu }) => {
+const DirectoryNode = ({ node, name, path, onContextMenu }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const toggleCollapse = () => setIsCollapsed(!isCollapsed);
   const isFile = node === null;
+  const fullPath = path ? `${path}/${name}` : name;
 
-  // Toggle the collapsed state for folders
-  const toggleCollapse = () => {
+  const handleIconClick = (e) => {
     if (!isFile) {
-      setIsCollapsed(!isCollapsed);
+      toggleCollapse();
     }
+    e.stopPropagation(); // Prevents the click from bubbling to the div
+  };
+
+  const handleIconContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // Prevents the context menu from affecting other elements
+    onContextMenu(fullPath);
   };
 
   return (
     <li>
-      <div onClick={toggleCollapse} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+      <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
         <img 
           src={isFile ? fileIcon : folderIcon} 
-          alt="" 
-          style={{ marginRight: '5px',width: '20px', height: '20px' }} 
-          onClick={(e) => e.stopPropagation()} // Prevents the click from bubbling to the div
-          onContextMenu={(e) => onContextMenu(e, name)} // Attaches the context menu to the icon
+          alt={name} 
+          style={{ marginRight: '5px', width: '20px', height: '20px' }} 
+          onClick={handleIconClick}
+          onContextMenu={handleIconContextMenu}
         />
-        {name}
+        <span onClick={toggleCollapse}>{name}</span>
       </div>
       {!isCollapsed && node && (
         <ul style={{ marginLeft: '-10px', listStyleType: 'none' }}>
           {Object.entries(node).map(([key, value]) => (
-            <DirectoryNode key={key} node={value} name={key} onContextMenu={onContextMenu} />
+            <DirectoryNode 
+              key={key} 
+              node={value} 
+              name={key} 
+              path={fullPath} // Pass down the full path
+              onContextMenu={onContextMenu} 
+            />
           ))}
         </ul>
       )}
     </li>
   );
 };
+
 // Main DirectoryTree component
 const DirectoryTree = ({ paths }) => {
   const tree = buildTree(paths);
 
-  // Context menu handler
-  const handleContextMenu = (event, fileName) => {
-    event.preventDefault();
-    alert(`Context menu for ${fileName}`);
-    // Here, implement your logic to show a custom context menu
+  const handleContextMenu = (fullPath) => {
+    alert(`Context menu for ${fullPath}`);
   };
 
   return (
-    <ul className="directory-tree">
+    <ul className="directory-tree" style={{ listStyleType: 'none' }}>
       {Object.entries(tree).map(([key, value]) => (
-        <DirectoryNode key={key} node={value} name={key} onContextMenu={handleContextMenu} />
+        <DirectoryNode 
+          key={key} 
+          node={value} 
+          name={key} 
+          path="" // Start with an empty string for the root path
+          onContextMenu={handleContextMenu} 
+        />
       ))}
     </ul>
   );

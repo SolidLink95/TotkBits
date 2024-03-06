@@ -6,7 +6,7 @@
   filter: drop-shadow(0 0 2em #61dafb);
 }
 .directory-tree {
-  background-color: black;
+  background-color: rgb(10, 10, 10);
   position: absolute;
   padding-top: 10px;
   top: 0;
