@@ -5,6 +5,8 @@
   font-weight: 400;
   --menu-bar-padding: 10px;
   --menu-bar-h: 25px;
+  --tab-switcher-h: 30px;
+  --buttons-h: 30px;
 
   color: #0f0f0f;
   background-color: #f6f6f6;
@@ -56,13 +58,60 @@ h1 {
   text-align: center;
 }
 
-.buttons-container {
-  display: flex; /* Align children (buttons) in a row */
-  justify-content: left; /* Center buttons horizontally */
-  align-items: left; /* Align buttons vertically */
-  flex-wrap: wrap; /* Allow buttons to wrap to the next line on small screens */
-  /* gap: 10px; Optional: Adds some space between the buttons */
+.activetab {
+  margin-left: -5px;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center; /* Centered vertically */
+  flex-wrap: wrap;
+  margin-top: var(--menu-bar-h);
+  font-family: 'Nunito', sans-serif; /* Make sure to include the font in your project */
 }
+
+.activetab label {
+  padding: 4px 10px; /* Adjust padding to suit your design */
+  margin: 4px; /* Space between labels */
+  border: 1px solid transparent; /* Transparent border to maintain size on hover */
+  border-radius: 4px; /* Slightly rounded corners for the labels */
+  background-color: #3D437E; /* Inactive background color */
+  color: white; /* White text for both active and inactive */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+  transition: all 0.3s ease; /* Smooth transition for hover and active effects */
+  cursor: pointer; /* Indicates that labels are clickable */
+  user-select: none; /* Prevents text selection */
+}
+
+
+.activetab label:hover { /* Added .active class for when label is active */
+  background-color: #007bff73; /* Active background color */
+  border-color: #007bff; /* Active border color to match the background */
+}
+
+.activetab label.active { /* Added .active class for when label is active */
+  background-color: #007bff; /* Active background color */
+  border-color: #007bff; /* Active border color to match the background */
+}
+
+.pathlist {
+  margin-left: -5px;
+  display: flex; /* Align children (buttons) in a row */
+  justify-content: flex-start; /* Align buttons to the start of the container */
+  align-items: flex-start; /* Align buttons to the start of the container vertically */
+  flex-wrap: wrap; /* Allow buttons to wrap to the next line on small screens */
+  margin-top: 50px ; /* Adjusted margin-top */
+
+}
+
+.buttons-container {
+  margin-left: -5px;
+  display: flex; /* Align children (buttons) in a row */
+  justify-content: flex-start; /* Align buttons to the start of the container */
+  align-items: flex-start; /* Align buttons to the start of the container vertically */
+  flex-wrap: wrap; /* Allow buttons to wrap to the next line on small screens */
+  margin-top: 3px ; /* Adjusted margin-top */
+
+}
+
 
 
 input,
@@ -77,7 +126,6 @@ button {
   background-color: #ffffff;
   transition: border-color 0.25s;
   box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-  margin-top: var(--menu-bar-h);
 }
 
 button {
@@ -133,9 +181,11 @@ button {
   left: 0;
   right: 0;
   text-align: left;
-  margin-top: 120px;
+  margin-top: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) + 35px);
   margin-bottom: 20px;
   font-family: "codicon";
+  /* margin-left: 2px;
+  margin-right: 2px; */
 }
 
 .full-height-backup {
@@ -164,8 +214,10 @@ button {
 
 /* Updated styles in App.css */
 .menu-bar {
+  text-align: left;
   display: flex;
   position: fixed;
+  left: 0;
   top: 0;
   width: 100%;
   background-color: #333;
@@ -177,7 +229,12 @@ button {
 }
 
 .menu-item {
-  margin: 0 5px;
+  margin: 0 0px;
+  min-width: 40px;
+  padding-left: 10px;
+  padding-right: 10px;
+  padding: 2px 6px;
+  text-align: center;
   cursor: pointer;
   position: relative;
 }
@@ -187,8 +244,9 @@ button {
 
 }
 .dropdown-content {
-  /* left: -10px; */
-  left: calc(var(--menu-bar-padding) * -1);
+  left: 0px;
+  text-align: left;
+  /* left: calc(var(--menu-bar-padding) * -1); */
   display: none; /* Initially hidden */
   position: absolute;
   /* background-color: #f9f9f9; */
@@ -208,3 +266,11 @@ button {
 
 .dropdown-content a:hover {background-color: #515151}
 
+.menu-item:hover .dropdown-content {
+  display: block; /* Show dropdown content on hover */
+}
+
+
+.dropdown-content a:hover {
+  background-color: #515151;
+}
