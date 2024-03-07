@@ -21,21 +21,23 @@ function App() {
   const editorRef = useRef(null);
   const [editorContent, setEditorContent] = useState("");
   const [selectedPath, setSelectedPath] = useState('');
-  const paths = [
-    "folder1/subfolder1/file1.txt",
-    "folder1/subfolder1/file11.txt",
-    "folder1/subfolder2/file2.txt",
-    "folder2/subfolder1/file3.txt",
-    "folder3/file4.txt",
-  ];
 
-  const added_paths = [
-    "folder1/subfolder1/file11.txt",
-  ];
-  
-  const modded_paths = [
-    "folder3/file4.txt",
-  ];
+  const sarcPaths = {
+    "paths": [
+      "folder1/subfolder1/file1.txt",
+      "folder1/subfolder1/file11.txt",
+      "folder1/subfolder2/file2.txt",
+      "folder2/subfolder1/file3.txt",
+      "folder3/file4.txt",
+    ],
+    "added_paths": [
+      "folder1/subfolder1/file11.txt",
+    ],
+    "modded_paths": [
+      "folder3/file4.txt",
+    ]
+  };
+
 
   const updateEditorContent = (content) => {
     if (editorRef.current) {
@@ -110,7 +112,7 @@ function App() {
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} />
       <ButtonsDisplay updateEditorContent={updateEditorContent} />
-      {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} paths={paths} added_paths={added_paths} modded_paths={modded_paths} />}
+      {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect}  sarcPaths={sarcPaths} />}
       {activeTab === 'YAML' && <div ref={editorContainerRef} className="code_editor"></div>}
       <div className="statusbar">Status Bar</div>
     </div>

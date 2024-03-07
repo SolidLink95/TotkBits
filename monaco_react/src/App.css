@@ -7,7 +7,7 @@
 }
 .directory-tree {
   font-size: 20px;
-  background-color: rgb(10, 10, 10);
+  background-color: #1E1E1E;
   position: absolute;
   padding-top: 10px;
   top: 0;
@@ -15,7 +15,7 @@
   left: 0;
   right: 0;
   text-align: left;
-  margin-top: 120px;
+  margin-top: 130px;
   margin-bottom: 10px;
   margin-left: 0px;
   padding-left: 15px;

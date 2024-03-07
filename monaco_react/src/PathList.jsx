@@ -52,7 +52,8 @@ const buildTree = (paths) => {
 };
 
 // Recursive component to render nodes with smooth transitions
-const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_paths, selected,
+//const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_paths, selected,
+const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected,
   onSelect,}) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
@@ -74,9 +75,9 @@ const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_pa
     alignItems: 'center',
     backgroundColor: isSelected && isFile
                       ? 'darkgray' // Darker background for selected node
-                      : added_paths.includes(fullPath)
+                      : sarcPaths.added_paths.includes(fullPath)
                         ? '#826C00'
-                        : modded_paths.includes(fullPath)
+                        : sarcPaths.modded_paths.includes(fullPath)
                           ? 'purple'
                           : 'transparent'
   };
@@ -156,8 +157,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_pa
     name={key}
     path={fullPath}
     onContextMenu={onContextMenu}
-    added_paths={added_paths}
-    modded_paths={modded_paths}
+    sarcPaths={sarcPaths}
     selected={selected} // Make sure this is passed correctly
     onSelect={onSelect} // Make sure this is passed correctly
   />
@@ -178,8 +178,9 @@ const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_pa
 };
 
 // Main DirectoryTree component (unchanged)
-const DirectoryTree = ({ paths, added_paths, modded_paths }) => {
-  const tree = buildTree(paths);
+//const DirectoryTree = ({ paths, added_paths, modded_paths }) => {
+const DirectoryTree = ({ sarcPaths }) => {
+  const tree = buildTree(sarcPaths.paths);
   const [selectedNode, setSelectedNode] = useState("");
   const handleSelectNode = (fullPath) => {
     setSelectedNode(fullPath);
@@ -201,8 +202,9 @@ const DirectoryTree = ({ paths, added_paths, modded_paths }) => {
           name={key}
           path=""
           onContextMenu={handleContextMenu}
-          added_paths={added_paths}
-          modded_paths={modded_paths}
+          sarcPaths={sarcPaths}
+          //added_paths={added_paths}
+          //modded_paths={modded_paths}
           selected={selectedNode}
           onSelect={handleSelectNode}
         />

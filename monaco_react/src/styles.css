@@ -1,5 +1,5 @@
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-family: Consolas, Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 24px;
   font-weight: 400;
@@ -59,18 +59,21 @@ h1 {
 }
 
 .activetab {
-  margin-left: -5px;
+  margin-left: -20px;
+  margin-right: -8px;
   display: flex;
   justify-content: flex-start;
   align-items: center; /* Centered vertically */
   flex-wrap: wrap;
   margin-top: var(--menu-bar-h);
-  font-family: 'Nunito', sans-serif; /* Make sure to include the font in your project */
+  /* font-family: 'Nunito', sans-serif; Make sure to include the font in your project */
+  background-color: #0f0f0f;
 }
 
 .activetab label {
   padding: 4px 10px; /* Adjust padding to suit your design */
-  margin: 4px; /* Space between labels */
+  margin: 10px; /* Space between labels */
+  margin-left: 20px; /* Space between labels */
   border: 1px solid transparent; /* Transparent border to maintain size on hover */
   border-radius: 4px; /* Slightly rounded corners for the labels */
   background-color: #3D437E; /* Inactive background color */
@@ -103,12 +106,15 @@ h1 {
 }
 
 .buttons-container {
-  margin-left: -5px;
+  margin-left: -10px;
+  margin-right: -8px;
+  padding: 5px 10px 10px 10px; 
   display: flex; /* Align children (buttons) in a row */
   justify-content: flex-start; /* Align buttons to the start of the container */
   align-items: flex-start; /* Align buttons to the start of the container vertically */
   flex-wrap: wrap; /* Allow buttons to wrap to the next line on small screens */
-  margin-top: 3px ; /* Adjusted margin-top */
+  margin-top: 0px ; /* Adjusted margin-top */
+  background-color: #232529;
 
 }
 
@@ -181,7 +187,7 @@ button {
   left: 0;
   right: 0;
   text-align: left;
-  margin-top: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) + 35px);
+  margin-top: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) + 45px);
   margin-bottom: 20px;
   font-family: "codicon";
   /* margin-left: 2px;
