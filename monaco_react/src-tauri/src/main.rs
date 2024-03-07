@@ -14,13 +14,18 @@ fn receive_text_from_editor(text: String) {
 }
 
 #[tauri::command]
-fn send_text_to_frontend(window: Window, text: String) {
-    window.emit("text-from-rust", Some(text)).expect("failed to emit event");
+fn send_text_to_frontend() -> String {
+    r#"---
+    doe: "a deer, a female deer"
+    ray: "a drop of golden sun"
+    pi: 3.14159
+    xmas: true
+    french-hens: 3"#.to_string()
 }
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![receive_text_from_editor, greet, send_text_to_frontend])
+        .invoke_handler(tauri::generate_handler![receive_text_from_editor, send_text_to_frontend])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

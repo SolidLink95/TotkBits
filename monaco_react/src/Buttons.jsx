@@ -1,7 +1,16 @@
 import React from 'react';
+import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 
-  function ButtonsDisplay() {
-
+  function ButtonsDisplay({ updateEditorContent }) {
+    const fetchAndSetEditorContent = async () => {
+      try {
+          const content = await invoke('send_text_to_frontend'); // Use the command name you defined in Rust
+          updateEditorContent(content); // This line calls the function passed down as a prop
+          console.log(content);
+      } catch (error) {
+          console.error('Failed to fetch editor content from Rust backend:', error);
+      }
+  };
 
     function ImageButton({ src, onClick, alt, title, style}) {
         // Apply both the background image and styles directly to the button
@@ -26,6 +35,8 @@ import React from 'react';
           </button>
         );
       }
+
+      
       const imageButtonsData = [
           { src: 'open.png', alt: 'Open', onClick: () => console.log('Open clicked'), title: 'Open (Ctrl+O)'},
           { src: 'save.png', alt: 'Save', onClick: () => console.log('Save clicked'), title: 'Save (Ctrl+S)' },
@@ -37,6 +48,8 @@ import React from 'react';
           //{ src: 'zoomout.png', alt: 'zoomout', onClick: () => console.log('zoomout clicked') },
           { src: 'lupa.png', alt: 'find', onClick: () => console.log('find clicked'), title: 'Find (Ctrl+F)' },
           { src: 'replace.png', alt: 'replace', onClick: () => console.log('replace clicked'), title: 'Replace (Ctrl+H)' },
+          { src: 'add.png', alt: 'TEST1', onClick: fetchAndSetEditorContent, title: 'send some example string to monace' },
+          { src: 'add.png', alt: 'TEST2', onClick: () => console.log('TEST2'), title: 'TEST2' },
         ];
       
 

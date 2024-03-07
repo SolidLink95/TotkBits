@@ -53,6 +53,6 @@
 }
 
 .context-menu-item:hover {
-  background-color: #444;
+  background-color: #515151;
   color: white; /* Optionally change the text color for better contrast */
 }

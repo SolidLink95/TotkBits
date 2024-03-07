@@ -8,6 +8,8 @@ import ActiveTabDisplay from "./ActiveTab";
 import * as monaco from "monaco-editor";
 import { invoke } from "@tauri-apps/api/tauri";
 
+
+
 function App() {
   const BackendEnum = {
     SARC: 'SARC',
@@ -18,7 +20,7 @@ function App() {
   const editorContainerRef = useRef(null);
   const editorRef = useRef(null);
   const [editorContent, setEditorContent] = useState("");
-  const [greetMsg, setGreetMsg] = useState("");
+  const [selectedPath, setSelectedPath] = useState('');
   const paths = [
     "folder1/subfolder1/file1.txt",
     "folder1/subfolder1/file11.txt",
@@ -35,6 +37,19 @@ function App() {
     "folder3/file4.txt",
   ];
 
+  const updateEditorContent = (content) => {
+    if (editorRef.current) {
+        editorRef.current.setValue(content);
+        console.log(content);
+    }
+  };
+
+
+  const handleNodeSelect = (path) => {
+    setSelectedPath(path);
+    console.log(`Selected Node Path in App: ${path}`);
+    // Here you can use selectedPath for any other logic in App.jsx
+  };
 
 
   useEffect(() => {
@@ -94,8 +109,8 @@ function App() {
     <div>
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} />
-      <ButtonsDisplay />
-      {activeTab === 'SARC' && <DirectoryTree paths={paths} added_paths={added_paths} modded_paths={modded_paths} />}
+      <ButtonsDisplay updateEditorContent={updateEditorContent} />
+      {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} paths={paths} added_paths={added_paths} modded_paths={modded_paths} />}
       {activeTab === 'YAML' && <div ref={editorContainerRef} className="code_editor"></div>}
       <div className="statusbar">Status Bar</div>
     </div>

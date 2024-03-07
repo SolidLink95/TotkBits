@@ -4,7 +4,10 @@ const fontsize = '20px';
 const dirOpened = `dir_opened.png`;
 const dirClosed = `dir_closed.png`;
 const fileIcon = `file.png`;
-const iconSize = '30px'; // Define the constant variable
+const iconSize = '28px'; // Define the constant variable
+
+
+
 
 const ContextMenu = ({ x, y, onClose, actions }) => {
   return (
@@ -69,7 +72,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_pa
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
-    backgroundColor: isSelected
+    backgroundColor: isSelected && isFile
                       ? 'darkgray' // Darker background for selected node
                       : added_paths.includes(fullPath)
                         ? '#826C00'
@@ -79,7 +82,10 @@ const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_pa
   };
 
 
-  const toggleCollapse = () => setIsCollapsed(!isCollapsed);
+  const toggleCollapse = () => {
+    setIsCollapsed(!isCollapsed);
+    setContextMenu({ visible: false, x: 0, y: 0 });
+  };
 
   const handleIconClick = (e) => {
     if (!isFile) {
@@ -142,7 +148,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, added_paths, modded_pa
       </div>
       {!isFile && (
         <div className={`node-children ${isCollapsed ? 'collapsed' : 'expanded'}`}>
-          <ul style={{ marginLeft: '20px', listStyleType: 'none', padding: 0 }}>
+          <ul style={{ marginLeft: '40px', listStyleType: 'none', padding: 0 }}>
           {Object.entries(node).map(([key, value]) => (
   <DirectoryNode
     key={key}
@@ -177,6 +183,7 @@ const DirectoryTree = ({ paths, added_paths, modded_paths }) => {
   const [selectedNode, setSelectedNode] = useState("");
   const handleSelectNode = (fullPath) => {
     setSelectedNode(fullPath);
+    //props.onPathSelect(fullPath); // Assuming `onPathSelect` is the prop name
   };
 
   const handleContextMenu = (fullPath) => {
