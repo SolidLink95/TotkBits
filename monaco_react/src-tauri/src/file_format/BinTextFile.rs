@@ -4,10 +4,10 @@ use crate::Zstd::{is_byml, TotkFileType, TotkZstd};
 use roead::byml::Byml;
 use std::any::type_name;
 
-use std::fs::{OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::panic::AssertUnwindSafe;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io, panic};
 
@@ -231,6 +231,7 @@ pub fn bytes_to_file(data: Vec<u8>, path: &str) -> io::Result<()> {
     Ok(())
 }
 
+//#[derive(Serialise, Deserialise)]
 pub struct OpenedFile<'a> {
     pub file_type: TotkFileType,
     pub path: Pathlib,
@@ -284,9 +285,17 @@ impl<'a> OpenedFile<'_> {
             tag: None,
         }
     }
-}
 
-impl<'a> OpenedFile<'_> {
+    pub fn reset(&mut self) {
+        self.file_type = TotkFileType::None;
+        self.path = Pathlib::new("".to_string());
+        self.byml = None;
+        self.endian = None;
+        self.msyt = None;
+        self.aamp = None;
+        self.tag = None;
+    }
+
     pub fn get_endian_label(&self) -> String {
         match self.endian {
             Some(endian) => match endian {
@@ -301,6 +310,47 @@ impl<'a> OpenedFile<'_> {
                 return "".to_string();
             }
         }
+    }
+
+    pub fn open(&mut self, file_path: &str, zstd: Arc<TotkZstd>) ->String {
+        let mut res = String::new();
+        let path = Pathlib::new(file_path.to_string());
+        if self.open_tag(&path, zstd.clone()) {
+            if let Some(tag) = &self.tag {
+                return tag.text.to_string();
+            }
+        }
+        res
+    }
+
+    pub fn open_tag(&mut self, path: &Pathlib, zstd: Arc<TotkZstd>) -> bool {
+        if path.name.to_lowercase().starts_with("tag.product") {
+            let tag = TagProduct::new(path.full_path.clone(), zstd.clone());
+            match tag {
+                Ok(mut tag) => {
+                    match tag.parse() {
+                        Ok(_) => {
+                            println!("Tag parsed!");
+                        }
+                        Err(err) => {
+                            eprintln!("Error parsing tag! {:?}", err);
+                            return false;
+                        }
+                    }
+                    self.reset();
+                    //self.tag = Some(tag);
+                    self.file_type = TotkFileType::TagProduct;
+                    self.path = path.clone();
+                    self.endian = Some(roead::Endian::Little);
+                    return true;
+                }
+                Err(err) => {
+                    println!("{:?}", err);
+                    return false;
+                }
+            }
+        }
+        false
     }
 }
 

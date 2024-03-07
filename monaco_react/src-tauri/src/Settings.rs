@@ -4,7 +4,9 @@ use std::io::{Error, ErrorKind,Read, Write,BufWriter};
 use std::io;
 use std::path::PathBuf;
 
-#[derive(Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Pathlib {
     pub parent: String,
     pub name: String,
@@ -26,6 +28,9 @@ impl Pathlib {
             full_path: path,
         }
     }
+
+ 
+
     pub fn get_ext_last(path: &str) -> String {
         let extension = Pathlib::get_extension(&path);
         if !extension.contains(".") {
