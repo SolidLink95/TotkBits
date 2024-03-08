@@ -7,6 +7,7 @@ import MenuBarDisplay from "./MenuBar";
 import ActiveTabDisplay from "./ActiveTab";
 import * as monaco from "monaco-editor";
 import { invoke } from "@tauri-apps/api/tauri";
+import { debounce } from "lodash"; // or any other method/utility to debounce
 
 
 
@@ -20,7 +21,8 @@ function App() {
   const editorContainerRef = useRef(null);
   const editorRef = useRef(null);
   const [editorContent, setEditorContent] = useState("");
-  const [selectedPath, setSelectedPath] = useState('');
+  const [statusText, setStatusText] = useState("");
+  const [selectedPath, setSelectedPath] = useState({path: "", endian: ""});
 
   const sarcPaths = {
     "paths": [
@@ -37,7 +39,15 @@ function App() {
       "folder3/file4.txt",
     ]
   };
-
+  const fetchStatusString = async () => {
+    try {
+      const statusText = await invoke('get_status_text'); // Match the command name
+      setStatusText(statusText ? statusText : "Ready XXX"); // Set the status text (or handle it as needed
+      console.log(statusText);
+  } catch (e) {
+      console.error('Failed to get status text', e);
+  }
+  }
 
   const updateEditorContent = (content) => {
     if (editorRef.current) {
@@ -47,14 +57,16 @@ function App() {
   };
 
 
-  const handleNodeSelect = (path) => {
-    setSelectedPath(path);
-    console.log(`Selected Node Path in App: ${path}`);
+  const handleNodeSelect = (path, endian) => {
+    setSelectedPath({path, endian});
+    console.log(`Selected Node Path in App: ${path} endian: ${endian}`);
     // Here you can use selectedPath for any other logic in App.jsx
   };
 
 
   useEffect(() => {
+    
+    fetchStatusString();
     if (activeTab === BackendEnum.YAML) {
       editorRef.current = monaco.editor.create(editorContainerRef.current, {
         value: "// Type your name here\nconsole.log('Hello, world!')",
@@ -62,16 +74,15 @@ function App() {
         theme: "vs-dark",
       });
 
-      function updateEditorSize() {
+      const debouncedUpdateEditorSize = debounce(function updateEditorSize() {
         const { width, height } = editorContainerRef.current.getBoundingClientRect();
         editorRef.current.layout({ width, height });
-      }
-
-      window.addEventListener("resize", updateEditorSize);
-
+      }, 100); // Adjust debounce timing as needed
+    
+      window.addEventListener("resize", debouncedUpdateEditorSize);
       // Cleanup
       return () => {
-        window.removeEventListener("resize", updateEditorSize);
+        window.removeEventListener("resize", debouncedUpdateEditorSize);
         if (editorRef.current) {
           editorRef.current.dispose();
           editorRef.current = null;
@@ -82,10 +93,6 @@ function App() {
   //Variables
 
   //Functions
-  async function greet() {
-    const name = editorRef.current.getValue();
-    setGreetMsg(await invoke("greet", { name }));
-  }
 
   const sendTextToRust = async () => {
     const editorText = editorRef.current.getValue(); // Get current text from Monaco Editor
@@ -96,14 +103,9 @@ function App() {
       console.error('Failed to send text to Rust backend:', error);
     }
   };
-
-  const updateEditorSize = () => { //make monaco editor scale with the window
-    if (editorContainerRef.current && editorRef.current) {
-      const { width, height } = editorContainerRef.current.getBoundingClientRect();
-      editorRef.current.layout({ width, height });
-    }
+  const statusStyle = {
+    color: statusText.toLowerCase().includes("error") ? 'red' : 'white',
   };
-
 
 
 
@@ -114,7 +116,8 @@ function App() {
       <ButtonsDisplay updateEditorContent={updateEditorContent} />
       {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect}  sarcPaths={sarcPaths} />}
       {activeTab === 'YAML' && <div ref={editorContainerRef} className="code_editor"></div>}
-      <div className="statusbar">Status Bar</div>
+      {/* <div className="statusbar" style={statusStyle}>Current path: "{selectedPath.path} {selectedPath.endian}"</div> */}
+      <div className="statusbar" style={statusStyle}>{statusText}</div>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use tauri::Window;
+use tauri::{App, Window};
+use crate::TotkApp::{TotkBitsApp,get_status_text};
 mod file_format;
-mod App;
+mod TotkApp;
 mod Zstd;
 mod Settings;
 mod TotkConfig;
@@ -31,8 +32,12 @@ fn send_text_to_frontend() -> String {
 }
 
 fn main() {
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![receive_text_from_editor, send_text_to_frontend])
+    //let app = TotkBitsApp::default();
+    tauri::Builder::default().manage(TotkBitsApp::default())
+        .invoke_handler(tauri::generate_handler![receive_text_from_editor, 
+            send_text_to_frontend,
+            get_status_text,
+            ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
