@@ -1,4 +1,5 @@
 
+import { listen } from '@tauri-apps/api/event';
 import { invoke } from "@tauri-apps/api/tauri";
 import { debounce } from "lodash"; // or any other method/utility to debounce
 import * as monaco from "monaco-editor";
@@ -15,34 +16,50 @@ function App() {
   const BackendEnum = {
     SARC: 'SARC',
     YAML: 'YAML',
-    Options: 'Options',
+    RSTB: 'RSTB',
   };
   const [activeTab, setActiveTab] = useState('SARC'); // Adjust this initial value as needed
   const editorContainerRef = useRef(null);
   const activetabRef = useRef(null);
   const editorRef = useRef(null);
-  const [statusText, setStatusText] = useState("");
+  const [statusText, setStatusText] = useState("Ready");
   const [selectedPath, setSelectedPath] = useState({ path: "", endian: "" });
-  const [labelTextDisplay, setLabelTextDisplay] = useState('');
-  const [text, setText] = useState('');
+  const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '' });
+  const [paths, setpaths] = useState({paths: [], added_paths: [], modded_paths: []});
   const [editorValue, setEditorValue] = useState('');
+  const [openedData, setOpenedData] = useState(null);
 
 
-  const sarcPaths = {
-    "paths": [
-      "folder1/subfolder1/file1.txt",
-      "folder1/subfolder1/file11.txt",
-      "folder1/subfolder2/file2.txt",
-      "folder2/subfolder1/file3.txt",
-      "folder3/file4.txt",
-    ],
-    "added_paths": [
-      "folder1/subfolder1/file11.txt",
-    ],
-    "modded_paths": [
-      "folder3/file4.txt",
-    ]
-  };
+  // const sarcPaths = {
+  //   "paths": [
+  //     "folder1/subfolder1/file1.txt",
+  //     "folder1/subfolder1/file11.txt",
+  //     "folder1/subfolder2/file2.txt",
+  //     "folder2/subfolder1/file3.txt",
+  //     "folder3/file4.txt",
+  //   ],
+  //   "added_paths": [
+  //     "folder1/subfolder1/file11.txt",
+  //   ],
+  //   "modded_paths": [
+  //     "folder3/file4.txt",
+  //   ]
+  // };
+
+  useEffect(() => {
+    const unlisten = listen('opened_data_from_backend', (event) => {
+      console.log('Received user info from backend:', event.payload);
+      setOpenedData(event.payload);
+      updateEditorContent(openedData.text);
+      setStatusText(openedData.status_text);
+    });
+
+    return () => {
+      unlisten.then((unlistenFn) => unlistenFn());
+    };
+  }, []);
+
+
   const fetchStatusString = async () => {
     try {
       const statusText = await invoke('get_status_text'); // Match the command name
@@ -77,6 +94,7 @@ function App() {
         value: editorValue,
         language: "yaml",
         theme: "vs-dark",
+        wordWrap: 'on', // Enable word wrapping
       });
     }
 
@@ -136,10 +154,10 @@ function App() {
   return (
     <div>
       <MenuBarDisplay />
-      <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} setLabelTextDisplay={setLabelTextDisplay} />
-      <ButtonsDisplay updateEditorContent={updateEditorContent} fetchStatusString={fetchStatusString} />
-      {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={sarcPaths} />}
-      <div ref={editorContainerRef} className="code_editor" style={{ height: '100%', display: activeTab === 'YAML' ? "block" : "none" }}></div>
+      <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
+      <ButtonsDisplay updateEditorContent={updateEditorContent} setStatusText={setStatusText} setActiveTab={setActiveTab} setLabelTextDisplay={setLabelTextDisplay} setpaths={setpaths} />
+      {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} />}
+      <div ref={editorContainerRef} className="code_editor" style={{  display: activeTab === 'YAML' ? "block" : "none" }}></div>
       {/* <div className="statusbar" style={statusStyle}>Current path: "{selectedPath.path} {selectedPath.endian}"</div> */}
       <div className="statusbar" style={statusStyle}>{statusText}</div>
     </div>

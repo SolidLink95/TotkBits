@@ -201,7 +201,7 @@ button {
   right: 0;
   text-align: left;
   margin-top: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) + 40px);
-  margin-bottom: 20px;
+  margin-bottom: 35px;
   font-family: "codicon";
   /* margin-left: 2px;
   margin-right: 2px; */

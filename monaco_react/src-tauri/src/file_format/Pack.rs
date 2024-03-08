@@ -1,5 +1,6 @@
 use roead;
 use roead::sarc::{Sarc, SarcWriter};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -11,7 +12,7 @@ use std::sync::Arc;
 use crate::file_format::BinTextFile::FileData;
 use crate::Settings::Pathlib;
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{is_sarc, TotkFileType, TotkZstd, sha256};
+use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
 
 pub struct PackComparer<'a> {
     pub opened: Option<PackFile<'a>>,
@@ -23,18 +24,38 @@ pub struct PackComparer<'a> {
 }
 
 impl<'a> PackComparer<'a> {
-    pub fn from_pack(pack: PackFile<'a>, zstd: Arc<TotkZstd<'a>>) -> Self {
+    pub fn from_pack(pack: PackFile<'a>, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         let config = zstd.clone().totk_config.clone();
         let vanila = PackComparer::get_vanila_sarc(&pack.path, zstd.clone());
         //let vanila_path = config.get_pack_path_from_sarc(pack);
-        Self {
+        let mut pack = Self {
             opened: Some(pack),
             vanila: vanila,
             totk_config: config,
             zstd: zstd.clone(),
             added: HashMap::default(),
             modded: HashMap::default(),
+        };
+        pack.compare_and_reload();
+        Some(pack)
+    }
+
+    pub fn get_sarc_paths(self) -> SarcPaths {
+        let mut paths = SarcPaths::default();
+        if let Some(opened) = &self.opened {
+            for file in opened.sarc.files() {
+                if let Some(name) = file.name {
+                    paths.paths.push(name.to_string());
+                }
+            }
+            for (_, path) in self.added.iter() {
+                paths.added_paths.push(path.to_string());
+            }
+            for (_, path) in self.modded.iter() {
+                paths.modded_paths.push(path.to_string());
+            }
         }
+        paths
     }
 
     pub fn compare_and_reload(&mut self) {
@@ -93,9 +114,13 @@ impl<'a> PackComparer<'a> {
     }
     pub fn get_vanila_sarc(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
         let pack = PackComparer::get_vanila_pack(path, zstd.clone());
-        if pack.is_some() {return Some(pack.unwrap());}
+        if pack.is_some() {
+            return Some(pack.unwrap());
+        }
         let mals = PackComparer::get_vanila_mals(path, zstd.clone());
-        if mals.is_some() {return Some(mals.unwrap());}
+        if mals.is_some() {
+            return Some(mals.unwrap());
+        }
         None
     }
 
@@ -151,7 +176,7 @@ impl<'a> PackFile<'_> {
         })
     }
 
-    pub fn rename(&mut self, old_name: &str, new_name: &str) -> io::Result<()>{
+    pub fn rename(&mut self, old_name: &str, new_name: &str) -> io::Result<()> {
         let some_data = self.writer.get_file(old_name);
         match some_data {
             Some(data) => {
@@ -160,7 +185,7 @@ impl<'a> PackFile<'_> {
                 self.writer.remove_file(old_name);
                 self.reload();
                 self.self_populate_hashes();
-            },
+            }
             None => {
                 let e = format!("File {} absent in sarc {}", &old_name, &self.path.full_path);
                 return Err(io::Error::new(io::ErrorKind::InvalidInput, e));
@@ -231,6 +256,12 @@ impl<'a> PackFile<'_> {
         let mut file_data: FileData = FileData::new();
         file_data.file_type = TotkFileType::Sarc;
         f_handle.read_to_end(&mut buffer)?;
+        
+        if buffer.starts_with(b"Yaz0") {
+            if let Ok(dec_data) =  roead::yaz0::decompress(&buffer) {
+                buffer = dec_data;
+            }
+        }
         if is_sarc(&buffer) {
             //buffer.as_slice().starts_with(b"SARC") {
             file_data.data = buffer;
@@ -261,15 +292,6 @@ impl<'a> PackFile<'_> {
                 }
             }
         }
-        if file_data.data.starts_with(b"Yaz0") {
-            match roead::yaz0::decompress(&file_data.data) {
-                Ok(dec_data) => {
-                    file_data.data = dec_data;
-                    return Ok(file_data);
-                }
-                Err(_) => {}
-            }
-        }
         if is_sarc(&file_data.data) {
             return Ok(file_data);
         }
@@ -280,6 +302,18 @@ impl<'a> PackFile<'_> {
     }
 }
 
-struct opened_file {
-    file_path: String,
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SarcPaths {
+    pub paths: Vec<String>,
+    pub added_paths: Vec<String>,
+    pub modded_paths: Vec<String>,
+}
+impl Default for SarcPaths {
+    fn default() -> Self {
+        Self {
+            paths: Vec::new(),
+            added_paths: Vec::new(),
+            modded_paths: Vec::new(),
+        }
+    }
 }

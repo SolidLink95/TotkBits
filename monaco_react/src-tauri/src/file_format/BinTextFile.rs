@@ -162,6 +162,11 @@ impl<'a> BymlFile<'_> {
         f_handle.read_to_end(&mut buffer)?;
         //let mut returned_result: Vec<u8> = Vec::new();
         let mut data = FileData::new();
+        if buffer.starts_with(b"Yaz0") {
+            if let Ok(dec_data) =  roead::yaz0::decompress(&buffer) {
+                buffer = dec_data;
+            }
+        }
         if is_byml(&buffer) {
             //regular byml file,
             data.data = buffer;
@@ -201,14 +206,6 @@ impl<'a> BymlFile<'_> {
                     data.file_type = TotkFileType::Other;
                 }
                 Err(_err) => {}
-            }
-        }
-        if data.data.starts_with(b"Yaz0") {
-            match roead::yaz0::decompress(&data.data) {
-                Ok(dec_data) => {
-                    data.data = dec_data;
-                }
-                Err(_) => {}
             }
         }
         if is_byml(&data.data) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 
 const fontsize = '20px';
 const dirOpened = `dir_opened.png`;
@@ -41,8 +41,9 @@ const ContextMenu = ({ x, y, onClose, actions }) => {
 
 // Helper function to build the tree 
 const buildTree = (paths) => {
+  //console.log(paths);
   const root = {};
-  paths.forEach((path) => {
+  paths.paths.forEach((path) => {
     path.split('/').reduce((acc, name, index, arr) => {
       if (!acc[name]) {
         acc[name] = index === arr.length - 1 ? null : {}; // Null for files, {} for directories
@@ -134,7 +135,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected,
     { label: 'Add', method: () => console.log(`Add clicked on ${fullPath}`) },
     { label: 'Remove', method: () => console.log(`Remove clicked on ${fullPath}`) },
     { label: 'Rename', method: () => console.log(`Rename clicked on ${fullPath}`) },
-    { label: 'Close', method: () => closeContextMenu()  },
+    { label: 'Close', method: () => closeContextMenu() },
   ];
 
   return (
@@ -183,9 +184,8 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected,
 // Main DirectoryTree component (unchanged)
 //const DirectoryTree = ({ paths, added_paths, modded_paths }) => {
 const DirectoryTree = ({ onNodeSelect, sarcPaths }) => {
-  const tree = buildTree(sarcPaths.paths);
   const [selectedNode, setSelectedNode] = useState("");
- 
+  const tree = buildTree(sarcPaths);
   const handleSelectNode = (fullPath) => {
     setSelectedNode(fullPath, "LE");
     onNodeSelect(fullPath, "LE"); // Directly using destructured prop
@@ -208,8 +208,6 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths }) => {
           path=""
           onContextMenu={handleContextMenu}
           sarcPaths={sarcPaths}
-          //added_paths={added_paths}
-          //modded_paths={modded_paths}
           selected={selectedNode}
           onSelect={handleSelectNode}
         />

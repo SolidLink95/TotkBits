@@ -1,15 +1,34 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 
-const ButtonsDisplay = ({ updateEditorContent, fetchStatusString }) => {
+const ButtonsDisplay = ({ updateEditorContent, setStatusText, setActiveTab, setLabelTextDisplay, setpaths }) => {
+  // const fetchAndSetEditorContent = async () => {
+  //   try {
+  //     const content = await invoke('open_file_struct'); // Use the command name you defined in Rust
+  //     if (content !== 'SARC') {
+  //       updateEditorContent(content); // This line calls the function passed down as a prop
+  //     }
+  //     console.log(content);
+  //   } catch (error) {
+  //     console.error('Failed to fetch editor content from Rust backend:', error);
+  //   }
+  // };
+
   const fetchAndSetEditorContent = async () => {
     try {
-      const content = await invoke('open_file'); // Use the command name you defined in Rust
-      if (content !== 'SARC') {
-        updateEditorContent(content); // This line calls the function passed down as a prop
-      }
-      //fetchStatusString(); // Fetch the status string
-      console.log(content);
+      invoke('open_file_struct').then((content) => {
+        setStatusText(content.status_text);
+        setActiveTab(content.tab);
+        if (content.tab === 'SARC') {
+          setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label}));
+          //setpaths({paths: content.sarc_paths.paths, added_paths: content.sarc_paths.added_paths, modded_paths: content.sarc_paths.modded_paths});
+          setpaths(content.sarc_paths);
+        } else if (content.tab === 'YAML') {
+          updateEditorContent(content.text);
+          setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label}));
+        }
+        console.log('Received user info from backend:', content.file_label);
+      })
     } catch (error) {
       console.error('Failed to fetch editor content from Rust backend:', error);
     }

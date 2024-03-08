@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::sync::Mutex;
 
-use crate::TotkApp::{get_status_text, open_file, TotkBitsApp};
+use crate::TotkApp::{get_status_text, open_file, TotkBitsApp,open_file_struct};
 use tauri::{App, Window};
 mod Settings;
 mod TotkApp;
@@ -42,6 +42,7 @@ fn main() {
             send_text_to_frontend,
             get_status_text,
             open_file,
+            open_file_struct,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

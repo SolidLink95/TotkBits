@@ -1,13 +1,13 @@
 // ActiveTabDisplay.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export const BackendEnum = {
   SARC: 'SARC',
   YAML: 'YAML',
-  Options: 'Options',
+ // RSTB: 'RSTB',
 };
 
-function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay, setLabelTextDisplay }) {
+function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
   const labelTextRef = useRef(null);
   const activetabRef = useRef(null);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -16,18 +16,6 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay, setLabelT
   // const [labelTextDisplay, setLabelTextDisplay] = useState('');
   const [shouldShowLabel, setShouldShowLabel] = useState(true);
 
-  const labelText = () => {
-    switch (activeTab) {
-      case BackendEnum.SARC:
-        return 'SArc';
-      case BackendEnum.YAML:
-        return 'Armor_006_Upper.engine__actor__ActorParam.bgyml';
-      case BackendEnum.Options:
-        return '';
-      default:
-        return '';
-    }
-  }
 
 
 
@@ -38,7 +26,6 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay, setLabelT
   };
   const switchTab = (option) => {
     setActiveTab(option);
-    setLabelTextDisplay(labelText());
   }
 
   // Use useEffect to add event listener on mount and cleanup on unmount
@@ -56,7 +43,6 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay, setLabelT
       }
     };
     // Measure immediately and then add event listener for future resizes
-    setLabelTextDisplay(labelText());
     handleResize();
     window.addEventListener('resize', handleResize);
     // Cleanup the event listener on component unmount
@@ -65,6 +51,16 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay, setLabelT
     };
   }, [activeTab, labelTextDisplay, windowWidth]); // Recalculate when activeTab changes
 
+  const label = (() => {
+    switch (activeTab) {
+      case BackendEnum.SARC:
+        return labelTextDisplay.sarc;
+      case BackendEnum.YAML:
+        return labelTextDisplay.yaml;
+      default:
+        return ''; // Return an empty string for any other case
+    }
+  })();
 
   return (
     <div ref={activetabRef}>
@@ -78,14 +74,14 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay, setLabelT
             {option}
           </label>
         ))}
-          {
-            windowWidth - labelTextWidth >= 300 && (
-              <div className="activetablabel" ref={labelTextRef}>
-                {/* Your label text here */}
-                {labelTextDisplay}
-              </div>
-            )
-          }
+        {
+          windowWidth - labelTextWidth >= 300 && (
+            <div className="activetablabel" ref={labelTextRef}>
+              {/* Your label text here */}
+              {label}
+            </div>
+          )
+        }
       </div>
       {/* Other menu items */}
     </div>
