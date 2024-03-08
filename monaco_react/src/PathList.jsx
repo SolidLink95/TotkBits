@@ -86,10 +86,9 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected,
           : 'transparent'
   };
 
-
   const toggleCollapse = () => {
     setIsCollapsed(!isCollapsed);
-    setContextMenu({ visible: false, x: 0, y: 0 });
+    closeContextMenu();
   };
 
   const handleIconClick = (e) => {
@@ -130,12 +129,12 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected,
     { label: 'Replace', method: () => console.log(`Replace clicked on ${fullPath}`) },
     { label: 'Remove', method: () => console.log(`Remove clicked on ${fullPath}`) },
     { label: 'Rename', method: () => console.log(`Rename clicked on ${fullPath}`) },
-    { label: 'Close', method: () => setContextMenu({ visible: false, x: 0, y: 0 }) },
+    { label: 'Close', method: () => closeContextMenu() },
   ] : [
     { label: 'Add', method: () => console.log(`Add clicked on ${fullPath}`) },
     { label: 'Remove', method: () => console.log(`Remove clicked on ${fullPath}`) },
     { label: 'Rename', method: () => console.log(`Rename clicked on ${fullPath}`) },
-    { label: 'Close', method: () => setContextMenu({ visible: false, x: 0, y: 0 }) },
+    { label: 'Close', method: () => closeContextMenu()  },
   ];
 
   return (

@@ -41,21 +41,26 @@ pub struct TagProduct<'a> {
 }
 
 impl<'a> TagProduct<'a> {
-    pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
-        let byml = BymlFile::new(path, zstd)?;
-        Ok(Self {
-            byml: byml,
-            path_list: Vec::new(),
-            tag_list: Vec::new(),
-            rank_table: roead::byml::Byml::default(),
-            file_name: String::new(),
-            actor_tag_data: BTreeMap::default(),
-            cached_tag_list: Vec::new(),
-            cached_rank_table: String::new(),
-            bit_table_bytes: roead::byml::Byml::default(),
-            text: String::new(),
-            endian: roead::Endian::Little,
-        })
+    pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
+        if let Some(byml) = BymlFile::new(path.clone(), zstd.clone()) {
+            let mut tag_product = TagProduct {
+                byml: byml,
+                path_list: Vec::new(),
+                tag_list: Vec::new(),
+                rank_table: roead::byml::Byml::default(),
+                file_name: String::new(),
+                actor_tag_data: BTreeMap::default(),
+                cached_tag_list: Vec::new(),
+                cached_rank_table: String::new(),
+                bit_table_bytes: roead::byml::Byml::default(),
+                text: String::new(),
+                endian: roead::Endian::Little,
+            };
+            if tag_product.parse().is_ok() {
+                return Some(tag_product);
+            }
+        }
+        None
     }
 
     pub fn save_default(&mut self, text: &str) -> io::Result<()> {
@@ -168,7 +173,7 @@ impl<'a> TagProduct<'a> {
         Ok(raw_data)
     }
 
-    pub fn to_text(&mut self)  {
+    pub fn to_text(&mut self) -> String{
         let _actor_tag_data = &self.actor_tag_data;
         let json_data = TagJsonData {
             PathList: self.actor_tag_data.clone(),
@@ -180,8 +185,7 @@ impl<'a> TagProduct<'a> {
         let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
         json_data.serialize(&mut ser).unwrap();*/
         //let text = String::from_utf8(buf).unwrap_or("{}".to_string());
-        self.text = serde_json::to_string_pretty(&json_data).unwrap_or_else(|_| String::from("{}"));
-
+        serde_json::to_string_pretty(&json_data).unwrap_or(String::from("{}"))
         
     }
 
@@ -292,7 +296,7 @@ impl<'a> TagProduct<'a> {
             /*for b in self.rank_table.as_binary_data().unwrap() {
                 self.cached_rank_table.push_str(&format!("{:02X}", b));
             }*/
-            self.to_text();
+            //self.to_text();
         }
         Ok(())
     }

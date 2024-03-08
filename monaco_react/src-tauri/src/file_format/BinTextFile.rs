@@ -5,11 +5,13 @@ use roead::byml::Byml;
 use std::any::type_name;
 
 use std::fs::OpenOptions;
-use std::io::{Read, Write};
+use std::io::{BufWriter, Read, Write};
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io, panic};
+
+use super::Msbt::MsbtFile;
 
 #[derive(Debug)]
 pub struct FileData {
@@ -41,10 +43,15 @@ pub struct BymlFile<'a> {
 }
 
 impl<'a> BymlFile<'_> {
-    pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> io::Result<BymlFile<'a>> {
-        let data: FileData =
-            BymlFile::byml_data_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
-        return BymlFile::from_binary(data, zstd, path);
+    pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> Option<BymlFile<'a>> {
+        fn inner_func(path: String, zstd: Arc<TotkZstd>) -> io::Result<BymlFile> {
+            let data: FileData = BymlFile::byml_data_to_bytes(&PathBuf::from(path.clone()), &zstd)?;
+            return BymlFile::from_binary(data, zstd, path);
+        }
+        if let Ok(byml) = inner_func(path, zstd.clone()) {
+            return Some(byml);
+        }
+        None
     }
 
     pub fn save(&self, path: String) -> io::Result<()> {
@@ -94,7 +101,7 @@ impl<'a> BymlFile<'_> {
             Ok(ok_pio) => Ok(BymlFile {
                 endian: Some(roead::Endian::Little), //TODO: add Big endian support
                 file_data: FileData::new(),
-                path: Pathlib::new("".to_string()),
+                path: Pathlib::default(),
                 pio: ok_pio,
                 zstd: zstd.clone(),
             }),
@@ -237,7 +244,7 @@ pub struct OpenedFile<'a> {
     pub path: Pathlib,
     pub byml: Option<BymlFile<'a>>,
     pub endian: Option<roead::Endian>,
-    pub msyt: Option<String>,
+    pub msyt: Option<MsbtFile>,
     pub aamp: Option<()>,
     pub tag: Option<TagProduct<'a>>,
 }
@@ -246,7 +253,7 @@ impl Default for OpenedFile<'_> {
     fn default() -> Self {
         Self {
             file_type: TotkFileType::None,
-            path: Pathlib::new("".to_string()),
+            path: Pathlib::default(),
             byml: None,
             endian: None,
             msyt: None,
@@ -261,7 +268,7 @@ impl<'a> OpenedFile<'_> {
         path: String,
         file_type: TotkFileType,
         endian: Option<roead::Endian>,
-        msyt: Option<String>,
+        msyt: Option<MsbtFile>,
     ) -> Self {
         Self {
             file_type: file_type,
@@ -288,7 +295,7 @@ impl<'a> OpenedFile<'_> {
 
     pub fn reset(&mut self) {
         self.file_type = TotkFileType::None;
-        self.path = Pathlib::new("".to_string());
+        self.path = Pathlib::default();
         self.byml = None;
         self.endian = None;
         self.msyt = None;
@@ -327,7 +334,7 @@ impl<'a> OpenedFile<'_> {
         if path.name.to_lowercase().starts_with("tag.product") {
             let tag = TagProduct::new(path.full_path.clone(), zstd.clone());
             match tag {
-                Ok(mut tag) => {
+                Some(mut tag) => {
                     match tag.parse() {
                         Ok(_) => {
                             println!("Tag parsed!");
@@ -344,8 +351,7 @@ impl<'a> OpenedFile<'_> {
                     self.endian = Some(roead::Endian::Little);
                     return true;
                 }
-                Err(err) => {
-                    println!("{:?}", err);
+                None => {
                     return false;
                 }
             }
@@ -356,4 +362,26 @@ impl<'a> OpenedFile<'_> {
 
 fn print_type_of<T>(_: &T) {
     println!("{}", type_name::<T>());
+}
+
+
+pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
+    let file = fs::File::create(path)?;
+    let mut writer = BufWriter::new(file);
+
+    writer.write_all(content.as_bytes())?;
+
+    // The buffer is automatically flushed when writer goes out of scope,
+    // but you can manually flush it if needed.
+    writer.flush()?;
+
+    Ok(())
+}
+
+pub fn read_string_from_file(path: &str) -> io::Result<String> {
+    let mut file = fs::File::open(path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    Ok(contents)
 }

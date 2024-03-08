@@ -1,11 +1,14 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 
-function ButtonsDisplay({ updateEditorContent }) {
+const ButtonsDisplay = ({ updateEditorContent, fetchStatusString }) => {
   const fetchAndSetEditorContent = async () => {
     try {
-      const content = await invoke('send_text_to_frontend'); // Use the command name you defined in Rust
-      updateEditorContent(content); // This line calls the function passed down as a prop
+      const content = await invoke('open_file'); // Use the command name you defined in Rust
+      if (content !== 'SARC') {
+        updateEditorContent(content); // This line calls the function passed down as a prop
+      }
+      //fetchStatusString(); // Fetch the status string
       console.log(content);
     } catch (error) {
       console.error('Failed to fetch editor content from Rust backend:', error);
@@ -39,7 +42,7 @@ function ButtonsDisplay({ updateEditorContent }) {
 
 
   const imageButtonsData = [
-    { src: 'open.png', alt: 'Open', onClick: () => console.log('Open clicked'), title: 'Open (Ctrl+O)' },
+    { src: 'open.png', alt: 'Open', onClick: fetchAndSetEditorContent, title: 'Open (Ctrl+O)' },
     { src: 'save.png', alt: 'Save', onClick: () => console.log('Save clicked'), title: 'Save (Ctrl+S)' },
     { src: 'save_as.png', alt: 'save_as', onClick: () => console.log('save_as clicked'), title: 'Save as' },
     { src: 'edit.png', alt: 'edit', onClick: () => console.log('edit clicked'), title: 'Edit (Ctrl+E)' },
@@ -61,6 +64,6 @@ function ButtonsDisplay({ updateEditorContent }) {
       ))}
     </div>
   );
-}
+};
 
 export default ButtonsDisplay;

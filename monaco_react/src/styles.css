@@ -7,6 +7,11 @@
   --menu-bar-h: 25px;
   --tab-switcher-h: 30px;
   --buttons-h: 30px;
+  
+  -ms-overflow-style: none;  /* Internet Explorer and Edge */
+  scrollbar-width: none;  /* Firefox */
+  white-space: nowrap;
+  overflow: auto; /* or 'hidden' if you do not want a scrollbar */
 
   color: #0f0f0f;
   background-color: #f6f6f6;
@@ -61,6 +66,7 @@ h1 {
 .activetab {
   margin-left: -20px;
   margin-right: -8px;
+  padding-left: 15px;
   display: flex;
   justify-content: flex-start;
   align-items: center; /* Centered vertically */
@@ -68,12 +74,14 @@ h1 {
   margin-top: var(--menu-bar-h);
   /* font-family: 'Nunito', sans-serif; Make sure to include the font in your project */
   background-color: #0f0f0f;
+  white-space: nowrap;
+  overflow: hidden; /* or 'hidden' if you do not want a scrollbar */
 }
 
 .activetab label {
   padding: 4px 10px; /* Adjust padding to suit your design */
-  margin: 10px; /* Space between labels */
-  margin-left: 20px; /* Space between labels */
+  margin: 5px; /* Space between labels */
+  /* margin-left: 20px; Space between labels */
   border: 1px solid transparent; /* Transparent border to maintain size on hover */
   border-radius: 4px; /* Slightly rounded corners for the labels */
   background-color: #3D437E; /* Inactive background color */
@@ -95,6 +103,11 @@ h1 {
   border-color: #007bff; /* Active border color to match the background */
 }
 
+.activetablabel {
+  margin-left: auto; /* Push the element to the right */
+  padding-right: 5px;
+  /* width: 100%; */
+}
 .pathlist {
   margin-left: -5px;
   display: flex; /* Align children (buttons) in a row */
@@ -187,7 +200,7 @@ button {
   left: 0;
   right: 0;
   text-align: left;
-  margin-top: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) + 45px);
+  margin-top: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) + 40px);
   margin-bottom: 20px;
   font-family: "codicon";
   /* margin-left: 2px;

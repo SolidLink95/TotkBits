@@ -1,7 +1,7 @@
-use std::path::Path;
 use std::fs;
-use std::io::{Error, ErrorKind,Read, Write,BufWriter};
 use std::io;
+use std::io::{BufWriter, Error, ErrorKind, Read, Write};
+use std::path::Path;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,12 @@ pub struct Pathlib {
     pub full_path: String,
 }
 
+impl Default for Pathlib {
+    fn default() -> Self {
+        Self::new("".to_string())
+    }
+}
+
 impl Pathlib {
     pub fn new(path: String) -> Self {
         let _p = Path::new(&path);
@@ -28,8 +34,6 @@ impl Pathlib {
             full_path: path,
         }
     }
-
- 
 
     pub fn get_ext_last(path: &str) -> String {
         let extension = Pathlib::get_extension(&path);
@@ -87,7 +91,6 @@ impl Pathlib {
     }
 }
 
-
 pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
     let file = fs::File::create(path)?;
     let mut writer = BufWriter::new(file);
@@ -112,6 +115,9 @@ pub fn read_string_from_file(path: &str) -> io::Result<String> {
 pub fn check_file_exists(path: &PathBuf) -> std::io::Result<()> {
     match fs::metadata(&path) {
         Ok(_) => Ok(()),
-        Err(_) => Err(Error::new(ErrorKind::NotFound, format!("File {:?} does not exist", path))),
+        Err(_) => Err(Error::new(
+            ErrorKind::NotFound,
+            format!("File {:?} does not exist", path),
+        )),
     }
 }
