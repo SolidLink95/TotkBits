@@ -7,6 +7,7 @@ use tauri::{App, Window};
 mod Settings;
 mod TotkApp;
 mod TotkConfig;
+mod Open_and_Save;
 mod Zstd;
 mod file_format;
 

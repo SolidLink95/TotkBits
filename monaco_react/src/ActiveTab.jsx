@@ -75,7 +75,7 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
           </label>
         ))}
         {
-          windowWidth - labelTextWidth >= 300 && (
+          windowWidth - labelTextWidth >= 140 && (
             <div className="activetablabel" ref={labelTextRef}>
               {/* Your label text here */}
               {label}

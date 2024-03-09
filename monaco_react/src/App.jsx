@@ -146,7 +146,8 @@ function App() {
     }
   };
   const statusStyle = {
-    color: statusText.toLowerCase().includes("error") ? 'red' : 'white',
+    color: statusText.toLowerCase().includes("error") ? 'red' : 
+      statusText.toLowerCase().includes('warning') ? 'yellow' : 'white',
   };
 
 

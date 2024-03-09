@@ -1,6 +1,8 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 
+const button_size = '33px';
+
 const ButtonsDisplay = ({ updateEditorContent, setStatusText, setActiveTab, setLabelTextDisplay, setpaths }) => {
   // const fetchAndSetEditorContent = async () => {
   //   try {
@@ -45,8 +47,8 @@ const ButtonsDisplay = ({ updateEditorContent, setStatusText, setActiveTab, setL
           backgroundImage: `url(${src})`,
           backgroundSize: 'cover', // Cover the entire area of the button
           backgroundPosition: 'center', // Center the background image
-          width: '40px', // Define your desired width
-          height: '40px', // Define your desired height 
+          width: button_size, // Define your desired width
+          height: button_size, // Define your desired height 
           display: 'flex', // Ensure the button content (if any) is centered
           justifyContent: 'left', // Center horizontally
           alignItems: 'left', // Center vertically
@@ -71,8 +73,8 @@ const ButtonsDisplay = ({ updateEditorContent, setStatusText, setActiveTab, setL
     //{ src: 'zoomout.png', alt: 'zoomout', onClick: () => console.log('zoomout clicked') },
     { src: 'lupa.png', alt: 'find', onClick: () => console.log('find clicked'), title: 'Find (Ctrl+F)' },
     { src: 'replace.png', alt: 'replace', onClick: () => console.log('replace clicked'), title: 'Replace (Ctrl+H)' },
-    { src: 'add.png', alt: 'TEST1', onClick: fetchAndSetEditorContent, title: 'send some example string to monace' },
-    { src: 'add.png', alt: 'TEST2', onClick: () => console.log('TEST2'), title: 'TEST2' },
+    // { src: 'add.png', alt: 'TEST1', onClick: fetchAndSetEditorContent, title: 'send some example string to monace' },
+    // { src: 'add.png', alt: 'TEST2', onClick: () => console.log('TEST2'), title: 'TEST2' },
   ];
 
 

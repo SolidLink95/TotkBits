@@ -192,9 +192,9 @@ button {
   }
 }
 
-.code_editor {
+/* .code_editor {
   position: absolute;
-  /* Position relative to the body or nearest positioned ancestor */
+  /* Position relative to the body or nearest positioned ancestor 
   top: 0;
   bottom: 0;
   left: 0;
@@ -204,8 +204,8 @@ button {
   margin-bottom: 35px;
   font-family: "codicon";
   /* margin-left: 2px;
-  margin-right: 2px; */
-}
+  margin-right: 2px; 
+} */
 
 .full-height-backup {
   position: absolute;

@@ -1,10 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 
-const fontsize = '20px';
+const fontsize = '15px';
 const dirOpened = `dir_opened.png`;
 const dirClosed = `dir_closed.png`;
 const fileIcon = `file.png`;
-const iconSize = '28px'; // Define the constant variable
+const iconSize = '20px'; // Define the constant variable
 
 
 
@@ -81,9 +81,9 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected,
     backgroundColor: isSelected && isFile
       ? 'darkgray' // Darker background for selected node
       : sarcPaths.added_paths.includes(fullPath)
-        ? '#826C00'
+        ? 'purple'
         : sarcPaths.modded_paths.includes(fullPath)
-          ? 'purple'
+          ? '#826C00'
           : 'transparent'
   };
 
@@ -199,7 +199,7 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths }) => {
 
 
   return (
-    <ul className="directory-tree" style={{ listStyleType: 'none' }}>
+    <ul className="directory-tree" style={{ listStyleType: 'none', fontSize: fontsize }}>
       {Object.entries(tree).map(([key, value]) => (
         <DirectoryNode
           key={key}

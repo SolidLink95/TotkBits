@@ -4,20 +4,20 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{fs, io, panic};
 
+use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
+use crate::file_format::Msbt::MsbtFile;
+use crate::file_format::Pack::{self, PackComparer, PackFile, SarcPaths};
+use crate::file_format::TagProduct::TagProduct;
+use crate::Open_and_Save::{open_aamp, open_byml, open_msbt, open_sarc, open_tag, open_text};
+use crate::Settings::{read_string_from_file, Pathlib};
+use crate::TotkConfig::TotkConfig;
+use crate::Zstd::{TotkFileType, TotkZstd};
 use msbt::Msbt;
 use msyt::converter::MsytFile;
 use rfd::FileDialog;
 use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
 use tauri::{window, Manager};
-
-use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
-use crate::file_format::Msbt::MsbtFile;
-use crate::file_format::Pack::{self, PackComparer, PackFile, SarcPaths};
-use crate::file_format::TagProduct::TagProduct;
-use crate::Settings::{read_string_from_file, Pathlib};
-use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{TotkFileType, TotkZstd};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum ActiveTab {
@@ -65,109 +65,31 @@ impl<'a> TotkBitsApp<'a> {
         {
             let file_name = file.to_string_lossy().to_string().replace("\\", "/");
             if check_if_filepath_valid(&file_name) {
-                println!("Is {} a sarc?", &file_name);
-                let sarc = PackFile::new(file_name.clone(), self.zstd.clone());
-                if sarc.is_ok() {
-                    println!("{} is a sarc", &file_name);
-                    let s = sarc.as_ref().unwrap();
-                    let endian = s.endian.clone();
-                    self.pack = PackComparer::from_pack(sarc.unwrap(), self.zstd.clone());
-                    data.get_sarc_paths(self.pack.as_ref().unwrap());
-                    data.status_text = format!("Opened {}", &file_name);
+                if let Some((pack, data)) = open_sarc(file_name.clone(), self.zstd.clone()) {
+                    self.pack = Some(pack);
                     self.internal_file = None;
-                    data.path = Pathlib::new(file_name.clone());
-                    data.text = "SARC".to_string();
-                    data.tab = "SARC".to_string();
-                    data.get_file_label(TotkFileType::Sarc, Some(endian));
                     return Some(data);
-                }
-                println!("Is {} a tag?", &file_name);
-                if Pathlib::new(file_name.clone())
-                    .name
-                    .to_lowercase()
-                    .starts_with("tag.product")
-                {
-                    println!("{} is a tag", &file_name);
-                    self.opened_file.tag = TagProduct::new(file_name.clone(), self.zstd.clone());
-                    if let Some(tag) = &mut self.opened_file.tag {
-                        self.internal_file = None; //opened tag occupies yaml editor, thus pushes back the internal file if it exists
-                        self.opened_file.path = Pathlib::new(file_name.clone());
-                        self.opened_file.endian = Some(roead::Endian::Little);
-                        self.opened_file.file_type = TotkFileType::TagProduct;
-                        //set others to None, just to be sure
-                        self.opened_file.msyt = None;
-                        self.opened_file.byml = None;
-                        self.opened_file.aamp = None;
-                        data.status_text = format!("Opened {}", &file_name);
-                        data.path = Pathlib::new(file_name.clone());
-                        data.text = tag.to_text();
-                        data.get_file_label(TotkFileType::TagProduct, Some(roead::Endian::Little));
-                        return Some(data);
-                    }
                 }
 
-                println!("Is {} a byml?", &file_name);
-                self.opened_file.byml = BymlFile::new(file_name.clone(), self.zstd.clone());
-                if self.opened_file.byml.is_some() {
-                    let b = self.opened_file.byml.as_ref().unwrap();
-                    println!("{} is a byml", &file_name);
-                    self.internal_file = None; //opened byml occupies yaml editor, thus pushes back the internal file if it exists
-                    self.opened_file.path = Pathlib::new(file_name.clone());
-                    self.opened_file.endian = self.opened_file.byml.as_ref().unwrap().endian;
-                    self.opened_file.file_type = b.file_data.file_type.clone();
-                    //set others to None, just to be sure
-                    self.opened_file.msyt = None;
-                    self.opened_file.tag = None;
-                    self.opened_file.aamp = None;
-                    data.status_text = format!("Opened {}", &file_name);
-                    data.path = Pathlib::new(file_name.clone());
-                    data.text = Byml::to_text(&b.pio);
-                    data.get_file_label(
-                        b.file_data.file_type,
-                        b.endian,
-                    );
-                    return Some(data);
+                let res = open_tag(file_name.clone(), self.zstd.clone())
+                    .or_else(|| open_byml(file_name.clone(), self.zstd.clone()))
+                    .or_else(|| open_msbt(file_name.clone()))
+                    .or_else(|| open_text(file_name.clone()))
+                    .or_else(|| open_aamp(file_name.clone()))
+                    .map(|(opened_file, data)| {
+                        self.opened_file = opened_file;
+                        self.internal_file = None;
+                        data
+                    });
+                if res.is_some() {
+                    return res;
                 }
-                println!("Is {} a msbt?", &file_name);
-                self.opened_file.msyt = MsbtFile::from_filepath(&file_name);
-                if self.opened_file.msyt.is_some() {
-                    let m = self.opened_file.msyt.as_ref().unwrap();
-                    println!("{} is a msbt", &file_name);
-                    self.internal_file = None; //opened byml occupies yaml editor, thus pushes back the internal file if it exists
-                                               //opened file
-                    self.opened_file.path = Pathlib::new(file_name.clone());
-                    self.opened_file.endian = Some(m.endian);
-                    self.opened_file.file_type = TotkFileType::Msbt;
-                    //set others to None, just to be sure
-                    self.opened_file.byml = None;
-                    self.opened_file.tag = None;
-                    self.opened_file.aamp = None;
-                    data.status_text = format!("Opened {}", &file_name);
-                    data.path = Pathlib::new(file_name.clone());
-                    data.text = m.text.clone();
-                    data.get_file_label(self.opened_file.file_type, Some(m.endian));
-                    return Some(data);
-                }
-                println!("Is {} regular text file?", &file_name);
-                let mut file = fs::File::open(&file_name).ok()?;
-                let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer).ok()?;
-                if let Ok(text) = String::from_utf8(buffer) {
-                    println!("{} is a text file", &file_name);
-                    self.internal_file = None; //opened text file occupies yaml editor, thus pushes back the internal file if it exists
-                    data.status_text = format!("Opened {}", &file_name);
-                    data.path = Pathlib::new(file_name.clone());
-                    data.text = text;
-                    data.get_file_label(TotkFileType::Text, None);
-                    return Some(data);
-                }
-                println!("Is {} an aamp?", &file_name);
-                //placeholder for aamp
+
             }
             data.status_text = format!("Error: Failed to open {}", &file_name);
         }
 
-        None
+        Some(data)
     }
 }
 
@@ -275,7 +197,7 @@ impl SendData {
             }
             self.sarc_paths
                 .paths
-                .sort_by_key(|s| (s.to_lowercase(), s.clone()));
+                .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
             for (path, _) in pack.added.iter() {
                 self.sarc_paths.added_paths.push(path.into());
             }
@@ -324,3 +246,55 @@ pub fn open_file_struct(app_handle: tauri::AppHandle, window: tauri::Window) -> 
     }
     None
 }
+
+// // Additional functions for any other file types...
+
+// impl YourStruct {
+//     pub fn open(&mut self) -> Option<SendData> {
+//         if let Some(file) = FileDialog::new()
+//             .set_title("Choose file to open")
+//             .pick_file()
+//         {
+//             let file_name = file.to_string_lossy().to_string().replace("\\", "/");
+//             if !check_if_filepath_valid(&file_name) {
+//                 return Some(SendData {
+//                     status_text: format!("Error: Failed to open {}", &file_name),
+//                     ..SendData::default()
+//                 });
+//             }
+
+//             println!("Opening {}", &file_name);
+
+//             if let Some(data) = open_sarc(file_name.clone(), self.zstd) {
+//                 return Some(data);
+//             }
+
+//             if let Some(data) = open_tag(file_name.clone(), self.zstd) {
+//                 return Some(data);
+//             }
+
+//             if let Some(data) = open_byml(file_name.clone(), self.zstd) {
+//                 return Some(data);
+//             }
+
+//             if let Some(data) = open_msbt(file_name.clone()) {
+//                 return Some(data);
+//             }
+
+//             if let Some(data) = open_text(file_name.clone()) {
+//                 return Some(data);
+//             }
+
+//             // Additional checks for other file types...
+
+//             println!("Error: File type not recognized for {}", &file_name);
+//             Some(SendData {
+//                 status_text: format!("Error: Failed to open {}", &file_name),
+//                 ..SendData::default()
+//             })
+//         } else {
+//             println!("No file selected");
+//             None
+//         }
+//     }
+// }

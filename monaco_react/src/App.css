@@ -1,12 +1,25 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
+:root {
+  --main-top-offset: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) + 30px);
 }
 
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
+.code_editor {
+  position: absolute;
+  /* Position relative to the body or nearest positioned ancestor */
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  text-align: left;
+  margin-top: var(--main-top-offset);
+  margin-bottom: 35px;
+  font-family: "codicon";
+  /* margin-left: 2px;
+  margin-right: 2px; */
 }
+
+
 .directory-tree {
-  font-size: 20px;
+  /* font-size: 20px; */
   background-color: #1E1E1E;
   position: absolute;
   padding-top: 10px;
@@ -15,7 +28,7 @@
   left: 0;
   right: 0;
   text-align: left;
-  margin-top: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) + 40px);
+  margin-top: var(--main-top-offset);
   margin-bottom: 35px;
   margin-left: 0px;
   padding-left: 15px;
