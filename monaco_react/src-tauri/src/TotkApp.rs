@@ -1,23 +1,15 @@
 use std::io::Read;
-use std::panic::AssertUnwindSafe;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
-use std::{fs, io, panic};
-
+use std::sync::Arc;
+use std::{fs, io};
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
-use crate::file_format::Msbt::MsbtFile;
-use crate::file_format::Pack::{self, PackComparer, PackFile, SarcPaths};
-use crate::file_format::TagProduct::TagProduct;
+use crate::file_format::Pack::{PackComparer, PackFile, SarcPaths};
 use crate::Open_and_Save::{open_aamp, open_byml, open_msbt, open_sarc, open_tag, open_text};
-use crate::Settings::{read_string_from_file, Pathlib};
+use crate::Settings::Pathlib;
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{TotkFileType, TotkZstd};
-use msbt::Msbt;
-use msyt::converter::MsytFile;
 use rfd::FileDialog;
-use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
-use tauri::{window, Manager};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum ActiveTab {
@@ -74,8 +66,8 @@ impl<'a> TotkBitsApp<'a> {
                 let res = open_tag(file_name.clone(), self.zstd.clone())
                     .or_else(|| open_byml(file_name.clone(), self.zstd.clone()))
                     .or_else(|| open_msbt(file_name.clone()))
-                    .or_else(|| open_text(file_name.clone()))
                     .or_else(|| open_aamp(file_name.clone()))
+                    .or_else(|| open_text(file_name.clone()))
                     .map(|(opened_file, data)| {
                         self.opened_file = opened_file;
                         self.internal_file = None;
@@ -84,8 +76,8 @@ impl<'a> TotkBitsApp<'a> {
                 if res.is_some() {
                     return res;
                 }
-
             }
+            data.tab = "ERROR".to_string();
             data.status_text = format!("Error: Failed to open {}", &file_name);
         }
 
@@ -209,92 +201,3 @@ impl SendData {
     }
 }
 
-//tauri commands
-
-#[tauri::command]
-pub fn get_status_text(app: tauri::State<'_, TotkBitsApp>) -> String {
-    let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        app.inner().send_status_text();
-    }));
-    if result.is_err() {
-        return "Error".to_string();
-    }
-    app.status_text.clone()
-}
-
-#[tauri::command]
-pub fn open_file(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
-    // Lock the mutex to get mutable access to your state
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-
-    match app.open() {
-        Some(result) => Ok(Some(result.text)), // Safely return the result if present
-        None => Ok(None),                      // Return None if no result
-    }
-}
-
-#[tauri::command]
-pub fn open_file_struct(app_handle: tauri::AppHandle, window: tauri::Window) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.open() {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
-}
-
-// // Additional functions for any other file types...
-
-// impl YourStruct {
-//     pub fn open(&mut self) -> Option<SendData> {
-//         if let Some(file) = FileDialog::new()
-//             .set_title("Choose file to open")
-//             .pick_file()
-//         {
-//             let file_name = file.to_string_lossy().to_string().replace("\\", "/");
-//             if !check_if_filepath_valid(&file_name) {
-//                 return Some(SendData {
-//                     status_text: format!("Error: Failed to open {}", &file_name),
-//                     ..SendData::default()
-//                 });
-//             }
-
-//             println!("Opening {}", &file_name);
-
-//             if let Some(data) = open_sarc(file_name.clone(), self.zstd) {
-//                 return Some(data);
-//             }
-
-//             if let Some(data) = open_tag(file_name.clone(), self.zstd) {
-//                 return Some(data);
-//             }
-
-//             if let Some(data) = open_byml(file_name.clone(), self.zstd) {
-//                 return Some(data);
-//             }
-
-//             if let Some(data) = open_msbt(file_name.clone()) {
-//                 return Some(data);
-//             }
-
-//             if let Some(data) = open_text(file_name.clone()) {
-//                 return Some(data);
-//             }
-
-//             // Additional checks for other file types...
-
-//             println!("Error: File type not recognized for {}", &file_name);
-//             Some(SendData {
-//                 status_text: format!("Error: Failed to open {}", &file_name),
-//                 ..SendData::default()
-//             })
-//         } else {
-//             println!("No file selected");
-//             None
-//         }
-//     }
-// }

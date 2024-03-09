@@ -48,7 +48,7 @@ function App() {
 
   useEffect(() => {
     const unlisten = listen('opened_data_from_backend', (event) => {
-      console.log('Received user info from backend:', event.payload);
+      //console.log('Received user info from backend:', event.payload);
       setOpenedData(event.payload);
       updateEditorContent(openedData.text);
       setStatusText(openedData.status_text);
@@ -64,7 +64,7 @@ function App() {
     try {
       const statusText = await invoke('get_status_text'); // Match the command name
       setStatusText(statusText ||"Ready XXX"); // Set the status text (or handle it as needed
-      console.log(statusText);
+      //console.log(statusText);
     } catch (e) {
       console.error('Failed to get status text', e);
     }
@@ -74,7 +74,7 @@ function App() {
     //setText(content);
     if (editorRef.current) {
       editorRef.current.setValue(content);
-      console.log(content);
+      //console.log(content);
     } 
   };
 

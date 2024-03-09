@@ -2,14 +2,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::sync::Mutex;
 
-use crate::TotkApp::{get_status_text, open_file, TotkBitsApp,open_file_struct};
 use tauri::{App, Window};
+mod TauriCommands;
 mod Settings;
 mod TotkApp;
 mod TotkConfig;
 mod Open_and_Save;
 mod Zstd;
 mod file_format;
+use crate::TotkApp::TotkBitsApp;
+use crate::TauriCommands::{get_status_text, open_file,open_file_struct,exit_app};
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
@@ -44,6 +46,7 @@ fn main() {
             get_status_text,
             open_file,
             open_file_struct,
+            exit_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

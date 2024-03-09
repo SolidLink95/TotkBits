@@ -1,41 +1,14 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import {fetchAndSetEditorContent } from './ButtonClicks';
 
 const button_size = '33px';
 
 const ButtonsDisplay = ({ updateEditorContent, setStatusText, setActiveTab, setLabelTextDisplay, setpaths }) => {
-  // const fetchAndSetEditorContent = async () => {
-  //   try {
-  //     const content = await invoke('open_file_struct'); // Use the command name you defined in Rust
-  //     if (content !== 'SARC') {
-  //       updateEditorContent(content); // This line calls the function passed down as a prop
-  //     }
-  //     console.log(content);
-  //   } catch (error) {
-  //     console.error('Failed to fetch editor content from Rust backend:', error);
-  //   }
-  // };
 
-  const fetchAndSetEditorContent = async () => {
-    try {
-      invoke('open_file_struct').then((content) => {
-        setStatusText(content.status_text);
-        setActiveTab(content.tab);
-        if (content.tab === 'SARC') {
-          setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label}));
-          //setpaths({paths: content.sarc_paths.paths, added_paths: content.sarc_paths.added_paths, modded_paths: content.sarc_paths.modded_paths});
-          setpaths(content.sarc_paths);
-        } else if (content.tab === 'YAML') {
-          updateEditorContent(content.text);
-          setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label}));
-        }
-        console.log('Received user info from backend:', content.file_label);
-      })
-    } catch (error) {
-      console.error('Failed to fetch editor content from Rust backend:', error);
-    }
+  const handleFetchContent = () => {
+    fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
   };
-  
 
   function ImageButton({ src, onClick, alt, title, style }) {
     // Apply both the background image and styles directly to the button
@@ -63,7 +36,7 @@ const ButtonsDisplay = ({ updateEditorContent, setStatusText, setActiveTab, setL
 
 
   const imageButtonsData = [
-    { src: 'open.png', alt: 'Open', onClick: fetchAndSetEditorContent, title: 'Open (Ctrl+O)' },
+    { src: 'open.png', alt: 'Open', onClick: handleFetchContent, title: 'Open (Ctrl+O)' },
     { src: 'save.png', alt: 'Save', onClick: () => console.log('Save clicked'), title: 'Save (Ctrl+S)' },
     { src: 'save_as.png', alt: 'save_as', onClick: () => console.log('save_as clicked'), title: 'Save as' },
     { src: 'edit.png', alt: 'edit', onClick: () => console.log('edit clicked'), title: 'Edit (Ctrl+E)' },

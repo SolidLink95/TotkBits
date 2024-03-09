@@ -1,6 +1,6 @@
-use roead::byml::Byml;
+use roead::{aamp::ParameterIO, byml::Byml};
 
-use crate::{file_format::{BinTextFile::{BymlFile, OpenedFile}, Msbt::MsbtFile, Pack::{PackComparer, PackFile}, TagProduct::TagProduct}, Settings::Pathlib, TotkApp::SendData, Zstd::{TotkFileType, TotkZstd}};
+use crate::{file_format::{BinTextFile::{BymlFile, OpenedFile}, Msbt::MsbtFile, Pack::{PackComparer, PackFile}, TagProduct::TagProduct}, Settings::Pathlib, TotkApp::SendData, Zstd::{is_aamp, TotkFileType, TotkZstd}};
 use std::{fs, io::Read, sync::Arc};
 
 pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer,SendData)> {
@@ -120,6 +120,17 @@ pub fn open_aamp(file_name: String) -> Option<(OpenedFile<'static>, SendData)> {
     let mut opened_file = OpenedFile::default();
     let mut data = SendData::default();
     println!("Is {} an aamp?", &file_name);
-
+    let raw_data = std::fs::read(&file_name).ok()?;
+    if is_aamp(&raw_data) {
+        let pio = ParameterIO::from_binary(&raw_data).ok()?; // Parse AAMP from binary data
+        println!("{} is an aamp", &file_name);
+        opened_file.path = Pathlib::new(file_name.clone());
+        opened_file.file_type = TotkFileType::Aamp;
+        data.status_text = format!("Opened {}", &file_name);
+        data.path = Pathlib::new(file_name.clone());
+        data.text = pio.to_text();
+        data.get_file_label(TotkFileType::Aamp, None);
+        return Some((opened_file, data));
+    }
     None
 }
