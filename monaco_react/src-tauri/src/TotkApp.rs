@@ -1,7 +1,3 @@
-use std::io::Read;
-use std::path::Path;
-use std::sync::Arc;
-use std::{fs, io};
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Pack::{PackComparer, PackFile, SarcPaths};
 use crate::Open_and_Save::{open_aamp, open_byml, open_msbt, open_sarc, open_tag, open_text};
@@ -10,6 +6,10 @@ use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{TotkFileType, TotkZstd};
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
+use std::io::Read;
+use std::path::Path;
+use std::sync::Arc;
+use std::{fs, io};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum ActiveTab {
@@ -76,12 +76,14 @@ impl<'a> TotkBitsApp<'a> {
                 if res.is_some() {
                     return res;
                 }
+            } else {
+                return None;
             }
             data.tab = "ERROR".to_string();
             data.status_text = format!("Error: Failed to open {}", &file_name);
+            return Some(data);
         }
-
-        Some(data)
+        None
     }
 }
 
@@ -119,28 +121,11 @@ impl InternalFile<'_> {
 }
 
 pub fn check_if_filepath_valid(path: &str) -> bool {
-    fn inner_func(path: &str) -> io::Result<()> {
-        let path = Path::new(path);
-        if !(path.exists() && path.is_file()) {
-            return io::Result::Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("File {:?} does not exist", path),
-            ));
-        }
-        let mut f_handle = fs::File::open(path)?;
-        let mut buffer: Vec<u8> = Vec::new(); //String::new();
-        if let Err(_err) = &f_handle.read_to_end(&mut buffer) {
-            return io::Result::Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("Unable to open {:?}", path),
-            ));
-        }
-        Ok(())
-    }
     if path.is_empty() {
         return false;
     }
-    return inner_func(path).is_ok();
+    let path = Path::new(path);
+    path.exists() && path.is_file()
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -200,4 +185,3 @@ impl SendData {
         //println!("Sarc paths: {:?}", self.sarc_paths);
     }
 }
-

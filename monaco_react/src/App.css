@@ -71,3 +71,17 @@
   background-color: #515151;
   color: white; /* Optionally change the text color for better contrast */
 }
+.textsearch {
+  position: fixed;
+  display: flex ;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #555555;
+  color: white;
+  /* padding: 5px; */
+  text-align: left;
+  margin-bottom: 35px;
+  /* margin-right: 20px; */
+  /* z-index: 1; */
+}
