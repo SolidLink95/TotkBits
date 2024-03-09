@@ -1,4 +1,5 @@
 use msyt::converter::MsytFile;
+use rfd::{FileDialog, MessageDialog};
 use roead::{aamp::ParameterIO, byml::Byml};
 
 use crate::{
@@ -12,7 +13,9 @@ use crate::{
     TotkApp::{InternalFile, SendData},
     Zstd::{is_aamp, is_byml, is_msyt, TotkFileType, TotkZstd},
 };
-use std::{fs, io::Read, path::PathBuf, sync::Arc};
+use std::{
+    fs::{self, File}, io::{self, Read, Write}, panic::{self, AssertUnwindSafe}, path::{Path, PathBuf}, sync::Arc
+};
 
 pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer, SendData)> {
     let mut data = SendData::default();
@@ -165,7 +168,7 @@ pub fn get_string_from_data(
             }
         }
     }
-    
+
     if is_aamp(&data) {
         let text = ParameterIO::from_binary(&data).ok()?.to_text();
         internal_file.endian = None;
@@ -188,4 +191,92 @@ pub fn get_string_from_data(
     }
 
     None
+}
+
+fn write_data_to_file<P: AsRef<Path>>(path: P, data: Vec<u8>) -> io::Result<()> {
+    let path = path.as_ref();
+
+    // Ensure the parent directory exists.
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Open the file in write mode, creating it if it doesn't exist.
+    let mut file = File::create(path)?;
+
+    // Write the data to the file.
+    file.write_all(&data)?;
+
+    Ok(())
+}
+
+pub fn save_file_dialog(file_name: Option<String>) -> String {
+    let name = file_name.unwrap_or("".to_string());
+    let file = FileDialog::new().set_file_name(name).save_file();
+    match file {
+        Some(res) => {
+            return res.to_string_lossy().into_owned();
+        }
+        None => {
+            return "".to_string();
+        }
+    }
+}
+
+pub fn check_if_save_in_romfs(dest_file: &str, zstd: Arc<TotkZstd>) -> bool{
+    if !dest_file.is_empty() {
+        //check if file is saved in romfs
+        if dest_file.starts_with(&zstd.totk_config.romfs.to_string_lossy().to_string()) {
+            let m = format!(
+                "About to save file:\n{}\nin romfs dump. Continue?",
+                &dest_file
+            );
+            if MessageDialog::new()
+                .set_title("Warning")
+                .set_description(m)
+                .set_buttons(rfd::MessageButtons::YesNo)
+                .show()
+                == rfd::MessageDialogResult::Yes
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn get_binary_by_filetype(file_type: TotkFileType, text: &str, endian: roead::Endian) -> Option<Vec<u8>> {
+    let mut rawdata: Vec<u8> = Vec::new();
+    match file_type {
+        TotkFileType::TagProduct => {
+            if let Ok(some_data) = TagProduct::to_binary(text) {
+                rawdata = some_data;
+            }
+        }
+        TotkFileType::Byml => {
+            let pio = Byml::from_text(text).ok()?;
+            rawdata = pio.to_binary(endian);
+        }
+        TotkFileType::Msbt => {
+            let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                MsytFile::text_to_binary(text, endian, None)
+            }));
+            if let Ok(msbt) = result {
+                if let Ok(x) = msbt {
+                    rawdata = x;
+                }
+            }
+            //rawdata = MsytFile::text_to_binary(text, endian, None).ok()?;
+        }
+        TotkFileType::Aamp => {
+            let pio = ParameterIO::from_text(text).ok()?;
+            rawdata = pio.to_binary();
+        }
+        TotkFileType::Text => {
+            rawdata = text.as_bytes().to_vec();
+        }
+        _ => {}
+    }
+
+    Some(rawdata)
 }

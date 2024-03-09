@@ -2,7 +2,7 @@
 use std::{panic::{self, AssertUnwindSafe}, process, sync::Mutex};
 use rfd::MessageDialog;
 use tauri::Manager;
-use crate::TotkApp::{SendData, TotkBitsApp};
+use crate::TotkApp::{SaveData, SendData, TotkBitsApp};
 
 
 #[tauri::command]
@@ -46,6 +46,26 @@ pub fn open_file_struct(app_handle: tauri::AppHandle, window: tauri::Window) -> 
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let mut app = binding.lock().expect("Failed to lock state");
     match app.open() {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
+
+#[tauri::command]
+fn receive_save_data(save_data: SaveData) -> Option<SendData>{
+    // Now you can access the fields directly
+
+    None
+}
+
+#[tauri::command]
+pub fn save_file_struct(app_handle: tauri::AppHandle, save_data: SaveData) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.save(save_data) {
         Some(result) => {
             return Some(result);
         } // Safely return the result if present

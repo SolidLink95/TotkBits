@@ -29,23 +29,6 @@ function App() {
   const [editorValue, setEditorValue] = useState('');
   const [openedData, setOpenedData] = useState(null);
 
-
-  // const sarcPaths = {
-  //   "paths": [
-  //     "folder1/subfolder1/file1.txt",
-  //     "folder1/subfolder1/file11.txt",
-  //     "folder1/subfolder2/file2.txt",
-  //     "folder2/subfolder1/file3.txt",
-  //     "folder3/file4.txt",
-  //   ],
-  //   "added_paths": [
-  //     "folder1/subfolder1/file11.txt",
-  //   ],
-  //   "modded_paths": [
-  //     "folder3/file4.txt",
-  //   ]
-  // };
-
   useEffect(() => {
     const unlisten = listen('opened_data_from_backend', (event) => {
       //console.log('Received user info from backend:', event.payload);
@@ -156,8 +139,18 @@ function App() {
     <div>
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
-      <ButtonsDisplay updateEditorContent={updateEditorContent} setStatusText={setStatusText} setActiveTab={setActiveTab} setLabelTextDisplay={setLabelTextDisplay} setpaths={setpaths} selectedPath={selectedPath} />
-      {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} />}
+      <ButtonsDisplay 
+        editorRef={editorRef} 
+        updateEditorContent={updateEditorContent} 
+        setStatusText={setStatusText} 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        setLabelTextDisplay={setLabelTextDisplay} 
+        setpaths={setpaths} 
+        selectedPath={selectedPath} 
+      />
+      {/* {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} />} */}
+      {<DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} style={{  display: activeTab === 'SARC' ? "block" : "none" }}/>}
       <div ref={editorContainerRef} className="code_editor" style={{  display: activeTab === 'YAML' ? "block" : "none" }}></div>
       {/* <div className="statusbar" style={statusStyle}>Current path: "{selectedPath.path} {selectedPath.endian}"</div> */}
       <div className="statusbar" style={statusStyle}>{statusText}</div>

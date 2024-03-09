@@ -51,7 +51,7 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths }) => {
 
   return (
     <>
-      <ul className="directory-tree" style={{ listStyleType: 'none', fontSize: fontsize, marginBottom: '60px' }}>
+      <ul className="directory-tree" style={{ listStyleType: 'none', fontSize: fontsize, marginBottom: '88px' }}>
         {Object.entries(renderTree).map(([key, value]) => (
           <DirectoryNode
             key={key}

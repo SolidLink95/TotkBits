@@ -1,12 +1,19 @@
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Pack::{PackComparer, PackFile, SarcPaths};
-use crate::Open_and_Save::{get_string_from_data, open_aamp, open_byml, open_msbt, open_sarc, open_tag, open_text};
+use crate::Open_and_Save::{
+    check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_byml,
+    open_msbt, open_sarc, open_tag, open_text, save_file_dialog,
+};
 use crate::Settings::Pathlib;
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{TotkFileType, TotkZstd};
-use rfd::FileDialog;
-use serde::{Deserialize, Serialize};
-use std::io::Read;
+use msyt::converter::MsytFile;
+use rfd::{FileDialog, MessageDialog};
+use roead::aamp::ParameterIO;
+use roead::byml::Byml;
+use serde::{de, Deserialize, Serialize};
+use std::io::{Read, Write};
+use std::os::raw;
 use std::path::Path;
 use std::sync::Arc;
 use std::{fs, io};
@@ -16,6 +23,12 @@ pub enum ActiveTab {
     DiretoryTree,
     TextBox,
     Settings,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SaveData {
+    pub tab: String,
+    pub text: String,
 }
 
 pub struct TotkBitsApp<'a> {
@@ -49,40 +62,144 @@ impl<'a> TotkBitsApp<'a> {
         self.status_text.to_string()
     }
 
-pub fn open_internal_file(&mut self, path: String) -> Option<SendData> {
-    if path.is_empty() || !path.contains("."){
-        return None;
-    }
-    let mut data = SendData::default();
-    if let Some(pack) = &mut self.pack {
-        if let Some(opened) = &mut pack.opened {
-            let raw_data = opened.sarc.get_data(&path);
-            if let Some(raw_data) = raw_data {
-                //if let Some(res) = get_string_from_data(path, raw_data.to_vec(), self.zstd.clone()) {
-                if let Some((intern, text)) = get_string_from_data(path.clone(), raw_data.to_vec(), self.zstd.clone()) {
-                    self.internal_file = Some(intern);
-                    let i = self.internal_file.as_ref().unwrap();   
-                    data.text = text;
-                    data.path = i.path.clone();
-                    data.status_text = format!("Opened {} [{:?}] from {}", &i.path.name, &i.file_type, &opened.path.name);
-                    data.tab = "YAML".to_string();  
-                    data.get_file_label(i.file_type, i.endian);
-                    return Some(data);
-                } else {
-                    data.status_text = format!("Error: unsupported data type for {}", &path.clone());
-                }
-            } else {
-                data.status_text = format!("Error: {} absent in {}", &path,  &opened.path.name);
+    pub fn save_as(&mut self) -> Option<SendData> {
+        let mut data = SendData::default();
+        let mut prob_file_name = String::new();
+        if self.opened_file.path.full_path.len() > 0 {
+            prob_file_name = self.opened_file.path.name.clone();
+        }
+        let dest_file = save_file_dialog(Some(prob_file_name));
+        if !dest_file.is_empty() {
+            //check if file is saved in romfs
+            if check_if_save_in_romfs(&dest_file, self.zstd.clone()) {
+                return None;
             }
-            data.tab = "ERROR".to_string();
+        }
+
+        None
+    }
+
+    pub fn save(&mut self, save_data: SaveData) -> Option<SendData> {
+        println!("About to save {} text len {}", save_data.tab, save_data.text.len());
+        let mut data = SendData::default();
+        let mut isReload = false;
+        let text = &save_data.text;
+
+        if let Some(pack) = &mut self.pack {
+            if let Some(opened) = &mut pack.opened {
+                match save_data.tab.as_str() {
+                    "YAML" => {
+                        if let Some(internal_file) = &self.internal_file {
+                            let path = &internal_file.path.full_path;
+                            let rawdata: Vec<u8> = get_binary_by_filetype(
+                                internal_file.file_type,
+                                text,
+                                internal_file.endian.unwrap_or(roead::Endian::Little),
+                            )?;
+                            if rawdata.is_empty() {
+                                data.status_text = format!(
+                                    "Error: Failed to save {} for {}",
+                                    &path, &opened.path.name
+                                );
+                                data.tab = "ERROR".to_string();
+                                return Some(data);
+                            } else {
+                                opened.writer.add_file(path, rawdata);
+                                isReload = true;
+                                data.tab = "YAML".to_string();
+                                data.status_text = format!(
+                                    "Saved {} for {}",
+                                    &internal_file.path.name, &opened.path.name
+                                );
+                            }
+                        }
+                    }
+                    "SARC" => {
+                        if check_if_save_in_romfs(&opened.path.full_path, self.zstd.clone()) {
+                            return None;
+                        }
+                        opened.reload();
+                        if let Ok(res) = opened.save_default() {
+                            println!("Saved SARC {}", &opened.path.full_path);
+                        } else {
+                            println!("ERROR SAVING SARC {}", &opened.path.full_path);
+
+                        }
+                        isReload = true;
+                        data.tab = "SARC".to_string();
+                        data.status_text = format!("Saved SARC {}", &opened.path.full_path);
+                    }
+                    _ => {
+                        data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
+                    }
+                }
+            }
+            if isReload {
+                pack.compare_and_reload();
+                data.get_sarc_paths(pack);
+            }
             return Some(data);
         }
+        if save_data.tab.as_str() == "YAML" {
+            let rawdata: Vec<u8> = get_binary_by_filetype(
+                self.opened_file.file_type,
+                text,
+                self.opened_file.endian.unwrap_or(roead::Endian::Little),
+            )?;
+            if rawdata.is_empty() {
+                data.status_text = format!("Error: Failed to save {}", &self.opened_file.path.full_path);
+                data.tab = "ERROR".to_string();
+                return Some(data);
+            } else {
+                let mut file = fs::File::create(&self.opened_file.path.full_path).ok()?;
+                file.write_all(&rawdata).ok()?;
+                data.tab = "YAML".to_string();
+                data.status_text = format!("Saved {}", &self.opened_file.path.full_path);
+                return Some(data);
+            }
+        }
+
+        None
     }
 
+    pub fn open_internal_file(&mut self, path: String) -> Option<SendData> {
+        if path.is_empty() || !path.contains(".") {
+            return None;
+        }
+        let mut data = SendData::default();
+        if let Some(pack) = &mut self.pack {
+            if let Some(opened) = &mut pack.opened {
+                let raw_data = opened.sarc.get_data(&path);
+                if let Some(raw_data) = raw_data {
+                    //if let Some(res) = get_string_from_data(path, raw_data.to_vec(), self.zstd.clone()) {
+                    if let Some((intern, text)) =
+                        get_string_from_data(path.clone(), raw_data.to_vec(), self.zstd.clone())
+                    {
+                        self.internal_file = Some(intern);
+                        let i = self.internal_file.as_ref().unwrap();
+                        data.text = text;
+                        data.path = i.path.clone();
+                        data.status_text = format!(
+                            "Opened {} [{:?}] from {}",
+                            &i.path.name, &i.file_type, &opened.path.name
+                        );
+                        data.tab = "YAML".to_string();
+                        data.get_file_label(i.file_type, i.endian);
+                        return Some(data);
+                    } else {
+                        data.status_text =
+                            format!("Error: unsupported data type for {}", &path.clone());
+                    }
+                } else {
+                    data.status_text = format!("Error: {} absent in {}", &path, &opened.path.name);
+                }
+                data.tab = "ERROR".to_string();
+                return Some(data);
+            }
+        }
 
-    None
-}
-
+        None
+    }
 
     pub fn open(&mut self) -> Option<SendData> {
         let mut data = SendData::default();

@@ -40,7 +40,7 @@ impl<'a> PackComparer<'a> {
         Some(pack)
     }
 
-    pub fn get_sarc_paths(self) -> SarcPaths {
+    pub fn get_sarc_paths(&self) -> SarcPaths {
         let mut paths = SarcPaths::default();
         if let Some(opened) = &self.opened {
             for file in opened.sarc.files() {
@@ -48,10 +48,10 @@ impl<'a> PackComparer<'a> {
                     paths.paths.push(name.to_string());
                 }
             }
-            for (_, path) in self.added.iter() {
+            for (path, _) in self.added.iter() {
                 paths.added_paths.push(path.to_string());
             }
-            for (_, path) in self.modded.iter() {
+            for (path, _) in self.modded.iter() {
                 paths.modded_paths.push(path.to_string());
             }
         }
@@ -221,29 +221,28 @@ impl<'a> PackFile<'_> {
         self.save(dest_file)
     }
 
-    fn compress(&self) -> Vec<u8> {
+    fn compress(&self, data: &Vec<u8>) -> Vec<u8> {
         match self.data.file_type {
             TotkFileType::Sarc => {
-                return self.zstd.compressor.compress_pack(&self.data.data).unwrap();
+                return self.zstd.compressor.compress_pack(data).unwrap();
             }
             TotkFileType::MalsSarc => {
-                return self.zstd.compressor.compress_zs(&self.data.data).unwrap();
+                return self.zstd.compressor.compress_zs(data).unwrap();
             }
             _ => {
-                return self.zstd.compressor.compress_zs(&self.data.data).unwrap();
+                return self.zstd.compressor.compress_zs(data).unwrap();
             }
         }
     }
 
     pub fn save(&mut self, dest_file: String) -> io::Result<()> {
-        let file_path: &Path = Path::new(&dest_file);
-        let directory: &Path = file_path.parent().expect("Cannot get parent of the file");
+        let directory: String = Pathlib::new(dest_file.clone()).parent;
         fs::create_dir_all(directory)?;
         let mut data: Vec<u8> = self.writer.to_binary();
         if dest_file.to_lowercase().ends_with(".zs") {
-            data = self.compress();
+            data = self.compress(&data);
         }
-        let mut file_handle: fs::File = fs::File::create(file_path)?;
+        let mut file_handle: fs::File = fs::File::create(dest_file)?;
         file_handle.write_all(&data)?;
         Ok(())
     }

@@ -71,7 +71,7 @@ impl<'a> TagProduct<'a> {
     pub fn save(&mut self, path: String, text: &str) -> io::Result<()> {
         //let mut f_handle = OpenOptions::new().write(true).open(&path)?;
         let mut data: Vec<u8> = Vec::new();
-        match self.to_binary(text) {
+        match Self::to_binary(text) {
             Ok(rawdata) => data = rawdata,
             Err(_err) => {
                 return Err(io::Error::new(
@@ -93,16 +93,17 @@ impl<'a> TagProduct<'a> {
         Ok(())
     }
 
-    pub fn to_binary(&mut self, text: &str) -> Result<Vec<u8>, serde_json::Error> {
+    pub fn to_binary(text: &str) -> Result<Vec<u8>, serde_json::Error> {
         //let data: Config = serde_yaml::from_str(text)?;
         //Header
         let _res : Byml = Byml::from_text("{}").unwrap();
         let mut path_list: Vec<String> = Default::default();
         let mut tag_list: Vec<Byml> = Default::default();
         let json_data: TagJsonData = serde_json::from_str(text)?;
+        let mut cached_tag_list = &json_data.TagList;    
         //PathList
-        println!("Work/Actor/|Animal_Boar_A|.engine__actor__ActorParam.gyml {:?}", &json_data.PathList.contains_key("Work/Actor/|Animal_Boar_A|.engine__actor__ActorParam.gyml"));
-        println!("Work/Actor/|Animal_Boar_C|.engine__actor__ActorParam.gyml {:?}", &json_data.PathList.contains_key("Work/Actor/|Animal_Boar_C|.engine__actor__ActorParam.gyml"));
+        // println!("Work/Actor/|Animal_Boar_A|.engine__actor__ActorParam.gyml {:?}", &json_data.PathList.contains_key("Work/Actor/|Animal_Boar_A|.engine__actor__ActorParam.gyml"));
+        // println!("Work/Actor/|Animal_Boar_C|.engine__actor__ActorParam.gyml {:?}", &json_data.PathList.contains_key("Work/Actor/|Animal_Boar_C|.engine__actor__ActorParam.gyml"));
         for (path, _plist) in &json_data.PathList {
             if path.contains("|") {
                 for slice in path.split("|") {
@@ -115,7 +116,7 @@ impl<'a> TagProduct<'a> {
         let mut bit_table_bits = Vec::new();
 
         for (_actor_tag, tag_entries) in &json_data.PathList  {
-            for tag in &self.cached_tag_list {
+            for tag in cached_tag_list {
                 let bit = if tag_entries.contains(tag) {
                     true
                 } else {
@@ -134,7 +135,7 @@ impl<'a> TagProduct<'a> {
 
         //Tag list
         tag_list.extend(
-            self.cached_tag_list
+            cached_tag_list
                 .iter()
                 .map(|t| roead::byml::Byml::String(t.to_string().into())),
         );
@@ -144,7 +145,7 @@ impl<'a> TagProduct<'a> {
             PathList: path_list.clone(),
             BitTable: bit_table_bytes, // Example binary data
             RankTable: "".to_string(),
-            TagList: self.cached_tag_list.clone(),
+            TagList: cached_tag_list.clone(),
         };
         let mut yml: Vec<String> = Vec::new();
         yml.push("PathList:".to_string());
@@ -160,7 +161,7 @@ impl<'a> TagProduct<'a> {
         }
 
         let yml_string = yml.join("\n");
-        let raw_data = Byml::from_text(yml_string).unwrap().to_binary(self.endian);
+        let raw_data = Byml::from_text(yml_string).unwrap().to_binary(roead::Endian::Little);
 
         //res[roead::byml::BymlIndex("PathList")] = roead::byml::Byml::Array(path_list);
         /*res[roead::byml::Byml::String("PathList".to_string().into()).as_u32().unwrap()] = roead::byml::Byml::Array(path_list);
