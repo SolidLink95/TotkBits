@@ -45,7 +45,8 @@ pub struct BymlFile<'a> {
 impl<'a> BymlFile<'_> {
     pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> Option<BymlFile<'a>> {
         fn inner_func(path: String, zstd: Arc<TotkZstd>) -> io::Result<BymlFile> {
-            let data: FileData = BymlFile::byml_data_to_bytes(&PathBuf::from(path.clone()), &zstd)?;
+            let data: FileData =
+                BymlFile::byml_file_to_bytes(&PathBuf::from(path.clone()), zstd.clone())?;
             return BymlFile::from_binary(data, zstd, path);
         }
         if let Ok(byml) = inner_func(path, zstd.clone()) {
@@ -156,14 +157,11 @@ impl<'a> BymlFile<'_> {
         None
     }
 
-    fn byml_data_to_bytes(path: &PathBuf, zstd: &'a TotkZstd) -> Result<FileData, io::Error> {
-        let mut f_handle: fs::File = fs::File::open(path)?;
-        let mut buffer: Vec<u8> = Vec::new();
-        f_handle.read_to_end(&mut buffer)?;
-        //let mut returned_result: Vec<u8> = Vec::new();
+    pub fn byml_data_to_bytes(rawdata: &Vec<u8>, zstd: Arc<TotkZstd>) -> Result<FileData, io::Error> {
+        let mut buffer = rawdata.clone();
         let mut data = FileData::new();
         if buffer.starts_with(b"Yaz0") {
-            if let Ok(dec_data) =  roead::yaz0::decompress(&buffer) {
+            if let Ok(dec_data) = roead::yaz0::decompress(&buffer) {
                 buffer = dec_data;
             }
         }
@@ -216,6 +214,13 @@ impl<'a> BymlFile<'_> {
             io::ErrorKind::Other,
             "Invalid data, not a byml",
         ));
+    }
+
+    pub fn byml_file_to_bytes(path: &PathBuf, zstd: Arc<TotkZstd>) -> Result<FileData, io::Error> {
+        let mut f_handle: fs::File = fs::File::open(path)?;
+        let mut buffer: Vec<u8> = Vec::new();
+        f_handle.read_to_end(&mut buffer)?;
+        Self::byml_data_to_bytes(&buffer, zstd.clone())
     }
 }
 
@@ -316,7 +321,7 @@ impl<'a> OpenedFile<'_> {
         }
     }
 
-    pub fn open(&mut self, file_path: &str, zstd: Arc<TotkZstd>) ->String {
+    pub fn open(&mut self, file_path: &str, zstd: Arc<TotkZstd>) -> String {
         let mut res = String::new();
         let path = Pathlib::new(file_path.to_string());
         if self.open_tag(&path, zstd.clone()) {
@@ -360,7 +365,6 @@ impl<'a> OpenedFile<'_> {
 fn print_type_of<T>(_: &T) {
     println!("{}", type_name::<T>());
 }
-
 
 pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
     let file = fs::File::create(path)?;

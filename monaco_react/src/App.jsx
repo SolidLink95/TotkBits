@@ -156,7 +156,7 @@ function App() {
     <div>
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
-      <ButtonsDisplay updateEditorContent={updateEditorContent} setStatusText={setStatusText} setActiveTab={setActiveTab} setLabelTextDisplay={setLabelTextDisplay} setpaths={setpaths} />
+      <ButtonsDisplay updateEditorContent={updateEditorContent} setStatusText={setStatusText} setActiveTab={setActiveTab} setLabelTextDisplay={setLabelTextDisplay} setpaths={setpaths} selectedPath={selectedPath} />
       {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} />}
       <div ref={editorContainerRef} className="code_editor" style={{  display: activeTab === 'YAML' ? "block" : "none" }}></div>
       {/* <div className="statusbar" style={statusStyle}>Current path: "{selectedPath.path} {selectedPath.endian}"</div> */}

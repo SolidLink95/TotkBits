@@ -29,6 +29,18 @@ impl MsbtFile {
         })
     }
 
+    pub fn from_binary(data: Vec<u8>, path: Option<String>) -> Option<Self> {
+        let endian = MsbtFile::check_endianness(&data)?;
+        let text = MsytFile::binary_to_text_safe(data).ok()?;
+        Some(Self {
+            path: Pathlib::new(path.unwrap_or("".to_string())) ,
+            endian,
+            file_type: TotkFileType::Msbt,
+            text,
+            //data,
+        })
+    }
+
     fn check_endianness(bytes: &Vec<u8>) -> Option<roead::Endian> {
         if bytes.len() >= 10 {
             // Ensure there are at least 10 bytes to check

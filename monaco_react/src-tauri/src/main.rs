@@ -11,7 +11,7 @@ mod Open_and_Save;
 mod Zstd;
 mod file_format;
 use crate::TotkApp::TotkBitsApp;
-use crate::TauriCommands::{get_status_text, open_file,open_file_struct,exit_app};
+use crate::TauriCommands::{get_status_text, open_file,open_file_struct,exit_app,open_internal_file};
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
@@ -46,6 +46,7 @@ fn main() {
             get_status_text,
             open_file,
             open_file_struct,
+            open_internal_file,
             exit_app,
         ])
         .run(tauri::generate_context!())

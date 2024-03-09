@@ -1,13 +1,16 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
-import {fetchAndSetEditorContent } from './ButtonClicks';
+import {fetchAndSetEditorContent,openInternalSarcFile } from './ButtonClicks';
 
 const button_size = '33px';
 
-const ButtonsDisplay = ({ updateEditorContent, setStatusText, setActiveTab, setLabelTextDisplay, setpaths }) => {
+const ButtonsDisplay = ({ updateEditorContent, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, selectedPath }) => {
 
   const handleFetchContent = () => {
     fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+  };
+  const handleOpenInternalSarcFile = () => {
+    openInternalSarcFile(selectedPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
   };
 
   function ImageButton({ src, onClick, alt, title, style }) {
@@ -39,7 +42,7 @@ const ButtonsDisplay = ({ updateEditorContent, setStatusText, setActiveTab, setL
     { src: 'open.png', alt: 'Open', onClick: handleFetchContent, title: 'Open (Ctrl+O)' },
     { src: 'save.png', alt: 'Save', onClick: () => console.log('Save clicked'), title: 'Save (Ctrl+S)' },
     { src: 'save_as.png', alt: 'save_as', onClick: () => console.log('save_as clicked'), title: 'Save as' },
-    { src: 'edit.png', alt: 'edit', onClick: () => console.log('edit clicked'), title: 'Edit (Ctrl+E)' },
+    { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit (Ctrl+E)' },
     { src: 'add_sarc.png', alt: 'add', onClick: () => console.log('add clicked'), title: 'Add' },
     { src: 'extract.png', alt: 'extract', onClick: () => console.log('extract clicked'), title: 'Extract' },
     // { src: 'zoomin.png', alt: 'zoomin', onClick: () => console.log('zoomin clicked') },

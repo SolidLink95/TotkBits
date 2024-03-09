@@ -11,6 +11,28 @@ export const useExitApp = async () => {
   }
 };
 
+export async function openInternalSarcFile(selectedPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent) {
+  try {
+    console.log('Opening internal SARC file:', selectedPath);
+    const content = await invoke('open_internal_file', { path: selectedPath.path });
+    setStatusText(content.status_text);
+    console.log(content.file_label);
+    if (content.tab === 'YAML') {
+      setActiveTab(content.tab);
+      updateEditorContent(content.text);
+      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label}));
+    } else if (content.tab === 'ERROR') {
+      console.log("Error opening file, no tab set");
+    } else {
+      setStatusText("Error: backend sent invalid tab type");
+    }
+  }
+  catch (error) {
+    console.error('Failed to open internal SARC file:', error);
+  }
+
+
+}
 export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
     const content = await invoke('open_file_struct');

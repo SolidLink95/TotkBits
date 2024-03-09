@@ -1,6 +1,6 @@
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Pack::{PackComparer, PackFile, SarcPaths};
-use crate::Open_and_Save::{open_aamp, open_byml, open_msbt, open_sarc, open_tag, open_text};
+use crate::Open_and_Save::{get_string_from_data, open_aamp, open_byml, open_msbt, open_sarc, open_tag, open_text};
 use crate::Settings::Pathlib;
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{TotkFileType, TotkZstd};
@@ -49,6 +49,41 @@ impl<'a> TotkBitsApp<'a> {
         self.status_text.to_string()
     }
 
+pub fn open_internal_file(&mut self, path: String) -> Option<SendData> {
+    if path.is_empty() || !path.contains("."){
+        return None;
+    }
+    let mut data = SendData::default();
+    if let Some(pack) = &mut self.pack {
+        if let Some(opened) = &mut pack.opened {
+            let raw_data = opened.sarc.get_data(&path);
+            if let Some(raw_data) = raw_data {
+                //if let Some(res) = get_string_from_data(path, raw_data.to_vec(), self.zstd.clone()) {
+                if let Some((intern, text)) = get_string_from_data(path.clone(), raw_data.to_vec(), self.zstd.clone()) {
+                    self.internal_file = Some(intern);
+                    let i = self.internal_file.as_ref().unwrap();   
+                    data.text = text;
+                    data.path = i.path.clone();
+                    data.status_text = format!("Opened {} [{:?}] from {}", &i.path.name, &i.file_type, &opened.path.name);
+                    data.tab = "YAML".to_string();  
+                    data.get_file_label(i.file_type, i.endian);
+                    return Some(data);
+                } else {
+                    data.status_text = format!("Error: unsupported data type for {}", &path.clone());
+                }
+            } else {
+                data.status_text = format!("Error: {} absent in {}", &path,  &opened.path.name);
+            }
+            data.tab = "ERROR".to_string();
+            return Some(data);
+        }
+    }
+
+
+    None
+}
+
+
     pub fn open(&mut self) -> Option<SendData> {
         let mut data = SendData::default();
         if let Some(file) = FileDialog::new()
@@ -62,7 +97,6 @@ impl<'a> TotkBitsApp<'a> {
                     self.internal_file = None;
                     return Some(data);
                 }
-
                 let res = open_tag(file_name.clone(), self.zstd.clone())
                     .or_else(|| open_byml(file_name.clone(), self.zstd.clone()))
                     .or_else(|| open_msbt(file_name.clone()))
@@ -89,19 +123,23 @@ impl<'a> TotkBitsApp<'a> {
 
 pub struct InternalFile<'a> {
     pub path: Pathlib,
-    pub endian: roead::Endian,
+    pub file_type: TotkFileType,
+    pub endian: Option<roead::Endian>,
     pub byml: Option<BymlFile<'a>>,
     pub msyt: Option<String>,
-    pub aamp: Option<()>,
+    pub text: Option<String>,
+    pub aamp: Option<String>,
 }
 
 impl Default for InternalFile<'_> {
     fn default() -> Self {
         Self {
             path: Pathlib::default(),
-            endian: roead::Endian::Little,
+            file_type: TotkFileType::None,
+            endian: None,
             byml: None,
             msyt: None,
+            text: None,
             aamp: None,
         }
     }
@@ -112,9 +150,11 @@ impl InternalFile<'_> {
         let path = Pathlib::new(path);
         Self {
             path,
-            endian: roead::Endian::Little,
+            file_type: TotkFileType::None,
+            endian: None,
             byml: None,
             msyt: None,
+            text: None,
             aamp: None,
         }
     }

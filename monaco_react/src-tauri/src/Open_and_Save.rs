@@ -1,9 +1,20 @@
+use msyt::converter::MsytFile;
 use roead::{aamp::ParameterIO, byml::Byml};
 
-use crate::{file_format::{BinTextFile::{BymlFile, OpenedFile}, Msbt::MsbtFile, Pack::{PackComparer, PackFile}, TagProduct::TagProduct}, Settings::Pathlib, TotkApp::SendData, Zstd::{is_aamp, TotkFileType, TotkZstd}};
-use std::{fs, io::Read, sync::Arc};
+use crate::{
+    file_format::{
+        BinTextFile::{BymlFile, FileData, OpenedFile},
+        Msbt::MsbtFile,
+        Pack::{PackComparer, PackFile},
+        TagProduct::TagProduct,
+    },
+    Settings::Pathlib,
+    TotkApp::{InternalFile, SendData},
+    Zstd::{is_aamp, is_byml, is_msyt, TotkFileType, TotkZstd},
+};
+use std::{fs, io::Read, path::PathBuf, sync::Arc};
 
-pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer,SendData)> {
+pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer, SendData)> {
     let mut data = SendData::default();
     println!("Is {} a sarc?", &file_name);
     let sarc = PackFile::new(file_name.clone(), zstd.clone());
@@ -22,7 +33,7 @@ pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer
         data.text = "SARC".to_string();
         data.tab = "SARC".to_string();
         data.get_file_label(TotkFileType::Sarc, Some(endian));
-        return Some((pack.unwrap(),data));
+        return Some((pack.unwrap(), data));
     }
 
     None
@@ -67,10 +78,7 @@ pub fn open_byml(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, 
         data.status_text = format!("Opened {}", &file_name);
         data.path = Pathlib::new(file_name.clone());
         data.text = Byml::to_text(&b.pio);
-        data.get_file_label(
-            b.file_data.file_type,
-            b.endian,
-        );
+        data.get_file_label(b.file_data.file_type, b.endian);
         return Some((opened_file, data));
     }
     None
@@ -132,5 +140,52 @@ pub fn open_aamp(file_name: String) -> Option<(OpenedFile<'static>, SendData)> {
         data.get_file_label(TotkFileType::Aamp, None);
         return Some((opened_file, data));
     }
+    None
+}
+
+pub fn get_string_from_data(
+    path: String,
+    data: Vec<u8>,
+    zstd: Arc<TotkZstd>,
+) -> Option<(InternalFile, String)> {
+    let mut internal_file = InternalFile::default();
+    if data.is_empty() {
+        return None;
+    }
+    if is_byml(&data) {
+        if let Ok(file_data) = BymlFile::byml_data_to_bytes(&data, zstd.clone()) {
+            if let Ok(byml_file) = BymlFile::from_binary(file_data, zstd.clone(), path.clone()) {
+                let text = Byml::to_text(&byml_file.pio);
+                internal_file.byml = Some(byml_file);
+                let byml_ref = internal_file.byml.as_ref().unwrap(); // Safe due to the line above
+                internal_file.endian = byml_ref.endian.clone();
+                internal_file.path = Pathlib::new(path);
+                internal_file.file_type = byml_ref.file_data.file_type.clone(); // Set file type
+                return Some((internal_file, text));
+            }
+        }
+    }
+    
+    if is_aamp(&data) {
+        let text = ParameterIO::from_binary(&data).ok()?.to_text();
+        internal_file.endian = None;
+        internal_file.path = Pathlib::new(path.clone());
+        internal_file.file_type = TotkFileType::Aamp;
+        return Some((internal_file, text));
+    }
+    if is_msyt(&data) {
+        let msbt = MsbtFile::from_binary(data, Some(path.clone()))?;
+        internal_file.endian = Some(msbt.endian.clone());
+        internal_file.path = Pathlib::new(path.clone());
+        internal_file.file_type = TotkFileType::Msbt;
+        return Some((internal_file, msbt.text));
+    }
+    if let Ok(text) = String::from_utf8(data) {
+        internal_file.endian = None;
+        internal_file.path = Pathlib::new(path.clone());
+        internal_file.file_type = TotkFileType::Text;
+        return Some((internal_file, text));
+    }
+
     None
 }

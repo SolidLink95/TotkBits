@@ -4,6 +4,20 @@ use rfd::MessageDialog;
 use tauri::Manager;
 use crate::TotkApp::{SendData, TotkBitsApp};
 
+
+#[tauri::command]
+pub fn open_internal_file(app_handle: tauri::AppHandle, path: String) -> Option<SendData>{
+   // pub fn open_file(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+        // Lock the mutex to get mutable access to your state
+        let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+        let mut app = binding.lock().expect("Failed to lock state");
+    
+        match app.open_internal_file(path) {
+            Some(result) => Some(result), // Safely return the result if present
+            None => None,                      // Return None if no result
+        }
+}
+
 #[tauri::command]
 pub fn get_status_text(app: tauri::State<'_, TotkBitsApp>) -> String {
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
