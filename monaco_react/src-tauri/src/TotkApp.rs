@@ -91,7 +91,7 @@ impl<'a> TotkBitsApp<'a> {
                         .show()
                         == rfd::MessageDialogResult::No
                     {
-                        // return None;
+                        return None;
                     }
                 }
                 println!("XXXXXXXXXXXXXX{} to sarc path {}", &path, &internal_path);

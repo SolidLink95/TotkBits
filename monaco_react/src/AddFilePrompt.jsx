@@ -2,8 +2,8 @@ import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 import React, { useState } from 'react';
 
 function AddFilePrompt({ isOpen, onClose, setStatusText, setpaths }) {
-  const [internal_path, setInternalSarcPath] = useState('Actor/asdf.txt');
-  const [path, setFilePath] = useState('W:/coding/TotkBits/res/Attachment1.msbt');
+  const [internal_path, setInternalSarcPath] = useState('');
+  const [path, setFilePath] = useState('');
 
 
   const cancelClick = () => {
@@ -19,6 +19,7 @@ function AddFilePrompt({ isOpen, onClose, setStatusText, setpaths }) {
       const content = await invoke('add_click', { internalPath: internalPath, path: path });
       if (content === null) {
         console.log("No content returned from add_click");
+        cancelClick();
         return;
       }
       setStatusText(content.status_text);
