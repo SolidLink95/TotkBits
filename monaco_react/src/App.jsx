@@ -8,7 +8,7 @@ import ActiveTabDisplay from "./ActiveTab";
 import "./App.css";
 import ButtonsDisplay from "./Buttons";
 import MenuBarDisplay from "./MenuBar";
-import DirectoryTree from "./PathList";
+import DirectoryTree from "./DirectoryTree";
 
 
 
@@ -19,39 +19,17 @@ function App() {
     RSTB: 'RSTB',
   };
   const [activeTab, setActiveTab] = useState('SARC'); // Adjust this initial value as needed
-  const editorContainerRef = useRef(null);
-  const activetabRef = useRef(null);
-  const editorRef = useRef(null);
-  const [statusText, setStatusText] = useState("Ready");
-  const [selectedPath, setSelectedPath] = useState({ path: "", endian: "" });
-  const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '' });
-  const [paths, setpaths] = useState({paths: [], added_paths: [], modded_paths: []});
-  const [editorValue, setEditorValue] = useState('');
+  const editorContainerRef = useRef(null); //monaco editor container
+  const editorRef = useRef(null); //monaco editor reference
+  const [editorValue, setEditorValue] = useState(''); //monaco editor content
+  const [lang, setLang] = useState('yaml'); //monaco editor content
+  const [statusText, setStatusText] = useState("Ready"); //status bar text
+  const [selectedPath, setSelectedPath] = useState({ path: "", endian: "" }); //selected path from directory tree
+  const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '' }); //labeltext display near tabs
+  const [paths, setpaths] = useState({paths: [], added_paths: [], modded_paths: []}); //paths structures for directory tree
   const [openedData, setOpenedData] = useState(null);
 
-  useEffect(() => {
-    const unlisten = listen('opened_data_from_backend', (event) => {
-      //console.log('Received user info from backend:', event.payload);
-      setOpenedData(event.payload);
-      updateEditorContent(openedData.text);
-      setStatusText(openedData.status_text);
-    });
-
-    return () => {
-      unlisten.then((unlistenFn) => unlistenFn());
-    };
-  }, []);
-
-
-  const fetchStatusString = async () => {
-    try {
-      const statusText = await invoke('get_status_text'); // Match the command name
-      setStatusText(statusText ||"Ready XXX"); // Set the status text (or handle it as needed
-      //console.log(statusText);
-    } catch (e) {
-      console.error('Failed to get status text', e);
-    }
-  }
+  //Functions
 
   const updateEditorContent = (content) => {
     //setText(content);
@@ -75,7 +53,7 @@ function App() {
       console.log("Initializing Monaco editor");
       editorRef.current = monaco.editor.create(editorContainerRef.current, {
         value: editorValue,
-        language: "yaml",
+        language: lang,
         theme: "vs-dark",
         wordWrap: 'on', // Enable word wrapping
       });
@@ -119,15 +97,7 @@ function App() {
 
   //Functions
 
-  const sendTextToRust = async () => {
-    const editorText = editorRef.current.getValue(); // Get current text from Monaco Editor
-    try {
-      await invoke('receive_text_from_editor', { text: editorText }); // Invoke the Rust command
-      console.log('Text sent to Rust backend successfully.');
-    } catch (error) {
-      console.error('Failed to send text to Rust backend:', error);
-    }
-  };
+
   const statusStyle = {
     color: statusText.toLowerCase().includes("error") ? 'red' : 
       statusText.toLowerCase().includes('warning') ? 'yellow' : 'white',
@@ -150,7 +120,11 @@ function App() {
         selectedPath={selectedPath} 
       />
       {/* {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} />} */}
-      {<DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} style={{  display: activeTab === 'SARC' ? "block" : "none" }}/>}
+      {<DirectoryTree 
+        onNodeSelect={handleNodeSelect} 
+        sarcPaths={paths} 
+        style={{  display: activeTab === 'SARC' ? "block" : "none" }}
+      />}
       <div ref={editorContainerRef} className="code_editor" style={{  display: activeTab === 'YAML' ? "block" : "none" }}></div>
       {/* <div className="statusbar" style={statusStyle}>Current path: "{selectedPath.path} {selectedPath.endian}"</div> */}
       <div className="statusbar" style={statusStyle}>{statusText}</div>

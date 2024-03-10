@@ -37,6 +37,7 @@ sha2 = "0.10"
 digest = "0.10"
 fs2 = "0.4"
 base64 = "0.21.7"
+restbl = "0.1"
 
 
 [features]

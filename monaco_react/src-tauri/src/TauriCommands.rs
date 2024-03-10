@@ -6,13 +6,24 @@ use crate::TotkApp::{SaveData, SendData, TotkBitsApp};
 
 
 #[tauri::command]
-pub fn open_internal_file(app_handle: tauri::AppHandle, path: String) -> Option<SendData>{
+pub fn edit_internal_file(app_handle: tauri::AppHandle, path: String) -> Option<SendData>{
    // pub fn open_file(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
         // Lock the mutex to get mutable access to your state
         let binding = app_handle.state::<Mutex<TotkBitsApp>>();
         let mut app = binding.lock().expect("Failed to lock state");
     
-        match app.open_internal_file(path) {
+        match app.edit_internal_file(path) {
+            Some(result) => Some(result), // Safely return the result if present
+            None => None,                      // Return None if no result
+        }
+}
+
+#[tauri::command]
+pub fn save_as_click(app_handle: tauri::AppHandle, save_data: SaveData) -> Option<SendData>{
+        let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+        let mut app = binding.lock().expect("Failed to lock state");
+    
+        match app.save_as(save_data) {
             Some(result) => Some(result), // Safely return the result if present
             None => None,                      // Return None if no result
         }

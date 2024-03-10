@@ -2,9 +2,9 @@ use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Pack::{PackComparer, PackFile, SarcPaths};
 use crate::Open_and_Save::{
     check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_byml,
-    open_msbt, open_sarc, open_tag, open_text, save_file_dialog,
+    open_msbt, open_sarc, open_tag, open_text, save_file_dialog, SaveFileDialog,
 };
-use crate::Settings::Pathlib;
+use crate::Settings::{write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{TotkFileType, TotkZstd};
 use msyt::converter::MsytFile;
@@ -14,7 +14,7 @@ use roead::byml::Byml;
 use serde::{de, Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::os::raw;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
 
@@ -62,17 +62,89 @@ impl<'a> TotkBitsApp<'a> {
         self.status_text.to_string()
     }
 
-    pub fn save_as(&mut self) -> Option<SendData> {
+    pub fn get_binary_for_opened_file(&self, text: &str) -> Option<Vec<u8>> {
+        get_binary_by_filetype(
+            self.opened_file.file_type,
+            text,
+            self.opened_file.endian.unwrap_or(roead::Endian::Little),
+        )
+    }
+
+    pub fn save_as(&mut self, save_data: SaveData) -> Option<SendData> {
+        //TODO: FINISH!
         let mut data = SendData::default();
-        let mut prob_file_name = String::new();
-        if self.opened_file.path.full_path.len() > 0 {
-            prob_file_name = self.opened_file.path.name.clone();
+        let mut dialog = SaveFileDialog::new(
+            save_data.tab.to_string(),
+            &self.pack,
+            &self.opened_file,
+            "Save file as".to_string(),
+        );
+        dialog.generate_filters_and_name();
+        if dialog.name.clone().unwrap_or_default().is_empty() {
+            println!("Nothing is opened, nothing to save");
+            return None;
         }
-        let dest_file = save_file_dialog(Some(prob_file_name));
-        if !dest_file.is_empty() {
-            //check if file is saved in romfs
-            if check_if_save_in_romfs(&dest_file, self.zstd.clone()) {
-                return None;
+        let dest_file = dialog.show();
+        if !dest_file.is_empty() && !check_if_save_in_romfs(&dest_file, self.zstd.clone()) {
+            match save_data.tab.as_str() {
+                "YAML" => {
+                    if dialog.isText {
+                        write_string_to_file(&dest_file, &save_data.text).ok()?;
+                        data.tab = "YAML".to_string();
+                        data.status_text = format!("Saved {}", &dest_file);
+                        data.path = Pathlib::new(dest_file.clone());
+                        self.opened_file.path = Pathlib::new(dest_file);
+                    } else {
+                        let rawdata = self.get_binary_for_opened_file(&save_data.text);
+                        if let Some(rawdata) = rawdata {
+                            let mut file = fs::File::create(&dest_file).ok()?;
+                            file.write_all(&rawdata).ok()?;
+                            data.tab = "YAML".to_string();
+                            data.status_text = format!("Saved {}", &dest_file);
+                            data.path = Pathlib::new(dest_file.clone());
+                            self.opened_file.path = Pathlib::new(dest_file);
+                        } else {
+                            data.status_text = format!(
+                                "Error: Failed to save [{:?}] {}",
+                                self.opened_file.file_type, &dest_file
+                            );
+                        }
+                    }
+
+                    return Some(data);
+                }
+                "SARC" => {
+                    let mut isReload = false;
+                    if let Some(pack) = &mut self.pack {
+                        if let Some(opened) = &mut pack.opened {
+                            match opened.save(dest_file.clone()) {
+                                Ok(_) => {
+                                    isReload = true;
+                                    println!("Saved SARC {}", &dest_file);
+                                    data.tab = "SARC".to_string();
+                                    data.status_text = format!("Saved SARC {}", &dest_file);
+                                    data.path = Pathlib::new(dest_file.clone());
+                                    self.opened_file.path = Pathlib::new(dest_file);
+                                }
+                                Err(_) => {
+                                    println!("ERROR SAVING SARC {}", &dest_file);
+                                    data.status_text =
+                                        format!("Error: Failed to save SARC {}", &dest_file);
+                                }
+                            }
+                        }
+                        if isReload {
+                            pack.compare_and_reload();
+                            data.get_sarc_paths(pack);
+                        }
+                        return Some(data);
+                    }
+                    return None; //no sarc opened
+                }
+                _ => {
+                    data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
+                    return Some(data);
+                }
             }
         }
 
@@ -80,7 +152,11 @@ impl<'a> TotkBitsApp<'a> {
     }
 
     pub fn save(&mut self, save_data: SaveData) -> Option<SendData> {
-        println!("About to save {} text len {}", save_data.tab, save_data.text.len());
+        println!(
+            "About to save {} text len {}",
+            save_data.tab,
+            save_data.text.len()
+        );
         let mut data = SendData::default();
         let mut isReload = false;
         let text = &save_data.text;
@@ -119,12 +195,7 @@ impl<'a> TotkBitsApp<'a> {
                             return None;
                         }
                         opened.reload();
-                        if let Ok(res) = opened.save_default() {
-                            println!("Saved SARC {}", &opened.path.full_path);
-                        } else {
-                            println!("ERROR SAVING SARC {}", &opened.path.full_path);
-
-                        }
+                        opened.save_default();
                         isReload = true;
                         data.tab = "SARC".to_string();
                         data.status_text = format!("Saved SARC {}", &opened.path.full_path);
@@ -147,7 +218,8 @@ impl<'a> TotkBitsApp<'a> {
                 self.opened_file.endian.unwrap_or(roead::Endian::Little),
             )?;
             if rawdata.is_empty() {
-                data.status_text = format!("Error: Failed to save {}", &self.opened_file.path.full_path);
+                data.status_text =
+                    format!("Error: Failed to save {}", &self.opened_file.path.full_path);
                 data.tab = "ERROR".to_string();
                 return Some(data);
             } else {
@@ -162,7 +234,7 @@ impl<'a> TotkBitsApp<'a> {
         None
     }
 
-    pub fn open_internal_file(&mut self, path: String) -> Option<SendData> {
+    pub fn edit_internal_file(&mut self, path: String) -> Option<SendData> {
         if path.is_empty() || !path.contains(".") {
             return None;
         }
@@ -201,38 +273,42 @@ impl<'a> TotkBitsApp<'a> {
         None
     }
 
-    pub fn open(&mut self) -> Option<SendData> {
+    pub fn open_from_path(&mut self, file_name: String) -> Option<SendData> {
         let mut data = SendData::default();
+        //let file_name = file.to_string_lossy().to_string().replace("\\", "/");
+        if check_if_filepath_valid(&file_name) {
+            if let Some((pack, data)) = open_sarc(file_name.clone(), self.zstd.clone()) {
+                self.pack = Some(pack);
+                self.internal_file = None;
+                return Some(data);
+            }
+            let res = open_tag(file_name.clone(), self.zstd.clone())
+                .or_else(|| open_byml(file_name.clone(), self.zstd.clone()))
+                .or_else(|| open_msbt(file_name.clone()))
+                .or_else(|| open_aamp(file_name.clone()))
+                .or_else(|| open_text(file_name.clone()))
+                .map(|(opened_file, data)| {
+                    self.opened_file = opened_file;
+                    self.internal_file = None;
+                    data
+                });
+            if res.is_some() {
+                return res;
+            }
+        } else {
+            return None;
+        }
+        data.tab = "ERROR".to_string();
+        data.status_text = format!("Error: Failed to open {}", &file_name);
+        return Some(data);
+    }
+
+    pub fn open(&mut self) -> Option<SendData> {
         if let Some(file) = FileDialog::new()
             .set_title("Choose file to open")
             .pick_file()
         {
-            let file_name = file.to_string_lossy().to_string().replace("\\", "/");
-            if check_if_filepath_valid(&file_name) {
-                if let Some((pack, data)) = open_sarc(file_name.clone(), self.zstd.clone()) {
-                    self.pack = Some(pack);
-                    self.internal_file = None;
-                    return Some(data);
-                }
-                let res = open_tag(file_name.clone(), self.zstd.clone())
-                    .or_else(|| open_byml(file_name.clone(), self.zstd.clone()))
-                    .or_else(|| open_msbt(file_name.clone()))
-                    .or_else(|| open_aamp(file_name.clone()))
-                    .or_else(|| open_text(file_name.clone()))
-                    .map(|(opened_file, data)| {
-                        self.opened_file = opened_file;
-                        self.internal_file = None;
-                        data
-                    });
-                if res.is_some() {
-                    return res;
-                }
-            } else {
-                return None;
-            }
-            data.tab = "ERROR".to_string();
-            data.status_text = format!("Error: Failed to open {}", &file_name);
-            return Some(data);
+            return self.open_from_path(file.to_string_lossy().to_string().replace("\\", "/"));
         }
         None
     }
@@ -293,6 +369,7 @@ pub struct SendData {
     pub status_text: String,
     pub tab: String,
     pub sarc_paths: SarcPaths,
+    pub lang: String,
 }
 
 impl Default for SendData {
@@ -304,6 +381,7 @@ impl Default for SendData {
             status_text: "".to_string(),
             tab: "YAML".to_string(),
             sarc_paths: SarcPaths::default(),
+            lang: "yaml".to_string(),
         }
     }
 }

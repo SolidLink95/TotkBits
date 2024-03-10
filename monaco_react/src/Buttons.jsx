@@ -1,20 +1,23 @@
 import React from 'react';
-import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
-import {fetchAndSetEditorContent,openInternalSarcFile, saveFileClick } from './ButtonClicks';
+import { editInternalSarcFile, fetchAndSetEditorContent, saveFileClick,saveAsFileClick } from './ButtonClicks';
 
 const button_size = '33px';
 
-const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText,activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath }) => {
-
+const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath }) => {
+  //Buttons functions
   const handleFetchContent = () => {
     fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
   };
   const handleOpenInternalSarcFile = () => {
-    openInternalSarcFile(selectedPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    editInternalSarcFile(selectedPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
   };
   const handleSaveClick = () => {
     saveFileClick(setStatusText, activeTab, setpaths, editorRef);
   };
+  const handleSaveAsClick = () => {
+    saveAsFileClick(setStatusText, activeTab, setpaths, editorRef);
+  };
+
 
   function ImageButton({ src, onClick, alt, title, style }) {
     // Apply both the background image and styles directly to the button
@@ -44,7 +47,7 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText,activeTa
   const imageButtonsData = [
     { src: 'open.png', alt: 'Open', onClick: handleFetchContent, title: 'Open (Ctrl+O)' },
     { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
-    { src: 'save_as.png', alt: 'save_as', onClick: () => console.log('save_as clicked'), title: 'Save as' },
+    { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
     { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit (Ctrl+E)' },
     { src: 'add_sarc.png', alt: 'add', onClick: () => console.log('add clicked'), title: 'Add' },
     { src: 'extract.png', alt: 'extract', onClick: () => console.log('extract clicked'), title: 'Extract' },

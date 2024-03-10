@@ -34,8 +34,7 @@ const ContextMenu = ({ x, y, onClose, actions }) => {
     );
   };
   
-const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected,
-    onSelect, }) => {
+const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, onSelect }) => {
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
     const isFile = node === null;

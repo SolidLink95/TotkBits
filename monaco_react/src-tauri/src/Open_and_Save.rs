@@ -1,4 +1,5 @@
 use msyt::converter::MsytFile;
+use rayon::vec;
 use rfd::{FileDialog, MessageDialog};
 use roead::{aamp::ParameterIO, byml::Byml};
 
@@ -14,7 +15,12 @@ use crate::{
     Zstd::{is_aamp, is_byml, is_msyt, TotkFileType, TotkZstd},
 };
 use std::{
-    fs::{self, File}, io::{self, Read, Write}, panic::{self, AssertUnwindSafe}, path::{Path, PathBuf}, sync::Arc
+    collections::{BTreeMap, HashMap},
+    fs::{self, File},
+    io::{self, Read, Write},
+    panic::{self, AssertUnwindSafe},
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer, SendData)> {
@@ -60,6 +66,7 @@ pub fn open_tag(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, S
             data.status_text = format!("Opened {}", &file_name);
             data.path = Pathlib::new(file_name.clone());
             data.text = tag.to_text();
+            data.lang = "json".to_string();
             data.get_file_label(TotkFileType::TagProduct, Some(roead::Endian::Little));
             return Some((opened_file, data));
         }
@@ -223,7 +230,7 @@ pub fn save_file_dialog(file_name: Option<String>) -> String {
     }
 }
 
-pub fn check_if_save_in_romfs(dest_file: &str, zstd: Arc<TotkZstd>) -> bool{
+pub fn check_if_save_in_romfs(dest_file: &str, zstd: Arc<TotkZstd>) -> bool {
     if !dest_file.is_empty() {
         //check if file is saved in romfs
         if dest_file.starts_with(&zstd.totk_config.romfs.to_string_lossy().to_string()) {
@@ -245,7 +252,11 @@ pub fn check_if_save_in_romfs(dest_file: &str, zstd: Arc<TotkZstd>) -> bool{
     false
 }
 
-pub fn get_binary_by_filetype(file_type: TotkFileType, text: &str, endian: roead::Endian) -> Option<Vec<u8>> {
+pub fn get_binary_by_filetype(
+    file_type: TotkFileType,
+    text: &str,
+    endian: roead::Endian,
+) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
     match file_type {
         TotkFileType::TagProduct => {
@@ -279,4 +290,121 @@ pub fn get_binary_by_filetype(file_type: TotkFileType, text: &str, endian: roead
     }
 
     Some(rawdata)
+}
+
+pub struct SaveFileDialog<'a> {
+    pub tab: String,
+    pub pack: &'a Option<PackComparer<'a>>,
+    pub opened_file: &'a OpenedFile<'a>,
+    pub title: String,
+    pub name: Option<String>,
+    pub filters: BTreeMap<String, Vec<String>>,
+    pub isText: bool,
+}
+impl SaveFileDialog<'_> {
+    pub fn new<'a>(
+        tab: String,
+        pack: &'a Option<PackComparer<'a>>,
+        opened_file: &'a OpenedFile<'a>,
+        title: String,
+    ) -> SaveFileDialog<'a> {
+        SaveFileDialog {
+            tab: tab,
+            pack: pack,
+            opened_file: opened_file,
+            title: title,
+            name: None,
+            filters: Default::default(),
+            isText: false,
+        }
+    }
+    pub fn process_name(&mut self) {
+        self.name = None;
+        match self.tab.as_str() {
+            "SARC" => {
+                if let Some(pack) = self.pack {
+                    if let Some(opened) = &pack.opened {
+                        self.name = Some(opened.path.name.clone());
+                    }
+                }
+            }
+            "YAML" => {
+                self.name = Some(self.opened_file.path.name.clone());
+            }
+            _ => {}
+        }
+    }
+
+    pub fn generate_filters(&mut self) {
+        let mut filters: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        match self.tab.as_str() {
+            "SARC" => {
+                filters.insert(
+                    "SARC".to_string(),
+                    vec![
+                        "pack".to_string(),
+                        "sarc".to_string(),
+                        "pack.zs".to_string(),
+                        "sarc.zs".to_string(),
+                    ],
+                );
+            }
+            "YAML" => {
+                let exts = if self.opened_file.path.ext_last.is_empty() {
+                    vec![self.opened_file.path.extension.clone()]
+                } else {
+                    vec![
+                        self.opened_file.path.extension.clone(),
+                        self.opened_file.path.ext_last.clone(),
+                    ]
+                };
+                filters.insert(
+                    //own extension
+                    format!("{:?}", self.opened_file.file_type),
+                    exts,
+                );
+                filters.insert(
+                    "Text Files".to_string(),
+                    vec![
+                        "yaml".to_string(),
+                        "json".to_string(),
+                        "yml".to_string(),
+                        "txt".to_string(),
+                    ],
+                );
+            }
+            _ => {} // Add a wildcard pattern to cover all other cases
+        }
+        // filters.insert("All Files".to_string(), vec!["*".to_string()]);
+        self.filters = filters;
+    }
+    pub fn generate_filters_and_name(&mut self) {
+        self.generate_filters();
+        self.process_name();
+    }
+
+    pub fn show(&mut self) -> String {
+        // self.generate_filters();
+        // self.process_name();
+        let mut result = String::new();
+        let mut dialog = FileDialog::new()
+            .set_file_name(self.name.clone().unwrap_or_default())
+            .set_title(&self.title);
+        for (key, value) in &self.filters {
+            dialog = dialog.add_filter(key, value);
+        }
+        let file = dialog
+            .add_filter("All files", &vec!["*".to_string()])
+            .save_file();
+        if let Some(res) = file {
+            result = res.to_string_lossy().into_owned();
+        }
+        for ext in vec![".txt", ".yaml", ".json", ".yml"] {
+            if result.to_lowercase().ends_with(ext) {
+                self.isText = true;
+                break;
+            }
+        }
+        result
+    }
 }
