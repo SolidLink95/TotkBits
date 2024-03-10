@@ -85,3 +85,78 @@
   /* margin-right: 20px; */
   /* z-index: 1; */
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5); /* Black with transparency */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000; /* Ensure it's on top of other content */
+}
+
+.modal-content {
+  background-color: #555555;
+  padding: 20px;
+  border-radius: 5px;
+  z-index: 1001; /* Above the overlay */
+}
+
+.close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+.modal-header {
+  margin-bottom: 20px;
+}
+
+.modal-row {
+  display: flex;
+  margin-bottom: 10px;
+}
+
+.modal-input {
+  flex-grow: 1;
+  /* margin-right: 10px; */
+}
+
+.modal-row-button {
+  /* Styles for your row buttons */
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.modal-footer-button {
+  /* Styles for your Ok and Cancel buttons */
+  margin-left: 10px;
+}
+.modal-footer-button-disabled {
+  background-color: #ccc; /* Grey background */
+  color: #666; /* Dark grey text */
+  pointer-events: none; /* Remove pointer events */
+  cursor: default; /* Reset cursor */
+}

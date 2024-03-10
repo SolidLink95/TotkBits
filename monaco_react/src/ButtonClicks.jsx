@@ -110,3 +110,19 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
    console.error('Failed save as data: ', error);
  }
 }
+
+
+export const simulateEscapeKeyPress = () => {
+  // Create a new event
+  const event = new KeyboardEvent('keydown', {
+    key: 'Escape',
+    code: 'Escape',
+    keyCode: 27, // Deprecated, but included for compatibility with older browsers
+    which: 27, // Deprecated, but included for compatibility with older browsers
+    bubbles: true, // Event bubbles up through the DOM
+    cancelable: true, // Event can be canceled
+  });
+
+  // Dispatch the event on the document or a specific element
+  document.dispatchEvent(event);
+};

@@ -1,14 +1,13 @@
 
-import { listen } from '@tauri-apps/api/event';
-import { invoke } from "@tauri-apps/api/tauri";
 import { debounce } from "lodash"; // or any other method/utility to debounce
 import * as monaco from "monaco-editor";
 import React, { useEffect, useRef, useState } from "react";
 import ActiveTabDisplay from "./ActiveTab";
+import AddFilePrompt from './AddFilePrompt'; // Import the modal component
 import "./App.css";
 import ButtonsDisplay from "./Buttons";
-import MenuBarDisplay from "./MenuBar";
 import DirectoryTree from "./DirectoryTree";
+import MenuBarDisplay from "./MenuBar";
 
 
 
@@ -28,6 +27,10 @@ function App() {
   const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '' }); //labeltext display near tabs
   const [paths, setpaths] = useState({paths: [], added_paths: [], modded_paths: []}); //paths structures for directory tree
   const [openedData, setOpenedData] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const changeModal = () => setIsModalOpen(!isModalOpen);
+
 
   //Functions
 
@@ -109,6 +112,10 @@ function App() {
     <div>
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
+      <AddFilePrompt isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} setStatusText={setStatusText} setpaths={setpaths}>
+        <h2>Add File to SARC</h2>
+      </AddFilePrompt>
+      
       <ButtonsDisplay 
         editorRef={editorRef} 
         updateEditorContent={updateEditorContent} 
@@ -118,6 +125,7 @@ function App() {
         setLabelTextDisplay={setLabelTextDisplay} 
         setpaths={setpaths} 
         selectedPath={selectedPath} 
+        changeModal={changeModal} 
       />
       {/* {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} />} */}
       {<DirectoryTree 

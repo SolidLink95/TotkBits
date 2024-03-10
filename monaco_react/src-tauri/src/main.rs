@@ -13,7 +13,7 @@ mod Zstd;
 mod file_format;
 use crate::TauriCommands::{
     edit_internal_file, exit_app, get_status_text, open_file, open_file_struct, save_as_click,
-    save_file_struct,
+    save_file_struct,add_click,open_file_dialog
 };
 use crate::TotkApp::TotkBitsApp;
 
@@ -58,7 +58,9 @@ fn main() {
             edit_internal_file,
             save_file_struct,
             save_as_click,
+            add_click,
             exit_app,
+            open_file_dialog,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

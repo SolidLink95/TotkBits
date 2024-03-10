@@ -1,10 +1,11 @@
-import React from 'react';
-import { editInternalSarcFile, fetchAndSetEditorContent, saveFileClick,saveAsFileClick } from './ButtonClicks';
+import React, { useCallback, useState } from 'react';
+import { editInternalSarcFile, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 
 const button_size = '33px';
 
-const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath }) => {
+const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }) => {
   //Buttons functions
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const handleFetchContent = () => {
     fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
   };
@@ -42,28 +43,55 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
       </button>
     );
   }
+  const triggerSearchInEditor = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.getAction('actions.find').run();
+    }
+  }, []);
+  const triggerReplaceInEditor = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.getAction('editor.action.startFindReplaceAction').run();
+    }
+  }, []);
+  const undoInEditor = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.trigger("source", "undo");
+    }
+  }, []);
+  const redoInEditor = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.trigger("source", "redo");
+    }
+  }, []);
 
-
-  const imageButtonsData = [
+  const imageButtonsData = activeTab === "SARC" ? [
     { src: 'open.png', alt: 'Open', onClick: handleFetchContent, title: 'Open (Ctrl+O)' },
     { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
     { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit (Ctrl+E)' },
-    { src: 'add_sarc.png', alt: 'add', onClick: () => console.log('add clicked'), title: 'Add' },
+    { src: 'add_sarc.png', alt: 'add', onClick: changeModal, title: 'Add' },
     { src: 'extract.png', alt: 'extract', onClick: () => console.log('extract clicked'), title: 'Extract' },
-    // { src: 'zoomin.png', alt: 'zoomin', onClick: () => console.log('zoomin clicked') },
-    //{ src: 'zoomout.png', alt: 'zoomout', onClick: () => console.log('zoomout clicked') },
-    { src: 'lupa.png', alt: 'find', onClick: () => console.log('find clicked'), title: 'Find (Ctrl+F)' },
-    { src: 'replace.png', alt: 'replace', onClick: () => console.log('replace clicked'), title: 'Replace (Ctrl+H)' },
-    // { src: 'add.png', alt: 'TEST1', onClick: fetchAndSetEditorContent, title: 'send some example string to monace' },
-    // { src: 'add.png', alt: 'TEST2', onClick: () => console.log('TEST2'), title: 'TEST2' },
-  ];
+    // { src: 'lupa.png', alt: 'find', onClick: () => console.log('find clicked'), title: 'Find (Ctrl+F)' },
+    // { src: 'replace.png', alt: 'replace', onClick: () => console.log('replace clicked'), title: 'Replace (Ctrl+H)' },
+  ] :[
+    { src: 'open.png', alt: 'Open', onClick: handleFetchContent, title: 'Open (Ctrl+O)' },
+    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
+    { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
+    // { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit (Ctrl+E)' },
+    // { src: 'add_sarc.png', alt: 'add', onClick: () => console.log('add clicked'), title: 'Add' },
+    // { src: 'extract.png', alt: 'extract', onClick: () => console.log('extract clicked'), title: 'Extract' },
+    { src: 'back.png', alt: 'back', onClick: undoInEditor, title: 'Undo (Ctrl+Z)' },
+    { src: 'forward.png', alt: 'forward', onClick: redoInEditor, title: 'Redo (Ctrl+Shift+Z)' },
+    { src: 'lupa.png', alt: 'find', onClick: triggerSearchInEditor, title: 'Find (Ctrl+F)' },
+    { src: 'replace.png', alt: 'replace', onClick: triggerReplaceInEditor, title: 'Replace (Ctrl+H)' },
+    ]
+  ;
 
 
   return (
     <div className="buttons-container">
       {imageButtonsData.map((button, index) => (
-        <ImageButton key={index} src={button.src} alt={button.alt} onClick={button.onClick} title={button.title} style={button.alt === 'find' ? { marginLeft: '10px' } : {}} />
+        <ImageButton key={index} src={button.src} alt={button.alt} onClick={button.onClick} title={button.title} style={button.alt === 'back' ? { marginLeft: '10px' } : {}} />
       ))}
     </div>
   );

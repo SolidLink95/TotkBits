@@ -69,6 +69,52 @@ impl<'a> TotkBitsApp<'a> {
             self.opened_file.endian.unwrap_or(roead::Endian::Little),
         )
     }
+    pub fn add_internal_file_from_path(
+        &mut self,
+        internal_path: String,
+        path: String,
+    ) -> Option<SendData> {
+        let mut data = SendData::default();
+        println!("trying to add  {} to sarc path {}", &path, &internal_path);
+        let mut isReload = false;
+        if let Some(pack) = &mut self.pack {
+            if let Some(opened) = &mut pack.opened {
+                if let Some(_) = &opened.writer.get_file(&internal_path) {
+                    let m = format!(
+                        "{}\nalready exists in {}. Proceed?",
+                        &internal_path, &opened.path.name
+                    );
+                    if MessageDialog::new()
+                        .set_title("File already exists")
+                        .set_description(m)
+                        .set_buttons(rfd::MessageButtons::YesNo)
+                        .show()
+                        == rfd::MessageDialogResult::No
+                    {
+                        // return None;
+                    }
+                }
+                println!("XXXXXXXXXXXXXX{} to sarc path {}", &path, &internal_path);
+
+                isReload = true;
+                let mut f_handle = fs::File::open(&path).ok()?;
+                let mut buffer: Vec<u8> = Vec::new();
+                f_handle.read_to_end(&mut buffer).ok()?;
+                opened
+                    .writer
+                    .add_file(&internal_path.replace("\\", "/"), buffer);
+                data.status_text = format!("Added {} to {}", &internal_path, &opened.path.name);
+            } 
+            if isReload {
+                pack.compare_and_reload();
+                data.get_sarc_paths(pack);
+            }
+            return Some(data);
+        } 
+        println!("ERROR: unable to add {} to sarc path {}", &path, &internal_path); 
+        // println!("{:?}", data);
+        None
+    }
 
     pub fn save_as(&mut self, save_data: SaveData) -> Option<SendData> {
         //TODO: FINISH!
@@ -80,7 +126,7 @@ impl<'a> TotkBitsApp<'a> {
             "Save file as".to_string(),
         );
         dialog.generate_filters_and_name();
-        if dialog.name.clone().unwrap_or_default().is_empty() {
+        if dialog.name.clone().unwrap_or_default().is_empty() && save_data.tab == "SARC" {
             println!("Nothing is opened, nothing to save");
             return None;
         }
