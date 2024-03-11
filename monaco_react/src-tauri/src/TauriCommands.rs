@@ -2,13 +2,23 @@
 use std::{panic::{self, AssertUnwindSafe}, process, sync::Mutex};
 use rfd::MessageDialog;
 use tauri::Manager;
-use crate::TotkApp::{SaveData, SendData, TotkBitsApp};
+use crate::{Open_and_Save::SendData, TotkApp::{SaveData, TotkBitsApp}};
+
+
+#[tauri::command]
+pub fn extract_internal_file(app_handle: tauri::AppHandle, internalPath: String) -> Option<SendData>{
+        let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+        let mut app = binding.lock().expect("Failed to lock state");
+    
+        match app.extract_file(internalPath) {
+            Some(result) => Some(result), // Safely return the result if present
+            None => None,                      // Return None if no result
+        }
+}
 
 
 #[tauri::command]
 pub fn edit_internal_file(app_handle: tauri::AppHandle, path: String) -> Option<SendData>{
-   // pub fn open_file(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
-        // Lock the mutex to get mutable access to your state
         let binding = app_handle.state::<Mutex<TotkBitsApp>>();
         let mut app = binding.lock().expect("Failed to lock state");
     

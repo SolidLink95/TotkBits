@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { editInternalSarcFile, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
+import {extractFileClick, editInternalSarcFile, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 
 const button_size = '33px';
 
@@ -70,7 +70,7 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
     { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit (Ctrl+E)' },
     { src: 'add_sarc.png', alt: 'add', onClick: changeModal, title: 'Add' },
-    { src: 'extract.png', alt: 'extract', onClick: () => console.log('extract clicked'), title: 'Extract' },
+    { src: 'extract.png', alt: 'extract', onClick: () => extractFileClick(selectedPath, setStatusText), title: 'Extract' },
     // { src: 'lupa.png', alt: 'find', onClick: () => console.log('find clicked'), title: 'Find (Ctrl+F)' },
     // { src: 'replace.png', alt: 'replace', onClick: () => console.log('replace clicked'), title: 'Replace (Ctrl+H)' },
   ] :[

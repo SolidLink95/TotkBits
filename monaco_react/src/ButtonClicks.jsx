@@ -9,6 +9,19 @@ export const useExitApp = async () => {
   }
 };
 
+export async function extractFileClick(selectedPath, setStatusText) {
+  try {
+    const content = await invoke('extract_internal_file', { internalPath: selectedPath.path });
+    if (content !== null) {
+      setStatusText(content.status_text);
+    }
+  }
+  catch (error) {
+    console.error('Failed to extract file:', error);
+  }
+}
+
+
 export async function editInternalSarcFile(selectedPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent) {
   try {
     console.log('Opening internal SARC file:', selectedPath);

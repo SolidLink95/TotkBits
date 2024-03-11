@@ -2,16 +2,17 @@ use msyt::converter::MsytFile;
 use rayon::vec;
 use rfd::{FileDialog, MessageDialog};
 use roead::{aamp::ParameterIO, byml::Byml};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     file_format::{
         BinTextFile::{BymlFile, FileData, OpenedFile},
         Msbt::MsbtFile,
-        Pack::{PackComparer, PackFile},
+        Pack::{PackComparer, PackFile, SarcPaths},
         TagProduct::TagProduct,
     },
     Settings::Pathlib,
-    TotkApp::{InternalFile, SendData},
+    TotkApp::InternalFile,
     Zstd::{is_aamp, is_byml, is_msyt, TotkFileType, TotkZstd},
 };
 use std::{
@@ -335,6 +336,22 @@ impl SaveFileDialog<'_> {
         }
     }
 
+    pub fn filters_from_path(&mut self, file_path: &str) {
+        let path = Pathlib::new(file_path.to_string());
+        let x = if path.ext_last.is_empty() {
+            vec![path.extension.clone()]
+        } else {
+            vec![path.extension.clone(), path.ext_last.clone()]
+        };
+        let y = if path.ext_last.is_empty() {
+            path.extension.clone().to_uppercase()
+        } else {
+            path.ext_last.clone().to_uppercase()
+        };
+        
+        self.filters.insert(y, x);
+    }
+
     pub fn generate_filters(&mut self) {
         let mut filters: BTreeMap<String, Vec<String>> = BTreeMap::new();
         match self.tab.as_str() {
@@ -406,5 +423,65 @@ impl SaveFileDialog<'_> {
             }
         }
         result
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SendData {
+    pub text: String,
+    pub path: Pathlib,
+    pub file_label: String,
+    pub status_text: String,
+    pub tab: String,
+    pub sarc_paths: SarcPaths,
+    pub lang: String,
+}
+
+impl Default for SendData {
+    fn default() -> Self {
+        Self {
+            text: "".to_string(),
+            path: Pathlib::default(),
+            file_label: "".to_string(),
+            status_text: "".to_string(),
+            tab: "YAML".to_string(),
+            sarc_paths: SarcPaths::default(),
+            lang: "yaml".to_string(),
+        }
+    }
+}
+impl SendData {
+    pub fn get_file_label(&mut self, filetype: TotkFileType, endian: Option<roead::Endian>) {
+        let mut e = String::new();
+        if let Some(endian) = endian {
+            e = match endian {
+                roead::Endian::Big => "BE".to_string(),
+                roead::Endian::Little => "LE".to_string(),
+            };
+        }
+        if !e.is_empty() {
+            self.file_label = format!("{} [{:?}] [{}]", self.path.name, filetype, e)
+        } else {
+            self.file_label = format!("{} [{:?}]", self.path.name, filetype)
+        }
+    }
+    pub fn get_sarc_paths(&mut self, pack: &PackComparer<'_>) {
+        if let Some(opened) = &pack.opened {
+            for file in opened.sarc.files() {
+                if let Some(name) = file.name {
+                    self.sarc_paths.paths.push(name.into());
+                }
+            }
+            self.sarc_paths
+                .paths
+                .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+            for (path, _) in pack.added.iter() {
+                self.sarc_paths.added_paths.push(path.into());
+            }
+            for (path, _) in pack.modded.iter() {
+                self.sarc_paths.modded_paths.push(path.into());
+            }
+        }
+        //println!("Sarc paths: {:?}", self.sarc_paths);
     }
 }

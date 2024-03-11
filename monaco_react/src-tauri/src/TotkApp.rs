@@ -2,7 +2,7 @@ use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Pack::{PackComparer, PackFile, SarcPaths};
 use crate::Open_and_Save::{
     check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_byml,
-    open_msbt, open_sarc, open_tag, open_text, save_file_dialog, SaveFileDialog,
+    open_msbt, open_sarc, open_tag, open_text, save_file_dialog, SaveFileDialog, SendData,
 };
 use crate::Settings::{write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
@@ -69,6 +69,40 @@ impl<'a> TotkBitsApp<'a> {
             self.opened_file.endian.unwrap_or(roead::Endian::Little),
         )
     }
+
+    pub fn extract_file(&mut self, internal_path: String) -> Option<SendData> {
+        let mut dialog = SaveFileDialog::new(
+            "YAML".to_string(),
+            &None,
+            &self.opened_file,
+            "Choose save location".to_string(),
+        );
+        dialog.name = Some(Pathlib::new(internal_path.clone()).name);
+        dialog.filters_from_path(&internal_path);
+        let path = dialog.show();
+        if path.is_empty() {
+            return None;
+        }
+
+        let mut data = SendData::default();
+        if let Some(pack) = &mut self.pack {
+            if let Some(opened) = &mut pack.opened {
+                if let Some(rawdata) = opened.writer.get_file(&internal_path) {
+                    let mut file = fs::File::create(&path).ok()?;
+                    file.write_all(&rawdata).ok()?;
+                    data.status_text = format!("Extracted {} to {}", &internal_path, &path);
+                    return Some(data);
+                }
+                data.status_text = format!(
+                    "Error: {} not found in {}",
+                    &internal_path, &opened.path.name
+                );
+                return Some(data);
+            }
+        }
+        None
+    }
+
     pub fn add_internal_file_from_path(
         &mut self,
         internal_path: String,
@@ -104,14 +138,17 @@ impl<'a> TotkBitsApp<'a> {
                     .writer
                     .add_file(&internal_path.replace("\\", "/"), buffer);
                 data.status_text = format!("Added {} to {}", &internal_path, &opened.path.name);
-            } 
+            }
             if isReload {
                 pack.compare_and_reload();
                 data.get_sarc_paths(pack);
             }
             return Some(data);
-        } 
-        println!("ERROR: unable to add {} to sarc path {}", &path, &internal_path); 
+        }
+        println!(
+            "ERROR: unable to add {} to sarc path {}",
+            &path, &internal_path
+        );
         // println!("{:?}", data);
         None
     }
@@ -405,64 +442,4 @@ pub fn check_if_filepath_valid(path: &str) -> bool {
     }
     let path = Path::new(path);
     path.exists() && path.is_file()
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SendData {
-    pub text: String,
-    pub path: Pathlib,
-    pub file_label: String,
-    pub status_text: String,
-    pub tab: String,
-    pub sarc_paths: SarcPaths,
-    pub lang: String,
-}
-
-impl Default for SendData {
-    fn default() -> Self {
-        Self {
-            text: "".to_string(),
-            path: Pathlib::default(),
-            file_label: "".to_string(),
-            status_text: "".to_string(),
-            tab: "YAML".to_string(),
-            sarc_paths: SarcPaths::default(),
-            lang: "yaml".to_string(),
-        }
-    }
-}
-impl SendData {
-    pub fn get_file_label(&mut self, filetype: TotkFileType, endian: Option<roead::Endian>) {
-        let mut e = String::new();
-        if let Some(endian) = endian {
-            e = match endian {
-                roead::Endian::Big => "BE".to_string(),
-                roead::Endian::Little => "LE".to_string(),
-            };
-        }
-        if !e.is_empty() {
-            self.file_label = format!("{} [{:?}] [{}]", self.path.name, filetype, e)
-        } else {
-            self.file_label = format!("{} [{:?}]", self.path.name, filetype)
-        }
-    }
-    pub fn get_sarc_paths(&mut self, pack: &PackComparer<'_>) {
-        if let Some(opened) = &pack.opened {
-            for file in opened.sarc.files() {
-                if let Some(name) = file.name {
-                    self.sarc_paths.paths.push(name.into());
-                }
-            }
-            self.sarc_paths
-                .paths
-                .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
-            for (path, _) in pack.added.iter() {
-                self.sarc_paths.added_paths.push(path.into());
-            }
-            for (path, _) in pack.modded.iter() {
-                self.sarc_paths.modded_paths.push(path.into());
-            }
-        }
-        //println!("Sarc paths: {:?}", self.sarc_paths);
-    }
 }
