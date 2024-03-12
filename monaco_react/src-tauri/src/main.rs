@@ -16,7 +16,7 @@ mod file_format;
 use crate::TauriCommands::{
     add_click, close_all_opened_files, edit_internal_file, exit_app, extract_internal_file,
     get_status_text, open_file_dialog, open_file_from_path, open_file_struct, process_argv,
-    rename_internal_sarc_file, save_as_click, save_file_struct,
+    rename_internal_sarc_file, save_as_click, save_file_struct,remove_internal_sarc_file,
 };
 use crate::TotkApp::TotkBitsApp;
 
@@ -64,6 +64,7 @@ fn main() {
             extract_internal_file,
             rename_internal_sarc_file,
             close_all_opened_files,
+            remove_internal_sarc_file,
             exit_app,
             open_file_dialog,
             process_argv,

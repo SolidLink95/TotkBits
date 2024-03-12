@@ -90,9 +90,15 @@ pub fn open_file_from_path(app_handle: tauri::AppHandle, path: String) -> Option
 }
 
 #[tauri::command]
-fn receive_save_data(save_data: SaveData) -> Option<SendData>{
-    // Now you can access the fields directly
-
+pub fn remove_internal_sarc_file(app_handle: tauri::AppHandle, internalPath: String) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.remove_internal_elem(internalPath) {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
     None
 }
 

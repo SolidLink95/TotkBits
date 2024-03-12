@@ -1,10 +1,19 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
+import { useEditorContext } from './StateManager';
 
 const button_size = '33px';
 
-const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, setIsModalOpen,setIsAddPrompt }) => {
-
+const ButtonsDisplay = () => {
+  const {
+    renamePromptMessage, setRenamePromptMessage,
+    isAddPrompt, setIsAddPrompt,
+    activeTab, setActiveTab,
+    editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
+    statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
+    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
+  } = useEditorContext();
+  const activeTabRef = useRef(activeTab);
 
   //Buttons functions
   const handleOpenFileClick = () => {
@@ -14,10 +23,11 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
     editInternalSarcFile(selectedPath.path, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
   };
   const handleSaveClick = () => {
-    saveFileClick(setStatusText, activeTab, setpaths, editorRef);
+    console.log(activeTabRef.current, activeTab);
+    saveFileClick(setStatusText, activeTabRef.current, setpaths, editorRef);
   };
   const handleSaveAsClick = () => {
-    saveAsFileClick(setStatusText, activeTab, setpaths, editorRef);
+    saveAsFileClick(setStatusText, activeTabRef.current, setpaths, editorRef);
   };
   const handleAddClick = () => {
     setIsAddPrompt(true);
@@ -87,6 +97,11 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
   ]
     ;
 
+    
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
   useEffect(() => {//handle mouse and keyboards events
     const handleContextMenu = (event) => {
       //event.preventDefault();//prevent browser's default context menu
@@ -115,7 +130,7 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
           handleSaveClick();
           break;
         case 'e': // Ctrl+E,
-          if (activeTab === 'SARC') {
+          if (activeTabRef.current === 'SARC') {
             event.preventDefault();
             extractFileClick(selectedPath, setStatusText);
           }

@@ -58,11 +58,10 @@ impl Default for TotkBitsApp<'_> {
 }
 
 impl<'a> TotkBitsApp<'a> {
-
     pub fn process_argv(&mut self) -> Option<SendData> {
         let mut data = SendData::default();
         let args: Vec<String> = env::args().collect();
-        if args.len() > 1{
+        if args.len() > 1 {
             let res = self.open_from_path(args[1].clone());
             if let Some(r) = &res {
                 if data.tab.as_str() != "ERROR" {
@@ -73,14 +72,78 @@ impl<'a> TotkBitsApp<'a> {
         None
     }
 
+    pub fn remove_internal_elem(&mut self, internal_path: String) -> Option<SendData> {
+        let mut data = SendData::default();
+        let mut isReload = false;
+
+        if let Some(pack) = &mut self.pack {
+            if let Some(opened) = &mut pack.opened {
+                isReload = true;
+                if let Some(_) = opened.writer.get_file(&internal_path) {
+                    //its a file
+                    if MessageDialog::new()
+                        .set_title("Remove file")
+                        .set_description(format!("The file:\n{}\nwill be removed. This operation cannot be reverted! Proceed?", &internal_path))
+                        .set_buttons(rfd::MessageButtons::YesNo)
+                        .show()
+                        == rfd::MessageDialogResult::No
+                    {
+                        return None;
+                    }
+                    opened.writer.remove_file(&internal_path);
+                    data.status_text = format!("Removed {}", &internal_path);
+                } else {
+                    //its a directory
+                    if MessageDialog::new()
+                    .set_title("Remove directory")
+                    .set_description(format!("All files from directory:\n{}\nwill be removed. This operation cannot be reverted! Proceed?", &internal_path))
+                    .set_buttons(rfd::MessageButtons::YesNo)
+                    .show()
+                    == rfd::MessageDialogResult::No
+                {
+                    return None;
+                }
+                    let mut to_remove: Vec<String> = Vec::new();
+                    for file in opened.writer.files.keys() {
+                        if file.starts_with(&internal_path) {
+                            to_remove.push(file.clone());
+                        }
+                    }
+                    let mut i: usize = 0;
+                    for file in to_remove {
+                        opened.writer.remove_file(&file);
+                        i += 1;
+                    }
+                    data.status_text = format!("Removed {} files from {}", i, &internal_path);
+                }
+            }
+            if isReload {
+                pack.compare_and_reload();
+                data.get_sarc_paths(pack);
+            }
+            return Some(data);
+        }
+
+        None
+    }
+
     pub fn close_all_click(&mut self) -> Option<SendData> {
+        if MessageDialog::new()
+            .set_title("Close all")
+            .set_description("All currently opened files will be closed. Proceed?")
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show()
+            == rfd::MessageDialogResult::No
+        {
+            return None;
+        }
         let mut data = SendData::default();
         self.opened_file = OpenedFile::default();
         self.text = String::new();
-        self.status_text= "Ready".to_string();
-        self.active_tab= ActiveTab::DiretoryTree;
-        self.pack= None;
-        self.internal_file= None;
+        self.status_text = "Ready".to_string();
+        self.active_tab = ActiveTab::DiretoryTree;
+        self.pack = None;
+        self.internal_file = None;
         data.status_text = "Closed all opened files".to_string();
         data.sarc_paths = SarcPaths::default();
         Some(data)
@@ -189,7 +252,10 @@ impl<'a> TotkBitsApp<'a> {
                             i += 1;
                         }
                     }
-                    data.status_text = format!("Renamed {} to {} ({} files moved)", &p1.name, &p2.name, i);
+                    data.status_text = format!(
+                        "Renamed {} to {} ({} files affected)",
+                        &p1.name, &p2.name, i
+                    );
                 }
             }
             if isReload {
@@ -377,6 +443,7 @@ impl<'a> TotkBitsApp<'a> {
                                     &path, &opened.path.name
                                 );
                                 data.tab = "ERROR".to_string();
+                                println!("{:?}", &data);
                                 return Some(data);
                             } else {
                                 opened.writer.add_file(path, rawdata);
@@ -386,6 +453,30 @@ impl<'a> TotkBitsApp<'a> {
                                     "Saved {} for {}",
                                     &internal_file.path.name, &opened.path.name
                                 );
+                            }
+                        } else {
+                            let rawdata: Vec<u8> = get_binary_by_filetype(
+                                self.opened_file.file_type,
+                                text,
+                                self.opened_file.endian.unwrap_or(roead::Endian::Little),
+                            )?;
+                            if rawdata.is_empty() {
+                                data.status_text = format!(
+                                    "Error: Failed to save {}",
+                                    &self.opened_file.path.full_path
+                                );
+                                data.tab = "ERROR".to_string();
+                                println!("{:?}", &data);
+                                return Some(data);
+                            } else {
+                                let mut file =
+                                    fs::File::create(&self.opened_file.path.full_path).ok()?;
+                                file.write_all(&rawdata).ok()?;
+                                data.tab = "YAML".to_string();
+                                data.status_text =
+                                    format!("Saved {}", &self.opened_file.path.full_path);
+                                    println!("{:?}", &data);
+                                return Some(data);
                             }
                         }
                     }
@@ -408,29 +499,12 @@ impl<'a> TotkBitsApp<'a> {
                 pack.compare_and_reload();
                 data.get_sarc_paths(pack);
             }
+            println!("{:?}", &data);
             return Some(data);
         }
-        if save_data.tab.as_str() == "YAML" {
-            let rawdata: Vec<u8> = get_binary_by_filetype(
-                self.opened_file.file_type,
-                text,
-                self.opened_file.endian.unwrap_or(roead::Endian::Little),
-            )?;
-            if rawdata.is_empty() {
-                data.status_text =
-                    format!("Error: Failed to save {}", &self.opened_file.path.full_path);
-                data.tab = "ERROR".to_string();
-                return Some(data);
-            } else {
-                let mut file = fs::File::create(&self.opened_file.path.full_path).ok()?;
-                file.write_all(&rawdata).ok()?;
-                data.tab = "YAML".to_string();
-                data.status_text = format!("Saved {}", &self.opened_file.path.full_path);
-                return Some(data);
-            }
-        }
+        
 
-        None
+        Some(data)
     }
 
     pub fn edit_internal_file(&mut self, path: String) -> Option<SendData> {

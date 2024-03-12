@@ -114,6 +114,23 @@ export async function closeAllFilesClick(setStatusText, setpaths, updateEditorCo
 
 }
 
+export async function removeInternalFileClick(internalPath, setStatusText, setpaths) {
+  try {
+    const content = await invoke('remove_internal_sarc_file', { internalPath: internalPath });
+    if (content === null) {
+      console.log("No content returned from remove_internal_sarc_file");
+      return;
+    }
+    setStatusText(content.status_text);
+    if (content.sarc_paths.paths.length > 0) {
+      setpaths(content.sarc_paths);
+    }
+
+  } catch (error) {
+    console.error("Error invoking 'remove_internal_file':", error);
+  }
+}
+
 export async function replaceInternalFileClick(internalPath, setStatusText, setpaths) {
   try {
     const path = await invoke("open_file_dialog");
@@ -143,7 +160,11 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
     }
     const editorText = editorRef.current.getValue();
     const save_data = { tab: activeTab, text: editorText };
+    // console.log("About to save");
+    // console.log(save_data);
     const content = await invoke('save_file_struct', { saveData: save_data });
+    // console.log("received content from save_file_struct:");
+    // console.log(content);
     if (content === null) {
       console.log("No content returned from save_file_struct");
       return;
