@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { extractFileClick, editInternalSarcFile, fetchAndSetEditorContent, saveAsFileClick, saveFileClick,replaceInternalFileClick } from './ButtonClicks';
+import { editInternalSarcFile, replaceInternalFileClick } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 
 const dirOpened = `dir_opened.png`;
@@ -38,6 +38,8 @@ const ContextMenu = ({ x, y, onClose, actions }) => {
 //{ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }
 const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, onSelect }) => {
   const {
+    renamePromptMessage, setRenamePromptMessage,
+    isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
@@ -54,7 +56,6 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
       e.stopPropagation(); // This stops the event from bubbling up further
       console.log(`Selected: ${fullPath}`);
       onSelect(fullPath, endian); // Pass the fullPath to the onSelect function
-      setStatusText(fullPath);
     };
 
     const handleOpenInternalSarcFile = () => {
@@ -65,6 +66,26 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
       closeContextMenu();
       replaceInternalFileClick(fullPath, setStatusText, setpaths);
     };
+    const handleRenameInternalSarcFile = () => {
+      closeContextMenu();
+      if (isFile) {
+        setRenamePromptMessage({message: "Rename the internal SARC file:", path: name});
+      } else {
+        setRenamePromptMessage({message: "Rename the internal SARC directory:", path: name});
+      }
+      setIsAddPrompt(false);
+      setIsModalOpen(true);
+      
+    }
+    const handlePathToClipboard = (text) => {
+      closeContextMenu();
+      navigator.clipboard.writeText(text).then(() => {
+        console.log('Text copied to clipboard');
+      }).catch(err => {
+        console.error('Failed to copy text: ', err);
+      });
+      setStatusText(`Copied to clipboard`);
+    }
   
   
     const nodeStyle = {
@@ -74,7 +95,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
       display: 'flex',
       alignItems: 'center',
       backgroundColor: isSelected && isFile
-        ? 'darkgray' // Darker background for selected node
+        ? 'darkgray' // Darker background for selected nodeComponent/AnimationParamComponent/AnimationParam/Upper_Common.engine__component__AnimationParam.bgyml
         : sarcPaths.added_paths.includes(fullPath)
           ? 'purple'
           : sarcPaths.modded_paths.includes(fullPath)
@@ -126,12 +147,14 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
       // { label: 'Replace', method: () => console.log(`Replace clicked on ${fullPath}`) },
       { label: 'Replace', method: handleReplaceInternalSarcFile },
       { label: 'Remove', method: () => console.log(`Remove clicked on ${fullPath}`) },
-      { label: 'Rename', method: () => console.log(`Rename clicked on ${fullPath}`) },
+      { label: 'Rename', method: handleRenameInternalSarcFile },
+      { label: 'Copy path', method: () => handlePathToClipboard(fullPath) },
+      { label: 'Copy name', method: () => handlePathToClipboard(name) },
       { label: 'Close', method: () => closeContextMenu() },
     ] : [
       { label: 'Add', method: () => console.log(`Add clicked on ${fullPath}`) },
       { label: 'Remove', method: () => console.log(`Remove clicked on ${fullPath}`) },
-      { label: 'Rename', method: () => console.log(`Rename clicked on ${fullPath}`) },
+      { label: 'Rename', method: handleRenameInternalSarcFile },
       { label: 'Close', method: () => closeContextMenu() },
     ];
   

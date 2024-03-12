@@ -13,7 +13,7 @@ mod Zstd;
 mod file_format;
 use crate::TauriCommands::{
     edit_internal_file, exit_app, get_status_text, open_file, open_file_struct, save_as_click,
-    save_file_struct,add_click,open_file_dialog, extract_internal_file
+    save_file_struct,add_click,open_file_dialog, extract_internal_file,rename_internal_sarc_file
 };
 use crate::TotkApp::TotkBitsApp;
 
@@ -60,6 +60,7 @@ fn main() {
             save_as_click,
             add_click,
             extract_internal_file,
+            rename_internal_sarc_file,
             exit_app,
             open_file_dialog,
         ])

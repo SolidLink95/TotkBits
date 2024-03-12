@@ -103,6 +103,76 @@ impl<'a> TotkBitsApp<'a> {
         None
     }
 
+    pub fn rename_internal_file_from_path(
+        &mut self,
+        internal_path: String,
+        new_internal_path: String,
+    ) -> Option<SendData> {
+        let mut data = SendData::default();
+        let p1 = Pathlib::new(internal_path.clone());
+        let p2 = Pathlib::new(new_internal_path.clone());
+        println!(
+            "trying to rename  {} to sarc path {}",
+            &new_internal_path, &internal_path
+        );
+        let mut isReload = false;
+        if let Some(pack) = &mut self.pack {
+            if let Some(opened) = &mut pack.opened {
+                isReload = true;
+                //file is in sarc
+                if let Some(rawdata) = opened.writer.get_file(&internal_path) {
+                    let rawdata_backup = rawdata.clone();
+                    let new_path = format!("{}/{}", &p1.parent, &p2.name);
+                    opened.writer.remove_file(&internal_path);
+                    opened.writer.add_file(&new_path, rawdata_backup);
+                    data.status_text = format!("Renamed {} to {}", &p1.name, &p2.name);
+                } else {
+                    //assuming the node is a directory
+                    let mut to_remove: Vec<String> = Vec::new();
+                    for file in opened.writer.files.keys() {
+                        if file.starts_with(&internal_path) {
+                            to_remove.push(file.clone());
+                        }
+                    }
+                    println!("{:?}", to_remove);
+                    let mut i: usize = 0;
+                    for file in to_remove {
+                        if let Some(rawdata) = opened.writer.get_file(&file) {
+                            let input = "asdf.qwre.zxcv";
+                            let result: String =
+                                input.split('.').skip(1).collect::<Vec<&str>>().join(".");
+
+                            let rawdata_backup = rawdata.clone();
+                            let new_path = format!("{}/{}", &p1.parent, &p2.name);
+                            // let new_file_path = file.replace(&internal_path, &new_path);
+                            let tmp = file
+                                .split(&internal_path)
+                                .skip(1)
+                                .collect::<Vec<&str>>()
+                                .join(&internal_path);
+                            let mut new_file_path = format!("{}/{}", &new_path, &tmp);
+                            if new_file_path.starts_with("/") {
+                                new_file_path = new_file_path[1..].to_string();
+                            }
+                            new_file_path = new_file_path.replace("//", "/");
+                            println!("{} -> {}", &file, &new_file_path);
+                            opened.writer.remove_file(&file);
+                            opened.writer.add_file(&new_file_path, rawdata_backup);
+                            i += 1;
+                        }
+                    }
+                    data.status_text = format!("Renamed {} to {} ({} files moved)", &p1.name, &p2.name, i);
+                }
+            }
+            if isReload {
+                pack.compare_and_reload();
+                data.get_sarc_paths(pack);
+            }
+            return Some(data);
+        }
+        None
+    }
+
     pub fn add_internal_file_from_path(
         &mut self,
         internal_path: String,
@@ -140,7 +210,11 @@ impl<'a> TotkBitsApp<'a> {
                     .writer
                     .add_file(&internal_path.replace("\\", "/"), buffer);
                 data.status_text = if overwrite {
-                    format!("Replaced {} with {}", &internal_path, &Pathlib::new(path).name)
+                    format!(
+                        "Replaced {} with {}",
+                        &internal_path,
+                        &Pathlib::new(path).name
+                    )
                 } else {
                     format!("Added {} to {}", &internal_path, &opened.path.name)
                 };

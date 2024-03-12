@@ -1,9 +1,9 @@
 
 import { debounce } from "lodash"; // or any other method/utility to debounce
 import * as monaco from "monaco-editor";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect } from "react";
 import ActiveTabDisplay from "./ActiveTab";
-import AddFilePrompt from './AddFilePrompt'; // Import the modal component
+import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
 import "./App.css";
 import ButtonsDisplay from "./Buttons";
 import DirectoryTree from "./DirectoryTree";
@@ -31,6 +31,8 @@ function App() {
   // const [isModalOpen, setIsModalOpen] = useState(false);
 
   const {
+    renamePromptMessage, setRenamePromptMessage,
+    isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
@@ -124,9 +126,17 @@ function App() {
     <div>
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
-      <AddFilePrompt isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} setStatusText={setStatusText} setpaths={setpaths}>
-        <h2>Add File to SARC</h2>
-      </AddFilePrompt>
+      <AddOrRenameFilePrompt 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        setStatusText={setStatusText} 
+        setpaths={setpaths} 
+        selectedPath={selectedPath} 
+        isAddPrompt={isAddPrompt}
+        renamePromptMessage={renamePromptMessage}
+      >
+        {/* <h2>Add File to SARC</h2> */}
+      </AddOrRenameFilePrompt>
       
       <ButtonsDisplay 
         editorRef={editorRef} 
@@ -137,7 +147,8 @@ function App() {
         setLabelTextDisplay={setLabelTextDisplay} 
         setpaths={setpaths} 
         selectedPath={selectedPath} 
-        changeModal={changeModal} 
+        setIsModalOpen={setIsModalOpen} 
+        setIsAddPrompt={setIsAddPrompt}
       />
       {/* {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} />} */}
       {<DirectoryTree 

@@ -105,6 +105,18 @@ pub fn save_file_struct(app_handle: tauri::AppHandle, save_data: SaveData) -> Op
     }
     None
 }
+#[tauri::command]
+pub fn rename_internal_sarc_file(app_handle: tauri::AppHandle, internalPath: String, newInternalPath: String) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.rename_internal_file_from_path(internalPath, newInternalPath) {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
 
 #[tauri::command]
 pub fn exit_app() {

@@ -3,7 +3,9 @@ import { extractFileClick, editInternalSarcFile, fetchAndSetEditorContent, saveA
 
 const button_size = '33px';
 
-const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }) => {
+const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, setIsModalOpen,setIsAddPrompt }) => {
+
+
   //Buttons functions
   const handleFetchContent = () => {
     fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
@@ -17,6 +19,10 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
   const handleSaveAsClick = () => {
     saveAsFileClick(setStatusText, activeTab, setpaths, editorRef);
   };
+  const handleAddClick = () => {
+    setIsAddPrompt(true);
+    setIsModalOpen(true);
+  }
 
 
   function ImageButton({ src, onClick, alt, title, style }) {
@@ -68,7 +74,7 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
     { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
     { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit (Ctrl+E)' },
-    { src: 'add_sarc.png', alt: 'add', onClick: changeModal, title: 'Add' },
+    { src: 'add_sarc.png', alt: 'add', onClick: handleAddClick, title: 'Add' },
     { src: 'extract.png', alt: 'extract', onClick: () => extractFileClick(selectedPath, setStatusText), title: 'Extract' },
   ] : [
     { src: 'open.png', alt: 'Open', onClick: handleFetchContent, title: 'Open (Ctrl+O)' },

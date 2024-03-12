@@ -75,6 +75,7 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText}) => {
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ width: '100%', padding: '5px' }}
         />
+        <button onClick={() => setSearchQuery("")} style={{ width: '70px', padding: '5px' }}>Clear</button>
       </div>
     </>
   );
