@@ -5,10 +5,12 @@ import React, { useEffect } from "react";
 import ActiveTabDisplay from "./ActiveTab";
 import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
 import "./App.css";
+import { processArgv1 } from './ButtonClicks';
 import ButtonsDisplay from "./Buttons";
 import DirectoryTree from "./DirectoryTree";
 import MenuBarDisplay from "./MenuBar";
 import { useEditorContext } from './StateManager';
+import { invoke } from '@tauri-apps/api/tauri';
 
 
 
@@ -18,17 +20,6 @@ function App() {
     YAML: 'YAML',
     RSTB: 'RSTB',
   };
-  // const [activeTab, setActiveTab] = useState('SARC'); // Adjust this initial value as needed
-  // const editorContainerRef = useRef(null); //monaco editor container
-  // const editorRef = useRef(null); //monaco editor reference
-  // const [editorValue, setEditorValue] = useState(''); //monaco editor content
-  // const [lang, setLang] = useState('yaml'); //monaco editor content
-  // const [statusText, setStatusText] = useState("Ready"); //status bar text
-  // const [selectedPath, setSelectedPath] = useState({ path: "", endian: "" }); //selected path from directory tree
-  // const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '' }); //labeltext display near tabs
-  // const [paths, setpaths] = useState({paths: [], added_paths: [], modded_paths: []}); //paths structures for directory tree
-  // const [openedData, setOpenedData] = useState(null);
-  // const [isModalOpen, setIsModalOpen] = useState(false);
 
   const {
     renamePromptMessage, setRenamePromptMessage,
@@ -36,25 +27,9 @@ function App() {
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, isModalOpen, setIsModalOpen ,updateEditorContent, changeModal
+    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
   } = useEditorContext();
 
-  // console.log(statusText);
-  // setStatusText(selectedPath.path);
-  // console.log(statusText);
-
-  // const changeModal = () => setIsModalOpen(!isModalOpen);
-
-
-  //Functions
-
-  // const updateEditorContent = (content) => {
-  //   //setText(content);
-  //   if (editorRef.current) {
-  //     editorRef.current.setValue(content);
-  //     //console.log(content);
-  //   } 
-  // };
 
 
   const handleNodeSelect = (path, endian) => {
@@ -74,6 +49,18 @@ function App() {
         theme: "vs-dark",
         wordWrap: 'on', // Enable word wrapping
       });
+      console.log("Checking argv[1]");
+      invoke('get_command_line_arg')
+        .then((arg) => {
+          if (arg) {
+            console.log('Received command-line argument:', arg);
+            processArgv1(arg, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+            // Perform actions based on the argument
+          } else {
+            console.log('No command-line argument provided.');
+          }
+        })
+        .catch((error) => console.error('Error fetching command-line argument:', error));
     }
 
     // Function to update editor size, call it when needed
@@ -116,7 +103,7 @@ function App() {
 
 
   const statusStyle = {
-    color: statusText.toLowerCase().includes("error") ? 'red' : 
+    color: statusText.toLowerCase().includes("error") ? 'red' :
       statusText.toLowerCase().includes('warning') ? 'yellow' : 'white',
   };
 
@@ -124,49 +111,43 @@ function App() {
 
   return (
     <div>
-      <MenuBarDisplay />
+      <MenuBarDisplay
+      />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
-      <AddOrRenameFilePrompt 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        setStatusText={setStatusText} 
-        setpaths={setpaths} 
-        selectedPath={selectedPath} 
+      <AddOrRenameFilePrompt
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        setStatusText={setStatusText}
+        setpaths={setpaths}
+        selectedPath={selectedPath}
         isAddPrompt={isAddPrompt}
         renamePromptMessage={renamePromptMessage}
       >
         {/* <h2>Add File to SARC</h2> */}
       </AddOrRenameFilePrompt>
-      
-      <ButtonsDisplay 
-        editorRef={editorRef} 
-        updateEditorContent={updateEditorContent} 
-        setStatusText={setStatusText} 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        setLabelTextDisplay={setLabelTextDisplay} 
-        setpaths={setpaths} 
-        selectedPath={selectedPath} 
-        setIsModalOpen={setIsModalOpen} 
+
+      <ButtonsDisplay
+        editorRef={editorRef}
+        updateEditorContent={updateEditorContent}
+        setStatusText={setStatusText}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        setLabelTextDisplay={setLabelTextDisplay}
+        setpaths={setpaths}
+        selectedPath={selectedPath}
+        setIsModalOpen={setIsModalOpen}
         setIsAddPrompt={setIsAddPrompt}
       />
       {/* {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} />} */}
-      {<DirectoryTree 
-        onNodeSelect={handleNodeSelect} 
-        sarcPaths={paths} 
+      {<DirectoryTree
+        onNodeSelect={handleNodeSelect}
+        sarcPaths={paths}
         //For buttons clicks
-        editorRef={editorRef} 
-        updateEditorContent={updateEditorContent} 
-        setStatusText={setStatusText} 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        setLabelTextDisplay={setLabelTextDisplay} 
-        setpaths={setpaths} 
-        selectedPath={selectedPath} 
-        changeModal={changeModal} 
-        style={{  display: activeTab === 'SARC' ? "block" : "none" }}
+        setStatusText={setStatusText}
+        activeTab={activeTab}
+        style={{ display: activeTab === 'SARC' ? "block" : "none" }}
       />}
-      <div ref={editorContainerRef} className="code_editor" style={{  display: activeTab === 'YAML' ? "block" : "none" }}></div>
+      <div ref={editorContainerRef} className="code_editor" style={{ display: activeTab === 'YAML' ? "block" : "none" }}></div>
       {/* <div className="statusbar" style={statusStyle}>Current path: "{selectedPath.path} {selectedPath.endian}"</div> */}
       <div className="statusbar" style={statusStyle}>{statusText}</div>
     </div>

@@ -1,8 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+use std::env;
 use std::sync::Mutex;
 
-use tauri::{App, Window};
+use tauri::{App, Manager, State, Window};
 use TotkConfig::init;
 mod Open_and_Save;
 mod Settings;
@@ -12,8 +13,9 @@ mod TotkConfig;
 mod Zstd;
 mod file_format;
 use crate::TauriCommands::{
-    edit_internal_file, exit_app, get_status_text, open_file, open_file_struct, save_as_click,
-    save_file_struct,add_click,open_file_dialog, extract_internal_file,rename_internal_sarc_file
+    add_click, close_all_opened_files, edit_internal_file, exit_app, extract_internal_file,
+    get_status_text, open_file_dialog, open_file_from_path, open_file_struct, process_argv,
+    rename_internal_sarc_file, save_as_click, save_file_struct,
 };
 use crate::TotkApp::TotkBitsApp;
 
@@ -23,46 +25,49 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-#[tauri::command]
-fn receive_text_from_editor(text: String) {
-    println!("Received text: {}", text);
-    // You can process the text here
-}
+struct CommandLineArg(String);
 
 #[tauri::command]
-fn send_text_to_frontend() -> String {
-    r#"---
-    doe: "a deer, a female deer"
-    ray: "a drop of golden sun"
-    pi: 3.14159
-    xmas: true
-    french-hens: 3"#
-        .to_string()
+fn get_command_line_arg(state: State<CommandLineArg>) -> String {
+    state.0.clone()
 }
 
 fn main() {
     if !init() {
-        println!("Error while initializing TotkConfig");
+        println!("Error while initializing romfs path");
         return;
     }
 
     let mut app = Mutex::<TotkBitsApp>::default();
     tauri::Builder::default()
+        .setup(|app1| {
+            // Access command-line arguments
+            let args: Vec<String> = env::args().collect();
+
+            // Check if at least one argument was provided and store it in the app state
+            if args.len() > 1 {
+                let first_arg = args[1].clone();
+                app1.manage(CommandLineArg(first_arg));
+            }
+
+            Ok(())
+        })
         .manage(app)
         .invoke_handler(tauri::generate_handler![
-            receive_text_from_editor,
-            send_text_to_frontend,
+            get_command_line_arg,
             get_status_text,
-            open_file,
             open_file_struct,
+            open_file_from_path,
             edit_internal_file,
             save_file_struct,
             save_as_click,
             add_click,
             extract_internal_file,
             rename_internal_sarc_file,
+            close_all_opened_files,
             exit_app,
             open_file_dialog,
+            process_argv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

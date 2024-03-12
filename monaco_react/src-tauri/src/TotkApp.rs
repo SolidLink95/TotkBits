@@ -16,7 +16,7 @@ use std::io::{Read, Write};
 use std::os::raw;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::{fs, io};
+use std::{env, fs, io};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum ActiveTab {
@@ -58,6 +58,34 @@ impl Default for TotkBitsApp<'_> {
 }
 
 impl<'a> TotkBitsApp<'a> {
+
+    pub fn process_argv(&mut self) -> Option<SendData> {
+        let mut data = SendData::default();
+        let args: Vec<String> = env::args().collect();
+        if args.len() > 1{
+            let res = self.open_from_path(args[1].clone());
+            if let Some(r) = &res {
+                if data.tab.as_str() != "ERROR" {
+                    return res;
+                }
+            }
+        }
+        None
+    }
+
+    pub fn close_all_click(&mut self) -> Option<SendData> {
+        let mut data = SendData::default();
+        self.opened_file = OpenedFile::default();
+        self.text = String::new();
+        self.status_text= "Ready".to_string();
+        self.active_tab= ActiveTab::DiretoryTree;
+        self.pack= None;
+        self.internal_file= None;
+        data.status_text = "Closed all opened files".to_string();
+        data.sarc_paths = SarcPaths::default();
+        Some(data)
+    }
+
     pub fn send_status_text(&self) -> String {
         self.status_text.to_string()
     }

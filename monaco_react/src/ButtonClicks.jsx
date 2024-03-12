@@ -1,6 +1,4 @@
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
-import { useEditorContext } from './StateManager';
-import { path } from '@tauri-apps/api';
 
 export const useExitApp = async () => {
   console.log('Exiting the app');
@@ -13,7 +11,8 @@ export const useExitApp = async () => {
 
 export async function extractFileClick(selectedPath, setStatusText) {
   try {
-    if (selectedPath.path === null || selectedPath.path === undefined || selectedPath.path === "") { 
+    if (selectedPath.path === null || selectedPath.path === undefined || selectedPath.path === "") {
+      setStatusText("Select some file first!");
       return;
     }
 
@@ -32,12 +31,16 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
   try {
     console.log('Opening internal SARC file:', fullPath);
     const content = await invoke('edit_internal_file', { path: fullPath });
-  //  setStatusText(content.status_text);
+    if (content === null) {
+      setStatusText("No content returned! Is any SARC file opened?");
+      return;
+    }
+    //  setStatusText(content.status_text);
     console.log(content.file_label);
     if (content.tab === 'YAML') {
       setActiveTab(content.tab);
       updateEditorContent(content.text);
-      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label}));
+      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
     } else {
@@ -50,18 +53,42 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
 
 
 }
+export async function processArgv1(argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
+  try {
+    const content = await invoke('open_file_from_path', { path: argv1 });
+    if (content === null) {
+      console.log("No content returned from process_argv");
+      return;
+    }
+    setStatusText(content.status_text);
+    if (content.tab === 'SARC') {
+      setActiveTab(content.tab);
+      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label }));
+      setpaths(content.sarc_paths);
+    } else if (content.tab === 'YAML') {
+      setActiveTab(content.tab);
+      updateEditorContent(content.text);
+      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
+    } else if (content.tab === 'ERROR') {
+      console.log("Error opening file, no tab set");
+    }
+
+  } catch (error) {
+    console.error('Failed to process argv[1]:', error);
+  }
+}
 export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
     const content = await invoke('open_file_struct');
     setStatusText(content.status_text);
     if (content.tab === 'SARC') {
       setActiveTab(content.tab);
-      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label}));
+      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label }));
       setpaths(content.sarc_paths);
     } else if (content.tab === 'YAML') {
       setActiveTab(content.tab);
       updateEditorContent(content.text);
-      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label}));
+      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
     }
@@ -70,7 +97,22 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
   }
 }
 
+export async function closeAllFilesClick(setStatusText, setpaths, updateEditorContent, setLabelTextDisplay) {
+  try {
+    const content = await invoke('close_all_opened_files');
+    if (content === null) {
+      console.log("No content returned from close_all_files");
+      return;
+    }
+    setStatusText(content.status_text);
+    setpaths(content.sarc_paths);
+    updateEditorContent(content.text);
+    setLabelTextDisplay({ sarc: '', yaml: '' });
+  } catch (error) {
+    console.error('Failed to close all files:', error);
+  }
 
+}
 
 export async function replaceInternalFileClick(internalPath, setStatusText, setpaths) {
   try {
@@ -90,18 +132,18 @@ export async function replaceInternalFileClick(internalPath, setStatusText, setp
   } catch (error) {
     console.error("Error invoking 'add_click':", error);
   }
-  
+
 }
 export async function saveFileClick(setStatusText, activeTab, setpaths, editorRef) {
-   try {
+  try {
     // const editorText = editorRef.current ? editorRef.current.getValue() : "";
     if (!editorRef.current) {
       console.log("Editor reference not found");
       return;
     }
-    const editorText =  editorRef.current.getValue();
+    const editorText = editorRef.current.getValue();
     const save_data = { tab: activeTab, text: editorText };
-    const content = await invoke('save_file_struct', {saveData: save_data});
+    const content = await invoke('save_file_struct', { saveData: save_data });
     if (content === null) {
       console.log("No content returned from save_file_struct");
       return;
@@ -123,32 +165,32 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
 
 export async function saveAsFileClick(setStatusText, activeTab, setpaths, editorRef) {
   try {
-   // const editorText = editorRef.current ? editorRef.current.getValue() : "";
-   if (!editorRef.current) {
-     console.log("Editor reference not found");
-     return;
-   }
-   const editorText =  editorRef.current.getValue();
-   const save_data = { tab: activeTab, text: editorText };
-   console.log(save_data );
-   const content = await invoke('save_as_click', {saveData: save_data});
-   if (content === null) {
-     console.log("No content returned from save_as_click");
-     return;
-   }
-   if (content.sarc_paths.paths.length > 0) {
-     setpaths(content.sarc_paths);
-     console.log(content.sarc_paths.added_paths);
-     console.log(content.sarc_paths.modded_paths);
-   }
-   console.log(content);
-   setStatusText(content.status_text);
-   if (content.tab === 'ERROR') {
-     console.log("Error opening file, no tab set");
-   }
- } catch (error) {
-   console.error('Failed save as data: ', error);
- }
+    // const editorText = editorRef.current ? editorRef.current.getValue() : "";
+    if (!editorRef.current) {
+      console.log("Editor reference not found");
+      return;
+    }
+    const editorText = editorRef.current.getValue();
+    const save_data = { tab: activeTab, text: editorText };
+    console.log(save_data);
+    const content = await invoke('save_as_click', { saveData: save_data });
+    if (content === null) {
+      console.log("No content returned from save_as_click");
+      return;
+    }
+    if (content.sarc_paths.paths.length > 0) {
+      setpaths(content.sarc_paths);
+      console.log(content.sarc_paths.added_paths);
+      console.log(content.sarc_paths.modded_paths);
+    }
+    console.log(content);
+    setStatusText(content.status_text);
+    if (content.tab === 'ERROR') {
+      console.log("Error opening file, no tab set");
+    }
+  } catch (error) {
+    console.error('Failed save as data: ', error);
+  }
 }
 
 

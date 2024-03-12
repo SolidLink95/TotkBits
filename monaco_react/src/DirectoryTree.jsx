@@ -17,7 +17,7 @@ const buildTree = (paths) => {
   return root;
 };
 //{ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }
-const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText}) => {
+const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) => {
   const [selectedNode, setSelectedNode] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const tree = buildTree(sarcPaths);
@@ -50,10 +50,17 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText}) => {
   };
 
   const renderTree = searchQuery ? filteredTree(tree) : tree;
-
+  // if (activeTab !== 'SARC') { 
+  //   return null;
+  // }
+  //style={{  display: activeTab === 'SARC' ? "block" : "none" }}
   return (
     <>
-      <ul className="directory-tree" style={{ listStyleType: 'none', fontSize: fontsize, marginBottom: '88px' }}>
+      <ul className="directory-tree" 
+        style={{ listStyleType: 'none', marginBottom: '88px', //width: activeTab === 'SARC' ? "100%" : "0%", 
+        ...activeTab !== 'SARC' ? { height: '0%', width: '0%' } : {}
+         }}//robust solution to hide tree when not active. This way collapsed nodes states are not lost
+      >
         {Object.entries(renderTree).map(([key, value]) => (
           <DirectoryNode
             key={key}
@@ -67,7 +74,7 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText}) => {
           />
         ))}
       </ul>
-      <div className='textsearch' style={{ padding: '10px' }}>
+      {activeTab === 'SARC' && <div className='textsearch' style={{ padding: '10px' }}>
         <input
           type="text"
           placeholder="Search..."
@@ -76,7 +83,7 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText}) => {
           style={{ width: '100%', padding: '5px' }}
         />
         <button onClick={() => setSearchQuery("")} style={{ width: '70px', padding: '5px' }}>Clear</button>
-      </div>
+      </div>}
     </>
   );
 };

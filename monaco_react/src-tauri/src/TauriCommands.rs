@@ -1,7 +1,7 @@
 //tauri commands
 use std::{panic::{self, AssertUnwindSafe}, process, sync::Mutex};
 use rfd::MessageDialog;
-use tauri::Manager;
+use tauri::{Manager, State};
 use crate::{Open_and_Save::SendData, TotkApp::{SaveData, TotkBitsApp}};
 
 
@@ -61,23 +61,26 @@ pub fn get_status_text(app: tauri::State<'_, TotkBitsApp>) -> String {
     app.status_text.clone()
 }
 
-#[tauri::command]
-pub fn open_file(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
-    // Lock the mutex to get mutable access to your state
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
 
-    match app.open() {
-        Some(result) => Ok(Some(result.text)), // Safely return the result if present
-        None => Ok(None),                      // Return None if no result
-    }
-}
 
 #[tauri::command]
 pub fn open_file_struct(app_handle: tauri::AppHandle, window: tauri::Window) -> Option<SendData> {
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let mut app = binding.lock().expect("Failed to lock state");
     match app.open() {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
+
+#[tauri::command]
+pub fn open_file_from_path(app_handle: tauri::AppHandle, path: String) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.open_from_path(path) {
         Some(result) => {
             return Some(result);
         } // Safely return the result if present
@@ -119,6 +122,34 @@ pub fn rename_internal_sarc_file(app_handle: tauri::AppHandle, internalPath: Str
 }
 
 #[tauri::command]
+pub fn close_all_opened_files(app_handle: tauri::AppHandle) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.close_all_click() {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
+
+
+#[tauri::command]
+pub fn process_argv(app_handle: tauri::AppHandle) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.process_argv() {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
+
+
+#[tauri::command]
 pub fn exit_app() {
     if MessageDialog::new()
         .set_title("Warning")
@@ -139,3 +170,5 @@ pub fn open_file_dialog() -> Option<String> {
         None => None,
     }
 }
+
+

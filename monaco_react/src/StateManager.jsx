@@ -8,7 +8,7 @@ export const EditorProvider = ({ children }) => {
   const editorRef = useRef(null); //monaco editor reference
   const [editorValue, setEditorValue] = useState(''); //monaco editor content
   const [lang, setLang] = useState('yaml'); //monaco editor content
-  const [statusText, setStatusText] = useState(""); //status bar text
+  const [statusText, setStatusText] = useState("Ready"); //status bar text
   const [renamePromptMessage, setRenamePromptMessage] = useState({ message: "Rename internal SARC file:", path: "" }); //status bar text
   const [selectedPath, setSelectedPath] = useState({ path: "", endian: "" }); //selected path from directory tree
   const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '' }); //labeltext display near tabs

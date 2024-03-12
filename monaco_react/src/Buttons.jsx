@@ -1,5 +1,5 @@
-import React, { useCallback, useState, useEffect } from 'react';
-import { extractFileClick, editInternalSarcFile, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
+import React, { useCallback, useEffect } from 'react';
+import { editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 
 const button_size = '33px';
 
@@ -7,7 +7,7 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
 
 
   //Buttons functions
-  const handleFetchContent = () => {
+  const handleOpenFileClick = () => {
     fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
   };
   const handleOpenInternalSarcFile = () => {
@@ -70,14 +70,14 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
   }, []);
 
   const imageButtonsData = activeTab === "SARC" ? [
-    { src: 'open.png', alt: 'Open', onClick: handleFetchContent, title: 'Open (Ctrl+O)' },
+    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
     { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
     { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit (Ctrl+E)' },
     { src: 'add_sarc.png', alt: 'add', onClick: handleAddClick, title: 'Add' },
     { src: 'extract.png', alt: 'extract', onClick: () => extractFileClick(selectedPath, setStatusText), title: 'Extract' },
   ] : [
-    { src: 'open.png', alt: 'Open', onClick: handleFetchContent, title: 'Open (Ctrl+O)' },
+    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
     { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
     { src: 'back.png', alt: 'back', onClick: undoInEditor, title: 'Undo (Ctrl+Z)' },
@@ -108,7 +108,7 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
       switch (event.key) {
         case 'o': // Ctrl+O
           event.preventDefault(); // Prevent the browser's default action
-          handleFetchContent();
+          handleOpenFileClick();
           break;
         case 's': // Ctrl+S
           event.preventDefault();

@@ -97,7 +97,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
       backgroundColor: isSelected && isFile
         ? 'darkgray' // Darker background for selected nodeComponent/AnimationParamComponent/AnimationParam/Upper_Common.engine__component__AnimationParam.bgyml
         : sarcPaths.added_paths.includes(fullPath)
-          ? 'purple'
+          ? '#205F63'
           : sarcPaths.modded_paths.includes(fullPath)
             ? '#826C00'
             : 'transparent'
