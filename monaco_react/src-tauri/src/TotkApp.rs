@@ -162,7 +162,15 @@ impl<'a> TotkBitsApp<'a> {
             &self.opened_file,
             "Save file as".to_string(),
         );
-        dialog.generate_filters_and_name();
+        if self.opened_file.path.full_path.is_empty() {
+            if let Some(internal_file) = &self.internal_file {
+                dialog.name = Some(internal_file.path.name.clone());
+                dialog.filters_from_path(&internal_file.path.full_path);
+            }
+        } else {
+            dialog.generate_filters_and_name();
+        }
+        
         if dialog.name.clone().unwrap_or_default().is_empty() && save_data.tab == "SARC" {
             println!("Nothing is opened, nothing to save");
             return None;
@@ -331,6 +339,7 @@ impl<'a> TotkBitsApp<'a> {
                         get_string_from_data(path.clone(), raw_data.to_vec(), self.zstd.clone())
                     {
                         self.internal_file = Some(intern);
+                        self.opened_file = OpenedFile::default();
                         let i = self.internal_file.as_ref().unwrap();
                         data.text = text;
                         data.path = i.path.clone();

@@ -11,6 +11,10 @@ export const useExitApp = async () => {
 
 export async function extractFileClick(selectedPath, setStatusText) {
   try {
+    if (selectedPath.path === null || selectedPath.path === undefined || selectedPath.path === "") { 
+      return;
+    }
+
     const content = await invoke('extract_internal_file', { internalPath: selectedPath.path });
     if (content !== null) {
       setStatusText(content.status_text);
@@ -103,7 +107,8 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
      return;
    }
    const editorText =  editorRef.current.getValue();
-   const save_data = { tab: activeTab, text: editorText };
+   const save_data = { tab: "YAML", text: editorText };
+   console.log(save_data );
    const content = await invoke('save_as_click', {saveData: save_data});
    if (content === null) {
      console.log("No content returned from save_as_click");
