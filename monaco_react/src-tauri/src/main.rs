@@ -1,4 +1,5 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
+#![windows_subsystem = "windows"]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::env;
 use std::sync::Mutex;
@@ -20,10 +21,7 @@ use crate::TauriCommands::{
 use crate::TotkApp::TotkBitsApp;
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+
 
 struct CommandLineArg(String);
 
@@ -32,9 +30,6 @@ fn get_command_line_arg(state: State<CommandLineArg>) -> String {
     state.0.clone()
 }
 
-fn get_cmd_line_arg_unsafe(state: State<CommandLineArg>) -> String {
-    state.0.clone()
-}
 
 fn main() {
     if !init() {
@@ -47,11 +42,8 @@ fn main() {
         .setup(|app1| {
             // Access command-line arguments
             let args: Vec<String> = env::args().collect();
-
-            // Check if at least one argument was provided and store it in the app state
             if args.len() > 1 {
-                let first_arg = args[1].clone();
-                app1.manage(CommandLineArg(first_arg));
+                app1.manage(CommandLineArg(args[1].clone()));
             } else {
                 
                 app1.manage(CommandLineArg("".to_string()));

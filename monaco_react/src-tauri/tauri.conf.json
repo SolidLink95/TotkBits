@@ -6,8 +6,8 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "monaco_react",
-    "version": "0.0.0"
+    "productName": "TotkBits",
+    "version": "0.0.1"
   },
   "tauri": {
     "allowlist": {
