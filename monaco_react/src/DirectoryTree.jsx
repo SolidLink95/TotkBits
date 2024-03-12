@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import DirectoryNode from './DirectoryNode';
+import { extractFileClick, editInternalSarcFile, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 
 const fontsize = '15px';
 
@@ -15,12 +16,12 @@ const buildTree = (paths) => {
   });
   return root;
 };
-
-const DirectoryTree = ({ onNodeSelect, sarcPaths }) => {
+//{ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }
+const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText}) => {
   const [selectedNode, setSelectedNode] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const tree = buildTree(sarcPaths);
-
+  // setStatusText("Directory Tree Loaded  ");
   const handleSelectNode = (fullPath) => {
     setSelectedNode(fullPath, "LE");
     onNodeSelect(fullPath, "LE");
@@ -28,6 +29,7 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths }) => {
 
   const handleContextMenu = (fullPath) => {
     setSelectedNode(fullPath);
+    console.log(`Context menu for: ${fullPath}`);
   };
 
   const filteredTree = (node, path = "") => {

@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { extractFileClick, editInternalSarcFile, fetchAndSetEditorContent, saveAsFileClick, saveFileClick,replaceInternalFileClick } from './ButtonClicks';
+import { useEditorContext } from './StateManager';
 
 const dirOpened = `dir_opened.png`;
 const dirClosed = `dir_closed.png`;
@@ -33,8 +35,15 @@ const ContextMenu = ({ x, y, onClose, actions }) => {
       </ul>
     );
   };
-  
+//{ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }
 const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, onSelect }) => {
+  const {
+    activeTab, setActiveTab,
+    editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
+    statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
+    paths, setpaths, isModalOpen, setIsModalOpen ,updateEditorContent, changeModal
+  } = useEditorContext();
+    
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
     const isFile = node === null;
@@ -45,8 +54,17 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
       e.stopPropagation(); // This stops the event from bubbling up further
       console.log(`Selected: ${fullPath}`);
       onSelect(fullPath, endian); // Pass the fullPath to the onSelect function
+      setStatusText(fullPath);
     };
-  
+
+    const handleOpenInternalSarcFile = () => {
+      closeContextMenu();
+      editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    };
+    const handleReplaceInternalSarcFile = () => {
+      closeContextMenu();
+      replaceInternalFileClick(fullPath, setStatusText, setpaths);
+    };
   
   
     const nodeStyle = {
@@ -103,8 +121,10 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     };
   
     const contextMenuActions = isFile ? [
-      { label: 'Edit', method: () => console.log(`Edit clicked on ${fullPath}`) },
-      { label: 'Replace', method: () => console.log(`Replace clicked on ${fullPath}`) },
+      // { label: 'Edit', method: () => console.log(`Edit clicked on ${fullPath}`) },
+      { label: 'Edit', method: handleOpenInternalSarcFile },
+      // { label: 'Replace', method: () => console.log(`Replace clicked on ${fullPath}`) },
+      { label: 'Replace', method: handleReplaceInternalSarcFile },
       { label: 'Remove', method: () => console.log(`Remove clicked on ${fullPath}`) },
       { label: 'Rename', method: () => console.log(`Rename clicked on ${fullPath}`) },
       { label: 'Close', method: () => closeContextMenu() },

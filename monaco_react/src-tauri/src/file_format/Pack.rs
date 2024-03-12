@@ -87,7 +87,7 @@ impl<'a> PackComparer<'a> {
                 }
                 self.added = added;
                 self.modded = modded;
-                println!("Added {:?}\nModded {:?}", self.added, self.modded);
+                // println!("Added {:?}\nModded {:?}", self.added.keys(), self.modded.keys());
             }
         } else {
             //custom actor

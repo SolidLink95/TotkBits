@@ -8,6 +8,7 @@ import "./App.css";
 import ButtonsDisplay from "./Buttons";
 import DirectoryTree from "./DirectoryTree";
 import MenuBarDisplay from "./MenuBar";
+import { useEditorContext } from './StateManager';
 
 
 
@@ -17,30 +18,41 @@ function App() {
     YAML: 'YAML',
     RSTB: 'RSTB',
   };
-  const [activeTab, setActiveTab] = useState('SARC'); // Adjust this initial value as needed
-  const editorContainerRef = useRef(null); //monaco editor container
-  const editorRef = useRef(null); //monaco editor reference
-  const [editorValue, setEditorValue] = useState(''); //monaco editor content
-  const [lang, setLang] = useState('yaml'); //monaco editor content
-  const [statusText, setStatusText] = useState("Ready"); //status bar text
-  const [selectedPath, setSelectedPath] = useState({ path: "", endian: "" }); //selected path from directory tree
-  const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '' }); //labeltext display near tabs
-  const [paths, setpaths] = useState({paths: [], added_paths: [], modded_paths: []}); //paths structures for directory tree
-  const [openedData, setOpenedData] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // const [activeTab, setActiveTab] = useState('SARC'); // Adjust this initial value as needed
+  // const editorContainerRef = useRef(null); //monaco editor container
+  // const editorRef = useRef(null); //monaco editor reference
+  // const [editorValue, setEditorValue] = useState(''); //monaco editor content
+  // const [lang, setLang] = useState('yaml'); //monaco editor content
+  // const [statusText, setStatusText] = useState("Ready"); //status bar text
+  // const [selectedPath, setSelectedPath] = useState({ path: "", endian: "" }); //selected path from directory tree
+  // const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '' }); //labeltext display near tabs
+  // const [paths, setpaths] = useState({paths: [], added_paths: [], modded_paths: []}); //paths structures for directory tree
+  // const [openedData, setOpenedData] = useState(null);
+  // const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const changeModal = () => setIsModalOpen(!isModalOpen);
+  const {
+    activeTab, setActiveTab,
+    editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
+    statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
+    paths, setpaths, isModalOpen, setIsModalOpen ,updateEditorContent, changeModal
+  } = useEditorContext();
+
+  // console.log(statusText);
+  // setStatusText(selectedPath.path);
+  // console.log(statusText);
+
+  // const changeModal = () => setIsModalOpen(!isModalOpen);
 
 
   //Functions
 
-  const updateEditorContent = (content) => {
-    //setText(content);
-    if (editorRef.current) {
-      editorRef.current.setValue(content);
-      //console.log(content);
-    } 
-  };
+  // const updateEditorContent = (content) => {
+  //   //setText(content);
+  //   if (editorRef.current) {
+  //     editorRef.current.setValue(content);
+  //     //console.log(content);
+  //   } 
+  // };
 
 
   const handleNodeSelect = (path, endian) => {
@@ -131,6 +143,16 @@ function App() {
       {<DirectoryTree 
         onNodeSelect={handleNodeSelect} 
         sarcPaths={paths} 
+        //For buttons clicks
+        editorRef={editorRef} 
+        updateEditorContent={updateEditorContent} 
+        setStatusText={setStatusText} 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        setLabelTextDisplay={setLabelTextDisplay} 
+        setpaths={setpaths} 
+        selectedPath={selectedPath} 
+        changeModal={changeModal} 
         style={{  display: activeTab === 'SARC' ? "block" : "none" }}
       />}
       <div ref={editorContainerRef} className="code_editor" style={{  display: activeTab === 'YAML' ? "block" : "none" }}></div>

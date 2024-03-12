@@ -40,11 +40,11 @@ pub fn save_as_click(app_handle: tauri::AppHandle, save_data: SaveData) -> Optio
 }
 
 #[tauri::command]
-pub fn add_click(app_handle: tauri::AppHandle, internalPath: String, path:String) -> Option<SendData>{
+pub fn add_click(app_handle: tauri::AppHandle, internalPath: String, path:String, overwrite: bool) -> Option<SendData>{
         let binding = app_handle.state::<Mutex<TotkBitsApp>>();
         let mut app = binding.lock().expect("Failed to lock state");
         println!("internal_path: {}", internalPath);
-        match app.add_internal_file_from_path(internalPath, path) {
+        match app.add_internal_file_from_path(internalPath, path, overwrite) {
             Some(result) => Some(result), // Safely return the result if present
             None => None,                      // Return None if no result
         }
@@ -123,7 +123,7 @@ pub fn exit_app() {
 #[tauri::command]
 pub fn open_file_dialog() -> Option<String> {
     match rfd::FileDialog::new().pick_file() {
-        Some(path) => Some(path.to_string_lossy().to_string()),
+        Some(path) => Some(path.to_string_lossy().to_string().replace("\\","/" )),
         None => None,
     }
 }

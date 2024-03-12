@@ -16,7 +16,7 @@ function AddFilePrompt({ isOpen, onClose, setStatusText, setpaths }) {
     try {
       console.log("internal_path", internalPath);
       console.log("path", path);
-      const content = await invoke('add_click', { internalPath: internalPath, path: path });
+      const content = await invoke('add_click', { internalPath: internalPath, path: path, overwrite: false });
       if (content === null) {
         console.log("No content returned from add_click");
         cancelClick();

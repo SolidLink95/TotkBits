@@ -5,18 +5,16 @@ const button_size = '33px';
 
 const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }) => {
   //Buttons functions
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const handleFetchContent = () => {
     fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
   };
   const handleOpenInternalSarcFile = () => {
-    editInternalSarcFile(selectedPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    editInternalSarcFile(selectedPath.path, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
   };
   const handleSaveClick = () => {
     saveFileClick(setStatusText, activeTab, setpaths, editorRef);
   };
   const handleSaveAsClick = () => {
-    console.log(activeTab);
     saveAsFileClick(setStatusText, activeTab, setpaths, editorRef);
   };
 
@@ -83,8 +81,17 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
   ]
     ;
 
-  useEffect(() => {
+  useEffect(() => {//handle mouse and keyboards events
+    const handleContextMenu = (event) => {
+      //event.preventDefault();//prevent browser's default context menu
+      //commented out in order to access "Inspect" feature
+    };
     const handleKeyDown = (event) => {
+      const functionKeys = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
+      // Check if the pressed key is one of the function keys
+      if (functionKeys.includes(event.code)) {
+        event.preventDefault(); // Prevent the default action
+      }
       // Check if Ctrl or Command (for macOS) is pressed
       if (!event.ctrlKey && !event.metaKey) return;
       if (event.ctrlKey && event.shiftKey && event.keyCode === 83) {
@@ -101,7 +108,7 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
           event.preventDefault();
           handleSaveClick();
           break;
-        case 'e': // Ctrl+E, adjust accordingly if you uncomment it in your buttons data
+        case 'e': // Ctrl+E,
           if (activeTab === 'SARC') {
             event.preventDefault();
             extractFileClick(selectedPath, setStatusText);
@@ -110,16 +117,17 @@ const ButtonsDisplay = ({ editorRef, updateEditorContent, setStatusText, activeT
         case 'f': // Ctrl+F: prevent the browser's default action
           event.preventDefault();
           break;
-        // Implement other shortcuts by adding more cases here
       }
     };
 
     // Add event listener for keydown
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('contextmenu', handleContextMenu);
 
     // Clean up the event listener when the component unmounts
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('contextmenu', handleContextMenu);
     };
   }, []); // Pass an empty dependency array to ensure this effect runs only once after the initial render
 

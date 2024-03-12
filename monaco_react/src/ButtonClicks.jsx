@@ -1,4 +1,6 @@
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import { useEditorContext } from './StateManager';
+import { path } from '@tauri-apps/api';
 
 export const useExitApp = async () => {
   console.log('Exiting the app');
@@ -26,11 +28,11 @@ export async function extractFileClick(selectedPath, setStatusText) {
 }
 
 
-export async function editInternalSarcFile(selectedPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent) {
+export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent) {
   try {
-    console.log('Opening internal SARC file:', selectedPath);
-    const content = await invoke('edit_internal_file', { path: selectedPath.path });
-    setStatusText(content.status_text);
+    console.log('Opening internal SARC file:', fullPath);
+    const content = await invoke('edit_internal_file', { path: fullPath });
+  //  setStatusText(content.status_text);
     console.log(content.file_label);
     if (content.tab === 'YAML') {
       setActiveTab(content.tab);
@@ -70,6 +72,26 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
 
 
 
+export async function replaceInternalFileClick(internalPath, setStatusText, setpaths) {
+  try {
+    const path = await invoke("open_file_dialog");
+    if (path === null || path === undefined || path === "") {
+      return;
+    }
+    const content = await invoke('add_click', { internalPath: internalPath, path: path, overwrite: true });
+    if (content === null) {
+      console.log("No content returned from add_click");
+      return;
+    }
+    setStatusText(content.status_text);
+    if (content.sarc_paths.paths.length > 0) {
+      setpaths(content.sarc_paths);
+    }
+  } catch (error) {
+    console.error("Error invoking 'add_click':", error);
+  }
+  
+}
 export async function saveFileClick(setStatusText, activeTab, setpaths, editorRef) {
    try {
     // const editorText = editorRef.current ? editorRef.current.getValue() : "";
@@ -107,7 +129,7 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
      return;
    }
    const editorText =  editorRef.current.getValue();
-   const save_data = { tab: "YAML", text: editorText };
+   const save_data = { tab: activeTab, text: editorText };
    console.log(save_data );
    const content = await invoke('save_as_click', {saveData: save_data});
    if (content === null) {

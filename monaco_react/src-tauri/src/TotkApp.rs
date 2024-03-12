@@ -107,6 +107,7 @@ impl<'a> TotkBitsApp<'a> {
         &mut self,
         internal_path: String,
         path: String,
+        overwrite: bool,
     ) -> Option<SendData> {
         let mut data = SendData::default();
         println!("trying to add  {} to sarc path {}", &path, &internal_path);
@@ -114,21 +115,22 @@ impl<'a> TotkBitsApp<'a> {
         if let Some(pack) = &mut self.pack {
             if let Some(opened) = &mut pack.opened {
                 if let Some(_) = &opened.writer.get_file(&internal_path) {
-                    let m = format!(
-                        "{}\nalready exists in {}. Proceed?",
-                        &internal_path, &opened.path.name
-                    );
-                    if MessageDialog::new()
-                        .set_title("File already exists")
-                        .set_description(m)
-                        .set_buttons(rfd::MessageButtons::YesNo)
-                        .show()
-                        == rfd::MessageDialogResult::No
-                    {
-                        return None;
+                    if !overwrite {
+                        let m = format!(
+                            "{}\nalready exists in {}. Proceed?",
+                            &internal_path, &opened.path.name
+                        );
+                        if MessageDialog::new()
+                            .set_title("File already exists")
+                            .set_description(m)
+                            .set_buttons(rfd::MessageButtons::YesNo)
+                            .show()
+                            == rfd::MessageDialogResult::No
+                        {
+                            return None;
+                        }
                     }
                 }
-                println!("XXXXXXXXXXXXXX{} to sarc path {}", &path, &internal_path);
 
                 isReload = true;
                 let mut f_handle = fs::File::open(&path).ok()?;
@@ -137,7 +139,11 @@ impl<'a> TotkBitsApp<'a> {
                 opened
                     .writer
                     .add_file(&internal_path.replace("\\", "/"), buffer);
-                data.status_text = format!("Added {} to {}", &internal_path, &opened.path.name);
+                data.status_text = if overwrite {
+                    format!("Replaced {} with {}", &internal_path, &Pathlib::new(path).name)
+                } else {
+                    format!("Added {} to {}", &internal_path, &opened.path.name)
+                };
             }
             if isReload {
                 pack.compare_and_reload();
@@ -160,17 +166,17 @@ impl<'a> TotkBitsApp<'a> {
             save_data.tab.to_string(),
             &self.pack,
             &self.opened_file,
-            "Save file as".to_string(),
+            //"Save file as".to_string(),
+            format!("Save {} as", save_data.tab),
         );
+        dialog.generate_filters_and_name();
         if self.opened_file.path.full_path.is_empty() {
             if let Some(internal_file) = &self.internal_file {
                 dialog.name = Some(internal_file.path.name.clone());
                 dialog.filters_from_path(&internal_file.path.full_path);
             }
-        } else {
-            dialog.generate_filters_and_name();
         }
-        
+
         if dialog.name.clone().unwrap_or_default().is_empty() && save_data.tab == "SARC" {
             println!("Nothing is opened, nothing to save");
             return None;
