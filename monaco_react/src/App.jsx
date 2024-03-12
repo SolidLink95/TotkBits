@@ -50,17 +50,22 @@ function App() {
         wordWrap: 'on', // Enable word wrapping
       });
       console.log("Checking argv[1]");
-      invoke('get_command_line_arg')
-        .then((arg) => {
-          if (arg) {
-            console.log('Received command-line argument:', arg);
-            processArgv1(arg, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
-            // Perform actions based on the argument
-          } else {
-            console.log('No command-line argument provided.');
-          }
-        })
-        .catch((error) => console.error('Error fetching command-line argument:', error));
+      try {
+        invoke('get_command_line_arg')
+          .then((arg) => {
+            if (arg && arg !== "" && arg !== null && arg !== undefined) {
+              console.log('Received command-line argument:', arg);
+              processArgv1(arg, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+
+              // Perform actions based on the argument
+            } else {
+              console.log('No command-line argument provided.');
+            }
+          })
+          .catch((error) => console.error('Error fetching command-line argument:', error));
+      } catch (error) {
+        console.error('Failed to fetch command-line argument:', error);
+      }
     }
 
     // Function to update editor size, call it when needed

@@ -32,6 +32,10 @@ fn get_command_line_arg(state: State<CommandLineArg>) -> String {
     state.0.clone()
 }
 
+fn get_cmd_line_arg_unsafe(state: State<CommandLineArg>) -> String {
+    state.0.clone()
+}
+
 fn main() {
     if !init() {
         println!("Error while initializing romfs path");
@@ -48,6 +52,9 @@ fn main() {
             if args.len() > 1 {
                 let first_arg = args[1].clone();
                 app1.manage(CommandLineArg(first_arg));
+            } else {
+                
+                app1.manage(CommandLineArg("".to_string()));
             }
 
             Ok(())
