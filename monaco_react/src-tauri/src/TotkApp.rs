@@ -1,8 +1,7 @@
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Pack::{PackComparer, PackFile, SarcPaths};
 use crate::Open_and_Save::{
-    check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_byml,
-    open_msbt, open_sarc, open_tag, open_text, save_file_dialog, SaveFileDialog, SendData,
+    check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_byml, open_msbt, open_restbl, open_sarc, open_tag, open_text, save_file_dialog, SaveFileDialog, SendData
 };
 use crate::Settings::{write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
@@ -557,6 +556,7 @@ impl<'a> TotkBitsApp<'a> {
                 return Some(data);
             }
             let res = open_tag(file_name.clone(), self.zstd.clone())
+                .or_else(|| open_restbl(file_name.clone(), self.zstd.clone()))
                 .or_else(|| open_byml(file_name.clone(), self.zstd.clone()))
                 .or_else(|| open_msbt(file_name.clone()))
                 .or_else(|| open_aamp(file_name.clone()))

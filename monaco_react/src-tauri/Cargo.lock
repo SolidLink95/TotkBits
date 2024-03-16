@@ -4691,6 +4691,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81782a9ac8118f6bc31d1672b9c70563d9c77b069f14b77c79ac71a34ea2b380"
 dependencies = [
  "crc",
+ "lexical-core",
  "memoffset 0.9.0",
  "sa",
  "thiserror-no-std",

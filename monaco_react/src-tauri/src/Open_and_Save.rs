@@ -6,10 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     file_format::{
-        BinTextFile::{BymlFile, FileData, OpenedFile},
-        Msbt::MsbtFile,
-        Pack::{PackComparer, PackFile, SarcPaths},
-        TagProduct::TagProduct,
+        BinTextFile::{BymlFile, FileData, OpenedFile}, Msbt::MsbtFile, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct
     },
     Settings::Pathlib,
     TotkApp::InternalFile,
@@ -48,6 +45,33 @@ pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer
 
     None
 }
+pub fn open_restbl(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+    let mut opened_file = OpenedFile::default();
+    let mut data = SendData::default();
+    println!("Is {} a restbl?", &file_name);
+    if Pathlib::new(file_name.clone())
+        .name
+        .to_lowercase()
+        .starts_with("resourcesizetable.product")
+    {
+        println!("{} is a restbl", &file_name);
+        opened_file.restbl = Restbl::from_path(file_name.clone(), zstd.clone());
+        if let Some(restbl) = &mut opened_file.restbl {
+
+
+            opened_file.path = Pathlib::new(file_name.clone());
+            opened_file.endian = Some(roead::Endian::Little);
+            opened_file.file_type = TotkFileType::Restbl;
+            data.status_text = format!("Opened {}", &file_name);
+            data.path = Pathlib::new(file_name.clone());
+            data.text = restbl.to_text();
+            data.get_file_label(TotkFileType::Restbl, Some(roead::Endian::Little));
+            return Some((opened_file, data));
+        }
+    }
+    None
+}
+
 
 pub fn open_tag(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
     let mut opened_file = OpenedFile::default();

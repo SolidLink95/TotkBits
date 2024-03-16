@@ -37,9 +37,10 @@ sha2 = "0.10"
 digest = "0.10"
 fs2 = "0.4"
 base64 = "0.21.7"
-restbl = "0.1"
+restbl = { version = "0.1", features = ["yaml"] }
 
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
+# yaml = ["serde_yaml"]

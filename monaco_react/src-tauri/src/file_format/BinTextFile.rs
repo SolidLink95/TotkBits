@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::{fs, io, panic};
 
 use super::Msbt::MsbtFile;
+use super::Rstb::Restbl;
 
 #[derive(Debug)]
 pub struct FileData {
@@ -249,6 +250,7 @@ pub struct OpenedFile<'a> {
     pub msyt: Option<MsbtFile>,
     pub aamp: Option<()>,
     pub tag: Option<TagProduct<'a>>,
+    pub restbl: Option<Restbl<'a>>,
 }
 
 impl Default for OpenedFile<'_> {
@@ -261,6 +263,7 @@ impl Default for OpenedFile<'_> {
             msyt: None,
             aamp: None,
             tag: None,
+            restbl: None,
         }
     }
 }
@@ -280,6 +283,7 @@ impl<'a> OpenedFile<'_> {
             msyt: msyt,
             aamp: None,
             tag: None,
+            restbl: None,
         }
     }
 
@@ -292,6 +296,7 @@ impl<'a> OpenedFile<'_> {
             msyt: None,
             aamp: None,
             tag: None,
+            restbl: None,
         }
     }
 
