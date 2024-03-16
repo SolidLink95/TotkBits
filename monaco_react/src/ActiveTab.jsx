@@ -61,6 +61,13 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
         >
           {"YAML"}
         </label>
+        <label
+          key={"RSTB"}
+          className={activeTab === "RSTB" ? "active" : ""}
+          onClick={() => switchTab("RSTB")}
+        >
+          {"RSTB"}
+        </label>
         {
           windowWidth - labelTextWidth >= 140 && (
             <div className="activetablabel" ref={labelTextRef}>

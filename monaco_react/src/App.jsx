@@ -9,6 +9,7 @@ import { processArgv1 } from './ButtonClicks';
 import ButtonsDisplay from "./Buttons";
 import DirectoryTree from "./DirectoryTree";
 import MenuBarDisplay from "./MenuBar";
+import RstbTree from "./RstbTree";
 import { useEditorContext } from './StateManager';
 import { invoke } from '@tauri-apps/api/tauri';
 
@@ -93,6 +94,7 @@ function App() {
     const editorDom = editorContainerRef.current;
     if (editorDom) {
       if (activeTab === 'YAML') {
+        console.log(activeTab);
         editorDom.style.display = "block";
         // Ensure the editor is correctly sized each time the tab becomes active
         editorRef.current.layout();
@@ -151,6 +153,14 @@ function App() {
         setStatusText={setStatusText}
         activeTab={activeTab}
         style={{ display: activeTab === 'SARC' ? "block" : "none" }}
+      />}
+      {<RstbTree
+        onNodeSelect={handleNodeSelect}
+        sarcPaths={paths}
+        //For buttons clicks
+        setStatusText={setStatusText}
+        activeTab={activeTab}
+        style={{ display: activeTab === 'RSTB' ? "block" : "none" }}
       />}
       <div ref={editorContainerRef} className="code_editor" style={{ display: activeTab === 'YAML' ? "block" : "none" }}></div>
       {/* <div className="statusbar" style={statusStyle}>Current path: "{selectedPath.path} {selectedPath.endian}"</div> */}
