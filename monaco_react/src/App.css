@@ -17,6 +17,39 @@
   margin-right: 2px; */
 }
 
+.rstb-tree {
+  font-size: 15px;
+  background-color: #1E1E1E;
+  position: absolute;
+  padding-top: 10px;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  text-align: left;
+  margin-top: var(--main-top-offset);
+  margin-bottom: 88px;
+  margin-left: 0px;
+  padding-left: 15px;
+  padding-right: 15px;
+  padding-top: 15px;
+  overflow-y: auto; /* Added to allow scrolling */
+  overflow-x: hidden; /* Optional: to prevent horizontal scrolling */
+}
+.rstb-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  cursor: pointer;
+  padding: 10px;
+  border-radius: 3px;
+  color: white;
+  transition: background-color 0.2s ease;
+
+}
+
+
 
 .directory-tree {
   font-size: 15px;

@@ -86,7 +86,7 @@ const ButtonsDisplay = () => {
     { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit (Ctrl+E)' },
     { src: 'add_sarc.png', alt: 'add', onClick: handleAddClick, title: 'Add' },
     { src: 'extract.png', alt: 'extract', onClick: () => extractFileClick(selectedPath, setStatusText), title: 'Extract' },
-  ] : [
+  ] : activeTab === "YAML" ? [
     { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
     { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
@@ -94,6 +94,14 @@ const ButtonsDisplay = () => {
     { src: 'forward.png', alt: 'forward', onClick: redoInEditor, title: 'Redo (Ctrl+Shift+Z)' },
     { src: 'lupa.png', alt: 'find', onClick: triggerSearchInEditor, title: 'Find (Ctrl+F)' },
     { src: 'replace.png', alt: 'replace', onClick: triggerReplaceInEditor, title: 'Replace (Ctrl+H)' },
+  ] : [
+    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
+    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
+    { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
+    // { src: 'back.png', alt: 'back', onClick: undoInEditor, title: 'Undo (Ctrl+Z)' },
+    // { src: 'forward.png', alt: 'forward', onClick: redoInEditor, title: 'Redo (Ctrl+Shift+Z)' },
+    // { src: 'lupa.png', alt: 'find', onClick: triggerSearchInEditor, title: 'Find (Ctrl+F)' },
+    // { src: 'replace.png', alt: 'replace', onClick: triggerReplaceInEditor, title: 'Replace (Ctrl+H)' },
   ]
     ;
 
