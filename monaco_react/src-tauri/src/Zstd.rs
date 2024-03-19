@@ -290,7 +290,7 @@ pub fn is_msyt(data: &[u8]) -> bool {
 }
 
 pub fn is_restbl(data: &[u8]) -> bool {
-    if data.starts_with(b"RSTB") {
+    if data.starts_with(b"RSTB") || data.starts_with(b"REST")  {
         return true;
     }
     return false;

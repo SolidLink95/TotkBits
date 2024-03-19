@@ -1,18 +1,17 @@
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
-use crate::file_format::Pack::{PackComparer, PackFile, SarcPaths};
+use crate::file_format::Pack::{PackComparer, SarcPaths};
 use crate::Open_and_Save::{
-    check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_byml, open_msbt, open_restbl, open_sarc, open_tag, open_text, save_file_dialog, SaveFileDialog, SendData
+    check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_byml,
+    open_msbt, open_restbl, open_sarc, open_tag, open_text, save_file_dialog, SaveFileDialog,
+    SendData,
 };
 use crate::Settings::{write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{TotkFileType, TotkZstd};
-use msyt::converter::MsytFile;
 use rfd::{FileDialog, MessageDialog};
-use roead::aamp::ParameterIO;
-use roead::byml::Byml;
 use serde::{de, Deserialize, Serialize};
+use serde_json::json;
 use std::io::{Read, Write};
-use std::os::raw;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{env, fs, io};
@@ -57,18 +56,76 @@ impl Default for TotkBitsApp<'_> {
 }
 
 impl<'a> TotkBitsApp<'a> {
-    pub fn process_argv(&mut self) -> Option<SendData> {
+    pub fn get_entries(&mut self, entry: String) -> Option<SendData> {
         let mut data = SendData::default();
-        let args: Vec<String> = env::args().collect();
-        if args.len() > 1 {
-            let res = self.open_from_path(args[1].clone());
-            if let Some(r) = &res {
-                if data.tab.as_str() != "ERROR" {
-                    return res;
+        let mut isDefaultAdded = false;
+        if let Some(rstb) = &mut self.opened_file.restbl {
+            data.tab = "RSTB".to_string();
+
+            let entry_low = entry.to_lowercase();
+            for elem in rstb.hash_table.iter() {
+                if elem.to_lowercase().contains(&entry_low) {
+                    if let Some(val) = rstb.table.get(elem.clone()) {
+                        if elem == &entry {
+                            isDefaultAdded = true;
+                        }
+                        data.rstb_paths
+                            .push(json!({ "path": elem.clone(), "val": val.to_string() }));
+                    }
                 }
             }
+            if !isDefaultAdded {
+                if let Some(val) = rstb.table.get(entry.clone()) {
+                    //entry exists
+                    data.rstb_paths
+                        .push(json!({ "path": entry.clone(), "val": val.to_string() }));
+                }
+            }
+            data.status_text = format!("Found entries: {}", data.rstb_paths.len());
+        } else {
+            data.status_text = "Error: No RSTB opened".to_string();
+            data.tab = "ERROR".to_string();
         }
-        None
+
+        Some(data)
+    }
+
+    pub fn rstb_edit_entry(&mut self, entry: String, val: String) -> Option<SendData> {
+        let mut data = SendData::default();
+        if let Some(rstb) = &mut self.opened_file.restbl {
+            data.tab = "RSTB".to_string();
+            if let Some(_) = rstb.table.get(entry.clone()) {
+                //entry exists
+                data.status_text = format!("Modified: {}", &entry);
+            } else {
+                data.status_text = format!("Added: {}", &entry);
+            }
+            rstb.table
+                .set(entry, val.parse::<u32>().expect("Failed to parse value"));
+        } else {
+            data.status_text = "Error: No RSTB opened".to_string();
+            data.tab = "ERROR".to_string();
+        }
+
+        Some(data)
+    }
+    pub fn rstb_remove_entry(&mut self, entry: String) -> Option<SendData> {
+        let mut data = SendData::default();
+        if let Some(rstb) = &mut self.opened_file.restbl {
+            data.tab = "RSTB".to_string();
+            if let Some(_) = rstb.table.get(entry.clone()) {
+                //entry exists
+                data.status_text = format!("Removed: {}", &entry);
+                rstb.table.remove(entry.clone());
+            } else {
+                data.status_text = format!("Error: entry absent in RSTB ({})", &entry);
+            }
+        } else {
+            data.status_text = "Error: No RSTB opened".to_string();
+            data.tab = "ERROR".to_string();
+        }
+
+        Some(data)
     }
 
     pub fn remove_internal_elem(&mut self, internal_path: String) -> Option<SendData> {
@@ -415,6 +472,65 @@ impl<'a> TotkBitsApp<'a> {
         None
     }
 
+    pub fn save_tab_yaml(&mut self, save_data: SaveData) -> Option<SendData> {
+        let mut data = SendData::default();
+        let mut isReload = false;
+        let text = &save_data.text;
+        if let Some(internal_file) = &self.internal_file {
+            if let Some(pack) = &mut self.pack {
+                if let Some(opened) = &mut pack.opened {
+                    let path = &internal_file.path.full_path;
+                    let rawdata: Vec<u8> = get_binary_by_filetype(
+                        internal_file.file_type,
+                        text,
+                        internal_file.endian.unwrap_or(roead::Endian::Little),
+                    )?;
+                    if rawdata.is_empty() {
+                        data.status_text =
+                            format!("Error: Failed to save {} for {}", &path, &opened.path.name);
+                        data.tab = "ERROR".to_string();
+                        println!("{:?}", &data);
+                        return Some(data);
+                    } else {
+                        opened.writer.add_file(path, rawdata);
+                        isReload = true;
+                        data.tab = "YAML".to_string();
+                        data.status_text = format!(
+                            "Saved {} for {}",
+                            &internal_file.path.name, &opened.path.name
+                        );
+                    }
+                }
+                if isReload {
+                    pack.compare_and_reload();
+                    data.get_sarc_paths(pack);
+                }
+            }
+        } else {
+            let rawdata: Vec<u8> = get_binary_by_filetype(
+                self.opened_file.file_type,
+                text,
+                self.opened_file.endian.unwrap_or(roead::Endian::Little),
+            )?;
+            if rawdata.is_empty() {
+                data.status_text =
+                    format!("Error: Failed to save {}", &self.opened_file.path.full_path);
+                data.tab = "ERROR".to_string();
+                // println!("{:?}", &data);
+                return Some(data);
+            } else {
+                let mut file = fs::File::create(&self.opened_file.path.full_path).ok()?;
+                file.write_all(&rawdata).ok()?;
+                data.tab = "YAML".to_string();
+                data.status_text = format!("Saved {}", &self.opened_file.path.full_path);
+                // println!("{:?}", &data);
+                return Some(data);
+            }
+        }
+
+        Some(data)
+    }
+
     pub fn save(&mut self, save_data: SaveData) -> Option<SendData> {
         println!(
             "About to save {} text len {}",
@@ -474,23 +590,29 @@ impl<'a> TotkBitsApp<'a> {
                                 data.tab = "YAML".to_string();
                                 data.status_text =
                                     format!("Saved {}", &self.opened_file.path.full_path);
-                                    println!("{:?}", &data);
+                                println!("{:?}", &data);
                                 return Some(data);
                             }
                         }
                     }
                     "SARC" => {
-                        if check_if_save_in_romfs(&opened.path.full_path, self.zstd.clone()) {
-                            return None;
+                        if !check_if_save_in_romfs(&opened.path.full_path, self.zstd.clone()) {
+                            opened.reload();
+                            if let Ok(_) = opened.save_default() {
+                                isReload = true;
+                                data.tab = "SARC".to_string();
+                                data.status_text = format!("Saved SARC {}", &opened.path.full_path);
+                            } else {
+                                data.status_text = format!(
+                                    "Error: Failed to save SARC {}",
+                                    &opened.path.full_path
+                                );
+                            }
                         }
-                        opened.reload();
-                        opened.save_default();
-                        isReload = true;
-                        data.tab = "SARC".to_string();
-                        data.status_text = format!("Saved SARC {}", &opened.path.full_path);
                     }
+
                     _ => {
-                        data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
+                        // data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
                     }
                 }
             }
@@ -501,7 +623,26 @@ impl<'a> TotkBitsApp<'a> {
             println!("{:?}", &data);
             return Some(data);
         }
-        
+
+        match save_data.tab.as_str() {
+            "RSTB" => {
+                println!("About to save RSTB");
+                if let Some(rstb) = &mut self.opened_file.restbl {
+                    if let Ok(_) = rstb.save_default() {
+                        data.tab = "RSTB".to_string();
+                        data.status_text = format!("Saved {}", &self.opened_file.path.full_path);
+                    } else {
+                        data.status_text =
+                            format!("Error: Failed to save {}", &self.opened_file.path.full_path);
+                    }
+                } else {
+                    data.status_text = format!("Error: No RSTB opened");
+                }
+            }
+            _ => {
+                data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
+            }
+        }
 
         Some(data)
     }

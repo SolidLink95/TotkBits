@@ -15,13 +15,13 @@ mod Zstd;
 mod file_format;
 use crate::TauriCommands::{
     add_click, close_all_opened_files, edit_internal_file, exit_app, extract_internal_file,
-    get_status_text, open_file_dialog, open_file_from_path, open_file_struct, process_argv,
-    rename_internal_sarc_file, save_as_click, save_file_struct,remove_internal_sarc_file,
+    get_status_text, open_file_dialog, open_file_from_path, open_file_struct,
+    remove_internal_sarc_file, rename_internal_sarc_file, rstb_edit_entry, rstb_get_entries,
+    rstb_remove_entry, save_as_click, save_file_struct,
 };
 use crate::TotkApp::TotkBitsApp;
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-
 
 struct CommandLineArg(String);
 
@@ -29,7 +29,6 @@ struct CommandLineArg(String);
 fn get_command_line_arg(state: State<CommandLineArg>) -> String {
     state.0.clone()
 }
-
 
 fn main() {
     if !init() {
@@ -45,7 +44,6 @@ fn main() {
             if args.len() > 1 {
                 app1.manage(CommandLineArg(args[1].clone()));
             } else {
-                
                 app1.manage(CommandLineArg("".to_string()));
             }
 
@@ -67,7 +65,9 @@ fn main() {
             remove_internal_sarc_file,
             exit_app,
             open_file_dialog,
-            process_argv,
+            rstb_get_entries,
+            rstb_edit_entry,
+            rstb_remove_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

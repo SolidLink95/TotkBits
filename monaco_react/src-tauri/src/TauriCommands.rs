@@ -141,19 +141,6 @@ pub fn close_all_opened_files(app_handle: tauri::AppHandle) -> Option<SendData> 
 }
 
 
-#[tauri::command]
-pub fn process_argv(app_handle: tauri::AppHandle) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.process_argv() {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
-}
-
 
 #[tauri::command]
 pub fn exit_app() {
@@ -178,3 +165,41 @@ pub fn open_file_dialog() -> Option<String> {
 }
 
 
+#[tauri::command]
+pub fn rstb_get_entries(app_handle: tauri::AppHandle, entry: String) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.get_entries(entry) {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
+
+#[tauri::command]
+pub fn rstb_edit_entry(app_handle: tauri::AppHandle, entry: String, val: String) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.rstb_edit_entry(entry, val) {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
+
+#[tauri::command]
+pub fn rstb_remove_entry(app_handle: tauri::AppHandle, entry: String) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.rstb_remove_entry(entry) {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}

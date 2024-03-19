@@ -58,13 +58,13 @@ pub fn open_restbl(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile
         opened_file.restbl = Restbl::from_path(file_name.clone(), zstd.clone());
         if let Some(restbl) = &mut opened_file.restbl {
 
-
+            data.tab = "RSTB".to_string();
             opened_file.path = Pathlib::new(file_name.clone());
             opened_file.endian = Some(roead::Endian::Little);
             opened_file.file_type = TotkFileType::Restbl;
             data.status_text = format!("Opened {}", &file_name);
             data.path = Pathlib::new(file_name.clone());
-            data.text = restbl.to_text();
+            // data.text = restbl.to_text();
             data.get_file_label(TotkFileType::Restbl, Some(roead::Endian::Little));
             return Some((opened_file, data));
         }
@@ -457,6 +457,7 @@ pub struct SendData {
     pub file_label: String,
     pub status_text: String,
     pub tab: String,
+    pub rstb_paths: Vec::<serde_json::Value>,
     pub sarc_paths: SarcPaths,
     pub lang: String,
 }
@@ -469,6 +470,7 @@ impl Default for SendData {
             file_label: "".to_string(),
             status_text: "".to_string(),
             tab: "YAML".to_string(),
+            rstb_paths: Vec::default(),
             sarc_paths: SarcPaths::default(),
             lang: "yaml".to_string(),
         }

@@ -11,7 +11,7 @@ export const EditorProvider = ({ children }) => {
   const [statusText, setStatusText] = useState("Ready"); //status bar text
   const [renamePromptMessage, setRenamePromptMessage] = useState({ message: "Rename internal SARC file:", path: "" }); //status bar text
   const [selectedPath, setSelectedPath] = useState({ path: "", endian: "" }); //selected path from directory tree
-  const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '' }); //labeltext display near tabs
+  const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '',rstb: '' }); //labeltext display near tabs
   const [paths, setpaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddPrompt, setIsAddPrompt] = useState(false);

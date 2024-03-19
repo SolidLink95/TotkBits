@@ -38,6 +38,7 @@ digest = "0.10"
 fs2 = "0.4"
 base64 = "0.21.7"
 restbl = { version = "0.1", features = ["yaml"] }
+flate2 = "1.0.22"
 
 
 [features]

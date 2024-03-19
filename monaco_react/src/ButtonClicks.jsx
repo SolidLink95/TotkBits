@@ -69,6 +69,10 @@ export async function processArgv1(argv1, setStatusText, setActiveTab, setLabelT
       setActiveTab(content.tab);
       updateEditorContent(content.text);
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
+    } else if (content.tab === 'RSTB') {
+      setActiveTab(content.tab); 
+      setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label }));
+
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
     }
@@ -89,7 +93,11 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
       setActiveTab(content.tab);
       updateEditorContent(content.text);
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
-    } else if (content.tab === 'ERROR') {
+    }else if (content.tab === 'RSTB') {
+      setActiveTab(content.tab); 
+      setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label }));
+
+    }  else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
     }
   } catch (error) {
@@ -107,7 +115,7 @@ export async function closeAllFilesClick(setStatusText, setpaths, updateEditorCo
     setStatusText(content.status_text);
     setpaths(content.sarc_paths);
     updateEditorContent(content.text);
-    setLabelTextDisplay({ sarc: '', yaml: '' });
+    setLabelTextDisplay({ sarc: '', yaml: '', rstb: ''});
   } catch (error) {
     console.error('Failed to close all files:', error);
   }

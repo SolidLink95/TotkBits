@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 export const BackendEnum = {
   SARC: 'SARC',
   YAML: 'YAML',
+  RSTB: 'RSTB',
 };
 
 function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
@@ -39,6 +40,8 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
         return labelTextDisplay.sarc;
       case BackendEnum.YAML:
         return labelTextDisplay.yaml;
+      case BackendEnum.RSTB:
+        return labelTextDisplay.rstb;
       default:
         return '';
     }
@@ -69,7 +72,7 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
           {"RSTB"}
         </label>
         {
-          windowWidth - labelTextWidth >= 140 && (
+          windowWidth - labelTextWidth >= 220 && (
             <div className="activetablabel" ref={labelTextRef}>
               {label}
             </div>
