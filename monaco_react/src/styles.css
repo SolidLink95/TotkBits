@@ -4,14 +4,19 @@
   line-height: 24px;
   font-weight: 400;
   --menu-bar-padding: 10px;
-  --menu-bar-h: 25px;
-  --tab-switcher-h: 30px;
-  --buttons-h: 30px;
-  
-  -ms-overflow-style: none;  /* Internet Explorer and Edge */
-  scrollbar-width: none;  /* Firefox */
+  --menu-bar-h: 28px;
+  --tab-switcher-h: 45px;
+  --buttons-h: 45px;
+
+  -ms-overflow-style: none;
+  /* Internet Explorer and Edge */
+  scrollbar-width: none;
+  /* Firefox */
   white-space: nowrap;
-  overflow: auto; /* or 'hidden' if you do not want a scrollbar */
+  overflow: auto;
+  /* or 'hidden' if you do not want a scrollbar */
+  margin: 0;
+  padding: 0;
 
   color: #0f0f0f;
   background-color: #f6f6f6;
@@ -21,6 +26,11 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
 }
 
 .container {
@@ -63,71 +73,144 @@ h1 {
   text-align: center;
 }
 
-.activetab {
-  margin-left: -20px;
+.activetab1 {
+  height: 45px;
+  /* Fixed height for example */
+  flex-shrink: 0;
+  /* Prevent these elements from shrinking */
+  /* margin-left: -20px;
   margin-right: -8px;
-  padding-left: 15px;
+  padding-left: 15px; */
+  /* left: 0;
+  top: 0; */
   display: flex;
   justify-content: flex-start;
-  align-items: center; /* Centered vertically */
+  align-items: center;
+  /* Centered vertically */
   flex-wrap: wrap;
-  margin-top: var(--menu-bar-h);
+  /* position: absolute;
+  padding: 10px; */
+  width: 100%;
+  /* margin-top: var(--menu-bar-h); */
   /* font-family: 'Nunito', sans-serif; Make sure to include the font in your project */
   background-color: #0f0f0f;
   white-space: nowrap;
-  overflow: hidden; /* or 'hidden' if you do not want a scrollbar */
+  overflow: hidden;
+  /* or 'hidden' if you do not want a scrollbar */
+}
+
+.activetab {
+  height: var(--tab-switcher-h);
+  /* Fixed height for example */
+  flex-shrink: 0;
+  /* Prevent these elements from shrinking */
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  /* Centered vertically */
+  flex-wrap: wrap;
+  width: 100%;
+  background-color: #0f0f0f;
+  white-space: nowrap;
+  overflow: hidden;
+  /* or 'hidden' if you do not want a scrollbar */
 }
 
 .activetab label {
-  padding: 4px 10px; /* Adjust padding to suit your design */
-  margin: 5px; /* Space between labels */
+  padding: 4px 10px;
+  /* Adjust padding to suit your design */
+  margin: 5px;
+  /* Space between labels */
   /* margin-left: 20px; Space between labels */
-  border: 1px solid transparent; /* Transparent border to maintain size on hover */
-  border-radius: 4px; /* Slightly rounded corners for the labels */
-  background-color: #3D437E; /* Inactive background color */
-  color: white; /* White text for both active and inactive */
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
-  transition: all 0.3s ease; /* Smooth transition for hover and active effects */
-  cursor: pointer; /* Indicates that labels are clickable */
-  user-select: none; /* Prevents text selection */
+  border: 1px solid transparent;
+  /* Transparent border to maintain size on hover */
+  border-radius: 4px;
+  /* Slightly rounded corners for the labels */
+  background-color: #3D437E;
+  /* Inactive background color */
+  color: white;
+  /* White text for both active and inactive */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  /* Subtle shadow for depth */
+  transition: all 0.3s ease;
+  /* Smooth transition for hover and active effects */
+  cursor: pointer;
+  /* Indicates that labels are clickable */
+  user-select: none;
+  /* Prevents text selection */
 }
 
 
-.activetab label:hover { /* Added .active class for when label is active */
-  background-color: #007bff73; /* Active background color */
-  border-color: #007bff; /* Active border color to match the background */
+.activetab label:hover {
+  /* Added .active class for when label is active */
+  background-color: #007bff73;
+  /* Active background color */
+  border-color: #007bff;
+  /* Active border color to match the background */
 }
 
-.activetab label.active { /* Added .active class for when label is active */
-  background-color: #007bff; /* Active background color */
-  border-color: #007bff; /* Active border color to match the background */
+.activetab label.active {
+  /* Added .active class for when label is active */
+  background-color: #007bff;
+  /* Active background color */
+  border-color: #007bff;
+  /* Active border color to match the background */
 }
 
 .activetablabel {
-  margin-left: auto; /* Push the element to the right */
+  margin-left: auto;
+  /* Push the element to the right */
   padding-right: 5px;
   /* width: 100%; */
 }
+
 .pathlist {
   margin-left: -5px;
-  display: flex; /* Align children (buttons) in a row */
-  justify-content: flex-start; /* Align buttons to the start of the container */
-  align-items: flex-start; /* Align buttons to the start of the container vertically */
-  flex-wrap: wrap; /* Allow buttons to wrap to the next line on small screens */
-  margin-top: 50px ; /* Adjusted margin-top */
+  display: flex;
+  /* Align children (buttons) in a row */
+  justify-content: flex-start;
+  /* Align buttons to the start of the container */
+  align-items: flex-start;
+  /* Align buttons to the start of the container vertically */
+  flex-wrap: wrap;
+  /* Allow buttons to wrap to the next line on small screens */
+  margin-top: 50px;
+  /* Adjusted margin-top */
 
 }
 
 .buttons-container {
-  margin-left: -10px;
+  padding-left: 5px;
+  /* margin-left: -10px;
   margin-right: -8px;
-  padding: 5px 10px 10px 10px; 
-  display: flex; /* Align children (buttons) in a row */
-  justify-content: flex-start; /* Align buttons to the start of the container */
-  align-items: flex-start; /* Align buttons to the start of the container vertically */
-  flex-wrap: wrap; /* Allow buttons to wrap to the next line on small screens */
-  margin-top: 0px ; /* Adjusted margin-top */
+  padding: 5px 10px 10px 10px;  */
+  /* display: flex; Align children (buttons) in a row */
+  /* justify-content: flex-start; Align buttons to the start of the container */
+  align-items: flex-start;
+  /* Align buttons to the start of the container vertically */
+  /* flex-wrap: wrap; Allow buttons to wrap to the next line on small screens */
+  /* margin-top: 0px ; Adjusted margin-top */
   background-color: #232529;
+
+
+  height: var(--buttons-h);
+  /* Fixed height for example */
+  flex-shrink: 0;
+  /* Prevent these elements from shrinking */
+  /* margin-left: -20px;
+  margin-right: -8px;
+  padding-left: 15px; */
+  /* left: 0;
+  top: 0; */
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  /* Centered vertically */
+  flex-wrap: wrap;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  /* or 'hidden' if you do not want a scrollbar */
 
 }
 
@@ -154,6 +237,7 @@ button {
 button:hover {
   border-color: #b6b6b6;
 }
+
 button:active {
   border-color: #396cd8;
   background-color: #e8e8e8;
@@ -163,8 +247,10 @@ input,
 button {
   outline: none;
 }
+
 .button:hover {
-  background: rgba(0, 0, 0, 0.5); /* Semi-transparent black overlay on hover */
+  background: rgba(0, 0, 0, 0.5);
+  /* Semi-transparent black overlay on hover */
 }
 
 
@@ -187,6 +273,7 @@ button {
     color: #ffffff;
     background-color: #0f0f0f98;
   }
+
   button:active {
     background-color: #0f0f0f69;
   }
@@ -228,23 +315,41 @@ button {
   color: white;
   padding: 5px;
   text-align: left;
-  z-index: 1000;
+  /* z-index: 1000; */
+  height: 25px;
+  /* Fixed height for example */
+  flex-shrink: 0;
+  /* Prevent these elements from shrinking */
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  /* Centered vertically */
+  flex-wrap: wrap;
+  width: 100%;
+  /* background-color: #0f0f0f; */
+  white-space: nowrap;
+  overflow: hidden;
+  /* or 'hidden' if you do not want a scrollbar */
 }
 
 /* Updated styles in App.css */
 .menu-bar {
+  height: var(--menu-bar-h);
+  /* Fixed height for example */
+  flex-shrink: 0;
+  /* Prevent these elements from shrinking */
   text-align: left;
   display: flex;
-  position: fixed;
+  /* position: absolute;
   left: 0;
-  top: 0;
+  top: 0; */
   width: 100%;
   background-color: #333;
   color: white;
   justify-content: left;
   /* padding: var(--menu-bar-padding) 0; */
-  z-index: 1000; /* Ensures menu bar is above other content */
-  height: var(--menu-bar-h); /* Example height */
+  /* z-index: 1000; Ensures menu bar is above other content */
+  /* height: var(--menu-bar-h); Example height */
 }
 
 .menu-item {
@@ -262,17 +367,20 @@ button {
   background-color: #444;
 
 }
+
 .dropdown-content {
   left: 0px;
   text-align: left;
   /* left: calc(var(--menu-bar-padding) * -1); */
-  display: none; /* Initially hidden */
+  display: none;
+  /* Initially hidden */
   position: absolute;
   /* background-color: #f9f9f9; */
   background-color: #333;
   min-width: 160px;
-  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-  z-index: 1001; /* Ensures dropdown content is above the menu bar */
+  box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
+  z-index: 1001;
+  /* Ensures dropdown content is above the menu bar */
 }
 
 .dropdown-content a {
@@ -283,14 +391,16 @@ button {
   display: block;
 }
 
-.dropdown-content a:hover {background-color: #515151}
+.dropdown-content a:hover {
+  background-color: #515151
+}
 
 .menu-item:hover .dropdown-content {
-  display: block; /* Show dropdown content on hover */
+  display: block;
+  /* Show dropdown content on hover */
 }
 
 
 .dropdown-content a:hover {
   background-color: #515151;
 }
-

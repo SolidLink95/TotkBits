@@ -50,12 +50,12 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
   const isFile = node === null;
   const fullPath = path ? `${path}/${name}` : name;
-  const endian = "LE";
+  // const endian = "LE";
   const isSelected = selected === fullPath;
   const handleSelect = (e) => {
     e.stopPropagation(); // This stops the event from bubbling up further
     console.log(`Selected: ${fullPath}`);
-    onSelect(fullPath, endian); // Pass the fullPath to the onSelect function
+    onSelect(fullPath, isFile); // Pass the fullPath to the onSelect function
   };
 
   const handleOpenInternalSarcFile = () => {

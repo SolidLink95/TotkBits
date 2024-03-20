@@ -33,9 +33,9 @@ function App() {
 
 
 
-  const handleNodeSelect = (path, endian) => {
-    setSelectedPath({ path, endian });
-    console.log(`Selected Node Path in App: ${path} endian: ${endian}`);
+  const handleNodeSelect = (path, isfile) => {
+    setSelectedPath({ path, isfile });
+    console.log(`Selected Node Path in App: ${path} isfile: ${isfile}`);
     // Here you can use selectedPath for any other logic in App.jsx
   };
 
@@ -117,9 +117,8 @@ function App() {
 
 
   return (
-    <div>
-      <MenuBarDisplay
-      />
+    <div className="maincontainer">
+      <MenuBarDisplay       />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
       <AddOrRenameFilePrompt
         isOpen={isModalOpen}

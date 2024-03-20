@@ -5,6 +5,7 @@ import { extractFileClick, closeAllFilesClick, editInternalSarcFile, fetchAndSet
 import { useEditorContext } from './StateManager';
 
 function MenuBarDisplay() {
+  const [backupPaths, setBackupPaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
 
   const {
     renamePromptMessage, setRenamePromptMessage,
@@ -62,10 +63,44 @@ function MenuBarDisplay() {
     event.stopPropagation(); // Prevent click event from reaching parent () => extractFileClick(selectedPath, setStatusText)
     closeMenu();
     if (activeTab === 'SARC') {
+      if (selectedPath.isfile === true) {
       extractFileClick(selectedPath, setStatusText);
+      } else {
+        setStatusText(`Select a file to extract, not directory ${selectedPath.path}`);
+      }
     } else {
       setStatusText("Switch to SARC tab to extract files");
     }
+  }
+
+  const handleShowAllClick = (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    if (backupPaths.paths.length > 0) {
+      setpaths({ paths: backupPaths.paths, added_paths: backupPaths.added_paths, modded_paths: backupPaths.modded_paths });
+      setBackupPaths({ paths: [], added_paths: [], modded_paths: [] });
+    } else {
+      setBackupPaths(paths);
+    }
+  }
+
+  const handleShowAddedClick = (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    // console.log(backupPaths.paths.length);
+    if (backupPaths.paths.length === 0) {
+      setBackupPaths(paths);
+    }
+    setpaths({ paths: paths.added_paths, added_paths: paths.added_paths, modded_paths: paths.modded_paths });
+  }
+
+  const handleShowModdedClick = (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    if (backupPaths.paths.length === 0) {
+      setBackupPaths(paths);
+    }
+    setpaths({ paths: paths.modded_paths, added_paths: paths.added_paths, modded_paths: paths.modded_paths });
   }
 
 
@@ -115,15 +150,17 @@ function MenuBarDisplay() {
           <a href="#" onClick={useExitApp}>Exit</a >
         </div>
       </div>
-      <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
+      {activeTab == "SARC" && <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
         Tools
         <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
           <a href="#" onClick={handleOpenInternalSarcFile}>Edit</a>
           <a href="#" onClick={handleExtractClick}>Extract</a>
-          {/* <a href="#">Find</a> */}
-          {/* <a href="#">Settings</a> */}
+          <a href="#" onClick={handleShowAllClick}>Show all</a>
+          <a href="#" onClick={handleShowAddedClick}>Show added</a>
+          <a href="#" onClick={handleShowModdedClick}>Show modded</a>
         </div>
-      </div>
+      </div>}
+
     </div>
   );
 }

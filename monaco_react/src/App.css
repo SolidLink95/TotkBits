@@ -1,5 +1,11 @@
 :root {
-  --main-top-offset: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) + 30px);
+  --main-top-offset: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) );
+}
+
+.maincontainer {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 }
 
 .code_editor {

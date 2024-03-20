@@ -6,8 +6,8 @@ import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-  <EditorProvider>
-    <App />
-  </EditorProvider>
+    <EditorProvider>
+      <App />
+    </EditorProvider>
   </React.StrictMode>,
 );
