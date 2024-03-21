@@ -398,10 +398,17 @@ impl<'a> TotkBitsApp<'a> {
             if let Some(internal_file) = &self.internal_file {
                 dialog.name = Some(internal_file.path.name.clone());
                 dialog.filters_from_path(&internal_file.path.full_path);
+            }  
+        }
+        if save_data.tab == "RSTB" && self.opened_file.restbl.is_some() {
+            if let Some(rstb) = &self.opened_file.restbl {
+                dialog.name = Some(rstb.path.name.clone());
+                dialog.filters_from_path(&rstb.path.full_path);
             }
         }
-
-        if dialog.name.clone().unwrap_or_default().is_empty() && save_data.tab == "SARC" {
+        if (dialog.name.clone().unwrap_or_default().is_empty() && save_data.tab == "SARC" )
+            || (save_data.tab == "RSTB" && self.opened_file.restbl.is_none())
+        {
             println!("Nothing is opened, nothing to save");
             return None;
         }
@@ -461,6 +468,23 @@ impl<'a> TotkBitsApp<'a> {
                         return Some(data);
                     }
                     return None; //no sarc opened
+                }
+                "RSTB" => {
+                    println!("About to save RSTB");
+                    if let Some(rstb) = &mut self.opened_file.restbl {
+                        if let Ok(_) = rstb.save(dest_file.clone()) {
+                            data.tab = "RSTB".to_string();
+                            data.status_text =
+                                format!("Saved {}", &self.opened_file.path.full_path);
+                        } else {
+                            data.status_text = format!(
+                                "Error: Failed to save {}",
+                                &self.opened_file.path.full_path
+                            );
+                        }
+                    } else {
+                        data.status_text = format!("Error: No RSTB opened");
+                    }
                 }
                 _ => {
                     data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
@@ -541,61 +565,13 @@ impl<'a> TotkBitsApp<'a> {
         let mut isReload = false;
         let text = &save_data.text;
 
-        if let Some(pack) = &mut self.pack {
-            if let Some(opened) = &mut pack.opened {
-                match save_data.tab.as_str() {
-                    "YAML" => {
-                        if let Some(internal_file) = &self.internal_file {
-                            let path = &internal_file.path.full_path;
-                            let rawdata: Vec<u8> = get_binary_by_filetype(
-                                internal_file.file_type,
-                                text,
-                                internal_file.endian.unwrap_or(roead::Endian::Little),
-                            )?;
-                            if rawdata.is_empty() {
-                                data.status_text = format!(
-                                    "Error: Failed to save {} for {}",
-                                    &path, &opened.path.name
-                                );
-                                data.tab = "ERROR".to_string();
-                                println!("{:?}", &data);
-                                return Some(data);
-                            } else {
-                                opened.writer.add_file(path, rawdata);
-                                isReload = true;
-                                data.tab = "YAML".to_string();
-                                data.status_text = format!(
-                                    "Saved {} for {}",
-                                    &internal_file.path.name, &opened.path.name
-                                );
-                            }
-                        } else {
-                            let rawdata: Vec<u8> = get_binary_by_filetype(
-                                self.opened_file.file_type,
-                                text,
-                                self.opened_file.endian.unwrap_or(roead::Endian::Little),
-                            )?;
-                            if rawdata.is_empty() {
-                                data.status_text = format!(
-                                    "Error: Failed to save {}",
-                                    &self.opened_file.path.full_path
-                                );
-                                data.tab = "ERROR".to_string();
-                                println!("{:?}", &data);
-                                return Some(data);
-                            } else {
-                                let mut file =
-                                    fs::File::create(&self.opened_file.path.full_path).ok()?;
-                                file.write_all(&rawdata).ok()?;
-                                data.tab = "YAML".to_string();
-                                data.status_text =
-                                    format!("Saved {}", &self.opened_file.path.full_path);
-                                println!("{:?}", &data);
-                                return Some(data);
-                            }
-                        }
-                    }
-                    "SARC" => {
+        match save_data.tab.as_str() {
+            "YAML" => {
+                return self.save_tab_yaml(save_data);
+            }
+            "SARC" => {
+                if let Some(pack) = &mut self.pack {
+                    if let Some(opened) = &mut pack.opened {
                         if !check_if_save_in_romfs(&opened.path.full_path, self.zstd.clone()) {
                             opened.reload();
                             if let Ok(_) = opened.save_default() {
@@ -610,21 +586,8 @@ impl<'a> TotkBitsApp<'a> {
                             }
                         }
                     }
-
-                    _ => {
-                        // data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
-                    }
                 }
             }
-            if isReload {
-                pack.compare_and_reload();
-                data.get_sarc_paths(pack);
-            }
-            println!("{:?}", &data);
-            return Some(data);
-        }
-
-        match save_data.tab.as_str() {
             "RSTB" => {
                 println!("About to save RSTB");
                 if let Some(rstb) = &mut self.opened_file.restbl {
@@ -639,10 +602,114 @@ impl<'a> TotkBitsApp<'a> {
                     data.status_text = format!("Error: No RSTB opened");
                 }
             }
+
             _ => {
-                data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
+                // data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
             }
         }
+
+        // if let Some(pack) = &mut self.pack {
+        //     if let Some(opened) = &mut pack.opened {
+        //         match save_data.tab.as_str() {
+        //             "YAML" => {
+        //                 if let Some(internal_file) = &self.internal_file {
+        //                     let path = &internal_file.path.full_path;
+        //                     let rawdata: Vec<u8> = get_binary_by_filetype(
+        //                         internal_file.file_type,
+        //                         text,
+        //                         internal_file.endian.unwrap_or(roead::Endian::Little),
+        //                     )?;
+        //                     if rawdata.is_empty() {
+        //                         data.status_text = format!(
+        //                             "Error: Failed to save {} for {}",
+        //                             &path, &opened.path.name
+        //                         );
+        //                         data.tab = "ERROR".to_string();
+        //                         println!("{:?}", &data);
+        //                         return Some(data);
+        //                     } else {
+        //                         opened.writer.add_file(path, rawdata);
+        //                         isReload = true;
+        //                         data.tab = "YAML".to_string();
+        //                         data.status_text = format!(
+        //                             "Saved {} for {}",
+        //                             &internal_file.path.name, &opened.path.name
+        //                         );
+        //                     }
+        //                 } else {
+        //                     let rawdata: Vec<u8> = get_binary_by_filetype(
+        //                         self.opened_file.file_type,
+        //                         text,
+        //                         self.opened_file.endian.unwrap_or(roead::Endian::Little),
+        //                     )?;
+        //                     if rawdata.is_empty() {
+        //                         data.status_text = format!(
+        //                             "Error: Failed to save {}",
+        //                             &self.opened_file.path.full_path
+        //                         );
+        //                         data.tab = "ERROR".to_string();
+        //                         println!("{:?}", &data);
+        //                         return Some(data);
+        //                     } else {
+        //                         let mut file =
+        //                             fs::File::create(&self.opened_file.path.full_path).ok()?;
+        //                         file.write_all(&rawdata).ok()?;
+        //                         data.tab = "YAML".to_string();
+        //                         data.status_text =
+        //                             format!("Saved {}", &self.opened_file.path.full_path);
+        //                         println!("{:?}", &data);
+        //                         return Some(data);
+        //                     }
+        //                 }
+        //             }
+        //             "SARC" => {
+        //                 if !check_if_save_in_romfs(&opened.path.full_path, self.zstd.clone()) {
+        //                     opened.reload();
+        //                     if let Ok(_) = opened.save_default() {
+        //                         isReload = true;
+        //                         data.tab = "SARC".to_string();
+        //                         data.status_text = format!("Saved SARC {}", &opened.path.full_path);
+        //                     } else {
+        //                         data.status_text = format!(
+        //                             "Error: Failed to save SARC {}",
+        //                             &opened.path.full_path
+        //                         );
+        //                     }
+        //                 }
+        //             }
+
+        //             _ => {
+        //                 // data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
+        //             }
+        //         }
+        //     }
+        //     if isReload {
+        //         pack.compare_and_reload();
+        //         data.get_sarc_paths(pack);
+        //     }
+        //     println!("{:?}", &data);
+        //     return Some(data);
+        // }
+
+        // match save_data.tab.as_str() {
+        //     "RSTB" => {
+        //         println!("About to save RSTB");
+        //         if let Some(rstb) = &mut self.opened_file.restbl {
+        //             if let Ok(_) = rstb.save_default() {
+        //                 data.tab = "RSTB".to_string();
+        //                 data.status_text = format!("Saved {}", &self.opened_file.path.full_path);
+        //             } else {
+        //                 data.status_text =
+        //                     format!("Error: Failed to save {}", &self.opened_file.path.full_path);
+        //             }
+        //         } else {
+        //             data.status_text = format!("Error: No RSTB opened");
+        //         }
+        //     }
+        //     _ => {
+        //         data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
+        //     }
+        // }
 
         Some(data)
     }

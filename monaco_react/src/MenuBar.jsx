@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { extractFileClick, closeAllFilesClick, editInternalSarcFile, fetchAndSetEditorContent, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
+import { closeAllFilesClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
 
 import { useEditorContext } from './StateManager';
 
@@ -82,6 +82,7 @@ function MenuBarDisplay() {
     } else {
       setBackupPaths(paths);
     }
+    setStatusText(`Showing all sarc files` );
   }
 
   const handleShowAddedClick = (event) => {
@@ -92,6 +93,7 @@ function MenuBarDisplay() {
       setBackupPaths(paths);
     }
     setpaths({ paths: paths.added_paths, added_paths: paths.added_paths, modded_paths: paths.modded_paths });
+    setStatusText(`Showing only added files (${paths.added_paths.length})` );
   }
 
   const handleShowModdedClick = (event) => {
@@ -101,6 +103,7 @@ function MenuBarDisplay() {
       setBackupPaths(paths);
     }
     setpaths({ paths: paths.modded_paths, added_paths: paths.added_paths, modded_paths: paths.modded_paths });
+    setStatusText(`Showing only modded files (${paths.modded_paths.length})` );
   }
 
 
@@ -138,6 +141,13 @@ function MenuBarDisplay() {
     };
   }, []);
 
+  useEffect(() => {
+    // Reset backupPaths only if paths has been altered (not on initial render)
+    if (Object.keys(paths).length > 0) {
+      setBackupPaths({ paths: [], added_paths: [], modded_paths: [] });
+    }
+  }, [labelTextDisplay]);
+
   return (
     <div className="menu-bar">
       <div className="menu-item" onClick={() => toggleDropdown('file')} ref={el => dropdownRefs.current.file = el}>
@@ -155,9 +165,9 @@ function MenuBarDisplay() {
         <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
           <a href="#" onClick={handleOpenInternalSarcFile}>Edit</a>
           <a href="#" onClick={handleExtractClick}>Extract</a>
-          <a href="#" onClick={handleShowAllClick}>Show all</a>
-          <a href="#" onClick={handleShowAddedClick}>Show added</a>
-          <a href="#" onClick={handleShowModdedClick}>Show modded</a>
+          {(paths.added_paths.length > 0 || paths.modded_paths.length > 0 ) && <a href="#" onClick={handleShowAllClick}>Show all</a>}
+          {paths.added_paths.length > 0 && <a href="#" onClick={handleShowAddedClick}>Show added</a>}
+          {paths.modded_paths.length > 0 && <a href="#" onClick={handleShowModdedClick}>Show modded</a>}
         </div>
       </div>}
 

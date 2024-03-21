@@ -14,6 +14,8 @@ use crate::Settings::Pathlib;
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
 
+use super::SarcEntriesData::get_sarc_entries_data;
+
 pub struct PackComparer<'a> {
     pub opened: Option<PackFile<'a>>,
     pub vanila: Option<PackFile<'a>>,
@@ -21,6 +23,7 @@ pub struct PackComparer<'a> {
     pub zstd: Arc<TotkZstd<'a>>,
     pub added: HashMap<String, String>,
     pub modded: HashMap<String, String>,
+    pub global_sarc_data: HashMap<String, String>,
 }
 
 impl<'a> PackComparer<'a> {
@@ -35,6 +38,7 @@ impl<'a> PackComparer<'a> {
             zstd: zstd.clone(),
             added: HashMap::default(),
             modded: HashMap::default(),
+            global_sarc_data: HashMap::default(),
         };
         pack.compare_and_reload();
         Some(pack)
@@ -68,8 +72,8 @@ impl<'a> PackComparer<'a> {
     }
 
     pub fn compare(&mut self) {
-        if let Some(vanila) = &self.vanila {
-            if let Some(opened) = &self.opened {
+        if let Some(opened) = &self.opened {
+            if let Some(vanila) = &self.vanila {
                 let mut added: HashMap<String, String> = HashMap::default();
                 let mut modded: HashMap<String, String> = HashMap::default();
                 for (file, Hash) in opened.hashes.iter() {
@@ -88,11 +92,29 @@ impl<'a> PackComparer<'a> {
                 self.added = added;
                 self.modded = modded;
                 // println!("Added {:?}\nModded {:?}", self.added.keys(), self.modded.keys());
+            } else {
+                //custom actor
+                if self.global_sarc_data.is_empty() {
+                    self.global_sarc_data = get_sarc_entries_data();
+                }
+                let mut added: HashMap<String, String> = HashMap::default();
+                let mut modded: HashMap<String, String> = HashMap::default();
+                for (file, Hash) in opened.hashes.iter() {
+                    let van_hash = self.global_sarc_data.get(file);
+                    match van_hash {
+                        Some(h) => {
+                            if h != Hash {
+                                modded.insert(file.to_string(), Hash.to_string());
+                            }
+                        }
+                        None => {
+                            added.insert(file.to_string(), Hash.to_string());
+                        }
+                    }
+                }
+                self.added = added;
+                self.modded = modded;
             }
-        } else {
-            //custom actor
-            self.added.clear();
-            self.modded.clear();
         }
     }
 
@@ -255,9 +277,9 @@ impl<'a> PackFile<'_> {
         let mut file_data: FileData = FileData::new();
         file_data.file_type = TotkFileType::Sarc;
         f_handle.read_to_end(&mut buffer)?;
-        
+
         if buffer.starts_with(b"Yaz0") {
-            if let Ok(dec_data) =  roead::yaz0::decompress(&buffer) {
+            if let Ok(dec_data) = roead::yaz0::decompress(&buffer) {
                 buffer = dec_data;
             }
         }
