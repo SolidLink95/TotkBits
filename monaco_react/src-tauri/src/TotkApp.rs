@@ -323,6 +323,16 @@ impl<'a> TotkBitsApp<'a> {
         None
     }
 
+    pub fn add_internal_file_to_dir(&mut self, internal_dir: String, path: String) -> Option<SendData> {
+        // let mut data = SendData::default();
+        let p1 = Pathlib::new(internal_dir.replace("\\", "/"));    
+        let p2 = Pathlib::new(path.replace("\\", "/"));    
+        let internal_path = format!("{}/{}", &p1.full_path, &p2.name);
+        return self.add_internal_file_from_path(internal_path, p2.full_path, true);
+
+        // Some(data)
+    }
+
     pub fn add_internal_file_from_path(
         &mut self,
         internal_path: String,
@@ -359,15 +369,15 @@ impl<'a> TotkBitsApp<'a> {
                 opened
                     .writer
                     .add_file(&internal_path.replace("\\", "/"), buffer);
-                data.status_text = if overwrite {
-                    format!(
-                        "Replaced {} with {}",
-                        &internal_path,
-                        &Pathlib::new(path).name
-                    )
-                } else {
-                    format!("Added {} to {}", &internal_path, &opened.path.name)
-                };
+                data.status_text =format!("Added/replaced: {}", &internal_path); //if overwrite {
+                //     format!(
+                //         "Replaced {} with {}",
+                //         &internal_path,
+                //         &Pathlib::new(path).name
+                //     )
+                // } else {
+                //     format!("Added {} to {}", &internal_path, &opened.path.name)
+                // };
             }
             if isReload {
                 pack.compare_and_reload();

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useRef, useState } from 'react';
+import * as monaco from "monaco-editor";
 
 const EditorContext = createContext();
 
@@ -17,10 +18,13 @@ export const EditorProvider = ({ children }) => {
   const [isAddPrompt, setIsAddPrompt] = useState(false);
 
 
-  const updateEditorContent = (content) => {
+  const updateEditorContent = (content, lang) => {
     //setText(content);
     if (editorRef.current) {
       editorRef.current.setValue(content);
+      const model = editorRef.current.getModel();
+  
+      monaco.editor.setModelLanguage(model, lang);
       //console.log(content);
     }
   };

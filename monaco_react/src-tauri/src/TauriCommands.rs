@@ -51,6 +51,17 @@ pub fn add_click(app_handle: tauri::AppHandle, internalPath: String, path:String
 }
 
 #[tauri::command]
+pub fn add_to_dir_click(app_handle: tauri::AppHandle, internalPath: String, path:String) -> Option<SendData>{
+        let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+        let mut app = binding.lock().expect("Failed to lock state");
+        println!("internal_path: {}", internalPath);
+        match app.add_internal_file_to_dir(internalPath, path) {
+            Some(result) => Some(result), // Safely return the result if present
+            None => None,                      // Return None if no result
+        }
+}
+
+#[tauri::command]
 pub fn get_status_text(app: tauri::State<'_, TotkBitsApp>) -> String {
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
         app.inner().send_status_text();

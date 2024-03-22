@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick } from './ButtonClicks';
+import { editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 
 const dirOpened = `dir_opened.png`;
@@ -58,6 +58,12 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     onSelect(fullPath, isFile); // Pass the fullPath to the onSelect function
   };
 
+  const handleAddClick = () => {
+    closeContextMenu();
+    setIsAddPrompt(true);
+    setIsModalOpen(true);
+  }
+
   const handleOpenInternalSarcFile = () => {
     closeContextMenu();
     editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
@@ -70,6 +76,11 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     closeContextMenu();
     replaceInternalFileClick(fullPath, setStatusText, setpaths);
   };
+  const handleAddInternalSarcFileToDir = () => {
+    closeContextMenu();
+    addInternalFileToDir(fullPath, setStatusText, setpaths);
+  };
+
   const handleRenameInternalSarcFile = () => {
     closeContextMenu();
     if (isFile) {
@@ -156,7 +167,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     { label: 'Copy name', method: () => handlePathToClipboard(name) },
     { label: 'Close', method: () => closeContextMenu() },
   ] : [
-    { label: 'Add', method: () => console.log(`Add clicked on ${fullPath}`) },
+    { label: 'Add', method: handleAddInternalSarcFileToDir },
     { label: 'Remove', method: handleRemoveInternalSarcFile },
     { label: 'Rename', method: handleRenameInternalSarcFile },
     { label: 'Close', method: () => closeContextMenu() },

@@ -146,7 +146,7 @@ function MenuBarDisplay() {
     if (Object.keys(paths).length > 0) {
       setBackupPaths({ paths: [], added_paths: [], modded_paths: [] });
     }
-  }, [labelTextDisplay]);
+  }, [labelTextDisplay]); //only when opened file is changed 
 
   return (
     <div className="menu-bar">
@@ -163,6 +163,7 @@ function MenuBarDisplay() {
       {activeTab == "SARC" && <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
         Tools
         <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
+          <a href="#" onClick={handleAddClick}>Add file</a>
           <a href="#" onClick={handleOpenInternalSarcFile}>Edit</a>
           <a href="#" onClick={handleExtractClick}>Extract</a>
           {(paths.added_paths.length > 0 || paths.modded_paths.length > 0 ) && <a href="#" onClick={handleShowAllClick}>Show all</a>}

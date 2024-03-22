@@ -1,5 +1,5 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::env;
 use std::sync::Mutex;
@@ -17,7 +17,7 @@ use crate::TauriCommands::{
     add_click, close_all_opened_files, edit_internal_file, exit_app, extract_internal_file,
     get_status_text, open_file_dialog, open_file_from_path, open_file_struct,
     remove_internal_sarc_file, rename_internal_sarc_file, rstb_edit_entry, rstb_get_entries,
-    rstb_remove_entry, save_as_click, save_file_struct,
+    rstb_remove_entry, save_as_click, save_file_struct,add_to_dir_click
 };
 use crate::TotkApp::TotkBitsApp;
 
@@ -59,6 +59,7 @@ fn main() {
             save_file_struct,
             save_as_click,
             add_click,
+            add_to_dir_click,
             extract_internal_file,
             rename_internal_sarc_file,
             close_all_opened_files,

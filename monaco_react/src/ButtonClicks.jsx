@@ -39,7 +39,7 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
     console.log(content.file_label);
     if (content.tab === 'YAML') {
       setActiveTab(content.tab);
-      updateEditorContent(content.text);
+      updateEditorContent(content.text, content.lang);
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
@@ -67,7 +67,7 @@ export async function processArgv1(argv1, setStatusText, setActiveTab, setLabelT
       setpaths(content.sarc_paths);
     } else if (content.tab === 'YAML') {
       setActiveTab(content.tab);
-      updateEditorContent(content.text);
+      updateEditorContent(content.text, content.lang);
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
     } else if (content.tab === 'RSTB') {
       setActiveTab(content.tab); 
@@ -89,9 +89,11 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
       setActiveTab(content.tab);
       setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label }));
       setpaths(content.sarc_paths);
+      updateEditorContent("", content.lang);
     } else if (content.tab === 'YAML') {
       setActiveTab(content.tab);
-      updateEditorContent(content.text);
+      updateEditorContent(content.text, content.lang);
+      console.log(content.lang);
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
     }else if (content.tab === 'RSTB') {
       setActiveTab(content.tab); 
@@ -114,7 +116,7 @@ export async function closeAllFilesClick(setStatusText, setpaths, updateEditorCo
     }
     setStatusText(content.status_text);
     setpaths(content.sarc_paths);
-    updateEditorContent(content.text);
+    updateEditorContent(content.text, content.lang);
     setLabelTextDisplay({ sarc: '', yaml: '', rstb: ''});
   } catch (error) {
     console.error('Failed to close all files:', error);
@@ -159,6 +161,28 @@ export async function replaceInternalFileClick(internalPath, setStatusText, setp
   }
 
 }
+
+export async function addInternalFileToDir(internalPath, setStatusText, setpaths) {
+  try {
+    const path = await invoke("open_file_dialog");
+    if (path === "" || path === null || path === undefined ) {
+      return;
+    }
+    const content = await invoke('add_to_dir_click', { internalPath: internalPath, path: path });
+    if (content === null) {
+      console.log("No content returned from add_click");
+      return;
+    }
+    setStatusText(content.status_text);
+    if (content.sarc_paths.paths.length > 0) {
+      setpaths(content.sarc_paths);
+    }
+  } catch (error) {
+    console.error("Error invoking 'add_click':", error);
+  }
+
+}
+
 export async function saveFileClick(setStatusText, activeTab, setpaths, editorRef) {
   try {
     // const editorText = editorRef.current ? editorRef.current.getValue() : "";
