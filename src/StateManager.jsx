@@ -22,9 +22,10 @@ export const EditorProvider = ({ children }) => {
     //setText(content);
     if (editorRef.current) {
       editorRef.current.setValue(content);
-      const model = editorRef.current.getModel();
+      //Doesnt work without custom web workers
+      // const model = editorRef.current.getModel();
   
-      monaco.editor.setModelLanguage(model, lang);
+      // monaco.editor.setModelLanguage(model, lang);
       //console.log(content);
     }
   };
