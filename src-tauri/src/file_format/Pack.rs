@@ -78,16 +78,16 @@ impl<'a> PackComparer<'a> {
             if let Some(vanila) = &self.vanila { //unreachable
                 let mut added: HashMap<String, String> = HashMap::default();
                 let mut modded: HashMap<String, String> = HashMap::default();
-                for (file, Hash) in opened.hashes.iter() {
+                for (file, hash) in opened.hashes.iter() {
                     let van_hash = vanila.hashes.get(file);
                     match van_hash {
                         Some(h) => {
-                            if h != Hash {
-                                modded.insert(file.to_string(), Hash.to_string());
+                            if h != hash {
+                                modded.insert(file.to_string(), hash.to_string());
                             }
                         }
                         None => {
-                            added.insert(file.to_string(), Hash.to_string());
+                            added.insert(file.to_string(), hash.to_string());
                         }
                     }
                 }
@@ -101,16 +101,16 @@ impl<'a> PackComparer<'a> {
                 }
                 let mut added: HashMap<String, String> = HashMap::default();
                 let mut modded: HashMap<String, String> = HashMap::default();
-                for (file, Hash) in opened.hashes.iter() {
+                for (file, hash) in opened.hashes.iter() {
                     let van_hash = self.global_sarc_data.get(file);
                     match van_hash {
                         Some(h) => {
-                            if h != Hash {
-                                modded.insert(file.to_string(), Hash.to_string());
+                            if h != hash {
+                                modded.insert(file.to_string(), hash.to_string());
                             }
                         }
                         None => {
-                            added.insert(file.to_string(), Hash.to_string());
+                            added.insert(file.to_string(), hash.to_string());
                         }
                     }
                 }
@@ -151,6 +151,7 @@ impl<'a> PackComparer<'a> {
         // }
         None
     }
+    #[allow(dead_code)]
     pub fn get_vanila_sarc(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
         let pack = PackComparer::get_vanila_pack(path, zstd.clone());
         if pack.is_some() {
@@ -162,7 +163,7 @@ impl<'a> PackComparer<'a> {
         }
         None
     }
-
+    #[allow(dead_code)]
     pub fn get_vanila_pack(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
         println!("Getting the pack: {}", &path.name);
         let path = zstd.clone().totk_config.clone().get_pack_path(&path.stem);
@@ -189,6 +190,7 @@ pub struct PackFile<'a> {
     pub writer: SarcWriter,
     pub hashes: HashMap<String, String>,
     pub sarc: Sarc<'a>,
+    pub is_yaz0: bool,
 }
 
 impl<'a> PackFile<'_> {
@@ -199,7 +201,7 @@ impl<'a> PackFile<'_> {
         //decompressor: &'a ZstdDecompressor,
         //compressor: &'a ZstdCompressor
     ) -> io::Result<PackFile<'a>> {
-        let file_data = PackFile::sarc_file_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
+        let (is_yaz0, file_data) = PackFile::sarc_file_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
         println!("asdf");
         let sarc: Sarc = Sarc::new(file_data.data.clone()).expect("Failed");
         let writer: SarcWriter = SarcWriter::from_sarc(&sarc);
@@ -212,6 +214,7 @@ impl<'a> PackFile<'_> {
             writer: writer,
             hashes: PackFile::populate_hashes(&sarc),
             sarc: sarc,
+            is_yaz0: is_yaz0
         })
     }
 
@@ -247,8 +250,8 @@ impl<'a> PackFile<'_> {
         for file in sarc.files() {
             let file_name = file.name.unwrap_or("");
             if !file_name.is_empty() {
-                let Hash = sha256(file.data().to_vec());
-                hashes.insert(file_name.to_string(), Hash);
+                let hash = sha256(file.data().to_vec());
+                hashes.insert(file_name.to_string(), hash);
             }
         }
         hashes
@@ -280,6 +283,8 @@ impl<'a> PackFile<'_> {
         let mut data: Vec<u8> = self.writer.to_binary();
         if dest_file.to_lowercase().ends_with(".zs") {
             data = self.compress(&data);
+        } else if self.is_yaz0 {
+            data = roead::yaz0::compress(&data);
         }
         let mut file_handle: fs::File = fs::File::create(dest_file)?;
         file_handle.write_all(&data)?;
@@ -287,7 +292,8 @@ impl<'a> PackFile<'_> {
     }
 
     //Read sarc file's bytes, decompress if needed
-    fn sarc_file_to_bytes(path: &PathBuf, zstd: &'a TotkZstd) -> Result<FileData, io::Error> {
+    fn sarc_file_to_bytes(path: &PathBuf, zstd: &'a TotkZstd) -> Result<(bool, FileData), io::Error> {
+        let mut is_yaz0 = false;
         let mut f_handle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
         //let mut returned_result: Vec<u8> = Vec::new();
@@ -298,12 +304,13 @@ impl<'a> PackFile<'_> {
         if buffer.starts_with(b"Yaz0") {
             if let Ok(dec_data) = roead::yaz0::decompress(&buffer) {
                 buffer = dec_data;
+                is_yaz0 = true;
             }
         }
         if is_sarc(&buffer) {
             //buffer.as_slice().starts_with(b"SARC") {
             file_data.data = buffer;
-            return Ok(file_data);
+            return Ok((is_yaz0, file_data));
         }
         match zstd.decompressor.decompress_pack(&buffer) {
             Ok(res) => {
@@ -331,7 +338,7 @@ impl<'a> PackFile<'_> {
             }
         }
         if is_sarc(&file_data.data) {
-            return Ok(file_data);
+            return Ok((is_yaz0, file_data));
         }
         return Err(io::Error::new(
             io::ErrorKind::Other,

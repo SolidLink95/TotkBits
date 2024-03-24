@@ -12,7 +12,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io, panic};
 
-use super::Msbt::MsbtFile;
 use super::Rstb::Restbl;
 
 #[derive(Debug)]
