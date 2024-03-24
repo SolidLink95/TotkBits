@@ -1,7 +1,7 @@
 //tauri commands
 use std::{panic::{self, AssertUnwindSafe}, process, sync::Mutex};
 use rfd::MessageDialog;
-use tauri::{Manager, State};
+use tauri::{Manager};
 use crate::{Open_and_Save::SendData, TotkApp::{SaveData, TotkBitsApp}};
 
 
@@ -75,7 +75,7 @@ pub fn get_status_text(app: tauri::State<'_, TotkBitsApp>) -> String {
 
 
 #[tauri::command]
-pub fn open_file_struct(app_handle: tauri::AppHandle, window: tauri::Window) -> Option<SendData> {
+pub fn open_file_struct(app_handle: tauri::AppHandle, _window: tauri::Window) -> Option<SendData> {
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let mut app = binding.lock().expect("Failed to lock state");
     match app.open() {

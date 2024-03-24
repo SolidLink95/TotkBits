@@ -27,12 +27,6 @@ impl FileData {
             data: Vec::new(),
         }
     }
-    pub fn from(data: Vec<u8>, file_type: TotkFileType) -> Self {
-        Self {
-            file_type: file_type,
-            data: data,
-        }
-    }
 }
 
 pub struct BymlFile<'a> {
@@ -328,7 +322,7 @@ impl<'a> OpenedFile<'_> {
     }
 
     pub fn open(&mut self, file_path: &str, zstd: Arc<TotkZstd>) -> String {
-        let mut res = String::new();
+        let res = String::new();
         let path = Pathlib::new(file_path.to_string());
         if self.open_tag(&path, zstd.clone()) {
             if let Some(tag) = &self.tag {

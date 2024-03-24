@@ -1,24 +1,20 @@
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
-use msyt::converter::MsytFile;
-use rayon::vec;
 use rfd::{FileDialog, MessageDialog};
 use roead::{aamp::ParameterIO, byml::Byml};
 use serde::{Deserialize, Serialize};
-
 use crate::{
     file_format::{
-        BinTextFile::{BymlFile, FileData, OpenedFile}, Msbt::MsbtFile, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct
+        BinTextFile::{BymlFile, OpenedFile}, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct
     },
     Settings::Pathlib,
     TotkApp::InternalFile,
     Zstd::{is_aamp, is_byml, is_msyt, TotkFileType, TotkZstd},
 };
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     fs::{self, File},
     io::{self, Read, Write},
-    panic::{self, AssertUnwindSafe},
-    path::{Path, PathBuf},
+    path::Path,
     sync::Arc,
 };
 
@@ -38,7 +34,7 @@ pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer
         data.status_text = format!("Opened {}", &file_name);
         //internal_file = None;
         data.path = Pathlib::new(file_name.clone());
-        data.text = "SARC".to_string();
+        // data.text = "SARC".to_string();
         data.tab = "SARC".to_string();
         data.get_file_label(TotkFileType::Sarc, Some(endian));
         return Some((pack.unwrap(), data));
@@ -57,7 +53,7 @@ pub fn open_restbl(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile
     {
         println!("{} is a restbl", &file_name);
         opened_file.restbl = Restbl::from_path(file_name.clone(), zstd.clone());
-        if let Some(restbl) = &mut opened_file.restbl {
+        if let Some(_restbl) = &mut opened_file.restbl {
 
             data.tab = "RSTB".to_string();
             opened_file.path = Pathlib::new(file_name.clone());

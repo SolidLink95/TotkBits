@@ -17,6 +17,9 @@ export const EditorProvider = ({ children }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddPrompt, setIsAddPrompt] = useState(false);
 
+  const [isSearchInSarcOpened, setIsSearchInSarcOpened] = useState(false);
+  const [searchInSarcQuery, setSearchInSarcQuery] = useState(""); 
+
 
   const updateEditorContent = (content, lang) => {
     //setText(content);
@@ -37,6 +40,8 @@ export const EditorProvider = ({ children }) => {
 
   // Combine all states and functions into a single object
   const value = {
+    searchInSarcQuery, setSearchInSarcQuery,
+    isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,

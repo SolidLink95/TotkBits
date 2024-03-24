@@ -25,6 +25,8 @@ function App() {
   };
 
   const {
+    searchInSarcQuery, setSearchInSarcQuery,
+    isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,

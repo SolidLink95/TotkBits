@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use std::io::Write;
+
 
 use std::env;
 use std::fs;
 use std::io;
-use std::path::Path;
+
 use std::path::PathBuf;
 use std::str::FromStr;
 //use roead::byml::HashMap;
@@ -195,7 +195,7 @@ pub fn init() -> bool {
             .set_title("No romfs path found")
             .set_description("Please choose romfs path")
             .show();
-        let mut chosen = rfd::FileDialog::new()
+        let chosen = rfd::FileDialog::new()
             .set_title("Choose romfs path")
             .pick_folder()
             .unwrap_or_default();

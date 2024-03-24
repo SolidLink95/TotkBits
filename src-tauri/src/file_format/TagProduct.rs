@@ -100,7 +100,7 @@ impl<'a> TagProduct<'a> {
         let mut path_list: Vec<String> = Default::default();
         let mut tag_list: Vec<Byml> = Default::default();
         let json_data: TagJsonData = serde_json::from_str(text)?;
-        let mut cached_tag_list = &json_data.TagList;    
+        let cached_tag_list = &json_data.TagList;    
         //PathList
         // println!("Work/Actor/|Animal_Boar_A|.engine__actor__ActorParam.gyml {:?}", &json_data.PathList.contains_key("Work/Actor/|Animal_Boar_A|.engine__actor__ActorParam.gyml"));
         // println!("Work/Actor/|Animal_Boar_C|.engine__actor__ActorParam.gyml {:?}", &json_data.PathList.contains_key("Work/Actor/|Animal_Boar_C|.engine__actor__ActorParam.gyml"));

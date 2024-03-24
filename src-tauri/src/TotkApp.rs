@@ -2,19 +2,18 @@ use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Pack::{PackComparer, SarcPaths};
 use crate::Open_and_Save::{
     check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_byml,
-    open_msbt, open_restbl, open_sarc, open_tag, open_text, save_file_dialog, SaveFileDialog,
-    SendData,
+    open_msbt, open_restbl, open_sarc, open_tag, open_text, SaveFileDialog, SendData,
 };
 use crate::Settings::{write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{TotkFileType, TotkZstd};
 use rfd::{FileDialog, MessageDialog};
-use serde::{de, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::fs;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
-use std::{env, fs, io};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum ActiveTab {
@@ -286,7 +285,7 @@ impl<'a> TotkBitsApp<'a> {
                     for file in to_remove {
                         if let Some(rawdata) = opened.writer.get_file(&file) {
                             let input = "asdf.qwre.zxcv";
-                            let result: String =
+                            let _result: String =
                                 input.split('.').skip(1).collect::<Vec<&str>>().join(".");
 
                             let rawdata_backup = rawdata.clone();
@@ -323,10 +322,14 @@ impl<'a> TotkBitsApp<'a> {
         None
     }
 
-    pub fn add_internal_file_to_dir(&mut self, internal_dir: String, path: String) -> Option<SendData> {
+    pub fn add_internal_file_to_dir(
+        &mut self,
+        internal_dir: String,
+        path: String,
+    ) -> Option<SendData> {
         // let mut data = SendData::default();
-        let p1 = Pathlib::new(internal_dir.replace("\\", "/"));    
-        let p2 = Pathlib::new(path.replace("\\", "/"));    
+        let p1 = Pathlib::new(internal_dir.replace("\\", "/"));
+        let p2 = Pathlib::new(path.replace("\\", "/"));
         let internal_path = format!("{}/{}", &p1.full_path, &p2.name);
         return self.add_internal_file_from_path(internal_path, p2.full_path, true);
 
@@ -369,7 +372,8 @@ impl<'a> TotkBitsApp<'a> {
                 opened
                     .writer
                     .add_file(&internal_path.replace("\\", "/"), buffer);
-                data.status_text =format!("Added/replaced: {}", &internal_path); //if overwrite {
+                data.status_text = format!("Added/replaced: {}", &internal_path);
+                //if overwrite {
                 //     format!(
                 //         "Replaced {} with {}",
                 //         &internal_path,
@@ -408,7 +412,7 @@ impl<'a> TotkBitsApp<'a> {
             if let Some(internal_file) = &self.internal_file {
                 dialog.name = Some(internal_file.path.name.clone());
                 dialog.filters_from_path(&internal_file.path.full_path);
-            }  
+            }
         }
         if save_data.tab == "RSTB" && self.opened_file.restbl.is_some() {
             if let Some(rstb) = &self.opened_file.restbl {
@@ -416,7 +420,7 @@ impl<'a> TotkBitsApp<'a> {
                 dialog.filters_from_path(&rstb.path.full_path);
             }
         }
-        if (dialog.name.clone().unwrap_or_default().is_empty() && save_data.tab == "SARC" )
+        if (dialog.name.clone().unwrap_or_default().is_empty() && save_data.tab == "SARC")
             || (save_data.tab == "RSTB" && self.opened_file.restbl.is_none())
         {
             println!("Nothing is opened, nothing to save");
@@ -573,7 +577,7 @@ impl<'a> TotkBitsApp<'a> {
         );
         let mut data = SendData::default();
         let mut isReload = false;
-        let text = &save_data.text;
+        let _text = &save_data.text;
 
         match save_data.tab.as_str() {
             "YAML" => {
@@ -618,109 +622,6 @@ impl<'a> TotkBitsApp<'a> {
             }
         }
 
-        // if let Some(pack) = &mut self.pack {
-        //     if let Some(opened) = &mut pack.opened {
-        //         match save_data.tab.as_str() {
-        //             "YAML" => {
-        //                 if let Some(internal_file) = &self.internal_file {
-        //                     let path = &internal_file.path.full_path;
-        //                     let rawdata: Vec<u8> = get_binary_by_filetype(
-        //                         internal_file.file_type,
-        //                         text,
-        //                         internal_file.endian.unwrap_or(roead::Endian::Little),
-        //                     )?;
-        //                     if rawdata.is_empty() {
-        //                         data.status_text = format!(
-        //                             "Error: Failed to save {} for {}",
-        //                             &path, &opened.path.name
-        //                         );
-        //                         data.tab = "ERROR".to_string();
-        //                         println!("{:?}", &data);
-        //                         return Some(data);
-        //                     } else {
-        //                         opened.writer.add_file(path, rawdata);
-        //                         isReload = true;
-        //                         data.tab = "YAML".to_string();
-        //                         data.status_text = format!(
-        //                             "Saved {} for {}",
-        //                             &internal_file.path.name, &opened.path.name
-        //                         );
-        //                     }
-        //                 } else {
-        //                     let rawdata: Vec<u8> = get_binary_by_filetype(
-        //                         self.opened_file.file_type,
-        //                         text,
-        //                         self.opened_file.endian.unwrap_or(roead::Endian::Little),
-        //                     )?;
-        //                     if rawdata.is_empty() {
-        //                         data.status_text = format!(
-        //                             "Error: Failed to save {}",
-        //                             &self.opened_file.path.full_path
-        //                         );
-        //                         data.tab = "ERROR".to_string();
-        //                         println!("{:?}", &data);
-        //                         return Some(data);
-        //                     } else {
-        //                         let mut file =
-        //                             fs::File::create(&self.opened_file.path.full_path).ok()?;
-        //                         file.write_all(&rawdata).ok()?;
-        //                         data.tab = "YAML".to_string();
-        //                         data.status_text =
-        //                             format!("Saved {}", &self.opened_file.path.full_path);
-        //                         println!("{:?}", &data);
-        //                         return Some(data);
-        //                     }
-        //                 }
-        //             }
-        //             "SARC" => {
-        //                 if !check_if_save_in_romfs(&opened.path.full_path, self.zstd.clone()) {
-        //                     opened.reload();
-        //                     if let Ok(_) = opened.save_default() {
-        //                         isReload = true;
-        //                         data.tab = "SARC".to_string();
-        //                         data.status_text = format!("Saved SARC {}", &opened.path.full_path);
-        //                     } else {
-        //                         data.status_text = format!(
-        //                             "Error: Failed to save SARC {}",
-        //                             &opened.path.full_path
-        //                         );
-        //                     }
-        //                 }
-        //             }
-
-        //             _ => {
-        //                 // data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
-        //             }
-        //         }
-        //     }
-        //     if isReload {
-        //         pack.compare_and_reload();
-        //         data.get_sarc_paths(pack);
-        //     }
-        //     println!("{:?}", &data);
-        //     return Some(data);
-        // }
-
-        // match save_data.tab.as_str() {
-        //     "RSTB" => {
-        //         println!("About to save RSTB");
-        //         if let Some(rstb) = &mut self.opened_file.restbl {
-        //             if let Ok(_) = rstb.save_default() {
-        //                 data.tab = "RSTB".to_string();
-        //                 data.status_text = format!("Saved {}", &self.opened_file.path.full_path);
-        //             } else {
-        //                 data.status_text =
-        //                     format!("Error: Failed to save {}", &self.opened_file.path.full_path);
-        //             }
-        //         } else {
-        //             data.status_text = format!("Error: No RSTB opened");
-        //         }
-        //     }
-        //     _ => {
-        //         data.status_text = format!("Error: Unsupported tab {}", &save_data.tab);
-        //     }
-        // }
-
         Some(data)
     }
 
@@ -762,6 +663,34 @@ impl<'a> TotkBitsApp<'a> {
         }
 
         None
+    }
+
+    pub fn search_in_sarc(&mut self, query: String) -> Option<SendData> {
+        let mut data = SendData::default();
+        let pattern = query.to_lowercase();
+        data.tab = "SARC".to_string();
+        // data.get_sarc_paths(&self.pack.as_ref().unwrap());
+        // data.sarc_paths.paths = Vec::new();
+        if let Some(pack) = &mut self.pack {
+            data.get_sarc_paths(pack);
+            data.sarc_paths.paths = Vec::new();
+            if let Some(opened) = &mut pack.opened {
+                for file in opened.sarc.files() {
+                    if let Some((_, text)) = get_string_from_data("".to_string(), file.data.to_vec(), self.zstd.clone()) {
+                        let filename = file.name.unwrap_or_default().to_string();
+                        if !filename.is_empty() && text.to_lowercase().contains(&pattern) {
+                            data.sarc_paths.paths.push(filename);
+                        }
+                    }
+                    
+                }
+                data.status_text = format!("Found {} entries", data.sarc_paths.paths.len());
+                return Some(data);
+            }
+            data.status_text = format!("Error: No SARC opened for Pack comparer");
+        }
+        data.status_text = format!("Error: No SARC opened");
+        return Some(data);
     }
 
     pub fn open_from_path(&mut self, file_name: String) -> Option<SendData> {

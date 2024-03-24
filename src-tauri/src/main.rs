@@ -4,7 +4,7 @@
 use std::env;
 use std::sync::Mutex;
 
-use tauri::{App, Manager, State, Window};
+use tauri::{Manager, State};
 use TotkConfig::init;
 mod Open_and_Save;
 mod Settings;
@@ -36,7 +36,7 @@ fn main() {
         return;
     }
 
-    let mut app = Mutex::<TotkBitsApp>::default();
+    let app = Mutex::<TotkBitsApp>::default();
     tauri::Builder::default()
         .setup(|app1| {
             // Access command-line arguments
