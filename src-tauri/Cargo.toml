@@ -11,6 +11,8 @@ edition = "2021"
 tauri-build = { version = "1", features = [] }
 
 [dependencies]
+# msbt_bindings_rs = {path = "W:/coding/msbt_bindings_rs - Copy"}
+msbt_bindings_rs = {git = "https://github.com/SolidLink95/msbt_bindings_rs"}
 tauri = { version = "1", features = [ "api-all"] }
 serde = { version = "1", features = ["derive"] }
 

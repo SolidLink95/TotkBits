@@ -29,7 +29,9 @@ pub struct PackComparer<'a> {
 impl<'a> PackComparer<'a> {
     pub fn from_pack(pack: PackFile<'a>, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         let config = zstd.clone().totk_config.clone();
-        let vanila = PackComparer::get_vanila_sarc(&pack.path, zstd.clone());
+        // let vanila = PackComparer::get_vanila_sarc(&pack.path, zstd.clone());
+        //Set to None - rely only on global_sarc_data (except for mals files)
+        let vanila = PackComparer::get_vanila_mals(&pack.path, zstd.clone());
         //let vanila_path = config.get_pack_path_from_sarc(pack);
         let mut pack = Self {
             opened: Some(pack),
@@ -73,7 +75,7 @@ impl<'a> PackComparer<'a> {
 
     pub fn compare(&mut self) {
         if let Some(opened) = &self.opened {
-            if let Some(vanila) = &self.vanila {
+            if let Some(vanila) = &self.vanila { //unreachable
                 let mut added: HashMap<String, String> = HashMap::default();
                 let mut modded: HashMap<String, String> = HashMap::default();
                 for (file, Hash) in opened.hashes.iter() {
@@ -114,34 +116,49 @@ impl<'a> PackComparer<'a> {
                 }
                 self.added = added;
                 self.modded = modded;
+                // println!("Added {:?}\nModded {:?}", self.added, self.modded);
             }
         }
     }
 
     pub fn get_vanila_mals(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
-        println!("Getting the mals: {}", &path.name);
-        let path = zstd.clone().totk_config.clone().get_mals_path(&path.name);
-        if let Some(path) = &path {
-            match PackFile::new(path.to_string_lossy().to_string(), zstd.clone()) {
-                Ok(pack) => {
+        println!("Getting the mals: {}", &path.stem);
+        let versions: Vec<usize> = (100..122).collect();
+        let romfs = zstd.clone().totk_config.romfs.clone();
+        for version in versions {
+            let mut prob_mals_path = romfs.clone();
+            prob_mals_path.push(format!("Mals/{}.Product.{}.sarc.zs", &path.stem, version));
+            if prob_mals_path.exists() {
+                if let Ok(pack) = PackFile::new(prob_mals_path.to_string_lossy().to_string(), zstd.clone()) {
                     println!("Got the mals!");
                     return Some(pack);
-                }
-                _ => {
-                    return None;
-                }
+                }   
             }
         }
+        
+        
+        // let path = zstd.clone().totk_config.clone().get_mals_path(&path.name);
+        // if let Some(path) = &path {
+        //     match PackFile::new(path.to_string_lossy().to_string(), zstd.clone()) {
+        //         Ok(pack) => {
+        //             println!("Got the mals!");
+        //             return Some(pack);
+        //         }
+        //         _ => {
+        //             return None;
+        //         }
+        //     }
+        // }
         None
     }
     pub fn get_vanila_sarc(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
         let pack = PackComparer::get_vanila_pack(path, zstd.clone());
         if pack.is_some() {
-            return Some(pack.unwrap());
+            return pack;
         }
         let mals = PackComparer::get_vanila_mals(path, zstd.clone());
         if mals.is_some() {
-            return Some(mals.unwrap());
+            return mals;
         }
         None
     }

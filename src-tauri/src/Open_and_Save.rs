@@ -1,3 +1,4 @@
+use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use msyt::converter::MsytFile;
 use rayon::vec;
 use rfd::{FileDialog, MessageDialog};
@@ -123,17 +124,20 @@ pub fn open_msbt(file_name: String) -> Option<(OpenedFile<'static>, SendData)> {
     let mut opened_file = OpenedFile::default();
     let mut data = SendData::default();
     println!("Is {} a msbt?", &file_name);
-    opened_file.msyt = MsbtFile::from_filepath(&file_name);
+    // opened_file.msyt = MsbtFile::from_filepath(&file_name);
+    opened_file.msyt = MsbtCpp::from_binary_file(&file_name).ok();
+    
+    // opened_file.msyt = MsbtCpp::from_binary_file(file_path);
     if opened_file.msyt.is_some() {
         let m = opened_file.msyt.as_ref().unwrap();
         println!("{} is a msbt", &file_name);
         opened_file.path = Pathlib::new(file_name.clone());
-        opened_file.endian = Some(m.endian);
+        opened_file.endian = m.endian;
         opened_file.file_type = TotkFileType::Msbt;
         data.status_text = format!("Opened {}", &file_name);
         data.path = Pathlib::new(file_name.clone());
         data.text = m.text.clone();
-        data.get_file_label(opened_file.file_type, Some(m.endian));
+        data.get_file_label(opened_file.file_type, m.endian);
         return Some((opened_file, data));
     }
     None
@@ -209,8 +213,13 @@ pub fn get_string_from_data(
         return Some((internal_file, text));
     }
     if is_msyt(&data) {
-        let msbt = MsbtFile::from_binary(data, Some(path.clone()))?;
-        internal_file.endian = Some(msbt.endian.clone());
+        // let msbt = MsbtFile::from_binary(data, Some(path.clone()))?;
+        // internal_file.endian = Some(msbt.endian.clone());
+        // internal_file.path = Pathlib::new(path.clone());
+        // internal_file.file_type = TotkFileType::Msbt;
+        let msbt = MsbtCpp::from_binary(&data).ok()?;
+
+        internal_file.endian = msbt.endian;
         internal_file.path = Pathlib::new(path.clone());
         internal_file.file_type = TotkFileType::Msbt;
         return Some((internal_file, msbt.text));
@@ -294,13 +303,15 @@ pub fn get_binary_by_filetype(
             rawdata = pio.to_binary(endian);
         }
         TotkFileType::Msbt => {
-            let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                MsytFile::text_to_binary(text, endian, None)
-            }));
+            let result = MsbtCpp::from_text(text, endian);
+            // let result = panic::catch_unwind(AssertUnwindSafe(|| {
+            //     MsytFile::text_to_binary(text, endian, None)
+            // }));
             if let Ok(msbt) = result {
-                if let Ok(x) = msbt {
-                    rawdata = x;
-                }
+                // if let Ok(x) = msbt {
+                //     rawdata = x;
+                // }
+                rawdata = msbt.binary;
             }
             //rawdata = MsytFile::text_to_binary(text, endian, None).ok()?;
         }

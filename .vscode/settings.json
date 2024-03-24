@@ -3,5 +3,6 @@
         ".\\src-tauri\\Cargo.toml",
         ".\\src-tauri\\Cargo.toml",
         ".\\src-tauri\\Cargo.toml"
-    ]
+    ],
+    "cmake.configureOnOpen": false
 }

@@ -19,6 +19,10 @@ impl MsbtFile {
         let mut data: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut data).ok()?;
         let endian = MsbtFile::check_endianness(&data)?;
+
+
+
+        
         let text = MsytFile::binary_to_text_safe(data).ok()?;
         Some(Self {
             path: Pathlib::new(path.to_string()),

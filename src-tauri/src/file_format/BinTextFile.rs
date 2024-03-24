@@ -1,6 +1,7 @@
 use crate::file_format::TagProduct::TagProduct;
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, TotkFileType, TotkZstd};
+use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use roead::byml::Byml;
 use std::any::type_name;
 
@@ -247,7 +248,8 @@ pub struct OpenedFile<'a> {
     pub path: Pathlib,
     pub byml: Option<BymlFile<'a>>,
     pub endian: Option<roead::Endian>,
-    pub msyt: Option<MsbtFile>,
+    // pub msyt: Option<MsbtFile>,
+    pub msyt: Option<MsbtCpp>,
     pub aamp: Option<()>,
     pub tag: Option<TagProduct<'a>>,
     pub restbl: Option<Restbl<'a>>,
@@ -273,7 +275,7 @@ impl<'a> OpenedFile<'_> {
         path: String,
         file_type: TotkFileType,
         endian: Option<roead::Endian>,
-        msyt: Option<MsbtFile>,
+        msyt: Option<MsbtCpp>,
     ) -> Self {
         Self {
             file_type: file_type,
