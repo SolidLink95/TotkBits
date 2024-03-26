@@ -5,6 +5,7 @@ import React, { useEffect } from "react";
 import ActiveTabDisplay from "./ActiveTab";
 import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
 import "./App.css";
+import { SearchTextInSarcPrompt } from './SearchTextInSarc';
 import { processArgv1 } from './ButtonClicks';
 import ButtonsDisplay from "./Buttons";
 import DirectoryTree from "./DirectoryTree";
@@ -122,7 +123,7 @@ function App() {
 
   return (
     <div className="maincontainer">
-      <MenuBarDisplay       />
+      <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
       <AddOrRenameFilePrompt
         isOpen={isModalOpen}
@@ -133,8 +134,16 @@ function App() {
         isAddPrompt={isAddPrompt}
         renamePromptMessage={renamePromptMessage}
       >
-        {/* <h2>Add File to SARC</h2> */}
       </AddOrRenameFilePrompt>
+      <SearchTextInSarcPrompt
+        setStatusText={setStatusText}
+        setpaths={setpaths}
+        searchInSarcQuery={searchInSarcQuery}
+        setSearchInSarcQuery={setSearchInSarcQuery}
+        isSearchInSarcOpened={isSearchInSarcOpened}
+        setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
+      </SearchTextInSarcPrompt>
+      {/* <h2>Add File to SARC</h2> */}
 
       <ButtonsDisplay
         editorRef={editorRef}

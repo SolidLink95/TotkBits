@@ -505,15 +505,21 @@ impl SendData {
                     self.sarc_paths.paths.push(name.into());
                 }
             }
-            self.sarc_paths
-                .paths
-                .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
             for (path, _) in pack.added.iter() {
                 self.sarc_paths.added_paths.push(path.into());
             }
             for (path, _) in pack.modded.iter() {
                 self.sarc_paths.modded_paths.push(path.into());
             }
+            self.sarc_paths
+                .paths
+                .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+            self.sarc_paths
+                .added_paths
+                .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+            self.sarc_paths
+                .modded_paths
+                .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
         }
         //println!("Sarc paths: {:?}", self.sarc_paths);
     }

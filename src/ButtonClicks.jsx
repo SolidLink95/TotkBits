@@ -26,13 +26,57 @@ export async function extractFileClick(selectedPath, setStatusText) {
   }
 }
 
+export async function searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened) {
+  try {
+    if (searchInSarcQuery === "") {
+      setStatusText("Search query is empty!");
+      return;
+    }
+    setStatusText("Searching in SARC file...");
+    const content = await invoke('search_in_sarc', { query: searchInSarcQuery });
+    if (content === null) {
+      setStatusText("No content returned from search_in_sarc");
+      setIsSearchInSarcOpened(false);
+      setSearchInSarcQuery("");
+      return;
+    }
+    if (content.sarc_paths.paths.length === 0) {
+      setStatusText(`No matches found: ${searchInSarcQuery}`);
+      setSearchInSarcQuery("");
+    } else {
+      setStatusText(content.status_text);
+      setpaths(content.sarc_paths);
+    }
+    setIsSearchInSarcOpened(false);
+  } catch (error) {
+    console.error("Error invoking 'add_click':", error);
+  }
+}
+export async function clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery) {
+  try {
+    const content = await invoke('clear_search_in_sarc');
+    if (content !== null) {
+      setStatusText(content.status_text);
+    }
+    setSearchInSarcQuery("");
+    setpaths(content.sarc_paths);
+  }
+  catch (error) {
+    console.error('Failed to clear search in sarc file:', error);
+  }
+}
+
 
 export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent) {
   try {
+    if (fullPath === null || fullPath === undefined || fullPath === "") {
+      setStatusText("Select some file first!");
+      return;
+    }
     console.log('Opening internal SARC file:', fullPath);
     const content = await invoke('edit_internal_file', { path: fullPath });
     if (content === null) {
-      setStatusText("No content returned! Is any SARC file opened?");
+      // setStatusText("No content returned! Is any SARC file opened?");
       return;
     }
     //  setStatusText(content.status_text);
@@ -70,7 +114,7 @@ export async function processArgv1(argv1, setStatusText, setActiveTab, setLabelT
       updateEditorContent(content.text, content.lang);
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
     } else if (content.tab === 'RSTB') {
-      setActiveTab(content.tab); 
+      setActiveTab(content.tab);
       setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label }));
 
     } else if (content.tab === 'ERROR') {
@@ -83,6 +127,7 @@ export async function processArgv1(argv1, setStatusText, setActiveTab, setLabelT
 }
 export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
+    setStatusText("Opening file...");
     const content = await invoke('open_file_struct');
     setStatusText(content.status_text);
     if (content.tab === 'SARC') {
@@ -95,11 +140,11 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
       updateEditorContent(content.text, content.lang);
       console.log(content.lang);
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
-    }else if (content.tab === 'RSTB') {
-      setActiveTab(content.tab); 
+    } else if (content.tab === 'RSTB') {
+      setActiveTab(content.tab);
       setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label }));
 
-    }  else if (content.tab === 'ERROR') {
+    } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
     }
   } catch (error) {
@@ -117,7 +162,7 @@ export async function closeAllFilesClick(setStatusText, setpaths, updateEditorCo
     setStatusText(content.status_text);
     setpaths(content.sarc_paths);
     updateEditorContent(content.text, content.lang);
-    setLabelTextDisplay({ sarc: '', yaml: '', rstb: ''});
+    setLabelTextDisplay({ sarc: '', yaml: '', rstb: '' });
   } catch (error) {
     console.error('Failed to close all files:', error);
   }
@@ -165,7 +210,7 @@ export async function replaceInternalFileClick(internalPath, setStatusText, setp
 export async function addInternalFileToDir(internalPath, setStatusText, setpaths) {
   try {
     const path = await invoke("open_file_dialog");
-    if (path === "" || path === null || path === undefined ) {
+    if (path === "" || path === null || path === undefined) {
       return;
     }
     const content = await invoke('add_to_dir_click', { internalPath: internalPath, path: path });

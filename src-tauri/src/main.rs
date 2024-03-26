@@ -14,10 +14,10 @@ mod TotkConfig;
 mod Zstd;
 mod file_format;
 use crate::TauriCommands::{
-    add_click, close_all_opened_files, edit_internal_file, exit_app, extract_internal_file,
-    get_status_text, open_file_dialog, open_file_from_path, open_file_struct,
+    add_click, add_to_dir_click, clear_search_in_sarc, close_all_opened_files, edit_internal_file,
+    exit_app, extract_internal_file, open_file_dialog, open_file_from_path, open_file_struct,
     remove_internal_sarc_file, rename_internal_sarc_file, rstb_edit_entry, rstb_get_entries,
-    rstb_remove_entry, save_as_click, save_file_struct,add_to_dir_click
+    rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,
 };
 use crate::TotkApp::TotkBitsApp;
 
@@ -52,7 +52,6 @@ fn main() {
         .manage(app)
         .invoke_handler(tauri::generate_handler![
             get_command_line_arg,
-            get_status_text,
             open_file_struct,
             open_file_from_path,
             edit_internal_file,
@@ -69,6 +68,8 @@ fn main() {
             rstb_get_entries,
             rstb_edit_entry,
             rstb_remove_entry,
+            search_in_sarc,
+            clear_search_in_sarc,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

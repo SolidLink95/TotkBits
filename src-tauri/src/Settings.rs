@@ -18,7 +18,7 @@ pub struct Pathlib {
 
 impl Default for Pathlib {
     fn default() -> Self {
-        Self::new("".to_string())
+        Self::new(String::new())
     }
 }
 

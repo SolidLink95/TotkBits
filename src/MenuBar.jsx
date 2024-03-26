@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { closeAllFilesClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
+import { clearSearchInSarcClick, closeAllFilesClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
 
 import { useEditorContext } from './StateManager';
 
 function MenuBarDisplay() {
-  const [backupPaths, setBackupPaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
+  // const [backupPaths, setBackupPaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
 
   const {
+    searchInSarcQuery, setSearchInSarcQuery,
+    isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
@@ -49,6 +51,13 @@ function MenuBarDisplay() {
     closeMenu();
     saveAsFileClick(setStatusText, activeTab, setpaths, editorRef);
   };
+
+  const handleSearchClick = (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    setIsSearchInSarcOpened(!isSearchInSarcOpened);
+  }
+
   const handleAddClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
@@ -76,22 +85,23 @@ function MenuBarDisplay() {
   const handleShowAllClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
-    if (backupPaths.paths.length > 0) {
-      setpaths({ paths: backupPaths.paths, added_paths: backupPaths.added_paths, modded_paths: backupPaths.modded_paths });
-      setBackupPaths({ paths: [], added_paths: [], modded_paths: [] });
-    } else {
-      setBackupPaths(paths);
-    }
-    setStatusText(`Showing all sarc files` );
+    clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery);
+    // if (backupPaths.paths.length > 0) {
+    //   setpaths({ paths: backupPaths.paths, added_paths: backupPaths.added_paths, modded_paths: backupPaths.modded_paths });
+    //   setBackupPaths({ paths: [], added_paths: [], modded_paths: [] });
+    // } else {
+    //   setBackupPaths(paths);
+    // }
+    // setStatusText(`Showing all sarc files` );
   }
 
   const handleShowAddedClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
     // console.log(backupPaths.paths.length);
-    if (backupPaths.paths.length === 0) {
-      setBackupPaths(paths);
-    }
+    // if (backupPaths.paths.length === 0) {
+    //   setBackupPaths(paths);
+    // }
     setpaths({ paths: paths.added_paths, added_paths: paths.added_paths, modded_paths: paths.modded_paths });
     setStatusText(`Showing only added files (${paths.added_paths.length})` );
   }
@@ -99,9 +109,9 @@ function MenuBarDisplay() {
   const handleShowModdedClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
-    if (backupPaths.paths.length === 0) {
-      setBackupPaths(paths);
-    }
+    // if (backupPaths.paths.length === 0) {
+    //   setBackupPaths(paths);
+    // }
     setpaths({ paths: paths.modded_paths, added_paths: paths.added_paths, modded_paths: paths.modded_paths });
     setStatusText(`Showing only modded files (${paths.modded_paths.length})` );
   }
@@ -111,6 +121,12 @@ function MenuBarDisplay() {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
     closeAllFilesClick(setStatusText, setpaths, updateEditorContent, setLabelTextDisplay);
+  }
+
+  const handleClearSearchTextInSarc = (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery);
   }
 
   const toggleDropdown = (menu) => {
@@ -141,12 +157,12 @@ function MenuBarDisplay() {
     };
   }, []);
 
-  useEffect(() => {
-    // Reset backupPaths only if paths has been altered (not on initial render)
-    if (Object.keys(paths).length > 0) {
-      setBackupPaths({ paths: [], added_paths: [], modded_paths: [] });
-    }
-  }, [labelTextDisplay]); //only when opened file is changed 
+  // useEffect(() => {
+  //   // Reset backupPaths only if paths has been altered (not on initial render)
+  //   if (Object.keys(paths).length > 0) {
+  //     setBackupPaths({ paths: [], added_paths: [], modded_paths: [] });
+  //   }
+  // }, [labelTextDisplay]); //only when opened file is changed 
 
   return (
     <div className="menu-bar">
@@ -163,6 +179,8 @@ function MenuBarDisplay() {
       {activeTab == "SARC" && <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
         Tools
         <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
+          <a href="#" onClick={handleSearchClick}>Search in sarc</a>
+          {searchInSarcQuery.length > 0 && <a href="#" onClick={handleClearSearchTextInSarc}>Clear search</a>}
           <a href="#" onClick={handleAddClick}>Add file</a>
           <a href="#" onClick={handleOpenInternalSarcFile}>Edit</a>
           <a href="#" onClick={handleExtractClick}>Extract</a>

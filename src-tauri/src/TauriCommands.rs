@@ -61,16 +61,16 @@ pub fn add_to_dir_click(app_handle: tauri::AppHandle, internalPath: String, path
         }
 }
 
-#[tauri::command]
-pub fn get_status_text(app: tauri::State<'_, TotkBitsApp>) -> String {
-    let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        app.inner().send_status_text();
-    }));
-    if result.is_err() {
-        return "Error".to_string();
-    }
-    app.status_text.clone()
-}
+// #[tauri::command]
+// pub fn get_status_text(app: tauri::State<'_, TotkBitsApp>) -> String {
+//     let result = panic::catch_unwind(AssertUnwindSafe(|| {
+//         app.inner().send_status_text();
+//     }));
+//     if result.is_err() {
+//         return "Error".to_string();
+//     }
+//     app.status_text.clone()
+// }
 
 
 
@@ -180,7 +180,7 @@ pub fn open_file_dialog() -> Option<String> {
 pub fn rstb_get_entries(app_handle: tauri::AppHandle, entry: String) -> Option<SendData> {
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let mut app = binding.lock().expect("Failed to lock state");
-    match app.get_entries(entry) {
+    match app.get_rstb_entries_by_query(entry) {
         Some(result) => {
             return Some(result);
         } // Safely return the result if present
@@ -207,6 +207,33 @@ pub fn rstb_remove_entry(app_handle: tauri::AppHandle, entry: String) -> Option<
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let mut app = binding.lock().expect("Failed to lock state");
     match app.rstb_remove_entry(entry) {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
+
+#[tauri::command]
+pub fn search_in_sarc(app_handle: tauri::AppHandle, query: String) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.search_in_sarc(query) {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
+
+
+#[tauri::command]
+pub fn clear_search_in_sarc(app_handle: tauri::AppHandle) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.clear_search_in_sarc() {
         Some(result) => {
             return Some(result);
         } // Safely return the result if present

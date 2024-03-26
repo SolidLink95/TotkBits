@@ -55,7 +55,7 @@ impl Default for TotkBitsApp<'_> {
 }
 
 impl<'a> TotkBitsApp<'a> {
-    pub fn get_entries(&mut self, entry: String) -> Option<SendData> {
+    pub fn get_rstb_entries_by_query(&mut self, entry: String) -> Option<SendData> {
         let mut data = SendData::default();
         let mut isDefaultAdded = false;
         if let Some(rstb) = &mut self.opened_file.restbl {
@@ -204,9 +204,6 @@ impl<'a> TotkBitsApp<'a> {
         Some(data)
     }
 
-    pub fn send_status_text(&self) -> String {
-        self.status_text.to_string()
-    }
 
     pub fn get_binary_for_opened_file(&self, text: &str) -> Option<Vec<u8>> {
         get_binary_by_filetype(
@@ -684,13 +681,25 @@ impl<'a> TotkBitsApp<'a> {
                     }
                     
                 }
-                data.status_text = format!("Found {} entries", data.sarc_paths.paths.len());
+                data.sarc_paths.paths.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+                data.status_text = format!("Found {} entries for \"{}\"", data.sarc_paths.paths.len(), &query);
                 return Some(data);
             }
             data.status_text = format!("Error: No SARC opened for Pack comparer");
         }
         data.status_text = format!("Error: No SARC opened");
         return Some(data);
+    }
+
+    pub fn clear_search_in_sarc(&mut self) -> Option<SendData> {
+        let mut data = SendData::default();
+        data.tab = "SARC".to_string();
+        if let Some(pack) = &mut self.pack {
+            data.get_sarc_paths(pack);
+            data.status_text = "Cleared search results".to_string();
+            return Some(data);
+        }
+        None
     }
 
     pub fn open_from_path(&mut self, file_name: String) -> Option<SendData> {

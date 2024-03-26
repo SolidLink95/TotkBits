@@ -3,6 +3,37 @@
 version = 3
 
 [[package]]
+name = "Totkbits"
+version = "0.0.0"
+dependencies = [
+ "base64 0.21.7",
+ "bitvec",
+ "byteordered 0.6.0",
+ "digest",
+ "eframe",
+ "flate2",
+ "fs2",
+ "image",
+ "msbt",
+ "msbt_bindings_rs",
+ "msyt",
+ "native-dialog",
+ "natord",
+ "rayon",
+ "restbl",
+ "rfd 0.14.1",
+ "roead",
+ "serde",
+ "serde_json",
+ "serde_yaml 0.9.33",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "walkdir",
+ "zstd",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3503,37 +3534,6 @@ dependencies = [
  "libc",
  "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys 0.48.0",
-]
-
-[[package]]
-name = "monaco_react"
-version = "0.0.0"
-dependencies = [
- "base64 0.21.7",
- "bitvec",
- "byteordered 0.6.0",
- "digest",
- "eframe",
- "flate2",
- "fs2",
- "image",
- "msbt",
- "msbt_bindings_rs",
- "msyt",
- "native-dialog",
- "natord",
- "rayon",
- "restbl",
- "rfd 0.14.1",
- "roead",
- "serde",
- "serde_json",
- "serde_yaml 0.9.33",
- "sha2",
- "tauri",
- "tauri-build",
- "walkdir",
- "zstd",
 ]
 
 [[package]]

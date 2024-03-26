@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
+import {clearSearchInSarcClick, searchTextInSarcClick,editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 
 const button_size = '33px';
 
 const ButtonsDisplay = () => {
   const {
+    searchInSarcQuery, setSearchInSarcQuery,
+    isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
@@ -29,11 +31,16 @@ const ButtonsDisplay = () => {
   const handleSaveAsClick = () => {
     saveAsFileClick(setStatusText, activeTabRef.current, setpaths, editorRef);
   };
+  const handleClearSarcSearch = () => {
+    clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery);
+  };
   const handleAddClick = () => {
     setIsAddPrompt(true);
     setIsModalOpen(true);
   }
-
+  const handleSearchClick = () => {
+    setIsSearchInSarcOpened(!isSearchInSarcOpened);
+  };
 
   function ImageButton({ src, onClick, alt, title, style }) {
     // Apply both the background image and styles directly to the button
@@ -86,6 +93,7 @@ const ButtonsDisplay = () => {
     { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit (Ctrl+E)' },
     { src: 'add_sarc.png', alt: 'add', onClick: handleAddClick, title: 'Add' },
     { src: 'extract.png', alt: 'extract', onClick: () => extractFileClick(selectedPath, setStatusText), title: 'Extract' },
+    { src: 'lupa.png', alt: 'find', onClick: handleSearchClick, title: 'Search in sarc' },
   ] : activeTab === "YAML" ? [
     { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
     { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
@@ -112,7 +120,7 @@ const ButtonsDisplay = () => {
 
   useEffect(() => {//handle mouse and keyboards events
     const handleContextMenu = (event) => {
-      event.preventDefault();//prevent browser's default context menu
+      // event.preventDefault();//prevent browser's default context menu
       //commented out in order to access "Inspect" feature
     };
     const handleKeyDown = (event) => {
@@ -159,13 +167,14 @@ const ButtonsDisplay = () => {
       window.removeEventListener('contextmenu', handleContextMenu);
     };
   }, []); // Pass an empty dependency array to ensure this effect runs only once after the initial render
-
+  const isClearSearchShown = activeTab == "SARC" && searchInSarcQuery.length > 0 && !isSearchInSarcOpened;
 
   return (
     <div className="buttons-container">
       {imageButtonsData.map((button, index) => (
-        <ImageButton key={index} src={button.src} alt={button.alt} onClick={button.onClick} title={button.title} style={button.alt === 'back' ? { marginLeft: '10px' } : {}} />
+        <ImageButton key={index} src={button.src} alt={button.alt} onClick={button.onClick} title={button.title} style={button.alt === 'back' || button.alt === "find" ? { marginLeft: '10px' } : {}} />
       ))}
+      {isClearSearchShown && <button className="modal-footer-button" onClick={handleClearSarcSearch} title="Clear active search" >Clear search</button>}
     </div>
   );
 };
