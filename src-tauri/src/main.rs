@@ -1,7 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::env;
+use std::path::Path;
 use std::sync::Mutex;
 
 use tauri::{Manager, State};
@@ -35,6 +36,19 @@ fn main() {
         println!("Error while initializing romfs path");
         return;
     }
+    // let ainb = file_format::Ainb_py::Ainb_py::new();
+    // println!("{:?}", Path::new(&ainb.python_exe).exists());
+    // println!("{:?}", Path::new(&ainb.python_script).exists());
+    // // if let Err(err) = ainb.test_winpython() {
+    // // if let Err(err) = ainb.binary_file_to_text("../res/ChemicalBall.Prepare.module.ainb") {
+    // //     println!("Error while testing winpython: {:?}", err);
+    // // }
+    // if let Ok(text) = ainb.binary_file_to_text("../res/ChemicalBall.Prepare.module.ainb") {
+    //     println!("Text: {:?}", text);
+    // }
+    // println!("\nCWD: {:?}", env::current_dir().unwrap());
+
+    // return;
 
     let app = Mutex::<TotkBitsApp>::default();
     tauri::Builder::default()

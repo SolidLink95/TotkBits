@@ -16,6 +16,7 @@ use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
 
 #[derive(Debug,PartialEq, Clone, Copy)]
 pub enum TotkFileType {
+    AINB,
     Restbl,
     TagProduct,
     Sarc,
@@ -284,6 +285,12 @@ pub fn is_aamp(data: &[u8]) -> bool {
 
 pub fn is_msyt(data: &[u8]) -> bool {
     if data.starts_with(b"MsgStd") {
+        return true;
+    }
+    return false;
+}
+pub fn is_ainb(data: &[u8]) -> bool {
+    if data.starts_with(b"AIB ") {
         return true;
     }
     return false;

@@ -1,0 +1,3 @@
+[submodule "bin/ainb"]
+	path = src-tauri/bin/ainb
+	url = https://github.com/dt-12345/ainb

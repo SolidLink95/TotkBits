@@ -4,11 +4,11 @@ use roead::{aamp::ParameterIO, byml::Byml};
 use serde::{Deserialize, Serialize};
 use crate::{
     file_format::{
-        BinTextFile::{BymlFile, OpenedFile}, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct
+        Ainb_py::Ainb_py, BinTextFile::{BymlFile, OpenedFile}, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct
     },
     Settings::Pathlib,
     TotkApp::InternalFile,
-    Zstd::{is_aamp, is_byml, is_msyt, TotkFileType, TotkZstd},
+    Zstd::{is_aamp, is_ainb, is_byml, is_msyt, TotkFileType, TotkZstd},
 };
 use std::{
     collections::BTreeMap,
@@ -96,6 +96,27 @@ pub fn open_tag(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, S
     None
 }
 
+
+
+pub fn open_ainb(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+    let mut opened_file = OpenedFile::default();
+    let mut data = SendData::default();
+    println!("Is {} a ainb?", &file_name);
+    if let Ok(text) = Ainb_py::new().binary_file_to_text(&file_name) {
+        println!("{} is a ainb", &file_name);
+        opened_file.path = Pathlib::new(file_name.clone());
+        opened_file.file_type = TotkFileType::AINB;
+        data.status_text = format!("Opened: {}", &file_name);
+        data.path = Pathlib::new(file_name.clone());
+        data.text = text;
+        data.get_file_label(TotkFileType::AINB, None);
+        return Some((opened_file, data));
+    }
+
+
+    None
+
+}
 pub fn open_byml(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
     let mut opened_file = OpenedFile::default();
     let mut data = SendData::default();
@@ -186,6 +207,14 @@ pub fn get_string_from_data(
     let mut internal_file = InternalFile::default();
     if data.is_empty() {
         return None;
+    }
+    if is_ainb(&data) {
+        if let Ok(text) = Ainb_py::new().binary_to_text(&data) {
+            internal_file.endian = Some(roead::Endian::Little);
+            internal_file.path = Pathlib::new(path.clone());
+            internal_file.file_type = TotkFileType::AINB;
+            return Some((internal_file, text));
+        }
     }
     if is_byml(&data) {
         if let Ok(file_data) = BymlFile::byml_data_to_bytes(&data, zstd.clone()) {
@@ -289,6 +318,11 @@ pub fn get_binary_by_filetype(
 ) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
     match file_type {
+        TotkFileType::AINB => {
+            if let Ok(some_data) = Ainb_py::new().text_to_binary(text) {
+                rawdata = some_data;
+            }
+        }
         TotkFileType::TagProduct => {
             if let Ok(some_data) = TagProduct::to_binary(text) {
                 rawdata = some_data;

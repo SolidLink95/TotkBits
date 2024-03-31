@@ -16,6 +16,7 @@ msbt_bindings_rs = {git = "https://github.com/SolidLink95/msbt_bindings_rs"}
 tauri = { version = "1", features = [ "api-all"] }
 serde = { version = "1", features = ["derive"] }
 
+# tauri-bundler = "1.5.1"
 msyt = { git = "https://github.com/SolidLink95/msyt-lib" }
 msbt = { git = "https://github.com/lojewalo/msbt-rs" }
 zstd = "0.13"
