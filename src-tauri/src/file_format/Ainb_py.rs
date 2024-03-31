@@ -21,7 +21,7 @@ impl Default for Ainb_py {
     fn default() -> Self {
         Self {
             python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
-            python_script: "bin/ainb/ainb/ainb_rs.py".to_string(),
+            python_script: "ainb_rs.py".to_string(),
             current_dir: "bin/ainb/ainb".to_string(),
             CREATE_NO_WINDOW: 0x08000000,
             // newpath: "../bin/winpython/python-3.11.8.amd64:../bin/winpython/python-3.11.8.amd64/Scripts".to_string(),
@@ -67,7 +67,7 @@ impl Ainb_py {
     pub fn binary_to_text(&self, data: &Vec<u8>) -> io::Result<String> {
         // env::set_var("PATH", self.newpath.clone());
         let mut child = Command::new(&self.python_exe)
-            // .current_dir(&self.current_dir)
+            .current_dir(&self.current_dir)
             .creation_flags(self.CREATE_NO_WINDOW)
             .arg(&self.python_script)
             .arg("binary_to_text")
@@ -96,7 +96,7 @@ impl Ainb_py {
 
     pub fn text_to_binary(&self, text: &str) -> io::Result<Vec<u8>> {
         let mut child = Command::new(&self.python_exe)
-            // .current_dir(&self.current_dir)
+            .current_dir(&self.current_dir)
             .creation_flags(self.CREATE_NO_WINDOW)
             .arg(&self.python_script)
             .arg("text_to_binary")

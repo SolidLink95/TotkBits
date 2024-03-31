@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import { set } from 'lodash';
 
 export const useExitApp = async () => {
   console.log('Exiting the app');
@@ -74,6 +75,7 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
       return;
     }
     console.log('Opening internal SARC file:', fullPath);
+    setStatusText("Opening...");
     const content = await invoke('edit_internal_file', { path: fullPath });
     if (content === null) {
       // setStatusText("No content returned! Is any SARC file opened?");
@@ -85,6 +87,7 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
       setActiveTab(content.tab);
       updateEditorContent(content.text, content.lang);
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
+      setStatusText(`Opened file: ${fullPath}`);
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
     } else {
@@ -93,6 +96,7 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
   }
   catch (error) {
     console.error('Failed to open internal SARC file:', error);
+    setStatusText('Failed to open internal SARC file:', error);
   }
 
 
@@ -231,8 +235,10 @@ export async function addInternalFileToDir(internalPath, setStatusText, setpaths
 export async function saveFileClick(setStatusText, activeTab, setpaths, editorRef) {
   try {
     // const editorText = editorRef.current ? editorRef.current.getValue() : "";
+    setStatusText("Saving...");
     if (!editorRef.current) {
       console.log("Editor reference not found");
+      setStatusText("Editor reference not found");
       return;
     }
     const editorText = editorRef.current.getValue();
@@ -258,6 +264,7 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
     }
   } catch (error) {
     console.error('Failed save data:', error);
+    setStatusText(`Failed to save data`);
   }
 }
 
