@@ -1,50 +1,80 @@
+use std::ops::Deref;
+use std::{sync::Arc};
 use std::{
     env, io::{self, Read, Write}, os::windows::process::CommandExt, process::{Command, Stdio}
 };
 
+use tauri::api::file;
 
-use crate::Zstd::is_ainb;
+use crate::Zstd::{is_asb, TotkZstd};
 
-pub struct Ainb_py {
+
+
+pub struct Asb_py<'a>  {
+    pub zstd: Arc<TotkZstd<'a>>,
     pub python_exe: String,
     pub python_script: String,
-    // pub current_dir: String,
     pub CREATE_NO_WINDOW: u32,
-    // pub newpath: String,
-    // pub original_path: String,
+    pub data: Vec<u8>,
 }
-//C:\Users\Luiza\AppData\Local\Programs\Python\Python37\Scripts\
-//C:\Users\Luiza\AppData\Local\Programs\Python\Python37\
 
-impl Default for Ainb_py {
-    fn default() -> Self {
+impl<'a> Asb_py<'a> {
+    pub fn new(zstd: Arc<TotkZstd<'a>>) -> Asb_py<'a> {
         Self {
+            zstd: zstd.clone(),
             python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
-            // python_script: "src/totkbits.py".to_string(),
-            python_script: "src/totkbits.py".to_string(),
-            // current_dir: "bin/ainb/ainb".to_string(),
+            python_script: "totkbits.py".to_string(),
             CREATE_NO_WINDOW: 0x08000000,
-            // newpath: "../bin/winpython/python-3.11.8.amd64:../bin/winpython/python-3.11.8.amd64/Scripts".to_string(),
-            // original_path: env::var("PATH").unwrap_or("".to_string()),
+            data: Vec::new(),
         }
     }
-}
-impl Ainb_py {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn from_binary_file( file_path: &str ,zstd: Arc<TotkZstd<'a>>) -> io::Result<Asb_py<'a>> {
+        let mut f_handle = std::fs::File::open(file_path)?; // Open the file
+        let mut buffer = Vec::new(); // Create a buffer to store the data
+        f_handle.read_to_end(&mut buffer)?; // Read the file into the buffer
+        Self::from_binary(&buffer, zstd.clone())
+
     }
-    pub fn binary_file_to_text(&self, file_path: &str) -> io::Result<String> {
+    pub fn from_binary( data: &Vec<u8>,zstd: Arc<TotkZstd<'a>>) -> io::Result<Asb_py<'a>> {
+        let mut new_data: Vec<u8> = Vec::new();
+        if !is_asb(&data) {
+            new_data = zstd.decompressor.decompress_zs(&data)?;
+        } else {
+            new_data = data.to_vec();
+        }
+        if !is_asb(&new_data) {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Data is not an ASB file.",
+            ));
+        }
+        Ok(
+            Self {
+                zstd: zstd.clone(),
+                python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
+                python_script: "src/totkbits.py".to_string(),
+                CREATE_NO_WINDOW: 0x08000000,
+                data: new_data,
+            }
+        )
+    }
+
+    pub fn binary_file_to_text(&mut self, file_path: &str) -> io::Result<String> {
         // env::set_var("PATH", self.newpath.clone());
         let mut f_handle = std::fs::File::open(file_path)?; // Open the file
         let mut buffer = Vec::new(); // Create a buffer to store the data
         f_handle.read_to_end(&mut buffer)?; // Read the file into the buffer
-        if !is_ainb( &buffer) {
+        if !is_asb( &buffer) {
+            buffer = self.zstd.decompressor.decompress_zs(&buffer)?;
+        }
+        if !is_asb( &buffer) {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
-                "File is not an Ainb file.",
+                "File is not an ASB file.",
             ));
         }
-        let text = self.binary_to_text(&buffer)?;
+        self.data = buffer;
+        let text = self.binary_to_text()?;
         // env::set_var("PATH", self.original_path.clone());
         Ok(text)
     }
@@ -60,31 +90,42 @@ impl Ainb_py {
         if data.starts_with(b"Error") {
             return Err(io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&data).into_owned()));
         }
+        
         // env::set_var("PATH", self.original_path.clone());
         Ok(data)
     }
 
-    pub fn binary_to_text(&self, data: &Vec<u8>) -> io::Result<String> {
+    pub fn text_to_binary_file(&self, text: &str, file_path: &str) -> io::Result<()> {
+        let mut data = self.text_to_binary(&text)?;
+        if file_path.to_lowercase().ends_with(".zs") {
+            data = self.zstd.compressor.compress_zs(&data)?;
+        }
+        let mut f_handle = std::fs::File::create(file_path)?;
+        f_handle.write_all(&data)?;
+        Ok(())
+    }
+
+    pub fn binary_to_text(&self) -> io::Result<String> {
         // env::set_var("PATH", self.newpath.clone());
+
         let mut child = Command::new(&self.python_exe)
-            // .current_dir(&self.current_dir)
             .creation_flags(self.CREATE_NO_WINDOW)
             .arg(&self.python_script)
-            .arg("ainb_binary_to_text")
+            .arg("asb_binary_to_text")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
 
         if let Some(ref mut stdin) = child.stdin.take() {
-            stdin.write_all(data)?;
+            stdin.write_all(&self.data)?;
             // For binary data, ensure you're handling errors and using `write_all` to guarantee all data is written.
         } // Dropping `stdin` here closes the pipe.
 
         let output = child.wait_with_output()?;
         if output.status.success() {
-            println!("Script executed successfully.");
+            // println!("Script executed successfully.");
+            eprintln!("Script execution successfully. {:#?}\n{}", output.status, String::from_utf8_lossy(&output.stderr).into_owned());
         } else {
-            // eprintln!("Script execution failed.");
             eprintln!("Script execution failed. {:#?}\n{}", output.status, String::from_utf8_lossy(&output.stderr).into_owned());
             eprintln!("Data: {:?}", String::from_utf8_lossy(&output.stdout).into_owned());
             return Err(io::Error::new(io::ErrorKind::Other, "Script execution failed."));
@@ -99,10 +140,9 @@ impl Ainb_py {
 
     pub fn text_to_binary(&self, text: &str) -> io::Result<Vec<u8>> {
         let mut child = Command::new(&self.python_exe)
-            // .current_dir(&self.current_dir)
             .creation_flags(self.CREATE_NO_WINDOW)
             .arg(&self.python_script)
-            .arg("ainb_text_to_binary")
+            .arg("asb_text_to_binary")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
@@ -123,6 +163,8 @@ impl Ainb_py {
             ));
         }
     }
+
+
     pub fn test_winpython(&self) -> io::Result<()> {
         // env::set_var("PATH", self.newpath.clone());
         let output = Command::new(&self.python_exe)
@@ -140,4 +182,5 @@ impl Ainb_py {
         println!("Test response from winpython: {}", text);
         Ok(())
     }
+    
 }

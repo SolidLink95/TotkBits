@@ -1,12 +1,12 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::env;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use tauri::{Manager, State};
-use TotkConfig::init;
+// use TotkConfig::{init, TotkConfig};
 mod Open_and_Save;
 mod Settings;
 mod TauriCommands;
@@ -32,13 +32,14 @@ fn get_command_line_arg(state: State<CommandLineArg>) -> String {
 }
 
 fn main() {
-    if !init() {
+    if !TotkConfig::init() {
         println!("Error while initializing romfs path");
         return;
     }
     // let ainb = file_format::Ainb_py::Ainb_py::new();
     // println!("{:?}", Path::new(&ainb.python_exe).exists());
     // println!("{:?}", Path::new(&ainb.python_script).exists());
+    // println!("{:?}", Path::new(&ainb.python_script));
     // // if let Err(err) = ainb.test_winpython() {
     // // if let Err(err) = ainb.binary_file_to_text("../res/ChemicalBall.Prepare.module.ainb") {
     // //     println!("Error while testing winpython: {:?}", err);
@@ -47,6 +48,18 @@ fn main() {
     //     println!("Text: {:?}", text);
     // }
     // println!("\nCWD: {:?}", env::current_dir().unwrap());
+
+    // let asb = file_format::Asb_py::Asb_py::from_binary_file(
+    //     "../res/Accessory_Battery.root.asb.zs",
+    //     Arc::new(Zstd::TotkZstd::new(Arc::new(TotkConfig::TotkConfig::new()), 16).unwrap()),
+    // );
+    // if let Ok(asb) = asb {
+    //     asb.test_winpython();
+    //     match asb.binary_to_text() {
+    //         Ok(text) => println!("Text: {:?}", text),
+    //         Err(err) => println!("Error while converting binary to text: {:?}", err),
+    //     }
+    // }
 
     // return;
 

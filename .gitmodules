@@ -1,3 +1,6 @@
 [submodule "bin/ainb"]
 	path = src-tauri/bin/ainb
 	url = https://github.com/dt-12345/ainb
+[submodule "src-tauri/bin/asb"]
+	path = src-tauri/bin/asb
+	url = https://github.com/dt-12345/asb.git

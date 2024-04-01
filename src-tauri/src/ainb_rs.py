@@ -39,9 +39,9 @@ def text_to_binary(encoding="utf-8"): # Converts input JSON file to AINB
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        if sys.argv[1] == "binary_to_text":
+        if sys.argv[1] == "ainb_binary_to_text":
             binary_to_text()
-        elif sys.argv[1] == "text_to_binary":
+        elif sys.argv[1] == "ainb_text_to_binary":
             text_to_binary()
     else:
         sys.stdout.write("Hello from python")
