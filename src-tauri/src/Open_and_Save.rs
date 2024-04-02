@@ -345,12 +345,20 @@ pub fn check_if_save_in_romfs(dest_file: &str, zstd: Arc<TotkZstd>) -> bool {
 pub fn get_binary_by_filetype(
     file_type: TotkFileType,
     text: &str,
-    endian: roead::Endian,
+    endian: roead::Endian, zstd: Arc<TotkZstd>, file_path: &str
 ) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
+    let is_zs = file_path.to_lowercase().ends_with(".zs");
+    let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs") || file_path.to_lowercase().ends_with(".bcett.byml");
     match file_type {
         TotkFileType::ASB => {
-            //TODO: ASB saving
+            let asb = Asb_py::new(zstd.clone());
+            if let Ok(some_data) = asb.text_to_binary(text) {
+                rawdata = some_data;
+                if is_zs {
+                    rawdata = zstd.compressor.compress_zs(&rawdata).ok()?;
+                }
+            }
         }
         TotkFileType::AINB => {
             if let Ok(some_data) = Ainb_py::new().text_to_binary(text) {
@@ -360,11 +368,19 @@ pub fn get_binary_by_filetype(
         TotkFileType::TagProduct => {
             if let Ok(some_data) = TagProduct::to_binary(text) {
                 rawdata = some_data;
+                if is_zs {
+                    rawdata = zstd.compressor.compress_zs(&rawdata).ok()?;
+                }
             }
         }
         TotkFileType::Byml => {
             let pio = Byml::from_text(text).ok()?;
             rawdata = pio.to_binary(endian);
+            if is_bcett {
+                rawdata = zstd.compressor.compress_bcett(&rawdata).ok()?;
+            } else if is_zs {
+                rawdata = zstd.compressor.compress_zs(&rawdata).ok()?;
+            }
         }
         TotkFileType::Msbt => {
             let result = MsbtCpp::from_text(text, endian);

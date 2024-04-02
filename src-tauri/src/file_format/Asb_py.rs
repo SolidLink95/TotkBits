@@ -146,7 +146,7 @@ impl<'a> Asb_py<'a> {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
-
+        // println!("Text: {:?}", text);
         if let Some(ref mut stdin) = child.stdin.take() {
             stdin.write_all(text.as_bytes())?;
         } // Dropping `stdin` here closes the pipe.
@@ -156,7 +156,9 @@ impl<'a> Asb_py<'a> {
             println!("Script executed successfully.");
             return Ok(output.stdout);
         } else {
-            eprintln!("Script execution failed.");
+            println!("Script execution failed. {:#?}\n{}", output.status, String::from_utf8_lossy(&output.stderr).into_owned());
+            println!("Data: {:?}", String::from_utf8_lossy(&output.stdout).into_owned());
+            println!("Data: {:?}", &output.stdout);
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Script execution failed.",

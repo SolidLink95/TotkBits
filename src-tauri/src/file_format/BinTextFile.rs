@@ -3,6 +3,7 @@ use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, TotkFileType, TotkZstd};
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use roead::byml::Byml;
+use tauri::api::file;
 use std::any::type_name;
 
 use std::fs::OpenOptions;
@@ -35,6 +36,7 @@ pub struct BymlFile<'a> {
     pub path: Pathlib,
     pub pio: roead::byml::Byml,
     pub zstd: Arc<TotkZstd<'a>>,
+    pub file_type: TotkFileType,
 }
 
 impl<'a> BymlFile<'_> {
@@ -100,6 +102,7 @@ impl<'a> BymlFile<'_> {
                 path: Pathlib::default(),
                 pio: ok_pio,
                 zstd: zstd.clone(),
+                file_type: TotkFileType::Byml,
             }),
             Err(_err) => {
                 return Err(io::Error::new(
@@ -116,6 +119,7 @@ impl<'a> BymlFile<'_> {
         full_path: String,
     ) -> io::Result<BymlFile<'a>> {
         let pio = Byml::from_binary(&data.data);
+        let file_type = data.file_type;
         match pio {
             Ok(ok_pio) => Ok(BymlFile {
                 endian: BymlFile::get_endiannes(&data.data.clone()),
@@ -123,6 +127,7 @@ impl<'a> BymlFile<'_> {
                 path: Pathlib::new(full_path),
                 pio: ok_pio,
                 zstd: zstd.clone(),
+                file_type: file_type,
             }),
             Err(_err) => {
                 return Err(io::Error::new(

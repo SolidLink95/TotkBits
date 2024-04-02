@@ -22,6 +22,7 @@ pub enum TotkFileType {
     TagProduct,
     Sarc,
     MalsSarc,
+    BcettByml,
     Byml,
     Aamp,
     Msbt,

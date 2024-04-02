@@ -204,11 +204,13 @@ impl<'a> TotkBitsApp<'a> {
     }
 
 
-    pub fn get_binary_for_opened_file(&self, text: &str) -> Option<Vec<u8>> {
+    pub fn get_binary_for_opened_file(&self, text: &str, zstd: Arc<TotkZstd>, dest_file: &str) -> Option<Vec<u8>> {
         get_binary_by_filetype(
             self.opened_file.file_type,
             text,
             self.opened_file.endian.unwrap_or(roead::Endian::Little),
+            zstd.clone(),
+            dest_file
         )
     }
 
@@ -433,7 +435,8 @@ impl<'a> TotkBitsApp<'a> {
                         data.path = Pathlib::new(dest_file.clone());
                         self.opened_file.path = Pathlib::new(dest_file);
                     } else {
-                        let rawdata = self.get_binary_for_opened_file(&save_data.text);
+                        let is_zs = dest_file.to_lowercase().ends_with(".zs");
+                        let rawdata = self.get_binary_for_opened_file(&save_data.text, self.zstd.clone(), &dest_file);
                         if let Some(rawdata) = rawdata {
                             let mut file = fs::File::create(&dest_file).ok()?;
                             file.write_all(&rawdata).ok()?;
@@ -514,10 +517,12 @@ impl<'a> TotkBitsApp<'a> {
             if let Some(pack) = &mut self.pack {
                 if let Some(opened) = &mut pack.opened {
                     let path = &internal_file.path.full_path;
+                    let is_zs = path.to_lowercase().ends_with(".zs");
                     let rawdata: Vec<u8> = get_binary_by_filetype(
                         internal_file.file_type,
                         text,
                         internal_file.endian.unwrap_or(roead::Endian::Little),
+                        self.zstd.clone(), &path
                     )?;
                     if rawdata.is_empty() {
                         data.status_text =
@@ -541,10 +546,12 @@ impl<'a> TotkBitsApp<'a> {
                 }
             }
         } else {
+            let is_zs = self.opened_file.path.full_path.to_lowercase().ends_with(".zs");
             let rawdata: Vec<u8> = get_binary_by_filetype(
                 self.opened_file.file_type,
                 text,
                 self.opened_file.endian.unwrap_or(roead::Endian::Little),
+                self.zstd.clone(), &self.opened_file.path.full_path
             )?;
             if rawdata.is_empty() {
                 data.status_text =
