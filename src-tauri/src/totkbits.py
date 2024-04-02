@@ -3,7 +3,7 @@ import os
 import sys
 sys.path.append(os.path.join(os.getcwd(), "bin/ainb/ainb"))
 sys.path.append(os.path.join(os.getcwd(), "bin/asb"))
-sys.stdout.write(f"{os.getcwd()}\n")
+# sys.stdout.write(f"{os.getcwd()}\n")
 try:
     import ainb
     from converter import ainb_to_json, json_to_ainb, ainb_to_yaml, yaml_to_ainb
@@ -12,13 +12,12 @@ except ImportError as e:
 try:
     from asb import ASB, asb_from_zs
 except ImportError as e:
-    sys.stdout.buffer.write(b"Error Import: " + str(e).encode("utf-8"))
+    sys.stderr.buffer.write(b"Error Import: " + str(e).encode("utf-8"))
 import json
 try:
     import yaml
 except ImportError:
     raise ImportError("DID YOU EVEN TRY TO READ THE INSTRUCTIONS BEFORE YOU DID THIS? GO BACK TO THE GITHUB README AND LEARN TO READ :P")
-# import os
 
 # Modify asb.py to include the following functions
 # class ASB:
@@ -97,7 +96,7 @@ if __name__ == "__main__":
 
         # Execute the function based on the command line argument
         if sys.argv[1] in commands.keys():
-            sys.stdout.write(f"Executing command '{sys.argv[1]}'\n")
+            # sys.stdout.write(f"Executing command '{sys.argv[1]}'\n")
             commands[sys.argv[1]]()
         else:
             print(f"Command '{sys.argv[1]}' not recognized.")
