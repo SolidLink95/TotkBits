@@ -349,7 +349,7 @@ pub fn get_binary_by_filetype(
 ) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
     let is_zs = file_path.to_lowercase().ends_with(".zs");
-    let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs") || file_path.to_lowercase().ends_with(".bcett.byml");
+    let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs");
     match file_type {
         TotkFileType::ASB => {
             let asb = Asb_py::new(zstd.clone());

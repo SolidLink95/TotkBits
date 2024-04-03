@@ -51,7 +51,7 @@ def asb_binary_to_text(): # Converts input ASB file to JSON
 
 def asb_text_to_binary(encoding="utf-8"): # Converts input JSON file to ASB
     try:
-        sys.stdout.buffer.write(b"Executing command: asb_text_to_binary in function body\n")
+        # sys.stdout.buffer.write(b"Executing command: asb_text_to_binary in function body\n")
         data = sys.stdin.buffer.read()
         json_data = json.loads(data.decode(encoding))
         # json_data = yaml.safe_load(data.decode(encoding))
@@ -691,7 +691,9 @@ def asdf():
         
     cursor = io.BytesIO(bytearray())
     asb.ToBytes(cursor)
-    # print(cursor.getvalue()[:5])
+    data = cursor.getvalue()
+    # print(data[:5])
+    sys.stdout.buffer.write(data)
 
 def ainb_binary_to_text(): # Converts input AINB file to JSON
     try:
@@ -721,12 +723,13 @@ if __name__ == "__main__":
     # asdf()
     # sys.exit()
     if len(sys.argv) > 1:
-        sys.stdout.buffer.write(b"Executing command: " + sys.argv[1].encode("utf-8") + b"\n")
+        # sys.stdout.buffer.write(b"Executing command: " + sys.argv[1].encode("utf-8") + b"\n")
         commands = {
             "ainb_binary_to_text": ainb_binary_to_text,
             "ainb_text_to_binary": ainb_text_to_binary,
             "asb_binary_to_text": asb_binary_to_text,
-            "asb_text_to_binary": asb_text_to_binary  
+            "asb_text_to_binary": asb_text_to_binary,  
+            "asdf": asdf  
         }
 
         # Execute the function based on the command line argument

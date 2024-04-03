@@ -23,7 +23,7 @@ impl<'a> Asb_py<'a> {
         Self {
             zstd: zstd.clone(),
             python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
-            python_script: "totkbits.py".to_string(),
+            python_script: "src/totkbits.py".to_string(),
             CREATE_NO_WINDOW: 0x08000000,
             data: Vec::new(),
         }
@@ -143,6 +143,7 @@ impl<'a> Asb_py<'a> {
             .creation_flags(self.CREATE_NO_WINDOW)
             .arg(&self.python_script)
             .arg("asb_text_to_binary")
+            // .arg("asdf")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
