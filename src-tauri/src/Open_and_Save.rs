@@ -382,6 +382,13 @@ pub fn get_binary_by_filetype(
                 rawdata = zstd.compressor.compress_zs(&rawdata).ok()?;
             }
         }
+        TotkFileType::Bcett => {
+            let pio = Byml::from_text(text).ok()?;
+            rawdata = pio.to_binary(endian);
+            if is_zs {
+                rawdata = zstd.compressor.compress_bcett(&rawdata).ok()?;
+            }
+        }
         TotkFileType::Msbt => {
             let result = MsbtCpp::from_text(text, endian);
             // let result = panic::catch_unwind(AssertUnwindSafe(|| {

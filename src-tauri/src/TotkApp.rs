@@ -517,7 +517,6 @@ impl<'a> TotkBitsApp<'a> {
             if let Some(pack) = &mut self.pack {
                 if let Some(opened) = &mut pack.opened {
                     let path = &internal_file.path.full_path;
-                    let is_zs = path.to_lowercase().ends_with(".zs");
                     let rawdata: Vec<u8> = get_binary_by_filetype(
                         internal_file.file_type,
                         text,
@@ -546,7 +545,6 @@ impl<'a> TotkBitsApp<'a> {
                 }
             }
         } else {
-            let is_zs = self.opened_file.path.full_path.to_lowercase().ends_with(".zs");
             let rawdata: Vec<u8> = get_binary_by_filetype(
                 self.opened_file.file_type,
                 text,
