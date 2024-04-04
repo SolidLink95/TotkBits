@@ -435,7 +435,6 @@ impl<'a> TotkBitsApp<'a> {
                         data.path = Pathlib::new(dest_file.clone());
                         self.opened_file.path = Pathlib::new(dest_file);
                     } else {
-                        let is_zs = dest_file.to_lowercase().ends_with(".zs");
                         let rawdata = self.get_binary_for_opened_file(&save_data.text, self.zstd.clone(), &dest_file);
                         if let Some(rawdata) = rawdata {
                             let mut file = fs::File::create(&dest_file).ok()?;
@@ -485,7 +484,7 @@ impl<'a> TotkBitsApp<'a> {
                 "RSTB" => {
                     println!("About to save RSTB");
                     if let Some(rstb) = &mut self.opened_file.restbl {
-                        if let Ok(_) = rstb.save(dest_file.clone()) {
+                        if let Ok(_) = rstb.save(&dest_file) {
                             data.tab = "RSTB".to_string();
                             data.status_text =
                                 format!("Saved {}", &self.opened_file.path.full_path);

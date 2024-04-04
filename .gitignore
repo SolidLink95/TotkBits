@@ -12,6 +12,7 @@ res/asdf/*
 /bin/*
 # /bin/ainb/
 dist
+.vscode
 dist-ssr
 *.local
 

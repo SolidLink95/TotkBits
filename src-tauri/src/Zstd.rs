@@ -59,38 +59,15 @@ impl<'a> TotkZstd<'_> {
         dicts.insert("bcett".to_string(), self.decompressor.bcett.clone());
 
         for (name, dictt) in dicts.iter() {
-            match self.decompressor.decompress(&data, &dictt) {
-                Ok(dec_data) => {
-                    println!("Finally decompressed! Its {} dictionary", name);
-                    return Ok(dec_data);
-                }
-                Err(_) => {}
+            if let Ok(dec_data) = self.decompressor.decompress(&data, &dictt) {
+                println!("Finally decompressed! Its {} dictionary", name);
+                return Ok(dec_data);
             }
         }
-        return Err(io::Error::new(io::ErrorKind::Other, ""));
+        return Err(io::Error::new(io::ErrorKind::Other, "Unable to decompress with any dictionary!"));
     }
 
 
-    pub fn identify_file_from_binary(zstd: TotkZstd, data: &Vec<u8>) -> TotkFileType {
-        match zstd.try_decompress(&data) {
-            Ok(raw_data) => {
-                //try to decompress with everything
-                if is_byml(&raw_data) {
-                    return TotkFileType::Bcett;
-                }
-                if is_sarc(&raw_data) {
-                    return TotkFileType::Sarc;
-                }
-                if is_aamp(&raw_data) {
-                    return TotkFileType::Aamp;
-                }
-
-            },
-            _ => {return TotkFileType::Other;}
-        }
-        //all validations failed
-        return TotkFileType::Other;
-    }
 }
 
 pub struct ZsDic {
@@ -109,7 +86,7 @@ impl ZsDic {
         let mut packzs_data: Vec<u8> = Vec::new();
 
         for file in sarc.files() {
-            match file.name.unwrap_or("") {
+            match file.name.unwrap_or_default() {
                 "zs.zsdic" => zs_data = file.data().to_vec(),
                 "bcett.byml.zsdic" => bcett_data = file.data().to_vec(),
                 "pack.zsdic" => packzs_data = file.data().to_vec(),
@@ -164,31 +141,14 @@ impl<'a> ZstdDecompressor<'_> {
     }
 
     fn decompress(&self, data: &[u8], ddict: &DecoderDictionary) -> Result<Vec<u8>, io::Error> {
-        let decoder = Decoder::with_prepared_dictionary(data, ddict);
-        match decoder {
-            Ok(_) => {}
-            Err(err) => {
-                eprintln!("Error getting the decoder");
-                return Err(err);
-            }
-        }
-        let mut decompressed = Vec::new();
-        if decoder.is_err() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to create a decoder {}", line!()),
-            ));
-        }
-        match decoder.unwrap().read_to_end(&mut decompressed) {
-            Ok(_) => {
+        if let Ok(decoder) = &mut Decoder::with_prepared_dictionary(data, ddict){
+            let mut decompressed: Vec<u8> = Vec::new();
+            if let Ok(_) = decoder.read_to_end(&mut decompressed) {
                 return Ok(decompressed);
             }
-            Err(err) => {
-                //eprintln!("Error while decoding");
-                return Err(err);
-            }
         }
-        Ok(decompressed)
+        let err = format!("Failed to decompress!  line:{}", line!());
+        Err(io::Error::new(io::ErrorKind::Other, err))
     }
 
     pub fn decompress_zs(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
@@ -264,51 +224,29 @@ impl<'a> ZstdCompressor<'_> {
 }
 
 pub fn is_byml(data: &[u8]) -> bool {
-    if data.starts_with(b"BY") || data.starts_with(b"YB") {
-        return true;
-    }
-    return false;
+    data.starts_with(b"BY") || data.starts_with(b"YB") 
 }
 
 pub fn is_sarc(data: &[u8]) -> bool {
-    if data.starts_with(b"SARC") {
-        return true;
-    }
-    return false;
+    data.starts_with(b"SARC") 
 }
 
 pub fn is_aamp(data: &[u8]) -> bool {
-    if data.starts_with(b"AAMP") {
-        return true;
-    }
-    return false;
+    data.starts_with(b"AAMP") 
 }
 
 pub fn is_msyt(data: &[u8]) -> bool {
-    if data.starts_with(b"MsgStd") {
-        return true;
-    }
-    return false;
+    data.starts_with(b"MsgStd") 
 }
 pub fn is_ainb(data: &[u8]) -> bool {
-    if data.starts_with(b"AIB ") {
-        return true;
-    }
-    return false;
+    data.starts_with(b"AIB ") 
 }
 pub fn is_asb(data: &[u8]) -> bool {
-    if data.starts_with(b"ASB ") {
-        return true;
-    }
-
-    return false;
+    data.starts_with(b"ASB ") 
 }
 
 pub fn is_restbl(data: &[u8]) -> bool {
-    if data.starts_with(b"RSTB") || data.starts_with(b"REST")  {
-        return true;
-    }
-    return false;
+    data.starts_with(b"RSTB") || data.starts_with(b"REST")  
 }
 
 

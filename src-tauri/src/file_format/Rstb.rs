@@ -50,14 +50,14 @@ impl<'a> Restbl<'_> {
     }
 
 pub fn save_default(&mut self) -> io::Result<()> {
-        self.save(self.path.full_path.clone())
+        self.save(&self.path.full_path.clone())
     }
 
-pub fn save(&mut self, path: String) -> io::Result<()> {
+pub fn save(&mut self, path: &str) -> io::Result<()> {
         let mut buffer = self.table.to_binary();
         let mut f = File::create(&path)?;
         if path.to_lowercase().ends_with(".zs") {
-            buffer = self.zstd.compressor.compress_zs(&buffer)?;
+            buffer = self.zstd.compressor.compress_empty(&buffer)?;
         }
         f.write_all(&buffer)?;
         Ok(())

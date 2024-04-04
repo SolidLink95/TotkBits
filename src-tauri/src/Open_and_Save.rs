@@ -112,6 +112,8 @@ pub fn open_asb(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, S
             data.text = text;
             data.get_file_label(TotkFileType::ASB, Some(roead::Endian::Little));
             return Some((opened_file, data));
+        } else {
+            println!("{} is a asb but failed to convert to text", &file_name);
         }
     }
 
@@ -143,8 +145,9 @@ pub fn open_byml(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, 
     let mut data = SendData::default();
     println!("Is {} a byml?", &file_name);
     opened_file.byml = BymlFile::new(file_name.clone(), zstd.clone());
-    if opened_file.byml.is_some() {
-        let b = opened_file.byml.as_ref().unwrap();
+    // if opened_file.byml.is_some() {
+    if let Some(b) = &opened_file.byml {
+        // let b = opened_file.byml.as_ref().unwrap();
         println!("{} is a byml", &file_name);
         opened_file.path = Pathlib::new(file_name.clone());
         opened_file.endian = b.endian;
@@ -166,8 +169,9 @@ pub fn open_msbt(file_name: String) -> Option<(OpenedFile<'static>, SendData)> {
     opened_file.msyt = MsbtCpp::from_binary_file(&file_name).ok();
     
     // opened_file.msyt = MsbtCpp::from_binary_file(file_path);
-    if opened_file.msyt.is_some() {
-        let m = opened_file.msyt.as_ref().unwrap();
+    // if opened_file.msyt.is_some() {
+    if let Some(m) = &opened_file.msyt {
+        // let m = opened_file.msyt.as_ref().unwrap();
         println!("{} is a msbt", &file_name);
         opened_file.path = Pathlib::new(file_name.clone());
         opened_file.endian = m.endian;
@@ -391,16 +395,9 @@ pub fn get_binary_by_filetype(
         }
         TotkFileType::Msbt => {
             let result = MsbtCpp::from_text(text, endian);
-            // let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            //     MsytFile::text_to_binary(text, endian, None)
-            // }));
             if let Ok(msbt) = result {
-                // if let Ok(x) = msbt {
-                //     rawdata = x;
-                // }
                 rawdata = msbt.binary;
             }
-            //rawdata = MsytFile::text_to_binary(text, endian, None).ok()?;
         }
         TotkFileType::Aamp => {
             let pio = ParameterIO::from_text(text).ok()?;

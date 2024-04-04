@@ -3,10 +3,12 @@ use crate::file_format::BinTextFile::{bytes_to_file,BymlFile};
 //use byteordered::Endianness;
 //use indexmap::IndexMap;
 use bitvec::prelude::*;
-use roead::byml::Byml;
+use digest::block_buffer::Error;
+use roead::byml::{self, Byml};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::{BTreeMap, HashMap};
+use std::f64::consts::E;
 use std::io::{Write};
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -93,11 +95,11 @@ impl<'a> TagProduct<'a> {
         Ok(())
     }
 
-    pub fn to_binary(text: &str) -> Result<Vec<u8>, serde_json::Error> {
+    pub fn to_binary(text: &str) -> io::Result<Vec<u8>> {
         //let data: Config = serde_yaml::from_str(text)?;
         //Header
         let _res : Byml = Byml::from_text("{}").unwrap();
-        let mut path_list: Vec<String> = Default::default();
+        let mut path_list: Vec<Byml> = Default::default();
         let mut tag_list: Vec<Byml> = Default::default();
         let json_data: TagJsonData = serde_json::from_str(text)?;
         let cached_tag_list = &json_data.TagList;    
@@ -107,8 +109,8 @@ impl<'a> TagProduct<'a> {
         for (path, _plist) in &json_data.PathList {
             if path.contains("|") {
                 for slice in path.split("|") {
-                    //let entry = roead::byml::Byml::String(slice.to_string().into());
-                    path_list.push(slice.to_string());
+                    let entry = roead::byml::Byml::String(slice.into());
+                    path_list.push(entry);
                 }
             }
         }
@@ -141,27 +143,38 @@ impl<'a> TagProduct<'a> {
         );
 
         
-        let yml_data = YamlData {
-            PathList: path_list.clone(),
-            BitTable: bit_table_bytes, // Example binary data
-            RankTable: "".to_string(),
-            TagList: cached_tag_list.clone(),
-        };
-        let mut yml: Vec<String> = Vec::new();
-        yml.push("PathList:".to_string());
-        for p in &yml_data.PathList {
-            yml.push(format!("  - {}",p));
-        }
-        yml.push(format!("BitTable: !!binary {}", base64::encode(yml_data.BitTable)));
-        yml.push("RankTable: \"\"".to_string());
-        yml.push("TagList:".to_string());
-
-        for tag in yml_data.TagList {
-            yml.push(format!("  - {}",tag));
+        // let yml_data = YamlData {
+        //     PathList: path_list.clone(),
+        //     BitTable: bit_table_bytes, // Example binary data
+        //     RankTable: "".to_string(),
+        //     TagList: cached_tag_list.clone(),
+        // };
+        let mut res = byml::Byml::from_text("{}");
+        if let Ok(res) = &mut res {
+            if let Ok(x) = res.as_mut_map() {
+                x.insert("PathList".to_string().into(), Byml::Array(path_list));
+                x.insert("BitTable".to_string().into(), Byml::BinaryData(bit_table_bytes));
+                x.insert("RankTable".to_string().into(), Byml::String("".to_string().into()));
+                x.insert("TagList".to_string().into(), Byml::Array(tag_list));
+            }
+            return Ok(res.to_binary(roead::Endian::Little));
         }
 
-        let yml_string = yml.join("\n");
-        let raw_data = Byml::from_text(yml_string).unwrap().to_binary(roead::Endian::Little);
+        // let mut yml: Vec<String> = Vec::new();
+        // yml.push("PathList:".to_string());
+        // for p in &yml_data.PathList {
+        //     yml.push(format!("  - {}",p));
+        // }
+        // yml.push(format!("BitTable: !!binary {}", base64::encode(yml_data.BitTable)));
+        // yml.push("RankTable: \"\"".to_string());
+        // yml.push("TagList:".to_string());
+
+        // for tag in yml_data.TagList {
+        //     yml.push(format!("  - {}",tag));
+        // }
+
+        // let yml_string = yml.join("\n");
+        // let raw_data = Byml::from_text(yml_string).unwrap().to_binary(roead::Endian::Little);
 
         //res[roead::byml::BymlIndex("PathList")] = roead::byml::Byml::Array(path_list);
         /*res[roead::byml::Byml::String("PathList".to_string().into()).as_u32().unwrap()] = roead::byml::Byml::Array(path_list);
@@ -171,7 +184,7 @@ impl<'a> TagProduct<'a> {
 
         //TagList
         //let raw_data = res.to_binary(roead::Endian::Little);
-        Ok(raw_data)
+        Err(io::Error::new(io::ErrorKind::InvalidData, "Failed to convert to binary"))
     }
 
     pub fn to_text(&mut self) -> String{
