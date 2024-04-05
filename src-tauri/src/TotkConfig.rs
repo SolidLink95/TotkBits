@@ -37,6 +37,10 @@ impl Default for TotkConfig {
 
 impl TotkConfig {
     pub fn new() -> TotkConfig {
+        if let Ok(config) = Self::from_nx_config() {
+            return config; 
+        }
+        
         if let Ok(config) = Self::get_default() {
             return config;
         }
@@ -61,7 +65,7 @@ impl TotkConfig {
     pub fn from_nx_config() -> io::Result<Self> {
         match env::var("APPDATA") {
             Ok(appdata) => {
-                let config_path = format!("{}/Totk/config.json", &appdata);
+                let config_path = format!("{}/Totkbits/config.json", &appdata);
                 let config_str = read_string_from_file(&config_path)?;
                 let config: HashMap<String, String> = serde_json::from_str(&config_str)?;
                 if let Some(romfs) = config.get("GamePath") {
@@ -70,8 +74,8 @@ impl TotkConfig {
                             Self {
                                 romfs: romfs_path,
                                 bfres: String::new(),
-                                yuzu_mod_path: Self::get_yuzumodpath()?,
-                                config_path: Self::get_config_path().unwrap_or("".into()),
+                                yuzu_mod_path: Self::get_yuzumodpath().unwrap_or_default(),
+                                config_path: Self::get_config_path().unwrap_or_default(),
                             }
                         );
                     }
@@ -141,7 +145,7 @@ impl TotkConfig {
         //attempt to import config from json file
         let appdata_str = env::var("APPDATA").expect("Cannot access appdata");
         let mut config_path = PathBuf::from(appdata_str.to_string());
-        config_path.push("Totk/config.json");
+        config_path.push("Totkbits/config.json");
         if !config_path.exists() {
             let config: HashMap<String, String> = Default::default();
             return Ok(config);
@@ -160,7 +164,7 @@ impl TotkConfig {
     fn get_config_path() -> io::Result<PathBuf> {
         let appdata_str = env::var("APPDATA").expect("Cannot access appdata");
         let mut config_path = PathBuf::from(appdata_str.to_string());
-        config_path.push("Totk/config.json");
+        config_path.push("Totkbits/config.json");
         Ok(config_path)
      }
      
@@ -226,7 +230,7 @@ pub fn init() -> bool {
             return false;
         }
         c.config_path = PathBuf::from(appdata_str.to_string());
-        c.config_path.push("Totk/config.json");
+        c.config_path.push("Totkbits/config.json");
         println!("{:?}", &c.config_path);
         c.romfs = chosen.clone();
         if let Err(err) = c.save() {
