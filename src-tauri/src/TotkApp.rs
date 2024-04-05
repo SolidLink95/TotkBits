@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
 use std::io::{Read, Write};
+use std::os::windows::process;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -39,7 +40,17 @@ pub struct TotkBitsApp<'a> {
 
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
-        let totk_config: Arc<TotkConfig> = Arc::new(TotkConfig::new());
+        let c = TotkConfig::new();
+        if c.is_none() {
+            println!("Error while initializing romfs path");
+            rfd::MessageDialog::new()
+                .set_buttons(rfd::MessageButtons::Ok)
+                .set_title("Error while initializing romfs path")
+                .set_description("Error while initializing romfs path")
+                .show();
+            std::process::exit(0); 
+        }
+        let totk_config: Arc<TotkConfig> = Arc::new(c.unwrap());
         let zstd: Arc<TotkZstd<'_>> = Arc::new(TotkZstd::new(totk_config, 16).unwrap());
         Self {
             opened_file: OpenedFile::default(),

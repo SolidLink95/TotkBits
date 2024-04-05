@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-
-
 use std::env;
 use std::fs;
 use std::io;
@@ -30,22 +28,21 @@ impl Default for TotkConfig {
             bfres: String::new(),
             yuzu_mod_path: Self::get_yuzumodpath().unwrap_or("".into()),
             config_path: Self::get_config_path().unwrap_or("".into()),
-
         }
     }
 }
 
 impl TotkConfig {
-    pub fn new() -> TotkConfig {
+    pub fn new() -> Option<TotkConfig> {
         if let Ok(config) = Self::from_nx_config() {
-            return config; 
+            return Some(config);
         }
-        
+
         if let Ok(config) = Self::get_default() {
-            return config;
+            return Some(config);
         }
-        Self::from_nx_config().unwrap()
-     }
+        None
+    }
     pub fn get_default() -> io::Result<TotkConfig> {
         let config = TotkConfig::get_config_from_json()?; //.expect("Unable to get totks paths");
         let yuzu_mod_path = Self::get_yuzumodpath()?; //.expect("Unable to get yuzu totk mod path");
@@ -53,7 +50,7 @@ impl TotkConfig {
         let binding = String::new();
         let bfres = config.get("bfres_raw").unwrap_or(&binding);
         let config_path = PathBuf::from(config.get("config_path").unwrap_or(&"".to_string()));
-        
+
         Ok(TotkConfig {
             romfs: romfs,
             bfres: bfres.to_string(),
@@ -70,14 +67,12 @@ impl TotkConfig {
                 let config: HashMap<String, String> = serde_json::from_str(&config_str)?;
                 if let Some(romfs) = config.get("GamePath") {
                     if let Ok(romfs_path) = PathBuf::from_str(&romfs.replace("\\", "/")) {
-                        return Ok(
-                            Self {
-                                romfs: romfs_path,
-                                bfres: String::new(),
-                                yuzu_mod_path: Self::get_yuzumodpath().unwrap_or_default(),
-                                config_path: Self::get_config_path().unwrap_or_default(),
-                            }
-                        );
+                        return Ok(Self {
+                            romfs: romfs_path,
+                            bfres: String::new(),
+                            yuzu_mod_path: Self::get_yuzumodpath().unwrap_or_default(),
+                            config_path: Self::get_config_path().unwrap_or_default(),
+                        });
                     }
                 }
             }
@@ -127,17 +122,17 @@ impl TotkConfig {
 
     pub fn save(&self) -> io::Result<()> {
         if self.config_path.to_string_lossy().is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "Empty config path",
-            ));
+            return Err(io::Error::new(io::ErrorKind::NotFound, "Empty config path"));
         }
         if let Some(config_dir) = self.config_path.clone().parent() {
             fs::create_dir_all(config_dir);
         }
         println!("{:?}", &self.config_path);
         let json_str: String = serde_json::to_string_pretty(self)?;
-        write_string_to_file(&self.config_path.clone().to_string_lossy().to_string(), &json_str)?;
+        write_string_to_file(
+            &self.config_path.clone().to_string_lossy().to_string(),
+            &json_str,
+        )?;
         Ok(())
     }
 
@@ -166,8 +161,8 @@ impl TotkConfig {
         let mut config_path = PathBuf::from(appdata_str.to_string());
         config_path.push("Totkbits/config.json");
         Ok(config_path)
-     }
-     
+    }
+
     fn get_yuzumodpath() -> io::Result<PathBuf> {
         let appdata_str: String = env::var("APPDATA").expect("Failed to get Appdata dir");
         let appdata: PathBuf = PathBuf::from(appdata_str.to_string());
@@ -188,60 +183,112 @@ impl TotkConfig {
     }
 }
 
-
-
 pub fn init() -> bool {
     let mut c = TotkConfig::new();
-    println!("{:?}", c.romfs);
-    if c.romfs.to_string_lossy().is_empty() || !c.romfs.exists() || c.romfs.is_file() {
-        rfd::MessageDialog::new()
-            .set_buttons(rfd::MessageButtons::Ok)
-            .set_title("No romfs path found")
-            .set_description("Please choose romfs path")
-            .show();
-        let chosen = rfd::FileDialog::new()
-            .set_title("Choose romfs path")
-            .pick_folder()
-            .unwrap_or_default();
-        let dirr = chosen.to_string_lossy().to_string().replace("\\", "/");
-        if dirr.is_empty() || !chosen.exists() {
-            return false;
-        }
-        let mut zsdic = chosen.clone();
+    if c.is_some() {
+        let c = c.unwrap();
+        let mut zsdic = c.romfs.clone();
         zsdic.push("Pack/ZsDic.pack.zs");
-        if !zsdic.exists() {
-            rfd::MessageDialog::new()
-                .set_buttons(rfd::MessageButtons::Ok)
-                .set_title("Invalid romfs path")
-                .set_description(format!(
-                    "Invalid romfs path! File\n{}\ndoes not exist. Program will now exit",
-                    &zsdic.to_string_lossy().to_string().replace("\\", "/")
-                ))
-                .show();
-            return false;
-        }
-        let appdata_str = env::var("APPDATA").unwrap_or("".to_string());
-        if appdata_str.is_empty() {
-            rfd::MessageDialog::new()
-                .set_buttons(rfd::MessageButtons::Ok)
-                .set_title("Error")
-                .set_description("Unable to access appdata, exiting")
-                .show();
-            return false;
-        }
-        c.config_path = PathBuf::from(appdata_str.to_string());
-        c.config_path.push("Totkbits/config.json");
-        println!("{:?}", &c.config_path);
-        c.romfs = chosen.clone();
-        if let Err(err) = c.save() {
-            rfd::MessageDialog::new()
-                .set_buttons(rfd::MessageButtons::Ok)
-                .set_title("Error")
-                .set_description(format!("{:?}", err))
-                .show();
-            return false;
+        if zsdic.exists() {
+            return true;
         }
     }
+    rfd::MessageDialog::new()
+        .set_buttons(rfd::MessageButtons::Ok)
+        .set_title("No romfs path found")
+        .set_description("Please choose romfs path")
+        .show();
+    let chosen = rfd::FileDialog::new()
+        .set_title("Choose romfs path")
+        .pick_folder()
+        .unwrap_or_default();
+    let mut zsdic = chosen.clone();
+    zsdic.push("Pack/ZsDic.pack.zs");
+    if !zsdic.exists() {
+        rfd::MessageDialog::new()
+            .set_buttons(rfd::MessageButtons::Ok)
+            .set_title("Invalid romfs path")
+            .set_description(format!(
+                "Invalid romfs path! File\n{}\ndoes not exist. Program will now exit",
+                &zsdic.to_string_lossy().to_string().replace("\\", "/")
+            ))
+            .show();
+        return false;
+    }
+    let mut c = TotkConfig::default();
+    let appdata_str = env::var("APPDATA").unwrap_or("".to_string());
+    if appdata_str.is_empty() {
+        rfd::MessageDialog::new()
+            .set_buttons(rfd::MessageButtons::Ok)
+            .set_title("Error")
+            .set_description("Unable to access appdata, exiting")
+            .show();
+        return false;
+    }
+    c.config_path = PathBuf::from(appdata_str.to_string());
+    c.config_path.push("Totkbits/config.json");
+    println!("{:?}", &c.config_path);
+    c.romfs = chosen.clone();
+    if let Err(err) = c.save() {
+        rfd::MessageDialog::new()
+            .set_buttons(rfd::MessageButtons::Ok)
+            .set_title("Error")
+            .set_description(format!("{:?}", err))
+            .show();
+        return false;
+    }
+    return true;
 
-    true
+    // println!("{:?}", c.romfs);
+    // if c.romfs.to_string_lossy().is_empty() || !c.romfs.exists() || c.romfs.is_file() {
+    //     rfd::MessageDialog::new()
+    //         .set_buttons(rfd::MessageButtons::Ok)
+    //         .set_title("No romfs path found")
+    //         .set_description("Please choose romfs path")
+    //         .show();
+    //     let chosen = rfd::FileDialog::new()
+    //         .set_title("Choose romfs path")
+    //         .pick_folder()
+    //         .unwrap_or_default();
+    //     let dirr = chosen.to_string_lossy().to_string().replace("\\", "/");
+    //     if dirr.is_empty() || !chosen.exists() {
+    //         return false;
+    //     }
+    //     let mut zsdic = chosen.clone();
+    //     zsdic.push("Pack/ZsDic.pack.zs");
+    //     if !zsdic.exists() {
+    //         rfd::MessageDialog::new()
+    //             .set_buttons(rfd::MessageButtons::Ok)
+    //             .set_title("Invalid romfs path")
+    //             .set_description(format!(
+    //                 "Invalid romfs path! File\n{}\ndoes not exist. Program will now exit",
+    //                 &zsdic.to_string_lossy().to_string().replace("\\", "/")
+    //             ))
+    //             .show();
+    //         return false;
+    //     }
+    //     let appdata_str = env::var("APPDATA").unwrap_or("".to_string());
+    //     if appdata_str.is_empty() {
+    //         rfd::MessageDialog::new()
+    //             .set_buttons(rfd::MessageButtons::Ok)
+    //             .set_title("Error")
+    //             .set_description("Unable to access appdata, exiting")
+    //             .show();
+    //         return false;
+    //     }
+    //     c.config_path = PathBuf::from(appdata_str.to_string());
+    //     c.config_path.push("Totkbits/config.json");
+    //     println!("{:?}", &c.config_path);
+    //     c.romfs = chosen.clone();
+    //     if let Err(err) = c.save() {
+    //         rfd::MessageDialog::new()
+    //             .set_buttons(rfd::MessageButtons::Ok)
+    //             .set_title("Error")
+    //             .set_description(format!("{:?}", err))
+    //             .show();
+    //         return false;
+    //     }
+    // }
+
+    // true
 }

@@ -34,6 +34,11 @@ fn get_command_line_arg(state: State<CommandLineArg>) -> String {
 fn main() {
     if !TotkConfig::init() {
         println!("Error while initializing romfs path");
+        rfd::MessageDialog::new()
+            .set_buttons(rfd::MessageButtons::Ok)
+            .set_title("Error while initializing romfs path")
+            .set_description("Error while initializing romfs path")
+            .show();
         return;
     }
     // let ainb = file_format::Ainb_py::Ainb_py::new();
@@ -64,7 +69,7 @@ fn main() {
     // return;
 
     let app = Mutex::<TotkBitsApp>::default();
-    tauri::Builder::default()
+    if let Err(err) = tauri::Builder::default()
         .setup(|app1| {
             // Access command-line arguments
             let args: Vec<String> = env::args().collect();
@@ -99,5 +104,12 @@ fn main() {
             clear_search_in_sarc,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    {
+        rfd::MessageDialog::new()
+            .set_buttons(rfd::MessageButtons::Ok)
+            .set_title("Error while running tauri application")
+            .set_description(format!("{:?}", err))
+            .show();
+    }
+    // .expect("error while running tauri application");
 }
