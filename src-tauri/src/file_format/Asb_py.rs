@@ -122,20 +122,26 @@ impl<'a> Asb_py<'a> {
         } // Dropping `stdin` here closes the pipe.
 
         let output = child.wait_with_output()?;
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+
         if output.status.success() {
             // println!("Script executed successfully.");
             eprintln!("Script execution successfully. {:#?}\n{}", output.status, String::from_utf8_lossy(&output.stderr).into_owned());
         } else {
-            eprintln!("Script execution failed. {:#?}\n{}", output.status, String::from_utf8_lossy(&output.stderr).into_owned());
-            eprintln!("Data: {:?}", String::from_utf8_lossy(&output.stdout).into_owned());
-            return Err(io::Error::new(io::ErrorKind::Other, "Script execution failed."));
+            eprintln!("Script execution failed. {:#?}\n{}", output.status, &stderr);
+            eprintln!("Data: {:?}", &stdout);
+            let e = format!("Script execution failed. Unable to convert asb binary to text. \n{:#?}\n{}", output.status, &stderr);
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                e,
+            ));
         }
         // env::set_var("PATH", self.original_path.clone());
-        let text = String::from_utf8_lossy(&output.stdout);
-        if text.starts_with("Error") {
-            return Err(io::Error::new(io::ErrorKind::Other, text.into_owned()));
+        if stdout.starts_with("Error") {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, stderr));
         }
-        Ok(text.into_owned())
+        Ok(stdout)
     }
 
     pub fn text_to_binary(&self, text: &str) -> io::Result<Vec<u8>> {
@@ -153,16 +159,16 @@ impl<'a> Asb_py<'a> {
         } // Dropping `stdin` here closes the pipe.
 
         let output = child.wait_with_output()?;
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         if output.status.success() {
             println!("Script executed successfully.");
             return Ok(output.stdout);
         } else {
-            println!("Script execution failed. {:#?}\n{}", output.status, String::from_utf8_lossy(&output.stderr).into_owned());
-            println!("Data: {:?}", String::from_utf8_lossy(&output.stdout).into_owned());
-            println!("Data: {:?}", &output.stdout);
+            eprintln!("Script execution failed.");
+            let e = format!("Script execution failed. Unable to convert asb text to binary. \n{:#?}\n{}", output.status, &stderr);
             return Err(io::Error::new(
                 io::ErrorKind::Other,
-                "Script execution failed.",
+                e,
             ));
         }
     }

@@ -53,6 +53,7 @@ function App() {
         value: editorValue,
         language: lang,
         theme: "vs-dark",
+        minimap: { enabled: false },
         wordWrap: 'on', // Enable word wrapping
       });
       console.log("Checking argv[1]");

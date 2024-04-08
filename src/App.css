@@ -1,6 +1,5 @@
-:root {
-  --main-top-offset: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) );
-}
+/* :root {
+} */
 
 .maincontainer {
   display: flex;
