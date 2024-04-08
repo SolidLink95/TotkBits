@@ -4,24 +4,194 @@ use std::env;
 use std::fs;
 use std::io;
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 //use roead::byml::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::file_format::Pack::PackFile;
+use crate::Settings::makedirs;
 use crate::Settings::read_string_from_file;
 use crate::Settings::write_string_to_file;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct TotkConfig {
+    pub romfs: String,
+    #[serde(skip)]
+    pub config_path: String,
+}
+
+impl Default for TotkConfig {
+    fn default() -> Self {
+        Self {
+            romfs: String::new(),
+            config_path: String::new(),
+        }
+    }
+}
+
+impl TotkConfig {
+    pub fn safe_new() -> io::Result<TotkConfig> {
+        match Self::new() {
+            Ok(conf) => Ok(conf),
+            Err(err) => {
+                rfd::MessageDialog::new()
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .set_title("Error")
+                    .set_description(&format!("{:?}", err))
+                    .show();
+                Err(err)
+            }
+        }
+    }
+
+    pub fn new() -> io::Result<TotkConfig> {
+        let mut conf = Self::default();
+        conf.get_config_path()?;        
+        let mut err_str = String::new();
+        
+        if let Err(err) = conf.update_from_NX() {
+            err_str.push_str(&format!("{:?}\n", err));
+        }
+        if !conf.romfs.is_empty() {
+            conf.save().map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("Unable to save config to:\n{}\n{:?}", &conf.config_path, e)))?;
+            return Ok(conf)
+        }
+        if let Err(err) = conf.update_default() {
+            err_str.push_str(&format!("{:?}\n", err));
+        }
+        if !conf.romfs.is_empty() {
+            conf.save().map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("Unable to save config to:\n{}\n{:?}", &conf.config_path, e)))?;
+            return Ok(conf)
+        }
+        if let Err(err) = conf.update_from_input() {
+            err_str.push_str(&format!("{:?}\n", err));
+        }
+        if !conf.romfs.is_empty() {
+            conf.save().map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("Unable to save config to:\n{}\n{:?}", &conf.config_path, e)))?;
+            return Ok(conf)
+        }
+        println!("{}", err_str);
+        if conf.romfs.is_empty() {
+            let e = format!("Unable to get proper romfs path:\n{}", err_str);
+            return Err(io::Error::new(io::ErrorKind::NotFound, e));
+        }
+        conf.save().map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("Unable to save config to:\n{}\n{:?}", &conf.config_path, e)))?;
+        Ok(conf)
+    }
+
+    pub fn get_config_path(&mut self) -> io::Result<()> {
+        let appdata = env::var("LOCALAPPDATA").map_err(|_| io::Error::new(io::ErrorKind::NotFound, "Cannot access appdata"))?;
+        let mut conf_path = PathBuf::from(&appdata);
+        conf_path.push("Totkbits/config.json");
+        makedirs(&conf_path)?;
+        self.config_path = conf_path.to_string_lossy().to_string().replace("\\", "/");
+        println!("config_path {:?}", &self.config_path);
+
+        Ok(())
+    }
+
+    pub fn update_from_input(&mut self) -> io::Result<()> {
+        let mut chosen = rfd::FileDialog::new()
+            .set_title("Choose romfs path")
+            .pick_folder()
+            .unwrap_or_default();
+        let res = chosen.to_string_lossy().to_string().replace("\\", "/");
+        if !Self::check_for_zsdic(&res) {
+            chosen.push("Pack/ZsDic.pack.zs");
+            let e = format!("Invalid romfs path! ZsDic.pack.zs not found:\n{}", chosen.to_string_lossy().to_string().replace("\\", "/"));
+            rfd::MessageDialog::new()
+                .set_buttons(rfd::MessageButtons::Ok)
+                .set_title("Invalid romfs path")
+                .set_description(&e)
+                .show();
+            return Err(io::Error::new(io::ErrorKind::NotFound, e));
+        }
+        self.romfs = res;
+        Ok(())
+    }
+
+    pub fn update_default(&mut self) -> io::Result<()> {
+        let conf_str = read_string_from_file(&self.config_path)?;
+        println!("conf_str {:?}", &conf_str);
+        let conf: HashMap<String, String> = serde_json::from_str(&conf_str)?;
+        if let Some(romfs) = conf.get("romfs") {
+            if Self::check_for_zsdic(romfs) {
+                self.romfs = romfs.to_string().replace("\\", "/");
+                return Ok(());
+            }
+        }
+        return Err(io::Error::new(io::ErrorKind::NotFound, "Unable to parse default config"));
+    }
+
+    pub fn update_from_NX(&mut self) -> io::Result<()> {
+        let appdata = env::var("LOCALAPPDATA").map_err(|_| io::Error::new(io::ErrorKind::NotFound, "Cannot access appdata"))?;
+        let mut nx_conf = PathBuf::from(&appdata);
+        nx_conf.push("Totk/config.json");
+        let nx_conf_str = read_string_from_file(&nx_conf.to_string_lossy().to_string())?;
+        let nx_conf: HashMap<String, String> = serde_json::from_str(&nx_conf_str)?;
+        if let Some(romfs) = nx_conf.get("GamePath") {
+            if Self::check_for_zsdic(romfs) {
+                self.romfs = romfs.to_string().replace("\\", "/");
+                return Ok(());
+            }
+        }
+        return Err(io::Error::new(io::ErrorKind::NotFound, "Unable to parse nx editor config"));
+    }
+
+    pub fn check_for_zsdic(romfs: &str) -> bool {
+        let mut zsdic = PathBuf::from(romfs);
+        zsdic.push("Pack/ZsDic.pack.zs");
+        zsdic.exists()
+    }
+
+    pub fn get_pack_path_from_sarc(&self, pack: PackFile) -> Option<PathBuf> {
+        self.get_pack_path(&pack.path.name)
+    }
+
+    pub fn get_path(&self, pack_local_path: &str) -> Option<PathBuf> {
+        //let pack_local_path = format!("Pack/Actor/{}.pack.zs", name);
+        let mut romfs = PathBuf::from(&self.romfs);
+        let mut dest_path = romfs.clone();
+        dest_path.push(pack_local_path);
+        if dest_path.exists() {
+            return Some(dest_path);
+        }
+        None
+    }
+
+    pub fn get_pack_path(&self, name: &str) -> Option<PathBuf> {
+        self.get_path(&format!("Pack/Actor/{}.pack.zs", name))
+    }
+
+    pub fn get_mals_path(&self, name: &str) -> Option<PathBuf> {
+        self.get_path(&format!("Mals/{}", name))
+    }
+
+    pub fn save(&self) -> io::Result<()> {
+        if self.config_path.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "Empty config path"));
+        }
+        makedirs(&PathBuf::from(&self.config_path))?;   
+        let json_str: String = serde_json::to_string_pretty(self)?;
+        write_string_to_file(&self.config_path, &json_str)?;
+        Ok(())
+    }
+
+}
+
+
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct TotkConfigOld {
     pub romfs: PathBuf,
     pub bfres: String,
     pub yuzu_mod_path: PathBuf,
     pub config_path: PathBuf,
 }
 
-impl Default for TotkConfig {
+impl Default for TotkConfigOld {
     fn default() -> Self {
         Self {
             romfs: PathBuf::new(),
@@ -32,8 +202,8 @@ impl Default for TotkConfig {
     }
 }
 
-impl TotkConfig {
-    pub fn new() -> Option<TotkConfig> {
+impl TotkConfigOld {
+    pub fn new() -> Option<TotkConfigOld> {
         if let Ok(config) = Self::from_nx_config() {
             return Some(config);
         }
@@ -43,15 +213,15 @@ impl TotkConfig {
         }
         None
     }
-    pub fn get_default() -> io::Result<TotkConfig> {
-        let config = TotkConfig::get_config_from_json()?; //.expect("Unable to get totks paths");
+    pub fn get_default() -> io::Result<TotkConfigOld> {
+        let config = TotkConfigOld::get_config_from_json()?; //.expect("Unable to get totks paths");
         let yuzu_mod_path = Self::get_yuzumodpath()?; //.expect("Unable to get yuzu totk mod path");
         let romfs = PathBuf::from(config.get("romfs").unwrap_or(&"".to_string()));
         let binding = String::new();
         let bfres = config.get("bfres_raw").unwrap_or(&binding);
         let config_path = PathBuf::from(config.get("config_path").unwrap_or(&"".to_string()));
 
-        Ok(TotkConfig {
+        Ok(TotkConfigOld {
             romfs: romfs,
             bfres: bfres.to_string(),
             yuzu_mod_path: yuzu_mod_path,
@@ -89,8 +259,8 @@ impl TotkConfig {
         ));
     }
 
-    pub fn clone(&self) -> TotkConfig {
-        TotkConfig {
+    pub fn clone(&self) -> TotkConfigOld {
+        TotkConfigOld {
             romfs: self.romfs.clone(),
             bfres: self.bfres.clone(),
             yuzu_mod_path: self.yuzu_mod_path.clone(),
@@ -184,7 +354,7 @@ impl TotkConfig {
 }
 
 pub fn init() -> bool {
-    let mut c = TotkConfig::new();
+    let mut c = TotkConfigOld::new();
     if c.is_some() {
         let c = c.unwrap();
         let mut zsdic = c.romfs.clone();
@@ -215,7 +385,7 @@ pub fn init() -> bool {
             .show();
         return false;
     }
-    let mut c = TotkConfig::default();
+    let mut c = TotkConfigOld::default();
     let appdata_str = env::var("APPDATA").unwrap_or("".to_string());
     if appdata_str.is_empty() {
         rfd::MessageDialog::new()

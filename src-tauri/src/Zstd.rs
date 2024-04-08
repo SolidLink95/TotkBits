@@ -5,6 +5,7 @@ use sha2::Sha256;
 
 use std::collections::HashMap;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 //use zstd::zstd_safe::CompressionLevel;
@@ -102,7 +103,7 @@ impl ZsDic {
     }
 
     fn get_zsdic_sarc(totk_config: &TotkConfig) -> io::Result<Sarc> {
-        let mut zsdic = totk_config.romfs.clone();
+        let mut zsdic = PathBuf::from(&totk_config.romfs);
         zsdic.push("Pack/ZsDic.pack.zs");
         let _ = check_file_exists(&zsdic)?; //Path().exists()
         let mut zs_file = fs::File::open(&zsdic)?; //with open() as f

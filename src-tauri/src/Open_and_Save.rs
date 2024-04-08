@@ -327,7 +327,8 @@ pub fn save_file_dialog(file_name: Option<String>) -> String {
 pub fn check_if_save_in_romfs(dest_file: &str, zstd: Arc<TotkZstd>) -> bool {
     if !dest_file.is_empty() {
         //check if file is saved in romfs
-        if dest_file.starts_with(&zstd.totk_config.romfs.to_string_lossy().to_string()) {
+        // if dest_file.starts_with(&zstd.totk_config.romfs.to_string_lossy().to_string()) {
+        if dest_file.starts_with(&zstd.totk_config.romfs) {
             let m = format!(
                 "About to save file:\n{}\nin romfs dump. Continue?",
                 &dest_file

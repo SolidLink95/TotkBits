@@ -121,3 +121,11 @@ pub fn check_file_exists(path: &PathBuf) -> std::io::Result<()> {
         )),
     }
 }
+
+pub fn makedirs(path: &PathBuf) -> std::io::Result<()> {
+    let par = path.parent();
+    if let Some(par) = par {
+        fs::create_dir_all(par)?;
+    }
+    Ok(())
+}

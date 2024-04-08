@@ -40,17 +40,13 @@ pub struct TotkBitsApp<'a> {
 
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
-        let c = TotkConfig::new();
-        if c.is_none() {
+        let conf = TotkConfig::safe_new();
+        if conf.is_err() {
             println!("Error while initializing romfs path");
-            rfd::MessageDialog::new()
-                .set_buttons(rfd::MessageButtons::Ok)
-                .set_title("Error while initializing romfs path")
-                .set_description("Error while initializing romfs path")
-                .show();
-            std::process::exit(0); 
+            std::process::exit(0);
         }
-        let totk_config: Arc<TotkConfig> = Arc::new(c.unwrap());
+        
+        let totk_config: Arc<TotkConfig> = Arc::new(conf.unwrap());
         let zstd: Arc<TotkZstd<'_>> = Arc::new(TotkZstd::new(totk_config, 16).unwrap());
         Self {
             opened_file: OpenedFile::default(),

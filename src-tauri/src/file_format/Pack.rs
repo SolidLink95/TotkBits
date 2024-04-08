@@ -124,9 +124,9 @@ impl<'a> PackComparer<'a> {
     pub fn get_vanila_mals(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
         println!("Getting the mals: {}", &path.stem);
         let versions: Vec<usize> = (100..130).collect();//130, in case new updates are issued in the future for TOTK
-        let romfs = zstd.clone().totk_config.romfs.clone();
+        let romfs = &zstd.clone().totk_config.romfs;
         for version in versions {
-            let mut prob_mals_path = romfs.clone();
+            let mut prob_mals_path = PathBuf::from(romfs);
             prob_mals_path.push(format!("Mals/{}.Product.{}.sarc.zs", &path.stem, version));
             if prob_mals_path.exists() {
                 if let Ok(pack) = PackFile::new(prob_mals_path.to_string_lossy().to_string(), zstd.clone()) {

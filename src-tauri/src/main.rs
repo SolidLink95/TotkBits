@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![windows_subsystem = "windows"]
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// #![windows_subsystem = "windows"]
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(not(debug_assertions),)]
 use std::env;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -32,14 +33,8 @@ fn get_command_line_arg(state: State<CommandLineArg>) -> String {
 }
 
 fn main() {
-    if !TotkConfig::init() {
-        println!("Error while initializing romfs path");
-        rfd::MessageDialog::new()
-            .set_buttons(rfd::MessageButtons::Ok)
-            .set_title("Error while initializing romfs path")
-            .set_description("Error while initializing romfs path")
-            .show();
-        return;
+    if let Err(err) = TotkConfig::TotkConfig::safe_new() {
+        return
     }
     // let ainb = file_format::Ainb_py::Ainb_py::new();
     // println!("{:?}", Path::new(&ainb.python_exe).exists());

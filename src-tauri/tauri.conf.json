@@ -45,7 +45,8 @@
         "icons/icon.ico"
       ],
       "resources": [
-        "bin"
+        "bin",
+        "src/totkbits.py"
       ]
     }
   }
