@@ -5,7 +5,7 @@ use crate::Open_and_Save::{
 };
 use crate::Settings::{write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{TotkFileType, TotkZstd};
+use crate::Zstd::{TotkFileType, TotkZstd, ZstdCppCompressor};
 use rfd::{FileDialog, MessageDialog};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -33,9 +33,12 @@ pub struct TotkBitsApp<'a> {
     pub text: String,
     pub status_text: String,
     pub zstd: Arc<TotkZstd<'a>>,
+    // pub zstd_cpp: Arc<ZstdCppCompressor>,
     pub pack: Option<PackComparer<'a>>,
     pub internal_file: Option<InternalFile<'a>>,
 }
+
+unsafe impl<'a> Send for TotkBitsApp<'a> {}
 
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
@@ -46,12 +49,13 @@ impl Default for TotkBitsApp<'_> {
         }
         
         let totk_config: Arc<TotkConfig> = Arc::new(conf.unwrap());
-        let zstd: Arc<TotkZstd<'_>> = Arc::new(TotkZstd::new(totk_config, 15).unwrap());
+        let zstd: Arc<TotkZstd<'_>> = Arc::new(TotkZstd::new(totk_config, 16).unwrap());
         Self {
             opened_file: OpenedFile::default(),
             text: "".to_string(),
             status_text: "Ready".to_string(),
             zstd: zstd.clone(),
+            // zstd_cpp: Arc::new(ZstdCppCompressor::from_totk_zstd(zstd.clone())),
             pack: None,
             internal_file: None,
         }
@@ -592,16 +596,24 @@ impl<'a> TotkBitsApp<'a> {
                     if let Some(opened) = &mut pack.opened {
                         if !check_if_save_in_romfs(&opened.path.full_path, self.zstd.clone()) {
                             opened.reload();
-                            if let Ok(_) = opened.save_default() {
+                            match opened.save_default() {
+                                Ok(_) => {
                                 isReload = true;
                                 data.tab = "SARC".to_string();
-                                data.status_text = format!("Saved SARC {}", &opened.path.full_path);
-                            } else {
-                                data.status_text = format!(
-                                    "Error: Failed to save SARC {}",
-                                    &opened.path.full_path
-                                );
-                            }
+                                data.status_text = format!("Saved SARC {}", &opened.path.full_path);}
+                                Err(err) => {
+                                    data.status_text = format!(
+                                        "Error: Failed to save SARC {}",
+                                        &opened.path.full_path
+                                    );
+                                    eprintln!("{:?}", err);
+                                }}
+                            // } else {
+                            //     data.status_text = format!(
+                            //         "Error: Failed to save SARC {}",
+                            //         &opened.path.full_path
+                            //     );
+                            // }
                         }
                     }
                 }

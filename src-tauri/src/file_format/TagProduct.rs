@@ -86,7 +86,8 @@ impl<'a> TagProduct<'a> {
         if path.to_ascii_lowercase().ends_with(".zs") {
             data = self.byml
                 .zstd
-                .compressor
+                // .compressor
+                .cpp_compressor
                 .compress_zs(&data)
                 .expect("Failed to compress with zs");
         }

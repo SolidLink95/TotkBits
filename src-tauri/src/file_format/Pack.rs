@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crate::file_format::BinTextFile::FileData;
 use crate::Settings::{makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
+use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd, ZstdCppCompressor};
 
 use super::SarcEntriesData::get_sarc_entries_data;
 
@@ -298,14 +298,17 @@ impl<'a> PackFile<'_> {
     }
 
     fn compress(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
+        // let zstd = ZstdCppCompressor::from_totk_zstd(self.zstd.clone());
         match self.file_type {
             TotkFileType::Sarc => {
                 println!("Compressing SARC");
-                return self.zstd.compressor.compress_pack(data);
+                // return self.zstd.compressor.compress_pack(data);
+                return self.zstd.cpp_compressor.compress_pack(data);
             }
             TotkFileType::MalsSarc => {
                 println!("Compressing MALS SARC");
-                return self.zstd.compressor.compress_zs(data);
+                // return self.zstd.compressor.compress_zs(data);
+                return self.zstd.cpp_compressor.compress_zs(data);
             }
             _ => {
                 return Ok(data.to_vec());

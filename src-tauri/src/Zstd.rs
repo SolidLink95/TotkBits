@@ -2,9 +2,13 @@ use crate::TotkConfig::TotkConfig;
 use digest::Digest;
 use roead::sarc::*;
 use sha2::Sha256;
+use zstd::zstd_safe::zstd_sys::{
+    ZSTD_CCtx, ZSTD_CCtx_loadDictionary, ZSTD_CDict, ZSTD_CDict_s, ZSTD_compressBound, ZSTD_compress_usingCDict, ZSTD_createCCtx, ZSTD_createCDict, ZSTD_isError
+};
 
 use std::collections::HashMap;
 
+use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -15,7 +19,7 @@ use std::io::{self, Cursor, Read, Write};
 use zstd::dict::{DecoderDictionary, EncoderDictionary};
 use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
 
-#[derive(Debug,PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TotkFileType {
     AINB,
     ASB,
@@ -32,10 +36,113 @@ pub enum TotkFileType {
     None,
 }
 
+pub struct ZstdCppCompressor {
+    pub zs_cpp: *mut ZSTD_CDict_s,
+    pub bcett_cpp: *mut ZSTD_CDict_s,
+    pub packzs_cpp: *mut ZSTD_CDict_s,
+    pub empty_cpp: *mut ZSTD_CDict_s,
+    pub cctx: *mut ZSTD_CCtx,
+}
+
+impl ZstdCppCompressor {
+    pub fn from_totk_zstd(zstd: Arc<TotkZstd>) -> ZstdCppCompressor {
+        Self::from_zsdic(
+            zstd.clone().zsdic.clone(),
+            zstd.clone().compressor.comp_level,
+        )
+    }
+    pub fn from_zsdic(zsdic: Arc<ZsDic>, comp_level: i32) -> ZstdCppCompressor {
+        // let zsdic = &zstd.zsdic;
+        // let comp_level = zstd.compressor.comp_level;
+        let zs_cpp = unsafe {
+            ZSTD_createCDict(
+                zsdic.zs_data.as_ptr() as *const std::ffi::c_void,
+                zsdic.zs_data.len(),
+                comp_level,
+            )
+        };
+        let bcett_cpp = unsafe {
+            ZSTD_createCDict(
+                zsdic.bcett_data.as_ptr() as *const std::ffi::c_void,
+                zsdic.bcett_data.len(),
+                comp_level,
+            )
+        };
+        let packzs_cpp = unsafe {
+            ZSTD_createCDict(
+                zsdic.packzs_data.as_ptr() as *const std::ffi::c_void,
+                zsdic.packzs_data.len(),
+                comp_level,
+            )
+        };
+        let empty_cpp = unsafe {
+            ZSTD_createCDict(
+                zsdic.empty_data.as_ptr() as *const std::ffi::c_void,
+                zsdic.empty_data.len(),
+                comp_level,
+            )
+        };
+        let cctx = unsafe { ZSTD_createCCtx() };
+        ZstdCppCompressor {
+            zs_cpp: zs_cpp,
+            bcett_cpp: bcett_cpp,
+            packzs_cpp: packzs_cpp,
+            empty_cpp: empty_cpp,
+            cctx: cctx,
+        }
+    }
+    pub fn compress(&self, data: &[u8], cdict: *mut ZSTD_CDict_s) -> io::Result<Vec<u8>> {
+        // Calculate the maximum compressed size and allocate the buffer
+        let dst_capacity = unsafe { ZSTD_compressBound(data.len()) as usize };
+        let mut buffer: Vec<u8> = vec![0; dst_capacity]; // Allocate space
+        
+        // Perform the compression
+        let res_size = unsafe {
+            ZSTD_compress_usingCDict(
+                self.cctx,
+                buffer.as_mut_ptr() as *mut core::ffi::c_void,
+                dst_capacity,
+                data.as_ptr() as *const core::ffi::c_void,
+                data.len(),
+                cdict,
+            )
+        };
+    
+        // Check for errors
+        if unsafe { ZSTD_isError(res_size) } != 0 {
+            // Handle error (for simplicity, returning a generic I/O error here)
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "ZSTD compression failed"));
+        }
+    
+        // Truncate the buffer to the actual size of the compressed data
+        buffer.truncate(res_size as usize);
+    
+        Ok(buffer)
+    }
+
+    pub fn compress_zs(&self, data: &[u8]) -> io::Result<Vec<u8>> {
+        ZstdCppCompressor::compress(&self, &data, self.zs_cpp)
+    }
+
+    pub fn compress_pack(&self, data: &[u8]) -> io::Result<Vec<u8>> {
+        self.compress( &data, self.packzs_cpp)
+    }
+
+    pub fn compress_bcett(&self, data: &[u8]) -> io::Result<Vec<u8>> {
+        ZstdCppCompressor::compress(&self, &data, self.bcett_cpp)
+    }
+
+    pub fn compress_empty(&self, data: &[u8]) -> io::Result<Vec<u8>> {
+        ZstdCppCompressor::compress(&self, &data, self.empty_cpp)
+    }
+}
+
 pub struct TotkZstd<'a> {
     pub totk_config: Arc<TotkConfig>,
     pub decompressor: ZstdDecompressor<'a>,
     pub compressor: ZstdCompressor<'a>,
+    pub zsdic: Arc<ZsDic>,
+    pub cpp_compressor: ZstdCppCompressor,
 }
 
 impl<'a> TotkZstd<'_> {
@@ -43,12 +150,15 @@ impl<'a> TotkZstd<'_> {
         let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_config.clone())?);
         let decompressor: ZstdDecompressor =
             ZstdDecompressor::new(totk_config.clone(), zsdic.clone())?;
-        let compressor: ZstdCompressor = ZstdCompressor::new(totk_config.clone(), zsdic, comp_level)?;
+        let compressor: ZstdCompressor =
+            ZstdCompressor::new(totk_config.clone(), zsdic.clone(), comp_level)?;
 
         Ok(TotkZstd {
             totk_config,
             decompressor,
             compressor,
+            zsdic: zsdic.clone(),
+            cpp_compressor: ZstdCppCompressor::from_zsdic(zsdic.clone(), comp_level),
         })
     }
     pub fn try_decompress(&self, data: &Vec<u8>) -> Result<Vec<u8>, io::Error> {
@@ -65,10 +175,11 @@ impl<'a> TotkZstd<'_> {
                 return Ok(dec_data);
             }
         }
-        return Err(io::Error::new(io::ErrorKind::Other, "Unable to decompress with any dictionary!"));
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Unable to decompress with any dictionary!",
+        ));
     }
-
-
 }
 
 pub struct ZsDic {
@@ -126,7 +237,10 @@ pub struct ZstdDecompressor<'a> {
 }
 
 impl<'a> ZstdDecompressor<'_> {
-    pub fn new(totk_config: Arc<TotkConfig>, zsdic: Arc<ZsDic>) -> io::Result<ZstdDecompressor<'a>> {
+    pub fn new(
+        totk_config: Arc<TotkConfig>,
+        zsdic: Arc<ZsDic>,
+    ) -> io::Result<ZstdDecompressor<'a>> {
         let zs: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.zs_data));
         let bcett: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.bcett_data));
         let packzs: Arc<DecoderDictionary> = Arc::new(DecoderDictionary::copy(&zsdic.packzs_data));
@@ -142,7 +256,7 @@ impl<'a> ZstdDecompressor<'_> {
     }
 
     fn decompress(&self, data: &[u8], ddict: &DecoderDictionary) -> Result<Vec<u8>, io::Error> {
-        if let Ok(decoder) = &mut Decoder::with_prepared_dictionary(data, ddict){
+        if let Ok(decoder) = &mut Decoder::with_prepared_dictionary(data, ddict) {
             let mut decompressed: Vec<u8> = Vec::new();
             if let Ok(_) = decoder.read_to_end(&mut decompressed) {
                 return Ok(decompressed);
@@ -175,6 +289,10 @@ pub struct ZstdCompressor<'a> {
     pub zs: Arc<EncoderDictionary<'a>>,     //Vec<u8>,
     pub bcett: Arc<EncoderDictionary<'a>>,  //Vec<u8>,
     pub empty: Arc<EncoderDictionary<'a>>,
+    // pub zs_cpp: *mut ZSTD_CDict_s,
+    // pub bcett_cpp: *mut ZSTD_CDict_s,
+    // pub packzs_cpp: *mut ZSTD_CDict_s,
+    // pub empty_cpp: *mut ZSTD_CDict_s,
     pub comp_level: i32,
 }
 
@@ -184,10 +302,14 @@ impl<'a> ZstdCompressor<'_> {
         zsdic: Arc<ZsDic>,
         comp_level: i32,
     ) -> io::Result<ZstdCompressor<'a>> {
-        let zs: Arc<EncoderDictionary> = Arc::new(EncoderDictionary::copy(&zsdic.zs_data, comp_level));
-        let bcett: Arc<EncoderDictionary> = Arc::new(EncoderDictionary::copy(&zsdic.bcett_data, comp_level));
-        let packzs: Arc<EncoderDictionary> = Arc::new(EncoderDictionary::copy(&zsdic.packzs_data, comp_level));
-        let empty: Arc<EncoderDictionary> = Arc::new(EncoderDictionary::copy(&zsdic.empty_data, comp_level));
+        let zs: Arc<EncoderDictionary> =
+            Arc::new(EncoderDictionary::copy(&zsdic.zs_data, comp_level));
+        let bcett: Arc<EncoderDictionary> =
+            Arc::new(EncoderDictionary::copy(&zsdic.bcett_data, comp_level));
+        let packzs: Arc<EncoderDictionary> =
+            Arc::new(EncoderDictionary::copy(&zsdic.packzs_data, comp_level));
+        let empty: Arc<EncoderDictionary> =
+            Arc::new(EncoderDictionary::copy(&zsdic.empty_data, comp_level));
 
         Ok(ZstdCompressor {
             totk_config: totk_config,
@@ -196,6 +318,10 @@ impl<'a> ZstdCompressor<'_> {
             bcett: bcett,
             empty: empty,
             comp_level: comp_level,
+            // zs_cpp: zs_cpp,
+            // bcett_cpp: bcett_cpp,
+            // packzs_cpp: packzs_cpp,
+            // empty_cpp: empty_cpp,
         })
     }
 
@@ -225,31 +351,30 @@ impl<'a> ZstdCompressor<'_> {
 }
 
 pub fn is_byml(data: &[u8]) -> bool {
-    data.starts_with(b"BY") || data.starts_with(b"YB") 
+    data.starts_with(b"BY") || data.starts_with(b"YB")
 }
 
 pub fn is_sarc(data: &[u8]) -> bool {
-    data.starts_with(b"SARC") 
+    data.starts_with(b"SARC")
 }
 
 pub fn is_aamp(data: &[u8]) -> bool {
-    data.starts_with(b"AAMP") 
+    data.starts_with(b"AAMP")
 }
 
 pub fn is_msyt(data: &[u8]) -> bool {
-    data.starts_with(b"MsgStd") 
+    data.starts_with(b"MsgStd")
 }
 pub fn is_ainb(data: &[u8]) -> bool {
-    data.starts_with(b"AIB ") 
+    data.starts_with(b"AIB ")
 }
 pub fn is_asb(data: &[u8]) -> bool {
-    data.starts_with(b"ASB ") 
+    data.starts_with(b"ASB ")
 }
 
 pub fn is_restbl(data: &[u8]) -> bool {
-    data.starts_with(b"RSTB") || data.starts_with(b"REST")  
+    data.starts_with(b"RSTB") || data.starts_with(b"REST")
 }
-
 
 pub fn sha256(data: Vec<u8>) -> String {
     // Create a Sha256 object
@@ -261,5 +386,4 @@ pub fn sha256(data: Vec<u8>) -> String {
     // Read hash digest and consume hasher
     let result = hasher.finalize();
     format!("{:X}", result)
-
 }

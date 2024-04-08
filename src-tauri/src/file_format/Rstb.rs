@@ -57,7 +57,8 @@ pub fn save(&mut self, path: &str) -> io::Result<()> {
         let mut buffer = self.table.to_binary();
         let mut f = File::create(&path)?;
         if path.to_lowercase().ends_with(".zs") {
-            buffer = self.zstd.compressor.compress_empty(&buffer)?;
+            // buffer = self.zstd.compressor.compress_empty(&buffer)?;
+            buffer = self.zstd.cpp_compressor.compress_empty(&buffer)?;
         }
         f.write_all(&buffer)?;
         Ok(())

@@ -361,7 +361,7 @@ pub fn get_binary_by_filetype(
             if let Ok(some_data) = asb.text_to_binary(text) {
                 rawdata = some_data;
                 if is_zs {
-                    rawdata = zstd.compressor.compress_zs(&rawdata).ok()?;
+                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
                 }
             }
         }
@@ -374,7 +374,7 @@ pub fn get_binary_by_filetype(
             if let Ok(some_data) = TagProduct::to_binary(text) {
                 rawdata = some_data;
                 if is_zs {
-                    rawdata = zstd.compressor.compress_zs(&rawdata).ok()?;
+                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
                 }
             }
         }
@@ -382,16 +382,16 @@ pub fn get_binary_by_filetype(
             let pio = Byml::from_text(text).ok()?;
             rawdata = pio.to_binary(endian);
             if is_bcett {
-                rawdata = zstd.compressor.compress_bcett(&rawdata).ok()?;
+                rawdata = zstd.cpp_compressor.compress_bcett(&rawdata).ok()?;
             } else if is_zs {
-                rawdata = zstd.compressor.compress_zs(&rawdata).ok()?;
+                rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
             }
         }
         TotkFileType::Bcett => {
             let pio = Byml::from_text(text).ok()?;
             rawdata = pio.to_binary(endian);
             if is_zs {
-                rawdata = zstd.compressor.compress_bcett(&rawdata).ok()?;
+                rawdata = zstd.cpp_compressor.compress_bcett(&rawdata).ok()?;
             }
         }
         TotkFileType::Msbt => {
