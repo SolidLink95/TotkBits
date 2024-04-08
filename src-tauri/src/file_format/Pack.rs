@@ -10,7 +10,7 @@ use std::sync::Arc;
 //mod Zstd;
 
 use crate::file_format::BinTextFile::FileData;
-use crate::Settings::Pathlib;
+use crate::Settings::{makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
 
@@ -185,7 +185,8 @@ pub struct PackFile<'a> {
     pub path: Pathlib,
     pub totk_config: Arc<TotkConfig>,
     zstd: Arc<TotkZstd<'a>>,
-    pub data: FileData,
+    pub data: Vec<u8>,
+    pub file_type: TotkFileType,
     pub endian: roead::Endian,
     pub writer: SarcWriter,
     pub hashes: HashMap<String, String>,
@@ -194,6 +195,30 @@ pub struct PackFile<'a> {
 }
 
 impl<'a> PackFile<'_> {
+    pub fn default(zstd: Arc<TotkZstd<'a>>) -> io::Result<PackFile<'a>> {
+        let arr: Vec<u8> = vec![
+            0x53, 0x41, 0x52, 0x43, 0x14, 0x00, 0xFF, 0xFE, 
+            0x28, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 
+            0x00, 0x01, 0x00, 0x00, 0x53, 0x46, 0x41, 0x54, 
+            0x0C, 0x00, 0x00, 0x00, 0x65, 0x00, 0x00, 0x00, 
+            0x53, 0x46, 0x4E, 0x54, 0x08, 0x00, 0x00, 0x00,
+        ];
+        let sarc = Sarc::new(arr).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let writer = SarcWriter::from_sarc(&sarc);
+        Ok(PackFile {
+            path: Pathlib::default(),
+            totk_config: zstd.totk_config.clone(),
+            zstd: zstd.clone(),
+            data: Default::default(),
+            file_type: TotkFileType::Sarc,
+            endian: roead::Endian::Little,
+            writer: writer,
+            hashes: HashMap::default(),
+            sarc: sarc,
+            is_yaz0: false,
+        })
+    }
+
     pub fn new(
         path: String,
         //totk_config: Arc<TotkConfig>,
@@ -201,21 +226,30 @@ impl<'a> PackFile<'_> {
         //decompressor: &'a ZstdDecompressor,
         //compressor: &'a ZstdCompressor
     ) -> io::Result<PackFile<'a>> {
-        let (is_yaz0, file_data) = PackFile::sarc_file_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
-        println!("asdf");
-        let sarc: Sarc = Sarc::new(file_data.data.clone()).expect("Failed");
-        let writer: SarcWriter = SarcWriter::from_sarc(&sarc);
-        Ok(PackFile {
-            path: Pathlib::new(path),
-            totk_config: zstd.totk_config.clone(),
-            zstd: zstd.clone(),
-            data: file_data,
-            endian: sarc.endian(),
-            writer: writer,
-            hashes: PackFile::populate_hashes(&sarc),
-            sarc: sarc,
-            is_yaz0: is_yaz0
-        })
+        let mut pack = Self::default(zstd.clone())?;
+        pack.sarc_file_to_bytes(path.as_str())?;
+        // pack.sarc = Sarc::new(&pack.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        pack.writer = SarcWriter::from_sarc(&pack.sarc);
+        pack.path = Pathlib::new(path.clone());
+        Ok(pack)
+
+
+
+        // let (is_yaz0, file_data) = PackFile::sarc_file_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
+        // println!("asdf");
+        // let sarc: Sarc = Sarc::new(file_data.data.clone()).expect("Failed");
+        // let writer: SarcWriter = SarcWriter::from_sarc(&sarc);
+        // Ok(PackFile {
+        //     path: Pathlib::new(path),
+        //     totk_config: zstd.totk_config.clone(),
+        //     zstd: zstd.clone(),
+        //     data: file_data,
+        //     endian: sarc.endian(),
+        //     writer: writer,
+        //     hashes: PackFile::populate_hashes(&sarc),
+        //     sarc: sarc,
+        //     is_yaz0: is_yaz0
+        // })
     }
 
     pub fn rename(&mut self, old_name: &str, new_name: &str) -> io::Result<()> {
@@ -263,26 +297,28 @@ impl<'a> PackFile<'_> {
         self.save(dest_file)
     }
 
-    fn compress(&self, data: &Vec<u8>) -> Vec<u8> {
-        match self.data.file_type {
+    fn compress(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
+        match self.file_type {
             TotkFileType::Sarc => {
-                return self.zstd.compressor.compress_pack(data).unwrap();
+                println!("Compressing SARC");
+                return self.zstd.compressor.compress_pack(data);
             }
             TotkFileType::MalsSarc => {
-                return self.zstd.compressor.compress_zs(data).unwrap();
+                println!("Compressing MALS SARC");
+                return self.zstd.compressor.compress_zs(data);
             }
             _ => {
-                return self.zstd.compressor.compress_zs(data).unwrap();
+                return Ok(data.to_vec());
             }
         }
+        
     }
 
     pub fn save(&mut self, dest_file: String) -> io::Result<()> {
-        let directory: String = Pathlib::new(dest_file.clone()).parent;
-        fs::create_dir_all(directory)?;
+        makedirs(&PathBuf::from(&dest_file))?;
         let mut data: Vec<u8> = self.writer.to_binary();
         if dest_file.to_lowercase().ends_with(".zs") {
-            data = self.compress(&data);
+            data = self.compress(&data)?;
         } else if self.is_yaz0 {
             data = roead::yaz0::compress(&data);
         }
@@ -290,61 +326,104 @@ impl<'a> PackFile<'_> {
         file_handle.write_all(&data)?;
         Ok(())
     }
-
-    //Read sarc file's bytes, decompress if needed
-    fn sarc_file_to_bytes(path: &PathBuf, zstd: &'a TotkZstd) -> Result<(bool, FileData), io::Error> {
-        let mut is_yaz0 = false;
+    pub fn sarc_file_to_bytes(&mut self, path: &str) ->io::Result<()> {
         let mut f_handle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
-        //let mut returned_result: Vec<u8> = Vec::new();
-        let mut file_data: FileData = FileData::new();
-        file_data.file_type = TotkFileType::Sarc;
         f_handle.read_to_end(&mut buffer)?;
-
         if buffer.starts_with(b"Yaz0") {
             if let Ok(dec_data) = roead::yaz0::decompress(&buffer) {
                 buffer = dec_data;
-                is_yaz0 = true;
+                self.is_yaz0 = true;
+            }
+            if is_sarc(&buffer) {
+                // self.data = buffer;
+                self.sarc = Sarc::new(buffer).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+                return Ok(());
+            }
+        }
+        if path.to_lowercase().ends_with(".zs") {
+            if let Ok(dec_data) = self.zstd.decompressor.decompress_pack(&buffer) {
+                if is_sarc(&dec_data) {
+                    // self.data = dec_data;
+                    self.sarc = Sarc::new(dec_data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+                    self.file_type = TotkFileType::Sarc;
+                    return Ok(());
+                }
+            }
+            if let Ok(dec_data) = self.zstd.decompressor.decompress_zs(&buffer) {
+                if is_sarc(&dec_data) {
+                    // self.data = dec_data;
+                    self.sarc = Sarc::new(dec_data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+                    self.file_type = TotkFileType::MalsSarc;
+                    return Ok(());
+                }
             }
         }
         if is_sarc(&buffer) {
-            //buffer.as_slice().starts_with(b"SARC") {
-            file_data.data = buffer;
-            return Ok((is_yaz0, file_data));
+            // self.data = buffer;
+            self.sarc = Sarc::new(buffer).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+            return Ok(());
         }
-        match zstd.decompressor.decompress_pack(&buffer) {
-            Ok(res) => {
-                if is_sarc(&res) {
-                    file_data.data = res;
-                }
-            }
-            Err(_) => {
-                match zstd.decompressor.decompress_zs(&buffer) {
-                    //try decompressing with other dicts
-                    Ok(res) => {
-                        if is_sarc(&res) {
-                            file_data.data = res;
-                            file_data.file_type = TotkFileType::MalsSarc;
-                        }
-                    }
-                    Err(err) => {
-                        eprintln!(
-                            "Error during zstd decompress {}",
-                            &path.to_str().unwrap_or("UNKNOWN")
-                        );
-                        return Err(err);
-                    }
-                }
-            }
-        }
-        if is_sarc(&file_data.data) {
-            return Ok((is_yaz0, file_data));
-        }
-        return Err(io::Error::new(
+        
+        Err(io::Error::new(
             io::ErrorKind::Other,
             "Invalid data, not a sarc",
-        ));
+        ))
     }
+    //Read sarc file's bytes, decompress if needed
+    // fn sarc_file_to_bytes1(path: &PathBuf, zstd: &'a TotkZstd) -> Result<(bool, FileData), io::Error> {
+    //     let mut is_yaz0 = false;
+    //     let mut f_handle: fs::File = fs::File::open(path)?;
+    //     let mut buffer: Vec<u8> = Vec::new();
+    //     //let mut returned_result: Vec<u8> = Vec::new();
+    //     let mut file_data: FileData = FileData::new();
+    //     file_data.file_type = TotkFileType::Sarc;
+    //     f_handle.read_to_end(&mut buffer)?;
+
+    //     if buffer.starts_with(b"Yaz0") {
+    //         if let Ok(dec_data) = roead::yaz0::decompress(&buffer) {
+    //             buffer = dec_data;
+    //             is_yaz0 = true;
+    //         }
+    //     }
+    //     if is_sarc(&buffer) {
+    //         //buffer.as_slice().starts_with(b"SARC") {
+    //         file_data.data = buffer;
+    //         return Ok((is_yaz0, file_data));
+    //     }
+    //     match zstd.decompressor.decompress_pack(&buffer) {
+    //         Ok(res) => {
+    //             if is_sarc(&res) {
+    //                 file_data.data = res;
+    //             }
+    //         }
+    //         Err(_) => {
+    //             match zstd.decompressor.decompress_zs(&buffer) {
+    //                 //try decompressing with other dicts
+    //                 Ok(res) => {
+    //                     if is_sarc(&res) {
+    //                         file_data.data = res;
+    //                         file_data.file_type = TotkFileType::MalsSarc;
+    //                     }
+    //                 }
+    //                 Err(err) => {
+    //                     eprintln!(
+    //                         "Error during zstd decompress {}",
+    //                         &path.to_str().unwrap_or("UNKNOWN")
+    //                     );
+    //                     return Err(err);
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     if is_sarc(&file_data.data) {
+    //         return Ok((is_yaz0, file_data));
+    //     }
+    //     return Err(io::Error::new(
+    //         io::ErrorKind::Other,
+    //         "Invalid data, not a sarc",
+    //     ));
+    // }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

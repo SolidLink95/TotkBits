@@ -32,7 +32,6 @@ pub struct TotkBitsApp<'a> {
     pub opened_file: OpenedFile<'a>, //path to opened file in string
     pub text: String,
     pub status_text: String,
-    pub active_tab: ActiveTab, //active tab, either sarc file or text editor
     pub zstd: Arc<TotkZstd<'a>>,
     pub pack: Option<PackComparer<'a>>,
     pub internal_file: Option<InternalFile<'a>>,
@@ -47,12 +46,11 @@ impl Default for TotkBitsApp<'_> {
         }
         
         let totk_config: Arc<TotkConfig> = Arc::new(conf.unwrap());
-        let zstd: Arc<TotkZstd<'_>> = Arc::new(TotkZstd::new(totk_config, 16).unwrap());
+        let zstd: Arc<TotkZstd<'_>> = Arc::new(TotkZstd::new(totk_config, 15).unwrap());
         Self {
             opened_file: OpenedFile::default(),
             text: "".to_string(),
             status_text: "Ready".to_string(),
-            active_tab: ActiveTab::DiretoryTree,
             zstd: zstd.clone(),
             pack: None,
             internal_file: None,
@@ -202,7 +200,6 @@ impl<'a> TotkBitsApp<'a> {
         self.opened_file = OpenedFile::default();
         self.text = String::new();
         self.status_text = "Ready".to_string();
-        self.active_tab = ActiveTab::DiretoryTree;
         self.pack = None;
         self.internal_file = None;
         data.status_text = "Closed all opened files".to_string();
