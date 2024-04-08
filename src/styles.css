@@ -1,4 +1,8 @@
 :root {
+  /*to prevent light mode*/
+  --background-color: #333;
+  --text-color: #fff;
+  
   --main-top-offset: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) );
   font-family: Consolas, Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
@@ -29,9 +33,14 @@
   -webkit-text-size-adjust: 100%;
   overflow-y: hidden;
   overflow-x: hidden;
+
+  
 }
 
 body {
+  /*to prevent light mode*/
+  background-color: var(--background-color);
+  color: var(--text-color);
   margin: 0;
   padding: 0;
   overflow-y: hidden;
@@ -251,6 +260,8 @@ button:active {
 input,
 button {
   outline: none;
+  background-color: #2B2B2B;
+  color: white;
 }
 
 .button:hover {

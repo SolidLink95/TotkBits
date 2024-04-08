@@ -95,7 +95,7 @@ function AddOrRenameFilePrompt({ isOpen, onClose, setStatusText, setpaths,
               value={path}
               onChange={(e) => setFilePath(e.target.value)}
             />
-            <button className="button" onClick={handleSelectFileClick}>Select file</button>
+            <button className="generic_button" onClick={handleSelectFileClick}>Select file</button>
           </div>
           <div className="modal-footer">
             <button className={okButtonClass} title="Proceed" disabled={!canSubmit} onClick={() => handleAddOkClick(internal_path, path)}>Ok</button>

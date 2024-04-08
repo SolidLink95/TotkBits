@@ -157,6 +157,7 @@ const RstbTree = ({ onNodeSelect, sarcPaths, setStatusText, activeTab }) => {
         {/* <button onClick={handleSearch} style={{ marginRight: marg }}>Search</button> */}
         <ImageButton src="lupa.png" onClick={handleSearch} alt="Search" title="Search" style={{ marginRight: marg }} />
         <input
+        className='inputtext'
           type="text"
           placeholder="Type at least 3 characters"
           value={searchQuery}
@@ -164,6 +165,7 @@ const RstbTree = ({ onNodeSelect, sarcPaths, setStatusText, activeTab }) => {
           style={{ width: 'calc(100% - 90px)', padding: '5px', color: 'white', }}
         />
         <input
+        className='inputtext'
           type="text"
           placeholder="value"
           value={searchVal}

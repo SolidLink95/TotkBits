@@ -1,6 +1,17 @@
 /* :root {
 } */
 
+body {
+  /*to prevent light mode*/
+  background-color: var(--background-color);
+  color: var(--text-color);
+  margin: 0;
+  padding: 0;
+  overflow-y: hidden;
+  overflow-x: hidden;
+}
+
+
 .maincontainer {
   display: flex;
   flex-direction: column;
@@ -126,6 +137,15 @@
   /* margin-right: 20px; */
   /* z-index: 1; */
 }
+.inputtext {
+  background-color: #2B2B2B;
+  color: #757575;
+}
+
+.generic_button {
+  background-color: #2B2B2B;
+  color: white;
+}
 
 
 
@@ -167,6 +187,8 @@
   position: absolute;
   top: 10px;
   right: 10px;
+  background-color: #2B2B2B;
+  color: white;
 }
 .modal-header {
   margin-bottom: 20px;
@@ -194,6 +216,8 @@
 .modal-footer-button {
   /* Styles for your Ok and Cancel buttons */
   margin-left: 10px;
+  background-color: #2B2B2B;
+  color: white;
 }
 .modal-footer-button-disabled {
   background-color: #ccc; /* Grey background */

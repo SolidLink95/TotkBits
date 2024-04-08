@@ -1,9 +1,0 @@
-/target
-/msyt-master
-/log*
-/in.txt
-/out.txt
-/tmp.txt
-/res/asdf/*
-/node_modules/*
-node_modules/
