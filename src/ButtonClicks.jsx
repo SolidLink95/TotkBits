@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
-import { set } from 'lodash';
 
 export const useExitApp = async () => {
   console.log('Exiting the app');
@@ -102,7 +101,7 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
 
 
 }
-export async function processArgv1(argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
+export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
     const content = await invoke('open_file_from_path', { path: argv1 });
     if (content === null) {

@@ -32,36 +32,12 @@ fn get_command_line_arg(state: State<CommandLineArg>) -> String {
     state.0.clone()
 }
 
+
+
 fn main() {
     if let Err(err) = TotkConfig::TotkConfig::safe_new() {
         return
     }
-    // let ainb = file_format::Ainb_py::Ainb_py::new();
-    // println!("{:?}", Path::new(&ainb.python_exe).exists());
-    // println!("{:?}", Path::new(&ainb.python_script).exists());
-    // println!("{:?}", Path::new(&ainb.python_script));
-    // // if let Err(err) = ainb.test_winpython() {
-    // // if let Err(err) = ainb.binary_file_to_text("../res/ChemicalBall.Prepare.module.ainb") {
-    // //     println!("Error while testing winpython: {:?}", err);
-    // // }
-    // if let Ok(text) = ainb.binary_file_to_text("../res/ChemicalBall.Prepare.module.ainb") {
-    //     println!("Text: {:?}", text);
-    // }
-    // println!("\nCWD: {:?}", env::current_dir().unwrap());
-
-    // let asb = file_format::Asb_py::Asb_py::from_binary_file(
-    //     "../res/Accessory_Battery.root.asb.zs",
-    //     Arc::new(Zstd::TotkZstd::new(Arc::new(TotkConfig::TotkConfig::new()), 16).unwrap()),
-    // );
-    // if let Ok(asb) = asb {
-    //     asb.test_winpython();
-    //     match asb.binary_to_text() {
-    //         Ok(text) => println!("Text: {:?}", text),
-    //         Err(err) => println!("Error while converting binary to text: {:?}", err),
-    //     }
-    // }
-
-    // return;
 
     let app = Mutex::<TotkBitsApp>::default();
     if let Err(err) = tauri::Builder::default()
@@ -79,6 +55,7 @@ fn main() {
         .manage(app)
         .invoke_handler(tauri::generate_handler![
             get_command_line_arg,
+            
             open_file_struct,
             open_file_from_path,
             edit_internal_file,

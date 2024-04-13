@@ -1,50 +1,25 @@
 
+import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/tauri';
 import { debounce } from "lodash"; // or any other method/utility to debounce
 import * as monaco from "monaco-editor";
-import React, { useEffect,useCallback  } from "react";
+import React, { useEffect, useRef } from "react";
 import ActiveTabDisplay from "./ActiveTab";
 import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
 import "./App.css";
-import { SearchTextInSarcPrompt } from './SearchTextInSarc';
-import { processArgv1 } from './ButtonClicks';
+import { OpenFileFromPath } from './ButtonClicks';
 import ButtonsDisplay from "./Buttons";
 import DirectoryTree from "./DirectoryTree";
 import MenuBarDisplay from "./MenuBar";
 import RstbTree from "./RstbTree";
+import { SearchTextInSarcPrompt } from './SearchTextInSarc';
 import { useEditorContext } from './StateManager';
-import { invoke } from '@tauri-apps/api/tauri';
 
 
 
-
+let triggered = false
 
 function App() {
-
-  const handleDrop = useCallback((event) => {
-    console.log('Dropped:', event.dataTransfer.items);
-    event.preventDefault();
-    const files = event.dataTransfer.items;
-    console.log(files);
-    if (files.length > 0 && files[0].kind === 'file') {
-      const file = files[0].getAsFile();
-      if (file && !file.type.includes('directory')) {
-        console.log('Dropped file:', file);
-        // window.backend.openFile(file.path);
-      }
-    }
-  }, []);
-  const handleDragOver = useCallback((event) => {
-    event.preventDefault();
-    const files = event.dataTransfer.items;
-    console.log(files);
-    if (files.length > 0 && files[0].kind === 'file') {
-      const file = files[0].getAsFile();
-      if (file && !file.type.includes('directory')) {
-        console.log('Dropped file:', file);
-        // window.backend.openFile(file.path);
-      }
-    }
-  }, []);
 
   const BackendEnum = {
     SARC: 'SARC',
@@ -62,7 +37,35 @@ function App() {
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
   } = useEditorContext();
+  const canProcessEvent = useRef(true);
+  useEffect(() => {
+    const handleFileDrop = async ({ payload }) => {
+      if (canProcessEvent.current && payload.length > 0) {
+        canProcessEvent.current = false; // Set the flag to false to block processing
+        const file = payload[0];
+        // console.log(performance.now(), 'File dropped:', file);
 
+        try {
+          OpenFileFromPath(file, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+        } catch (error) {
+          console.error('Error processing file:', error);
+        }
+
+        // Reset the flag after 0.7 seconds
+        setTimeout(() => {
+          canProcessEvent.current = true;
+        }, 700);
+      }
+    };
+    const listener = listen('tauri://file-drop', handleFileDrop);
+
+    // Cleanup function to remove the event listener
+    return () => {
+      listener.then(({ unlisten }) => unlisten());
+    };
+  }, []
+  );
+  
 
 
   const handleNodeSelect = (path, isfile) => {
@@ -89,7 +92,7 @@ function App() {
           .then((arg) => {
             if (arg && arg !== "" && arg !== null && arg !== undefined) {
               console.log('Received command-line argument:', arg);
-              processArgv1(arg, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+              OpenFileFromPath(arg, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
 
               // Perform actions based on the argument
             } else {
@@ -150,7 +153,7 @@ function App() {
 
 
   return (
-    <div onDrop={handleDrop} onDragOver={handleDragOver} className="maincontainer">
+    <div className="maincontainer">
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
       <AddOrRenameFilePrompt
