@@ -4,9 +4,9 @@ TotkBits is a custom TOTK file editor project, similar to [WildBits](https://git
 ## Features
 This tool includes most functionalities found in the NX Editor and introduces additional features:
 - Filtering SARC contents,
-- Highlighting <span style="color:#205F63;">added</span> and <span style="color:#826C00;">modded</span> SARC entries, ![Alt text](res/preview/p3.png "")
+- Highlighting <span style="color:#205F63;">added</span> and <span style="color:#826C00;">modded</span> SARC entries, ![Alt text](preview/p1.png "")
 - Searching for specific text queries within the entire SARC archive,
-- Supporting additional formats: ASB, AINB, Tag.Product, etc. ![Alt text](res/preview/p2.png "")
+- Supporting additional formats: ASB, AINB, Tag.Product, etc. ![Alt text](preview/p2.png "")
 - Drag-and-drop: simply drag the file into the window area to open it (dragging multiple files will open only the first one).
 
 ## Zstd
