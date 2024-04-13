@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "TotkBits",
-    "version": "0.0.1"
+    "version": "0.0.2"
   },
   "tauri": {
     "allowlist": {
@@ -47,7 +47,8 @@
       "resources": [
         "bin",
         "misc",
-        "src/totkbits.py"
+        "src/totkbits.py",
+        "pip.txt"
       ]
     }
   }
