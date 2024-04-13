@@ -31,6 +31,7 @@ pub enum TotkFileType {
     Aamp,
     Msbt,
     Bcett,
+    Esetb,
     Text,
     Other,
     None,
@@ -386,4 +387,8 @@ pub fn sha256(data: Vec<u8>) -> String {
     // Read hash digest and consume hasher
     let result = hasher.finalize();
     format!("{:X}", result)
+}
+
+pub fn is_esetb(path: &str) -> bool {
+    path.ends_with(".esetb.byml") || path.ends_with(".esetb.byml.zs")
 }

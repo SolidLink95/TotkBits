@@ -4,11 +4,11 @@ use roead::{aamp::ParameterIO, byml::Byml};
 use serde::{Deserialize, Serialize};
 use crate::{
     file_format::{
-        Ainb_py::Ainb_py, Asb_py::Asb_py, BinTextFile::{BymlFile, OpenedFile}, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct
+        Ainb_py::Ainb_py, Asb_py::Asb_py, BinTextFile::{BymlFile, OpenedFile}, Esetb::Esetb, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct
     },
     Settings::Pathlib,
     TotkApp::InternalFile,
-    Zstd::{is_aamp, is_ainb, is_byml, is_msyt, TotkFileType, TotkZstd},
+    Zstd::{is_aamp, is_ainb, is_byml, is_esetb, is_msyt, TotkFileType, TotkZstd},
 };
 use std::{
     collections::BTreeMap,
@@ -39,6 +39,29 @@ pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer
         data.get_file_label(TotkFileType::Sarc, Some(endian));
         return Some((pack.unwrap(), data));
     }
+
+    None
+}
+pub fn open_esetb(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+    let mut opened_file = OpenedFile::default();
+    let mut data = SendData::default();
+    println!("Is {} a esetb?", &file_name);
+    if is_esetb(&file_name) {
+        opened_file.esetb = Esetb::from_file(file_name.clone(), zstd.clone()).ok();
+        if let Some(esetb) = &opened_file.esetb {
+            println!("{} is a esetb", &file_name);
+            data.tab = "YAML".to_string();
+            opened_file.path = Pathlib::new(file_name.clone());
+            opened_file.endian = esetb.byml.endian;
+            opened_file.file_type = TotkFileType::Esetb;
+            data.status_text = format!("Opened {}", file_name.clone());
+            data.path = Pathlib::new(file_name);
+            data.text = esetb.to_text();
+            data.get_file_label(TotkFileType::Esetb, esetb.byml.endian);
+            return Some((opened_file, data));
+        }
+    }
+
 
     None
 }
@@ -233,6 +256,18 @@ pub fn get_string_from_data(
     if data.is_empty() {
         return None;
     }
+
+    if is_esetb(&path) {
+        if let Ok(esetb) = Esetb::from_binary(&data, zstd.clone()) {
+            internal_file.endian = Some(roead::Endian::Little);
+            internal_file.path = Pathlib::new(path.clone());
+            internal_file.file_type = TotkFileType::Esetb;
+            let text = esetb.to_text();
+            internal_file.esetb = Some(esetb);
+            return Some((internal_file, text));
+        }
+    }
+
     if let Ok(asb) = Asb_py::from_binary(&data, zstd.clone()) {
         if let Ok(text) = asb.binary_to_text() {
             internal_file.endian = Some(roead::Endian::Little);
@@ -350,12 +385,21 @@ pub fn check_if_save_in_romfs(dest_file: &str, zstd: Arc<TotkZstd>) -> bool {
 pub fn get_binary_by_filetype(
     file_type: TotkFileType,
     text: &str,
-    endian: roead::Endian, zstd: Arc<TotkZstd>, file_path: &str
+    endian: roead::Endian, zstd: Arc<TotkZstd>, file_path: &str, opened_file: &mut OpenedFile<'_>,
 ) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
     let is_zs = file_path.to_lowercase().ends_with(".zs");
     let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs");
     match file_type {
+        TotkFileType::Esetb => {
+            if let Some(esetb) = &mut opened_file.esetb {
+                esetb.update_from_text(text).ok()?;
+                rawdata = esetb.to_binary();
+                if file_path.to_lowercase().ends_with(".zs") {
+                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
+                }
+            }
+         }
         TotkFileType::ASB => {
             let asb = Asb_py::new(zstd.clone());
             if let Ok(some_data) = asb.text_to_binary(text) {

@@ -230,6 +230,7 @@ impl<'a> PackFile<'_> {
         pack.sarc_file_to_bytes(path.as_str())?;
         // pack.sarc = Sarc::new(&pack.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
         pack.writer = SarcWriter::from_sarc(&pack.sarc);
+        pack.endian = pack.sarc.endian();
         pack.path = Pathlib::new(path.clone());
         Ok(pack)
 

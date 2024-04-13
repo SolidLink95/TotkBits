@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io, panic};
 
+use super::Esetb::Esetb;
 use super::Rstb::Restbl;
 
 #[derive(Debug)]
@@ -125,7 +126,7 @@ impl<'a> BymlFile<'_> {
         let file_type = data.file_type;
         match pio {
             Ok(ok_pio) => Ok(BymlFile {
-                endian: BymlFile::get_endiannes(&data.data.clone()),
+                endian: BymlFile::get_endiannes(&data.data),
                 file_data: data,
                 path: Pathlib::new(full_path),
                 pio: ok_pio,
@@ -254,6 +255,7 @@ pub struct OpenedFile<'a> {
     pub aamp: Option<()>,
     pub tag: Option<TagProduct<'a>>,
     pub restbl: Option<Restbl<'a>>,
+    pub esetb: Option<Esetb<'a>>,
 }
 
 impl Default for OpenedFile<'_> {
@@ -267,6 +269,7 @@ impl Default for OpenedFile<'_> {
             aamp: None,
             tag: None,
             restbl: None,
+            esetb: None,
         }
     }
 }
@@ -287,6 +290,7 @@ impl<'a> OpenedFile<'_> {
             aamp: None,
             tag: None,
             restbl: None,
+            esetb: None,
         }
     }
 
@@ -300,6 +304,7 @@ impl<'a> OpenedFile<'_> {
             aamp: None,
             tag: None,
             restbl: None,
+            esetb: None,
         }
     }
 

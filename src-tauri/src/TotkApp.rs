@@ -1,7 +1,8 @@
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
+use crate::file_format::Esetb::Esetb;
 use crate::file_format::Pack::{PackComparer, SarcPaths};
 use crate::Open_and_Save::{
-    check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_ainb, open_asb, open_byml, open_msbt, open_restbl, open_sarc, open_tag, open_text, SaveFileDialog, SendData
+    check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_ainb, open_asb, open_byml, open_esetb, open_msbt, open_restbl, open_sarc, open_tag, open_text, SaveFileDialog, SendData
 };
 use crate::Settings::{write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
@@ -212,13 +213,13 @@ impl<'a> TotkBitsApp<'a> {
     }
 
 
-    pub fn get_binary_for_opened_file(&self, text: &str, zstd: Arc<TotkZstd>, dest_file: &str) -> Option<Vec<u8>> {
+    pub fn get_binary_for_opened_file(&mut self, text: &str, zstd: Arc<TotkZstd>, dest_file: &str) -> Option<Vec<u8>> {
         get_binary_by_filetype(
             self.opened_file.file_type,
             text,
             self.opened_file.endian.unwrap_or(roead::Endian::Little),
             zstd.clone(),
-            dest_file
+            dest_file, &mut self.opened_file
         )
     }
 
@@ -528,7 +529,7 @@ impl<'a> TotkBitsApp<'a> {
                         internal_file.file_type,
                         text,
                         internal_file.endian.unwrap_or(roead::Endian::Little),
-                        self.zstd.clone(), &path
+                        self.zstd.clone(), &path, &mut self.opened_file
                     )?;
                     if rawdata.is_empty() {
                         data.status_text =
@@ -552,11 +553,12 @@ impl<'a> TotkBitsApp<'a> {
                 }
             }
         } else {
+            let fullpath = self.opened_file.path.full_path.clone();
             let rawdata: Vec<u8> = get_binary_by_filetype(
                 self.opened_file.file_type,
                 text,
                 self.opened_file.endian.unwrap_or(roead::Endian::Little),
-                self.zstd.clone(), &self.opened_file.path.full_path
+                self.zstd.clone(), &fullpath, &mut self.opened_file
             )?;
             if rawdata.is_empty() {
                 data.status_text =
@@ -731,6 +733,7 @@ impl<'a> TotkBitsApp<'a> {
                 return Some(data);
             }
             let res = open_tag(file_name.clone(), self.zstd.clone())
+                .or_else(|| open_esetb(file_name.clone(), self.zstd.clone()))
                 .or_else(|| open_restbl(file_name.clone(), self.zstd.clone()))
                 .or_else(|| open_asb(file_name.clone(), self.zstd.clone()))
                 .or_else(|| open_ainb(file_name.clone(), self.zstd.clone()))
@@ -773,6 +776,7 @@ pub struct InternalFile<'a> {
     pub msyt: Option<String>,
     pub text: Option<String>,
     pub aamp: Option<String>,
+    pub esetb: Option<Esetb<'a>>,
 }
 
 impl Default for InternalFile<'_> {
@@ -785,6 +789,7 @@ impl Default for InternalFile<'_> {
             msyt: None,
             text: None,
             aamp: None,
+            esetb: None,
         }
     }
 }
@@ -800,6 +805,7 @@ impl InternalFile<'_> {
             msyt: None,
             text: None,
             aamp: None,
+            esetb: None,
         }
     }
 }

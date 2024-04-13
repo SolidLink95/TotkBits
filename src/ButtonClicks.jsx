@@ -78,6 +78,7 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
     setStatusText("Opening...");
     const content = await invoke('edit_internal_file', { path: fullPath });
     if (content === null) {
+      setStatusText("Ready");
       // setStatusText("No content returned! Is any SARC file opened?");
       return;
     }
@@ -150,9 +151,12 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
 
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
+      setStatusText("Error opening file");
     }
   } catch (error) {
     console.error('Failed to fetch editor content from Rust backend:', error);
+    
+    setStatusText("");
   }
 }
 

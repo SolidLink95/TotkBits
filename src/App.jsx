@@ -1,7 +1,7 @@
 
 import { debounce } from "lodash"; // or any other method/utility to debounce
 import * as monaco from "monaco-editor";
-import React, { useEffect } from "react";
+import React, { useEffect,useCallback  } from "react";
 import ActiveTabDisplay from "./ActiveTab";
 import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
 import "./App.css";
@@ -19,6 +19,33 @@ import { invoke } from '@tauri-apps/api/tauri';
 
 
 function App() {
+
+  const handleDrop = useCallback((event) => {
+    console.log('Dropped:', event.dataTransfer.items);
+    event.preventDefault();
+    const files = event.dataTransfer.items;
+    console.log(files);
+    if (files.length > 0 && files[0].kind === 'file') {
+      const file = files[0].getAsFile();
+      if (file && !file.type.includes('directory')) {
+        console.log('Dropped file:', file);
+        // window.backend.openFile(file.path);
+      }
+    }
+  }, []);
+  const handleDragOver = useCallback((event) => {
+    event.preventDefault();
+    const files = event.dataTransfer.items;
+    console.log(files);
+    if (files.length > 0 && files[0].kind === 'file') {
+      const file = files[0].getAsFile();
+      if (file && !file.type.includes('directory')) {
+        console.log('Dropped file:', file);
+        // window.backend.openFile(file.path);
+      }
+    }
+  }, []);
+
   const BackendEnum = {
     SARC: 'SARC',
     YAML: 'YAML',
@@ -123,7 +150,7 @@ function App() {
 
 
   return (
-    <div className="maincontainer">
+    <div onDrop={handleDrop} onDragOver={handleDragOver} className="maincontainer">
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
       <AddOrRenameFilePrompt
