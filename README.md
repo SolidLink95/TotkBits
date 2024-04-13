@@ -7,7 +7,7 @@ Mostly those already available in NX Editor, but also:
 - highlighting  <span style="color:#205F63;">added</span> and <span style="color:#826C00;">modded</span> SARC entries,
 - searching for specific text query in entire SARC archive,
 - more supported formats: ASB, AINB, Tag.Product, etc.
-
+- drag-and-drop: simply drag the file to the window area in order to open it (dragging multiple files will open only the first one)
 
 ## Zstd
 
