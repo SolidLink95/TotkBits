@@ -75,9 +75,10 @@ impl<'a> PackComparer<'a> {
 
     pub fn compare(&mut self) {
         if let Some(opened) = &self.opened {
-            if let Some(vanila) = &self.vanila { //unreachable
+            if let Some(vanila) = &mut self.vanila { //unreachable unless mals
                 let mut added: HashMap<String, String> = HashMap::default();
                 let mut modded: HashMap<String, String> = HashMap::default();
+                vanila.self_populate_hashes();
                 for (file, hash) in opened.hashes.iter() {
                     let van_hash = vanila.hashes.get(file);
                     match van_hash {

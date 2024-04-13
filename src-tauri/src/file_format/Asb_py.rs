@@ -8,6 +8,8 @@ use tauri::api::file;
 
 use crate::Zstd::{is_asb, TotkZstd};
 
+use super::BinTextFile::write_string_to_file;
+
 
 
 pub struct Asb_py<'a>  {
@@ -107,7 +109,6 @@ impl<'a> Asb_py<'a> {
     }
 
     pub fn binary_to_text(&self) -> io::Result<String> {
-        // env::set_var("PATH", self.newpath.clone());
 
         let mut child = Command::new(&self.python_exe)
             .creation_flags(self.CREATE_NO_WINDOW)
@@ -119,12 +120,13 @@ impl<'a> Asb_py<'a> {
 
         if let Some(ref mut stdin) = child.stdin.take() {
             stdin.write_all(&self.data)?;
-            // For binary data, ensure you're handling errors and using `write_all` to guarantee all data is written.
         } // Dropping `stdin` here closes the pipe.
 
         let output = child.wait_with_output()?;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        write_string_to_file("stderr.log", &stderr)?;
+        write_string_to_file("stdout.log", &stdout)?;
 
         if output.status.success() {
             // println!("Script executed successfully.");
@@ -161,6 +163,8 @@ impl<'a> Asb_py<'a> {
 
         let output = child.wait_with_output()?;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        write_string_to_file("stderr.log", &stderr)?;
+        // write_string_to_file("stdout.log", &stdout)?;
         if output.status.success() {
             println!("Script executed successfully.");
             return Ok(output.stdout);
