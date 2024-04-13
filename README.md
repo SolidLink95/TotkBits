@@ -23,6 +23,7 @@ All `*.zs` files all automatically compressed/decompressed. If you wish to save 
 - AAMP
 - MSBT
 - RESTBL (RSTB)
+- esetb.byml (editing everything except PTCL file section is supported)
 - JSON/YAML and other plaintext formats
 
 In order to save the file as plaintext, click `Save as` and choose one of the extensions: json, yaml, yml, txt.
@@ -32,3 +33,6 @@ In order to save the file as plaintext, click `Save as` and choose one of the ex
 - [NiceneNerd](https://github.com/NiceneNerd): [roead](https://github.com/NiceneNerd/roead), part of [msbt](https://github.com/NiceneNerd/msyt) library (used only for Big Endian msbt) and [RESTBL library](https://github.com/NiceneNerd/restbl)
 - [jordanbtucker](https://github.com/jordanbtucker): [msbt c++ library](https://github.com/EPD-Libraries/msbt) (used for Little Endian msbt)
 - [dt-12345](https://github.com/dt-12345): [AINB](https://github.com/dt-12345/ainb.git) and [ASB](https://github.com/dt-12345/asb.git) parsers
+
+# Known Issues
+- .szs files can be edited and saved but for some reason the games like Super Mario Oddyssey won't boot with those (its the fault of roead::Yaz0::compress). Opening file again in Switch Toolbox and saving fixes this issue.
