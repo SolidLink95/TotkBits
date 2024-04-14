@@ -42,7 +42,10 @@ base64 = "0.21.7"
 restbl = { version = "0.1", features = ["yaml"] }
 flate2 = "1.0.22"
 zstud-sys = {git = "https://github.com/SolidLink95/zstud-sys-rs"}
+windows = "0.56.0"
 
+[dev-dependencies]
+windows = "0.56.0"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
