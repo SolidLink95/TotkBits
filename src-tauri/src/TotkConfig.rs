@@ -281,21 +281,23 @@ impl TotkConfigOld {
         }
         None
     }
-
+    #[allow(dead_code)]
     pub fn get_pack_path(&self, name: &str) -> Option<PathBuf> {
         self.get_path(&format!("Pack/Actor/{}.pack.zs", name))
     }
 
+    #[allow(dead_code)]
     pub fn get_mals_path(&self, name: &str) -> Option<PathBuf> {
         self.get_path(&format!("Mals/{}", name))
     }
 
+    #[allow(dead_code)]
     pub fn save(&self) -> io::Result<()> {
         if self.config_path.to_string_lossy().is_empty() {
             return Err(io::Error::new(io::ErrorKind::NotFound, "Empty config path"));
         }
         if let Some(config_dir) = self.config_path.clone().parent() {
-            fs::create_dir_all(config_dir);
+            fs::create_dir_all(config_dir)?;
         }
         println!("{:?}", &self.config_path);
         let json_str: String = serde_json::to_string_pretty(self)?;
@@ -306,6 +308,7 @@ impl TotkConfigOld {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn get_config_from_json() -> io::Result<HashMap<String, String>> {
         //attempt to import config from json file
         let appdata_str = env::var("APPDATA").expect("Cannot access appdata");
@@ -341,6 +344,7 @@ impl TotkConfigOld {
         Ok(yuzu_mod_path)
     }
 
+    #[allow(dead_code)]
     pub fn print(&self) -> io::Result<()> {
         println!(
             "Romfs: {}\nBfres: {}\n Yuzu mod path: {} {:?}",
@@ -353,6 +357,7 @@ impl TotkConfigOld {
     }
 }
 
+#[allow(dead_code)]
 pub fn init() -> bool {
     let c = TotkConfigOld::new();
     if c.is_some() {

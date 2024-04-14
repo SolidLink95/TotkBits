@@ -99,7 +99,7 @@ impl<'a> TagProduct<'a> {
     pub fn to_binary(text: &str) -> io::Result<Vec<u8>> {
         //let data: Config = serde_yaml::from_str(text)?;
         //Header
-        let _res : Byml = Byml::from_text("{}").unwrap();
+        // let _res : Byml = Byml::from_text("{}").unwrap();
         let mut path_list: Vec<Byml> = Default::default();
         let mut tag_list: Vec<Byml> = Default::default();
         let json_data: TagJsonData = serde_json::from_str(text)?;

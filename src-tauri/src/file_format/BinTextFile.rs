@@ -93,7 +93,7 @@ impl<'a> BymlFile<'_> {
             }
         }
         //f_handle.write_all(&data);
-        bytes_to_file(data, &path);
+        bytes_to_file(data, &path)?;
         Ok(())
     }
 
@@ -233,12 +233,12 @@ pub fn bytes_to_file(data: Vec<u8>, path: &str) -> io::Result<()> {
     match f {
         Ok(mut f_handle) => {
             //file does not exist
-            f_handle.write_all(&data);
+            f_handle.write_all(&data)?;
         }
         Err(_) => {
             //file exist, overwrite
             let mut f_handle = OpenOptions::new().write(true).open(&path)?;
-            f_handle.write_all(&data);
+            f_handle.write_all(&data)?;
         }
     }
     Ok(())
