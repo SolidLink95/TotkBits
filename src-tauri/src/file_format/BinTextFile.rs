@@ -3,7 +3,7 @@ use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, TotkFileType, TotkZstd};
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use roead::byml::Byml;
-use tauri::api::file;
+
 use std::any::type_name;
 
 use std::fs::OpenOptions;

@@ -3,12 +3,12 @@ use crate::file_format::BinTextFile::{bytes_to_file,BymlFile};
 //use byteordered::Endianness;
 //use indexmap::IndexMap;
 use bitvec::prelude::*;
-use digest::block_buffer::Error;
+
 use roead::byml::{self, Byml};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::{BTreeMap, HashMap};
-use std::f64::consts::E;
+
 use std::io::{Write};
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;

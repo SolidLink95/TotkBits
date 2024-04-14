@@ -1,10 +1,10 @@
-use std::ops::Deref;
+
 use std::{sync::Arc};
 use std::{
-    env, io::{self, Read, Write}, os::windows::process::CommandExt, process::{Command, Stdio}
+    io::{self, Read, Write}, os::windows::process::CommandExt, process::{Command, Stdio}
 };
 
-use tauri::api::file;
+
 
 use crate::Zstd::{is_asb, TotkZstd};
 

@@ -1,5 +1,5 @@
 use std::{
-    env, io::{self, Read, Write}, os::windows::process::CommandExt, process::{Command, Stdio}
+    io::{self, Read, Write}, os::windows::process::CommandExt, process::{Command, Stdio}
 };
 
 

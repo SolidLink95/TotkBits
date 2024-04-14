@@ -6,13 +6,13 @@ use crate::Open_and_Save::{
 };
 use crate::Settings::{write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{TotkFileType, TotkZstd, ZstdCppCompressor};
+use crate::Zstd::{TotkFileType, TotkZstd};
 use rfd::{FileDialog, MessageDialog};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
 use std::io::{Read, Write};
-use std::os::windows::process;
+
 use std::path::Path;
 use std::sync::Arc;
 

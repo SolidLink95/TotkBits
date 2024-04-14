@@ -1,6 +1,6 @@
-use std::{io, ops::Deref, sync::Arc};
+use std::{io, sync::Arc};
 use roead::byml::{self, Byml};
-use tauri::api::file;
+
 
 use crate::{Settings::Pathlib, Zstd::{TotkFileType, TotkZstd}};
 use super::BinTextFile::{BymlFile, FileData};

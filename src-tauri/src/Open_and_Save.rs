@@ -144,7 +144,7 @@ pub fn open_asb(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, S
     None
 
 }
-pub fn open_ainb(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+pub fn open_ainb(file_name: String, _zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
     let mut opened_file = OpenedFile::default();
     let mut data = SendData::default();
     println!("Is {} a ainb?", &file_name);

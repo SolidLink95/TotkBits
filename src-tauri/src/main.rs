@@ -3,8 +3,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 // #![cfg_attr(not(debug_assertions),)]
 use std::env;
-use std::path::Path;
-use std::sync::{Arc, Mutex};
+
+use std::sync::{Mutex};
 
 use tauri::{Manager, State};
 // use TotkConfig::{init, TotkConfig};
@@ -35,7 +35,7 @@ fn get_command_line_arg(state: State<CommandLineArg>) -> String {
 
 
 fn main() {
-    if let Err(err) = TotkConfig::TotkConfig::safe_new() {
+    if let Err(_err) = TotkConfig::TotkConfig::safe_new() {
         return
     }
 

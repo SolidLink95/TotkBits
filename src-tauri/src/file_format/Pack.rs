@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 //mod Zstd;
 
-use crate::file_format::BinTextFile::FileData;
+
 use crate::Settings::{makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd, ZstdCppCompressor};
+use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
 
 use super::SarcEntriesData::get_sarc_entries_data;
 

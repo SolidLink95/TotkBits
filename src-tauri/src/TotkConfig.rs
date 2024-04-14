@@ -4,7 +4,7 @@ use std::env;
 use std::fs;
 use std::io;
 
-use std::path::Path;
+
 use std::path::PathBuf;
 use std::str::FromStr;
 //use roead::byml::HashMap;
@@ -152,7 +152,7 @@ impl TotkConfig {
 
     pub fn get_path(&self, pack_local_path: &str) -> Option<PathBuf> {
         //let pack_local_path = format!("Pack/Actor/{}.pack.zs", name);
-        let mut romfs = PathBuf::from(&self.romfs);
+        let romfs = PathBuf::from(&self.romfs);
         let mut dest_path = romfs.clone();
         dest_path.push(pack_local_path);
         if dest_path.exists() {
@@ -354,7 +354,7 @@ impl TotkConfigOld {
 }
 
 pub fn init() -> bool {
-    let mut c = TotkConfigOld::new();
+    let c = TotkConfigOld::new();
     if c.is_some() {
         let c = c.unwrap();
         let mut zsdic = c.romfs.clone();

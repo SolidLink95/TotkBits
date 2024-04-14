@@ -1,5 +1,5 @@
 //tauri commands
-use std::{panic::{self, AssertUnwindSafe}, process, sync::Mutex};
+use std::{process, sync::Mutex};
 use rfd::MessageDialog;
 use tauri::{Manager};
 use crate::{Open_and_Save::SendData, TotkApp::{SaveData, TotkBitsApp}};

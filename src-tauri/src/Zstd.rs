@@ -3,12 +3,12 @@ use digest::Digest;
 use roead::sarc::*;
 use sha2::Sha256;
 use zstd::zstd_safe::zstd_sys::{
-    ZSTD_CCtx, ZSTD_CCtx_loadDictionary, ZSTD_CDict, ZSTD_CDict_s, ZSTD_compressBound, ZSTD_compress_usingCDict, ZSTD_createCCtx, ZSTD_createCDict, ZSTD_isError
+    ZSTD_CCtx, ZSTD_CDict_s, ZSTD_compressBound, ZSTD_compress_usingCDict, ZSTD_createCCtx, ZSTD_createCDict, ZSTD_isError
 };
 
 use std::collections::HashMap;
 
-use std::panic::{self, AssertUnwindSafe};
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
