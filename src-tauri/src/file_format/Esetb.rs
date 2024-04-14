@@ -1,7 +1,6 @@
+#![allow(non_snake_case,non_camel_case_types)]
 use std::{io, sync::Arc};
 use roead::byml::{self, Byml};
-
-
 use crate::{Settings::Pathlib, Zstd::{TotkFileType, TotkZstd}};
 use super::BinTextFile::{BymlFile, FileData};
 

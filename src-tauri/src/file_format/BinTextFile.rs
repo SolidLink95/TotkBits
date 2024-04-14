@@ -1,18 +1,16 @@
+#![allow(non_snake_case,non_camel_case_types)]
 use crate::file_format::TagProduct::TagProduct;
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, TotkFileType, TotkZstd};
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use roead::byml::Byml;
-
 use std::any::type_name;
-
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Read, Write};
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io, panic};
-
 use super::Esetb::Esetb;
 use super::Rstb::Restbl;
 

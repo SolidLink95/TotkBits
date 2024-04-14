@@ -1,10 +1,8 @@
+#![allow(non_snake_case,non_camel_case_types)]
 use std::collections::HashMap;
-
 use std::env;
 use std::fs;
 use std::io;
-
-
 use std::path::PathBuf;
 use std::str::FromStr;
 //use roead::byml::HashMap;

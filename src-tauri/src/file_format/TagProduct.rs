@@ -1,4 +1,4 @@
-#![allow(non_upper_case_globals)]
+#![allow(non_snake_case,non_camel_case_types)]
 use crate::Zstd::TotkZstd;
 use crate::file_format::BinTextFile::{bytes_to_file,BymlFile};
 //use byteordered::Endianness;
@@ -15,13 +15,13 @@ use std::sync::Arc;
 use std::{ io, panic};
 
 
-#[allow(non_snake_case)]
+
 #[derive(Serialize, Deserialize)]
 struct TagJsonData {
     PathList: BTreeMap<String, Vec<String>>,
     TagList: Vec<String>,
 }
-#[allow(non_snake_case)]
+
 #[derive(Serialize, Deserialize)]
 struct YamlData {
     PathList: Vec<String>,

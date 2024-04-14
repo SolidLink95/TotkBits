@@ -1,3 +1,4 @@
+#![allow(non_snake_case,non_camel_case_types)]
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::sync::Arc;

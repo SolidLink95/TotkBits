@@ -1,3 +1,4 @@
+#![allow(non_snake_case,non_camel_case_types)]
 use std::{
     io::{self, Read, Write}, os::windows::process::CommandExt, process::{Command, Stdio}
 };
@@ -10,11 +11,7 @@ pub struct Ainb_py {
     pub python_script: String,
     // pub current_dir: String,
     pub create_no_window: u32,
-    // pub newpath: String,
-    // pub original_path: String,
 }
-//C:\Users\Luiza\AppData\Local\Programs\Python\Python37\Scripts\
-//C:\Users\Luiza\AppData\Local\Programs\Python\Python37\
 
 impl Default for Ainb_py {
     fn default() -> Self {
@@ -24,8 +21,6 @@ impl Default for Ainb_py {
             python_script: "src/totkbits.py".to_string(),
             // current_dir: "bin/ainb/ainb".to_string(),
             create_no_window: 0x08000000,
-            // newpath: "../bin/winpython/python-3.11.8.amd64:../bin/winpython/python-3.11.8.amd64/Scripts".to_string(),
-            // original_path: env::var("PATH").unwrap_or("".to_string()),
         }
     }
 }

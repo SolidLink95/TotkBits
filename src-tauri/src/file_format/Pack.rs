@@ -1,10 +1,11 @@
+#![allow(non_snake_case,non_camel_case_types)]
 use roead;
 use roead::sarc::{Sarc, SarcWriter};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 //mod Zstd;
