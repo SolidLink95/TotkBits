@@ -9,7 +9,7 @@ pub struct Ainb_py {
     pub python_exe: String,
     pub python_script: String,
     // pub current_dir: String,
-    pub CREATE_NO_WINDOW: u32,
+    pub create_no_window: u32,
     // pub newpath: String,
     // pub original_path: String,
 }
@@ -23,7 +23,7 @@ impl Default for Ainb_py {
             // python_script: "src/totkbits.py".to_string(),
             python_script: "src/totkbits.py".to_string(),
             // current_dir: "bin/ainb/ainb".to_string(),
-            CREATE_NO_WINDOW: 0x08000000,
+            create_no_window: 0x08000000,
             // newpath: "../bin/winpython/python-3.11.8.amd64:../bin/winpython/python-3.11.8.amd64/Scripts".to_string(),
             // original_path: env::var("PATH").unwrap_or("".to_string()),
         }
@@ -68,7 +68,7 @@ impl Ainb_py {
         // env::set_var("PATH", self.newpath.clone());
         let mut child = Command::new(&self.python_exe)
             // .current_dir(&self.current_dir)
-            .creation_flags(self.CREATE_NO_WINDOW)
+            .creation_flags(self.create_no_window)
             .arg(&self.python_script)
             .arg("ainb_binary_to_text")
             .stdin(Stdio::piped())
@@ -103,7 +103,7 @@ impl Ainb_py {
     pub fn text_to_binary(&self, text: &str) -> io::Result<Vec<u8>> {
         let mut child = Command::new(&self.python_exe)
             // .current_dir(&self.current_dir)
-            .creation_flags(self.CREATE_NO_WINDOW)
+            .creation_flags(self.create_no_window)
             .arg(&self.python_script)
             .arg("ainb_text_to_binary")
             .stdin(Stdio::piped())
@@ -133,7 +133,7 @@ impl Ainb_py {
         // env::set_var("PATH", self.newpath.clone());
         let output = Command::new(&self.python_exe)
             .arg(&self.python_script)
-            .creation_flags(self.CREATE_NO_WINDOW)
+            .creation_flags(self.create_no_window)
             // .arg("-V")
             .output()?;
         if output.status.success() {

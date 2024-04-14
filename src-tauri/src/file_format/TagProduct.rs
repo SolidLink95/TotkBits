@@ -1,4 +1,5 @@
-use crate::Zstd::{TotkZstd};
+#![allow(non_upper_case_globals)]
+use crate::Zstd::TotkZstd;
 use crate::file_format::BinTextFile::{bytes_to_file,BymlFile};
 //use byteordered::Endianness;
 //use indexmap::IndexMap;
@@ -9,18 +10,18 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::{BTreeMap, HashMap};
 
-use std::io::{Write};
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::{fs, io, panic};
+use std::{ io, panic};
 
 
-
+#[allow(non_snake_case)]
 #[derive(Serialize, Deserialize)]
 struct TagJsonData {
     PathList: BTreeMap<String, Vec<String>>,
     TagList: Vec<String>,
 }
+#[allow(non_snake_case)]
 #[derive(Serialize, Deserialize)]
 struct YamlData {
     PathList: Vec<String>,
@@ -65,11 +66,13 @@ impl<'a> TagProduct<'a> {
         None
     }
 
+    #[allow(dead_code)]
     pub fn save_default(&mut self, text: &str) -> io::Result<()> {
         let path = self.byml.path.full_path.clone();
         self.save(path, text)
     }
 
+    #[allow(dead_code)]
     pub fn save(&mut self, path: String, text: &str) -> io::Result<()> {
         //let mut f_handle = OpenOptions::new().write(true).open(&path)?;
         let mut data: Vec<u8> = Vec::new();
@@ -92,7 +95,7 @@ impl<'a> TagProduct<'a> {
                 .expect("Failed to compress with zs");
         }
         //f_handle.write_all(&data);
-        bytes_to_file(data, &path);
+        bytes_to_file(data, &path)?;
         Ok(())
     }
 
@@ -105,8 +108,6 @@ impl<'a> TagProduct<'a> {
         let json_data: TagJsonData = serde_json::from_str(text)?;
         let cached_tag_list = &json_data.TagList;    
         //PathList
-        // println!("Work/Actor/|Animal_Boar_A|.engine__actor__ActorParam.gyml {:?}", &json_data.PathList.contains_key("Work/Actor/|Animal_Boar_A|.engine__actor__ActorParam.gyml"));
-        // println!("Work/Actor/|Animal_Boar_C|.engine__actor__ActorParam.gyml {:?}", &json_data.PathList.contains_key("Work/Actor/|Animal_Boar_C|.engine__actor__ActorParam.gyml"));
         for (path, _plist) in &json_data.PathList {
             if path.contains("|") {
                 for slice in path.split("|") {
@@ -144,12 +145,6 @@ impl<'a> TagProduct<'a> {
         );
 
         
-        // let yml_data = YamlData {
-        //     PathList: path_list.clone(),
-        //     BitTable: bit_table_bytes, // Example binary data
-        //     RankTable: "".to_string(),
-        //     TagList: cached_tag_list.clone(),
-        // };
         let mut res = byml::Byml::from_text("{}");
         if let Ok(res) = &mut res {
             if let Ok(x) = res.as_mut_map() {
@@ -161,30 +156,6 @@ impl<'a> TagProduct<'a> {
             return Ok(res.to_binary(roead::Endian::Little));
         }
 
-        // let mut yml: Vec<String> = Vec::new();
-        // yml.push("PathList:".to_string());
-        // for p in &yml_data.PathList {
-        //     yml.push(format!("  - {}",p));
-        // }
-        // yml.push(format!("BitTable: !!binary {}", base64::encode(yml_data.BitTable)));
-        // yml.push("RankTable: \"\"".to_string());
-        // yml.push("TagList:".to_string());
-
-        // for tag in yml_data.TagList {
-        //     yml.push(format!("  - {}",tag));
-        // }
-
-        // let yml_string = yml.join("\n");
-        // let raw_data = Byml::from_text(yml_string).unwrap().to_binary(roead::Endian::Little);
-
-        //res[roead::byml::BymlIndex("PathList")] = roead::byml::Byml::Array(path_list);
-        /*res[roead::byml::Byml::String("PathList".to_string().into()).as_u32().unwrap()] = roead::byml::Byml::Array(path_list);
-        res["BitTable"] = roead::byml::Byml::BinaryData(bit_table_bytes);
-        res["RankTable"] = roead::byml::Byml::String("".to_string().into());
-        res["TagList"] = roead::byml::Byml::Array(tag_list);*/
-
-        //TagList
-        //let raw_data = res.to_binary(roead::Endian::Little);
         Err(io::Error::new(io::ErrorKind::InvalidData, "Failed to convert to binary"))
     }
 
@@ -194,12 +165,6 @@ impl<'a> TagProduct<'a> {
             PathList: self.actor_tag_data.clone(),
             TagList: self.tag_list.clone(),
         };
-        /* increase indent
-        let mut buf = Vec::new();
-        let formatter = serde_json::ser::PrettyFormatter::with_indent(b"    ");
-        let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
-        json_data.serialize(&mut ser).unwrap();*/
-        //let text = String::from_utf8(buf).unwrap_or("{}".to_string());
         serde_json::to_string_pretty(&json_data).unwrap_or(String::from("{}"))
         
     }
@@ -209,9 +174,6 @@ impl<'a> TagProduct<'a> {
         if let Ok(pio) = p {
             //Get path list
             println!("Parsing PathList");
-            /*for p in pio["PathList"].as_array().unwrap() {
-                self.path_list.push(p.as_string().unwrap().to_string());
-            }*/
             self.path_list.extend(
                 pio["PathList"]
                     .as_array()
@@ -237,19 +199,7 @@ impl<'a> TagProduct<'a> {
                     }),
             );
 
-            /*let tag_list = pio["TagList"].as_array();
-            match tag_list {
-                Ok(tl) => {
-                    for tag in tl {
-                        self.tag_list.push(tag.as_string().unwrap().to_string());
-                    }
-                    //self.tag_list = tl.into();
-                }
-                Err(err) => {
-                    eprintln!("ERROR: {:?} line: {}", err, line!());
-                    return Err(err);
-                }
-            }*/
+            
             let tag_list_count = pio["TagList"]
                 .as_array()
                 .unwrap_or(&[roead::byml::Byml::default()])
@@ -316,31 +266,12 @@ impl<'a> TagProduct<'a> {
         Ok(())
     }
 
-    pub fn print(&self) {
-        //println!("ActorTagData:\n\n{:?}", self.actor_tag_data);
-        let json_data = serde_json::to_string_pretty(&self.actor_tag_data)
-            .unwrap_or_else(|_| String::from("{}"));
-        //println!("ActorTagData:\n\n{:?}", serde_json::to_string_pretty(&self.actor_tag_data).unwrap_or_else(|_| String::from("{}")));
-        //println!("\n\nCachedTagList:\n\n{:?}", self.cached_tag_list);
-        //println!("\n\nCachedRankTable:\n\n{:?}", self.cached_rank_table);
-        let mut f = fs::File::create("log.json").unwrap();
-        f.write_all(json_data.as_bytes());
-    }
-
-    fn is_bit_table_bytes_empty(&mut self) -> bool {
-        if let Ok(btb) = self.bit_table_bytes.as_array() {
-            if btb.is_empty() {
-                return true;
-            }
-        }
-        return false;
-    }
+    
+    
 }
 
-pub fn generic_error(text: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, text)
-}
 
+#[allow(dead_code)]
 pub fn sort_hashmap(h: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<String>> {
     let mut map: HashMap<String, Vec<String>> = HashMap::new();
 

@@ -16,7 +16,7 @@ pub struct Asb_py<'a>  {
     pub zstd: Arc<TotkZstd<'a>>,
     pub python_exe: String,
     pub python_script: String,
-    pub CREATE_NO_WINDOW: u32,
+    pub create_no_window: u32,
     pub data: Vec<u8>,
 }
 
@@ -26,7 +26,7 @@ impl<'a> Asb_py<'a> {
             zstd: zstd.clone(),
             python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
             python_script: "src/totkbits.py".to_string(),
-            CREATE_NO_WINDOW: 0x08000000,
+            create_no_window: 0x08000000,
             data: Vec::new(),
         }
     }
@@ -55,7 +55,7 @@ impl<'a> Asb_py<'a> {
                 zstd: zstd.clone(),
                 python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
                 python_script: "src/totkbits.py".to_string(),
-                CREATE_NO_WINDOW: 0x08000000,
+                create_no_window: 0x08000000,
                 data: new_data,
             }
         )
@@ -111,7 +111,7 @@ impl<'a> Asb_py<'a> {
     pub fn binary_to_text(&self) -> io::Result<String> {
 
         let mut child = Command::new(&self.python_exe)
-            .creation_flags(self.CREATE_NO_WINDOW)
+            .creation_flags(self.create_no_window)
             .arg(&self.python_script)
             .arg("asb_binary_to_text")
             .stdin(Stdio::piped())
@@ -149,7 +149,7 @@ impl<'a> Asb_py<'a> {
 
     pub fn text_to_binary(&self, text: &str) -> io::Result<Vec<u8>> {
         let mut child = Command::new(&self.python_exe)
-            .creation_flags(self.CREATE_NO_WINDOW)
+            .creation_flags(self.create_no_window)
             .arg(&self.python_script)
             .arg("asb_text_to_binary")
             // .arg("asdf")
@@ -183,7 +183,7 @@ impl<'a> Asb_py<'a> {
         // env::set_var("PATH", self.newpath.clone());
         let output = Command::new(&self.python_exe)
             .arg(&self.python_script)
-            .creation_flags(self.CREATE_NO_WINDOW)
+            .creation_flags(self.create_no_window)
             // .arg("-V")
             .output()?;
         if output.status.success() {
