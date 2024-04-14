@@ -52,6 +52,14 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   const fullPath = path ? `${path}/${name}` : name;
   // const endian = "LE";
   const isSelected = selected === fullPath;
+
+  const handleDoubleClick = (e) => {
+    e.stopPropagation(); // Prevent the click from bubbling up to parent elements
+    console.log(`Double-clicked on directory: ${fullPath}`);
+    handleOpenInternalSarcFile();
+    // Add your custom double-click logic here
+  };
+
   const handleSelect = (e) => {
     e.stopPropagation(); // This stops the event from bubbling up further
     console.log(`Selected: ${fullPath}`);
@@ -66,7 +74,9 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
 
   const handleOpenInternalSarcFile = () => {
     closeContextMenu();
-    editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    if (isFile) {
+      editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    }
   };
   const handleRemoveInternalSarcFile = () => {
     closeContextMenu();
@@ -176,7 +186,8 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   return (
     <li onContextMenu={onContextMenu} onClick={handleSelect}>
       <div style={nodeStyle}
-        onContextMenu={handleIconContextMenu}>
+        onContextMenu={handleIconContextMenu}
+        onDoubleClick={handleDoubleClick}>
         <img
           src={isFile ? fileIcon : isCollapsed ? dirClosed : dirOpened}
           alt={name}
