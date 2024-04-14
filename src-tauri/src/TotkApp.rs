@@ -138,11 +138,11 @@ impl<'a> TotkBitsApp<'a> {
 
     pub fn remove_internal_elem(&mut self, internal_path: String) -> Option<SendData> {
         let mut data = SendData::default();
-        let mut isReload = false;
+        let mut is_reload = false;
 
         if let Some(pack) = &mut self.pack {
             if let Some(opened) = &mut pack.opened {
-                isReload = true;
+                is_reload = true;
                 if let Some(_) = opened.writer.get_file(&internal_path) {
                     //its a file
                     if MessageDialog::new()
@@ -181,7 +181,7 @@ impl<'a> TotkBitsApp<'a> {
                     data.status_text = format!("Removed {} files from {}", i, &internal_path);
                 }
             }
-            if isReload {
+            if is_reload {
                 pack.compare_and_reload();
                 data.get_sarc_paths(pack);
             }
@@ -268,10 +268,10 @@ impl<'a> TotkBitsApp<'a> {
             "trying to rename  {} to sarc path {}",
             &new_internal_path, &internal_path
         );
-        let mut isReload = false;
+        let mut is_reload = false;
         if let Some(pack) = &mut self.pack {
             if let Some(opened) = &mut pack.opened {
-                isReload = true;
+                is_reload = true;
                 //file is in sarc
                 if let Some(rawdata) = opened.writer.get_file(&internal_path) {
                     let rawdata_backup = rawdata.clone();
@@ -320,7 +320,7 @@ impl<'a> TotkBitsApp<'a> {
                     );
                 }
             }
-            if isReload {
+            if is_reload {
                 pack.compare_and_reload();
                 data.get_sarc_paths(pack);
             }
@@ -351,7 +351,7 @@ impl<'a> TotkBitsApp<'a> {
     ) -> Option<SendData> {
         let mut data = SendData::default();
         println!("trying to add  {} to sarc path {}", &path, &internal_path);
-        let mut isReload = false;
+        let mut is_reload = false;
         if let Some(pack) = &mut self.pack {
             if let Some(opened) = &mut pack.opened {
                 if let Some(_) = &opened.writer.get_file(&internal_path) {
@@ -372,7 +372,7 @@ impl<'a> TotkBitsApp<'a> {
                     }
                 }
 
-                isReload = true;
+                is_reload = true;
                 let mut f_handle = fs::File::open(&path).ok()?;
                 let mut buffer: Vec<u8> = Vec::new();
                 f_handle.read_to_end(&mut buffer).ok()?;
@@ -390,7 +390,7 @@ impl<'a> TotkBitsApp<'a> {
                 //     format!("Added {} to {}", &internal_path, &opened.path.name)
                 // };
             }
-            if isReload {
+            if is_reload {
                 pack.compare_and_reload();
                 data.get_sarc_paths(pack);
             }
@@ -463,12 +463,12 @@ impl<'a> TotkBitsApp<'a> {
                     return Some(data);
                 }
                 "SARC" => {
-                    let mut isReload = false;
+                    let mut is_reload = false;
                     if let Some(pack) = &mut self.pack {
                         if let Some(opened) = &mut pack.opened {
                             match opened.save(dest_file.clone()) {
                                 Ok(_) => {
-                                    isReload = true;
+                                    is_reload = true;
                                     println!("Saved SARC {}", &dest_file);
                                     data.tab = "SARC".to_string();
                                     data.status_text = format!("Saved SARC {}", &dest_file);
@@ -482,7 +482,7 @@ impl<'a> TotkBitsApp<'a> {
                                 }
                             }
                         }
-                        if isReload {
+                        if is_reload {
                             pack.compare_and_reload();
                             data.get_sarc_paths(pack);
                         }
@@ -519,7 +519,7 @@ impl<'a> TotkBitsApp<'a> {
 
     pub fn save_tab_yaml(&mut self, save_data: SaveData) -> Option<SendData> {
         let mut data = SendData::default();
-        let mut isReload = false;
+        let mut is_reload = false;
         let text = &save_data.text;
         if let Some(internal_file) = &self.internal_file {
             if let Some(pack) = &mut self.pack {
@@ -539,7 +539,7 @@ impl<'a> TotkBitsApp<'a> {
                         return Some(data);
                     } else {
                         opened.writer.add_file(path, rawdata);
-                        isReload = true;
+                        is_reload = true;
                         data.tab = "YAML".to_string();
                         data.status_text = format!(
                             "Saved {} for {}",
@@ -547,7 +547,7 @@ impl<'a> TotkBitsApp<'a> {
                         );
                     }
                 }
-                if isReload {
+                if is_reload {
                     pack.compare_and_reload();
                     data.get_sarc_paths(pack);
                 }
@@ -586,7 +586,7 @@ impl<'a> TotkBitsApp<'a> {
             save_data.text.len()
         );
         let mut data = SendData::default();
-        let mut isReload = false;
+        let mut is_reload = false;
         let _text = &save_data.text;
 
         match save_data.tab.as_str() {
@@ -600,7 +600,7 @@ impl<'a> TotkBitsApp<'a> {
                             opened.reload();
                             match opened.save_default() {
                                 Ok(_) => {
-                                isReload = true;
+                                is_reload = true;
                                 data.tab = "SARC".to_string();
                                 data.status_text = format!("Saved SARC {}", &opened.path.full_path);}
                                 Err(err) => {

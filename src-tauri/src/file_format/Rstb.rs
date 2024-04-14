@@ -1,4 +1,4 @@
-#![allow(non_snake_case,non_camel_case_types)]
+#![allow(non_snake_case, non_camel_case_types)]
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::sync::Arc;
@@ -16,7 +16,7 @@ pub struct Restbl<'a> {
     // buffer: Arc<Vec<u8>>, // Use Arc to share ownership
     pub reader: ResTblReader<'a>,
     pub table: ResourceSizeTable,
-    pub hash_table: Vec<String>
+    pub hash_table: Vec<String>,
 }
 
 impl<'a> Restbl<'_> {
@@ -27,20 +27,20 @@ impl<'a> Restbl<'_> {
         if !is_restbl(&buffer) {
             buffer = zstd.decompressor.decompress_zs(&buffer).ok()?;
         }
-        if !is_restbl(&buffer) { 
+        if !is_restbl(&buffer) {
             return None; //invalid rstb
         }
 
         match ResTblReader::new(buffer) {
             Ok(r) => {
                 let t = ResourceSizeTable::from_parser(&r);
-                        return Some(Restbl {
-                            path: Pathlib::new(path),
-                            zstd: zstd.clone(),
-                            reader: r,
-                            table: t,
-                            hash_table: get_rstb_data()
-                        });
+                return Some(Restbl {
+                    path: Pathlib::new(path),
+                    zstd: zstd.clone(),
+                    reader: r,
+                    table: t,
+                    hash_table: get_rstb_data(),
+                });
             }
             Err(err) => {
                 eprintln!("{:?}", err);
@@ -50,11 +50,11 @@ impl<'a> Restbl<'_> {
         None
     }
 
-pub fn save_default(&mut self) -> io::Result<()> {
+    pub fn save_default(&mut self) -> io::Result<()> {
         self.save(&self.path.full_path.clone())
     }
 
-pub fn save(&mut self, path: &str) -> io::Result<()> {
+    pub fn save(&mut self, path: &str) -> io::Result<()> {
         let mut buffer = self.table.to_binary();
         let mut f = File::create(&path)?;
         if path.to_lowercase().ends_with(".zs") {
@@ -65,7 +65,6 @@ pub fn save(&mut self, path: &str) -> io::Result<()> {
         Ok(())
     }
 
-    
     pub fn to_text(&self) -> String {
         return self.table.to_text();
     }

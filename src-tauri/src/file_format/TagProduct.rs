@@ -1,6 +1,6 @@
-#![allow(non_snake_case,non_camel_case_types)]
+#![allow(non_snake_case, non_camel_case_types)]
+use crate::file_format::BinTextFile::{bytes_to_file, BymlFile};
 use crate::Zstd::TotkZstd;
-use crate::file_format::BinTextFile::{bytes_to_file,BymlFile};
 //use byteordered::Endianness;
 //use indexmap::IndexMap;
 use bitvec::prelude::*;
@@ -12,9 +12,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::{ io, panic};
-
-
+use std::{io, panic};
 
 #[derive(Serialize, Deserialize)]
 struct TagJsonData {
@@ -87,7 +85,8 @@ impl<'a> TagProduct<'a> {
         }
 
         if path.to_ascii_lowercase().ends_with(".zs") {
-            data = self.byml
+            data = self
+                .byml
                 .zstd
                 // .compressor
                 .cpp_compressor
@@ -106,7 +105,7 @@ impl<'a> TagProduct<'a> {
         let mut path_list: Vec<Byml> = Default::default();
         let mut tag_list: Vec<Byml> = Default::default();
         let json_data: TagJsonData = serde_json::from_str(text)?;
-        let cached_tag_list = &json_data.TagList;    
+        let cached_tag_list = &json_data.TagList;
         //PathList
         for (path, _plist) in &json_data.PathList {
             if path.contains("|") {
@@ -119,7 +118,7 @@ impl<'a> TagProduct<'a> {
         //Bittable
         let mut bit_table_bits = Vec::new();
 
-        for (_actor_tag, tag_entries) in &json_data.PathList  {
+        for (_actor_tag, tag_entries) in &json_data.PathList {
             for tag in cached_tag_list {
                 let bit = if tag_entries.contains(tag) {
                     true
@@ -144,29 +143,36 @@ impl<'a> TagProduct<'a> {
                 .map(|t| roead::byml::Byml::String(t.to_string().into())),
         );
 
-        
         let mut res = byml::Byml::from_text("{}");
         if let Ok(res) = &mut res {
             if let Ok(x) = res.as_mut_map() {
                 x.insert("PathList".to_string().into(), Byml::Array(path_list));
-                x.insert("BitTable".to_string().into(), Byml::BinaryData(bit_table_bytes));
-                x.insert("RankTable".to_string().into(), Byml::String("".to_string().into()));
+                x.insert(
+                    "BitTable".to_string().into(),
+                    Byml::BinaryData(bit_table_bytes),
+                );
+                x.insert(
+                    "RankTable".to_string().into(),
+                    Byml::String("".to_string().into()),
+                );
                 x.insert("TagList".to_string().into(), Byml::Array(tag_list));
             }
             return Ok(res.to_binary(roead::Endian::Little));
         }
 
-        Err(io::Error::new(io::ErrorKind::InvalidData, "Failed to convert to binary"))
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Failed to convert to binary",
+        ))
     }
 
-    pub fn to_text(&mut self) -> String{
+    pub fn to_text(&mut self) -> String {
         let _actor_tag_data = &self.actor_tag_data;
         let json_data = TagJsonData {
             PathList: self.actor_tag_data.clone(),
             TagList: self.tag_list.clone(),
         };
         serde_json::to_string_pretty(&json_data).unwrap_or(String::from("{}"))
-        
     }
 
     pub fn parse(&mut self) -> Result<(), roead::Error> {
@@ -199,7 +205,6 @@ impl<'a> TagProduct<'a> {
                     }),
             );
 
-            
             let tag_list_count = pio["TagList"]
                 .as_array()
                 .unwrap_or(&[roead::byml::Byml::default()])
@@ -265,11 +270,7 @@ impl<'a> TagProduct<'a> {
         }
         Ok(())
     }
-
-    
-    
 }
-
 
 #[allow(dead_code)]
 pub fn sort_hashmap(h: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<String>> {

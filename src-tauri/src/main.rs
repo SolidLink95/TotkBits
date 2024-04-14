@@ -2,9 +2,11 @@
 #![windows_subsystem = "windows"]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 // #![cfg_attr(not(debug_assertions),)]
+
+#![allow(non_snake_case,non_camel_case_types)]
 use std::env;
 
-use std::sync::{Mutex};
+use std::sync::Mutex;
 
 use tauri::{Manager, State};
 // use TotkConfig::{init, TotkConfig};
@@ -23,7 +25,6 @@ use crate::TauriCommands::{
 };
 use crate::TotkApp::TotkBitsApp;
 
-// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 
 struct CommandLineArg(String);
 
@@ -83,5 +84,4 @@ fn main() {
             .set_description(format!("{:?}", err))
             .show();
     }
-    // .expect("error while running tauri application");
 }
