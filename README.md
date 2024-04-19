@@ -4,7 +4,7 @@ TotkBits is a custom TOTK file editor project, similar to [WildBits](https://git
 ## Features
 This tool includes most functionalities found in the NX Editor and introduces additional features:
 - Filtering SARC contents.
-- Highlighting <span style="color:#205F63;">added</span> and <span style="color:#826C00;">modded</span> SARC entries. ![Alt text](preview/p1.png "")
+- Highlighting <strong><span style="color:#205F63;">added</span></strong> and <strong><span style="color:#826C00;">modded</span></strong> SARC entries. ![Alt text](preview/p1.png "")
 - Searching for specific text queries within the entire SARC archive.
 - Supporting additional formats: ASB, AINB, Tag.Product, etc. ![Alt text](preview/p2.png "")
 - Drag-and-drop: simply drag the file into the window area to open it (dragging multiple files will open only the first one).
@@ -41,7 +41,7 @@ The YAML editor uses the Monaco editor from Visual Studio Code, which includes a
 
 # Contributors
 - [NiceneNerd](https://github.com/NiceneNerd): Contributions to [roead](https://github.com/NiceneNerd/roead), part of the [msbt](https://github.com/NiceneNerd/msyt) library (used only for Big Endian msbt), and the [RESTBL library](https://github.com/NiceneNerd/restbl).
-- [jordanbtucker](https://github.com/jordanbtucker): Development of the [msbt C++ library](https://github.com/EPD-Libraries/msbt) (used for Little Endian msbt).
+- [ArchLeaders](https://github.com/ArchLeaders) and [jordanbtucker](https://github.com/jordanbtucker): Development of the [msbt C++ library](https://github.com/EPD-Libraries/msbt) (used for Little Endian msbt).
 - [dt-12345](https://github.com/dt-12345): Development of [AINB](https://github.com/dt-12345/ainb.git) and [ASB](https://github.com/dt-12345/asb.git) parsers.
 - [Winpython Team](https://github.com/winpython): The latest release includes [Winpython v3.11.8](https://github.com/winpython/winpython/releases/tag/7.1.20240203final), which supports ASB and AINB parsing.
 

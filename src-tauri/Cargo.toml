@@ -1,6 +1,6 @@
 [package]
 name = "Totkbits"
-version = "0.0.3"
+version = "0.0.4"
 description = "A Tauri App"
 authors = ["Banan039/SolidLink95"]
 edition = "2021"
@@ -11,15 +11,15 @@ edition = "2021"
 tauri-build = { version = "1", features = [] }
 
 [dependencies]
-# msbt_bindings_rs = {path = "W:/coding/msbt_bindings_rs - Copy"}
 msbt_bindings_rs = {git = "https://github.com/SolidLink95/msbt_bindings_rs"}
+# msbt_bindings_rs = {path = "W:/coding/msbt_bindings_rs"}
 tauri = { version = "1", features = [ "api-all"] }
 serde = { version = "1", features = ["derive"] }
 # tauri-bundler = "1.5.1"
 msyt = { git = "https://github.com/SolidLink95/msyt-lib" }
 msbt = { git = "https://github.com/lojewalo/msbt-rs" }
 zstd = "0.13"
-roead = { version = "0.23.1", features = ["yaml", "sarc", "byml"] }
+roead = { version = "0.25.1", features = ["yaml", "sarc", "byml"] }
 serde_json = "1.0"
 #egui = { default-features = false }
 #eframe = { default-features = false }
