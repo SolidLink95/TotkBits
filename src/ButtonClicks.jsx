@@ -90,6 +90,7 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
       setStatusText(`Opened file: ${fullPath}`);
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
+      setStatusText("Unsupported file type");
     } else {
       setStatusText("Error: backend sent invalid tab type");
     }

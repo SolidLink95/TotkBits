@@ -120,7 +120,7 @@ const ButtonsDisplay = () => {
 
   useEffect(() => {//handle mouse and keyboards events
     const handleContextMenu = (event) => {
-      // event.preventDefault();//prevent browser's default context menu
+      event.preventDefault();//prevent browser's default context menu
       //commented out in order to access "Inspect" feature
     };
     const handleKeyDown = (event) => {
