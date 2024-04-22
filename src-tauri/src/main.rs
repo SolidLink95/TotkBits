@@ -1,13 +1,14 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![windows_subsystem = "windows"]
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-// #![cfg_attr(not(debug_assertions),)]
+// #![windows_subsystem = "windows"]
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(not(debug_assertions),)]
 
 #![allow(non_snake_case,non_camel_case_types)]
-use std::env;
+use std::{env, io};
 
 use std::sync::Mutex;
 
+use serde_json::json;
 use tauri::{Manager, State};
 // use TotkConfig::{init, TotkConfig};
 mod Open_and_Save;
@@ -26,36 +27,64 @@ use crate::TauriCommands::{
 use crate::TotkApp::TotkBitsApp;
 
 
-struct CommandLineArg(String);
+// struct CommandLineArg(String);
 
+// #[tauri::command]
+// fn get_command_line_arg(state: State<CommandLineArg>) -> String {
+//     state.0.clone()
+// }
 #[tauri::command]
-fn get_command_line_arg(state: State<CommandLineArg>) -> String {
-    state.0.clone()
+fn get_startup_data(state: tauri::State<serde_json::Value>) -> Result<serde_json::Value, String> {
+    Ok((*state.inner()).clone())
+}
+
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct StartupData {
+    pub argv1: String,
+    pub config: TotkConfig::TotkConfig,
+}
+
+impl StartupData {
+    fn new() -> io::Result<Self> {
+        let args: Vec<String> = env::args().collect();
+        let argv1 = args.get(1).cloned().unwrap_or_default();
+        let config = TotkConfig::TotkConfig::safe_new()?;
+        Ok(Self { argv1, config })
+    }
+    fn to_json(&self) -> io::Result<serde_json::Value> {
+        Ok(json!({
+            "argv1": self.argv1,
+            "fontSize": self.config.fontSize,
+        
+        }))
+}
 }
 
 
 
-fn main() {
-    if let Err(_err) = TotkConfig::TotkConfig::safe_new() {
-        return
-    }
-
+fn main() -> io::Result<()> {
+    // if let Err(_) = TotkConfig::TotkConfig::safe_new() {
+    //     return Ok(())
+    // }
+    let startup_data = StartupData::new()?.to_json()?;
+    println!("{:?}", startup_data);
     let app = Mutex::<TotkBitsApp>::default();
     if let Err(err) = tauri::Builder::default()
-        .setup(|app1| {
+        .setup(|app_setup| {
             // Access command-line arguments
-            let args: Vec<String> = env::args().collect();
-            if args.len() > 1 {
-                app1.manage(CommandLineArg(args[1].clone()));
-            } else {
-                app1.manage(CommandLineArg("".to_string()));
-            }
-
+            // let args: Vec<String> = env::args().collect();
+            // if args.len() > 1 {
+            //     app1.manage(CommandLineArg(args[1].clone()));
+            // } else {
+            //     app1.manage(CommandLineArg("".to_string()));
+            // }
+            app_setup.manage(startup_data);
             Ok(())
         })
         .manage(app)
         .invoke_handler(tauri::generate_handler![
-            get_command_line_arg,
+            get_startup_data,
             
             open_file_struct,
             open_file_from_path,
@@ -84,4 +113,5 @@ fn main() {
             .set_description(format!("{:?}", err))
             .show();
     }
+    Ok(())
 }

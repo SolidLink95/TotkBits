@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/tauri';
 import { debounce } from "lodash"; // or any other method/utility to debounce
 import * as monaco from "monaco-editor";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ActiveTabDisplay from "./ActiveTab";
 import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
 import "./App.css";
@@ -57,15 +57,28 @@ function App() {
         }, 700);
       }
     };
-    const listener = listen('tauri://file-drop', handleFileDrop);
+    let unlisten = null; // Declare unlisten outside to ensure scope availability
+
+    const setupListener = async () => {
+      try {
+        const listener = await listen('tauri://file-drop', handleFileDrop);
+        unlisten = listener.unlisten; // Correctly assign the unlisten method
+      } catch (error) {
+        console.error('Failed to set up listener:', error);
+      }
+    };
+
+    setupListener();
 
     // Cleanup function to remove the event listener
     return () => {
-      listener.then(({ unlisten }) => unlisten());
+      if (unlisten) { // Check if unlisten is a function
+        unlisten().catch(error => console.error('Error unlistening:', error));
+      }
     };
   }, []
   );
-  
+
 
 
   const handleNodeSelect = (path, isfile) => {
@@ -76,25 +89,32 @@ function App() {
 
 
   useEffect(() => {
+    let startupData = { argv1: '', fontSize: 14 };
     // Initialize the Monaco editor only once
     if (!editorRef.current && editorContainerRef.current) {
       console.log("Initializing Monaco editor");
+      console.log(startupData);
       editorRef.current = monaco.editor.create(editorContainerRef.current, {
         value: editorValue,
         language: lang,
         theme: "vs-dark",
         minimap: { enabled: false },
         wordWrap: 'on', // Enable word wrapping
+        fontSize: startupData.fontSize,
       });
-      console.log("Checking argv[1]");
       try {
-        invoke('get_command_line_arg')
-          .then((arg) => {
+        invoke('get_startup_data')
+          .then((data) => {
+            const arg = data["argv1"] || "";
+            const fontSize = data["fontSize"] || 14;
+            editorRef.current.updateOptions({ fontSize: fontSize });
+            console.log("Startup data:", data, arg, fontSize );
+            startupData = { argv1: arg, fontSize: fontSize };
+            console.log("Startup data set:", startupData);
+            
             if (arg && arg !== "" && arg !== null && arg !== undefined) {
               console.log('Received command-line argument:', arg);
               OpenFileFromPath(arg, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
-
-              // Perform actions based on the argument
             } else {
               console.log('No command-line argument provided.');
             }

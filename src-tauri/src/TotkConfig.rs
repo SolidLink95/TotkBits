@@ -7,15 +7,17 @@ use std::path::PathBuf;
 use std::str::FromStr;
 //use roead::byml::HashMap;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::file_format::Pack::PackFile;
 use crate::Settings::makedirs;
 use crate::Settings::read_string_from_file;
 use crate::Settings::write_string_to_file;
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct TotkConfig {
     pub romfs: String,
+    pub fontSize: i32,
     #[serde(skip)]
     pub config_path: String,
 }
@@ -24,6 +26,7 @@ impl Default for TotkConfig {
     fn default() -> Self {
         Self {
             romfs: String::new(),
+            fontSize: 14,
             config_path: String::new(),
         }
     }
@@ -37,34 +40,47 @@ impl TotkConfig {
                 rfd::MessageDialog::new()
                     .set_buttons(rfd::MessageButtons::Ok)
                     .set_title("Error")
-                    .set_description(&format!("{:?}", err))
+                    .set_description(&format!("{}", err))
                     .show();
                 Err(err)
             }
         }
     }
 
+    pub fn to_json(&self) -> io::Result<serde_json::Value> {
+        Ok(
+            json!({
+                "romfs": self.romfs,
+                "fontSize": self.fontSize,
+            })
+        )
+    }
+
     pub fn new() -> io::Result<TotkConfig> {
         let mut conf = Self::default();
         conf.get_config_path()?;        
         let mut err_str = String::new();
+
+        if let Err(err) = conf.update_default() {
+            let e = format!("{:#?}\n", err);
+            println!("{}", &e);
+            err_str.push_str(&e);
+        }
+        if !conf.romfs.is_empty() {
+            conf.save().map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("Unable to save config to:\n{}\n{:?}", &conf.config_path, e)))?;
+            return Ok(conf)
+        }
         
         if let Err(err) = conf.update_from_NX() {
-            err_str.push_str(&format!("{:?}\n", err));
+            err_str.push_str(&format!("{:#?}\n", err));
         }
         if !conf.romfs.is_empty() {
             conf.save().map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("Unable to save config to:\n{}\n{:?}", &conf.config_path, e)))?;
             return Ok(conf)
         }
-        if let Err(err) = conf.update_default() {
-            err_str.push_str(&format!("{:?}\n", err));
-        }
-        if !conf.romfs.is_empty() {
-            conf.save().map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("Unable to save config to:\n{}\n{:?}", &conf.config_path, e)))?;
-            return Ok(conf)
-        }
+        
         if let Err(err) = conf.update_from_input() {
-            err_str.push_str(&format!("{:?}\n", err));
+            err_str.push_str(&format!("{:#?}\n", err));
         }
         if !conf.romfs.is_empty() {
             conf.save().map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("Unable to save config to:\n{}\n{:?}", &conf.config_path, e)))?;
@@ -113,13 +129,15 @@ impl TotkConfig {
     pub fn update_default(&mut self) -> io::Result<()> {
         let conf_str = read_string_from_file(&self.config_path)?;
         println!("conf_str {:?}", &conf_str);
-        let conf: HashMap<String, String> = serde_json::from_str(&conf_str)?;
-        if let Some(romfs) = conf.get("romfs") {
-            if Self::check_for_zsdic(romfs) {
-                self.romfs = romfs.to_string().replace("\\", "/");
-                return Ok(());
-            }
+        let conf: HashMap<String, serde_json::Value> = serde_json::from_str(&conf_str)?;
+        self.fontSize = conf.get("fontSize").unwrap_or(&14.into()).as_i64().unwrap_or(14) as i32;
+        let binding = "".into();
+        let romfs = conf.get("romfs").unwrap_or(&binding).as_str().unwrap_or("");
+        if Self::check_for_zsdic(romfs) {
+            self.romfs = romfs.to_string().replace("\\", "/");
+            return Ok(());
         }
+        
         return Err(io::Error::new(io::ErrorKind::NotFound, "Unable to parse default config"));
     }
 
@@ -128,17 +146,20 @@ impl TotkConfig {
         let mut nx_conf = PathBuf::from(&appdata);
         nx_conf.push("Totk/config.json");
         let nx_conf_str = read_string_from_file(&nx_conf.to_string_lossy().to_string())?;
-        let nx_conf: HashMap<String, String> = serde_json::from_str(&nx_conf_str)?;
-        if let Some(romfs) = nx_conf.get("GamePath") {
-            if Self::check_for_zsdic(romfs) {
-                self.romfs = romfs.to_string().replace("\\", "/");
-                return Ok(());
-            }
+        let nx_conf: HashMap<String, serde_json::Value> = serde_json::from_str(&nx_conf_str)?;
+        let binding = "".into();
+        let romfs = nx_conf.get("GamePath").unwrap_or(&binding).as_str().unwrap_or("");
+        if Self::check_for_zsdic(romfs) {
+            self.romfs = romfs.to_string().replace("\\", "/");
+            return Ok(());
         }
         return Err(io::Error::new(io::ErrorKind::NotFound, "Unable to parse nx editor config"));
     }
 
     pub fn check_for_zsdic(romfs: &str) -> bool {
+        if romfs.is_empty() {
+            return false;
+        }
         let mut zsdic = PathBuf::from(romfs);
         zsdic.push("Pack/ZsDic.pack.zs");
         zsdic.exists()
