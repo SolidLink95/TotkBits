@@ -2,8 +2,7 @@
 // #![windows_subsystem = "windows"]
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![cfg_attr(not(debug_assertions),)]
-
-#![allow(non_snake_case,non_camel_case_types)]
+#![allow(non_snake_case, non_camel_case_types)]
 use std::{env, io};
 
 use std::sync::Mutex;
@@ -22,10 +21,9 @@ use crate::TauriCommands::{
     add_click, add_to_dir_click, clear_search_in_sarc, close_all_opened_files, edit_internal_file,
     exit_app, extract_internal_file, open_file_dialog, open_file_from_path, open_file_struct,
     remove_internal_sarc_file, rename_internal_sarc_file, rstb_edit_entry, rstb_get_entries,
-    rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,
+    rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,edit_config,
 };
 use crate::TotkApp::TotkBitsApp;
-
 
 // struct CommandLineArg(String);
 
@@ -37,7 +35,6 @@ use crate::TotkApp::TotkBitsApp;
 fn get_startup_data(state: tauri::State<serde_json::Value>) -> Result<serde_json::Value, String> {
     Ok((*state.inner()).clone())
 }
-
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct StartupData {
@@ -56,36 +53,24 @@ impl StartupData {
         Ok(json!({
             "argv1": self.argv1,
             "fontSize": self.config.fontSize,
-        
+
         }))
+    }
 }
-}
-
-
 
 fn main() -> io::Result<()> {
-    // if let Err(_) = TotkConfig::TotkConfig::safe_new() {
-    //     return Ok(())
-    // }
     let startup_data = StartupData::new()?.to_json()?;
     println!("{:?}", startup_data);
     let app = Mutex::<TotkBitsApp>::default();
     if let Err(err) = tauri::Builder::default()
         .setup(|app_setup| {
-            // Access command-line arguments
-            // let args: Vec<String> = env::args().collect();
-            // if args.len() > 1 {
-            //     app1.manage(CommandLineArg(args[1].clone()));
-            // } else {
-            //     app1.manage(CommandLineArg("".to_string()));
-            // }
             app_setup.manage(startup_data);
             Ok(())
         })
         .manage(app)
         .invoke_handler(tauri::generate_handler![
+            edit_config,
             get_startup_data,
-            
             open_file_struct,
             open_file_from_path,
             edit_internal_file,

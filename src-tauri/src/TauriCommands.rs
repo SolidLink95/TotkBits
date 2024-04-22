@@ -1,8 +1,34 @@
 //tauri commands
-use std::{process, sync::Mutex};
+use std::{env, io, process::{self, Command}, sync::Mutex};
 use rfd::MessageDialog;
-use tauri::{Manager};
+use tauri::Manager;
 use crate::{Open_and_Save::SendData, TotkApp::{SaveData, TotkBitsApp}};
+
+#[tauri::command]
+pub fn edit_config(app_handle: tauri::AppHandle) -> Option<()>{
+    // Your code here
+
+        let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+        let app = binding.lock().expect("Failed to lock state");
+        let file_path = app.zstd.clone().totk_config.config_path.clone();
+        let os_type = env::consts::OS;
+
+        let result = match os_type {
+            "windows" => Command::new("cmd").args(["/C", "start", "", &file_path]).status(),
+            "macos" => Command::new("open").arg(file_path).status(),
+            "linux" => Command::new("xdg-open").arg(file_path).status(),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::Other, "Unsupported OS")),
+        };
+
+        let _ = result.map(|exit_status| {
+            if exit_status.success() {
+                return Some(());
+            } else {
+                return None;
+            }
+        });
+        None
+}
 
 
 #[tauri::command]
