@@ -16,7 +16,7 @@ import { SearchTextInSarcPrompt } from './SearchTextInSarc';
 import { useEditorContext } from './StateManager';
 
 
-
+const defaultFontSize = 14;
 let triggered = false
 
 function App() {
@@ -89,7 +89,7 @@ function App() {
 
 
   useEffect(() => {
-    let startupData = { argv1: '', fontSize: 14 };
+    let startupData = { argv1: '', fontSize: defaultFontSize };
     // Initialize the Monaco editor only once
     if (!editorRef.current && editorContainerRef.current) {
       console.log("Initializing Monaco editor");
@@ -106,7 +106,7 @@ function App() {
         invoke('get_startup_data')
           .then((data) => {
             const arg = data["argv1"] || "";
-            const fontSize = data["fontSize"] || 14;
+            const fontSize = data["fontSize"] || defaultFontSize;
             editorRef.current.updateOptions({ fontSize: fontSize });
             console.log("Startup data:", data, arg, fontSize );
             startupData = { argv1: arg, fontSize: fontSize };

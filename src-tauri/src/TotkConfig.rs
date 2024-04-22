@@ -46,7 +46,7 @@ impl TotkConfig {
             }
         }
     }
-
+    #[allow(dead_code)]
     pub fn to_json(&self) -> io::Result<serde_json::Value> {
         Ok(
             json!({

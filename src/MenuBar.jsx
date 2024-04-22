@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { clearSearchInSarcClick, closeAllFilesClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
+import { clearSearchInSarcClick, restartApp, closeAllFilesClick,editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
 
 import { useEditorContext } from './StateManager';
 
@@ -123,6 +123,18 @@ function MenuBarDisplay() {
     closeAllFilesClick(setStatusText, setpaths, updateEditorContent, setLabelTextDisplay);
   }
 
+  const editConfigFile = (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    editConfigFileClick(setStatusText);
+  }
+
+  const restartAppClick = (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    restartApp(setStatusText);
+  }
+
   const handleClearSearchTextInSarc = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
@@ -173,6 +185,8 @@ function MenuBarDisplay() {
           <a href="#" onClick={handleSaveClick}>Save</a>
           <a href="#" onClick={handleSaveAsClick}>Save as</a>
           <a href="#" onClick={handleCloseAllFilesClick}>Close all</a>
+          <a href="#" onClick={editConfigFile}>Edit config</a>
+          <a href="#" onClick={restartAppClick}>Restart</a>
           <a href="#" onClick={useExitApp}>Exit</a >
         </div>
       </div>

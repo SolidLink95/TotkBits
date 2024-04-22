@@ -177,6 +177,26 @@ export async function closeAllFilesClick(setStatusText, setpaths, updateEditorCo
 
 }
 
+export async function editConfigFileClick(setStatusText) {
+  try {
+    const content = await invoke('edit_config');
+    setStatusText("Config file opened. Restart program for changes to take effect.")
+  } catch (error) {
+    console.error('Failed to edit_config: ', error);
+  }
+
+}
+
+export async function restartApp(setStatusText) {
+  try {
+    const content = await invoke('restart_app');
+    setStatusText("App restart aborted.")
+  } catch (error) {
+    console.error('Failed to edit_config: ', error);
+  }
+
+}
+
 export async function removeInternalFileClick(internalPath, setStatusText, setpaths) {
   try {
     const content = await invoke('remove_internal_sarc_file', { internalPath: internalPath });

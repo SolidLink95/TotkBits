@@ -1,14 +1,13 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-// #![windows_subsystem = "windows"]
-// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-#![cfg_attr(not(debug_assertions),)]
+#![windows_subsystem = "windows"]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case, non_camel_case_types)]
 use std::{env, io};
 
 use std::sync::Mutex;
 
 use serde_json::json;
-use tauri::{Manager, State};
+use tauri::Manager;
 // use TotkConfig::{init, TotkConfig};
 mod Open_and_Save;
 mod Settings;
@@ -21,16 +20,10 @@ use crate::TauriCommands::{
     add_click, add_to_dir_click, clear_search_in_sarc, close_all_opened_files, edit_internal_file,
     exit_app, extract_internal_file, open_file_dialog, open_file_from_path, open_file_struct,
     remove_internal_sarc_file, rename_internal_sarc_file, rstb_edit_entry, rstb_get_entries,
-    rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,edit_config,
+    rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,edit_config, restart_app
 };
 use crate::TotkApp::TotkBitsApp;
 
-// struct CommandLineArg(String);
-
-// #[tauri::command]
-// fn get_command_line_arg(state: State<CommandLineArg>) -> String {
-//     state.0.clone()
-// }
 #[tauri::command]
 fn get_startup_data(state: tauri::State<serde_json::Value>) -> Result<serde_json::Value, String> {
     Ok((*state.inner()).clone())
@@ -69,6 +62,7 @@ fn main() -> io::Result<()> {
         })
         .manage(app)
         .invoke_handler(tauri::generate_handler![
+            restart_app,
             edit_config,
             get_startup_data,
             open_file_struct,
