@@ -52,6 +52,7 @@ impl StartupData {
 }
 
 fn main() -> io::Result<()> {
+    #[allow(unused_variables)]
     let startup_data = StartupData::new()?.to_json()?;
     println!("{:?}", startup_data);
     let app = Mutex::<TotkBitsApp>::default();
