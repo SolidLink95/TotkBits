@@ -18,12 +18,12 @@ use std::{
     sync::Arc,
 };
 
-pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer, SendData)> {
+pub fn open_sarc<P: AsRef<Path>>(file_name: P, zstd: Arc<TotkZstd>) -> Option<(PackComparer, SendData)> {
     let mut data = SendData::default();
-    println!("Is {} a sarc?", &file_name);
-    let sarc = PackFile::new(file_name.clone(), zstd.clone());
+    println!("Is {:?} a sarc?", &file_name.as_ref().to_string_lossy());
+    let sarc = PackFile::new(file_name.as_ref().to_string_lossy().into_owned(), zstd.clone());
     if sarc.is_ok() {
-        println!("{} is a sarc", &file_name);
+        println!("{:?} is a sarc", &file_name.as_ref().to_string_lossy());
         let s = sarc.as_ref().unwrap();
         let endian = s.endian.clone();
         let pack = PackComparer::from_pack(sarc.unwrap(), zstd.clone());
@@ -31,9 +31,9 @@ pub fn open_sarc(file_name: String, zstd: Arc<TotkZstd>) -> Option<(PackComparer
             return None;
         }
         data.get_sarc_paths(pack.as_ref().unwrap());
-        data.status_text = format!("Opened {}", &file_name);
+        data.status_text = format!("Opened {}", &file_name.as_ref().to_string_lossy());
         //internal_file = None;
-        data.path = Pathlib::new(file_name.clone());
+        data.path = Pathlib::new(file_name.as_ref().to_string_lossy().into_owned());
         // data.text = "SARC".to_string();
         data.tab = "SARC".to_string();
         data.get_file_label(TotkFileType::Sarc, Some(endian));
@@ -329,6 +329,7 @@ pub fn get_string_from_data(
     None
 }
 
+#[allow(dead_code)]
 fn write_data_to_file<P: AsRef<Path>>(path: P, data: Vec<u8>) -> io::Result<()> {
     let path = path.as_ref();
 
@@ -346,6 +347,7 @@ fn write_data_to_file<P: AsRef<Path>>(path: P, data: Vec<u8>) -> io::Result<()> 
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn save_file_dialog(file_name: Option<String>) -> String {
     let name = file_name.unwrap_or("".to_string());
     let file = FileDialog::new().set_file_name(name).save_file();

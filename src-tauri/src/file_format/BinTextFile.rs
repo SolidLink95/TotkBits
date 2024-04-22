@@ -38,6 +38,7 @@ pub struct BymlFile<'a> {
     pub file_type: TotkFileType,
 }
 
+#[allow(dead_code,unused_variables,unused_assignments)]
 impl<'a> BymlFile<'_> {
     pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> Option<BymlFile<'a>> {
         fn inner_func(path: String, zstd: Arc<TotkZstd>) -> io::Result<BymlFile> {
@@ -272,6 +273,7 @@ impl Default for OpenedFile<'_> {
     }
 }
 
+#[allow(dead_code,unused_variables)]
 impl<'a> OpenedFile<'_> {
     pub fn new(
         path: String,
@@ -373,6 +375,7 @@ impl<'a> OpenedFile<'_> {
     }
 }
 
+#[allow(dead_code)]
 fn print_type_of<T>(_: &T) {
     println!("{}", type_name::<T>());
 }
@@ -390,6 +393,7 @@ pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn read_string_from_file(path: &str) -> io::Result<String> {
     let mut file = fs::File::open(path)?;
     let mut contents = String::new();

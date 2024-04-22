@@ -65,7 +65,4 @@ impl<'a> Restbl<'_> {
         Ok(())
     }
 
-    pub fn to_text(&self) -> String {
-        return self.table.to_text();
-    }
 }

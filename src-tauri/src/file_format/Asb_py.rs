@@ -16,6 +16,7 @@ pub struct Asb_py<'a>  {
     pub data: Vec<u8>,
 }
 
+#[allow(dead_code,unused_variables)]
 impl<'a> Asb_py<'a> {
     pub fn new(zstd: Arc<TotkZstd<'a>>) -> Asb_py<'a> {
         Self {
@@ -34,12 +35,11 @@ impl<'a> Asb_py<'a> {
 
     }
     pub fn from_binary( data: &Vec<u8>,zstd: Arc<TotkZstd<'a>>) -> io::Result<Asb_py<'a>> {
-        let mut new_data: Vec<u8> = Vec::new();
-        if !is_asb(&data) {
-            new_data = zstd.decompressor.decompress_zs(&data)?;
+        let new_data = if !is_asb(data) {
+            zstd.decompressor.decompress_zs(data)?
         } else {
-            new_data = data.to_vec();
-        }
+            data.to_vec()
+        };
         if !is_asb(&new_data) {
             return Err(io::Error::new(
                 io::ErrorKind::Other,

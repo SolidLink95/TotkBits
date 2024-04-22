@@ -12,6 +12,7 @@ pub struct MsbtFile {
     //pub data: Vec<u8>,
 }
 
+#[allow(dead_code)]
 impl MsbtFile {
     pub fn from_filepath(path: &str) -> Option<Self> {
         let mut f_handle = fs::File::open(path).ok()?;

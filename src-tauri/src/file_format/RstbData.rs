@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use base64::decode;
 use flate2::read::ZlibDecoder;
 use std::io::Read;

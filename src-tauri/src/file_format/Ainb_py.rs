@@ -24,6 +24,8 @@ impl Default for Ainb_py {
         }
     }
 }
+
+#[allow(dead_code)]
 impl Ainb_py {
     pub fn new() -> Self {
         Self::default()

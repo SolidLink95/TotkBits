@@ -144,6 +144,7 @@ impl TotkConfig {
         zsdic.exists()
     }
 
+    #[allow(dead_code)]
     pub fn get_pack_path_from_sarc(&self, pack: PackFile) -> Option<PathBuf> {
         self.get_pack_path(&pack.path.name)
     }
@@ -163,6 +164,7 @@ impl TotkConfig {
         self.get_path(&format!("Pack/Actor/{}.pack.zs", name))
     }
 
+    #[allow(dead_code)]
     pub fn get_mals_path(&self, name: &str) -> Option<PathBuf> {
         self.get_path(&format!("Mals/{}", name))
     }
@@ -257,6 +259,7 @@ impl TotkConfigOld {
         ));
     }
 
+    #[allow(dead_code)]
     pub fn clone(&self) -> TotkConfigOld {
         TotkConfigOld {
             romfs: self.romfs.clone(),
@@ -266,6 +269,7 @@ impl TotkConfigOld {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_pack_path_from_sarc(&self, pack: PackFile) -> Option<PathBuf> {
         self.get_pack_path(&pack.path.name)
     }

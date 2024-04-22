@@ -12,6 +12,7 @@ pub struct Esetb<'a> {
 }
 
 
+#[allow(dead_code)]
 impl<'a> Esetb<'a> {
     pub fn from_binary(data: &Vec<u8>, zstd: Arc<TotkZstd<'a>>) -> io::Result<Esetb<'a>> {
         let file_data = FileData {file_type: TotkFileType::Esetb, data: data.to_vec()};

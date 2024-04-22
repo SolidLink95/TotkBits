@@ -46,6 +46,8 @@ pub struct ZstdCppCompressor {
 }
 
 impl ZstdCppCompressor {
+    
+    #[allow(dead_code)]
     pub fn from_totk_zstd(zstd: Arc<TotkZstd>) -> ZstdCppCompressor {
         Self::from_zsdic(
             zstd.clone().zsdic.clone(),
@@ -228,6 +230,7 @@ impl ZsDic {
     }
 }
 
+#[allow(dead_code)]
 pub struct ZstdDecompressor<'a> {
     totk_config: Arc<TotkConfig>,
     pub packzs: Arc<DecoderDictionary<'a>>, //Vec<u8>,
@@ -279,11 +282,13 @@ impl<'a> ZstdDecompressor<'_> {
         ZstdDecompressor::decompress(&self, &data, &self.bcett)
     }
 
+    #[allow(dead_code)]
     pub fn decompress_empty(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
         ZstdDecompressor::decompress(&self, &data, &self.empty)
     }
 }
 
+#[allow(dead_code)]
 pub struct ZstdCompressor<'a> {
     totk_config: Arc<TotkConfig>,
     pub packzs: Arc<EncoderDictionary<'a>>, //Vec<u8>,
@@ -297,6 +302,7 @@ pub struct ZstdCompressor<'a> {
     pub comp_level: i32,
 }
 
+#[allow(dead_code)]
 impl<'a> ZstdCompressor<'_> {
     pub fn new(
         totk_config: Arc<TotkConfig>,

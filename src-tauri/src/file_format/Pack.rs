@@ -27,6 +27,7 @@ pub struct PackComparer<'a> {
     pub global_sarc_data: HashMap<String, String>,
 }
 
+#[allow(dead_code)]
 impl<'a> PackComparer<'a> {
     pub fn from_pack(pack: PackFile<'a>, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         let config = zstd.clone().totk_config.clone();
@@ -196,17 +197,11 @@ pub struct PackFile<'a> {
     pub is_yaz0: bool,
 }
 
+#[allow(dead_code)]
 impl<'a> PackFile<'_> {
     pub fn default(zstd: Arc<TotkZstd<'a>>) -> io::Result<PackFile<'a>> {
-        let arr: Vec<u8> = vec![
-            0x53, 0x41, 0x52, 0x43, 0x14, 0x00, 0xFF, 0xFE, 
-            0x28, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 
-            0x00, 0x01, 0x00, 0x00, 0x53, 0x46, 0x41, 0x54, 
-            0x0C, 0x00, 0x00, 0x00, 0x65, 0x00, 0x00, 0x00, 
-            0x53, 0x46, 0x4E, 0x54, 0x08, 0x00, 0x00, 0x00,
-        ];
-        let sarc = Sarc::new(arr).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-        let writer = SarcWriter::from_sarc(&sarc);
+        let mut writer = SarcWriter::new(roead::Endian::Little);
+        let sarc = Sarc::new(writer.to_binary().clone()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         Ok(PackFile {
             path: Pathlib::default(),
             totk_config: zstd.totk_config.clone(),

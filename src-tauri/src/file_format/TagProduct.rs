@@ -73,16 +73,7 @@ impl<'a> TagProduct<'a> {
     #[allow(dead_code)]
     pub fn save(&mut self, path: String, text: &str) -> io::Result<()> {
         //let mut f_handle = OpenOptions::new().write(true).open(&path)?;
-        let mut data: Vec<u8> = Vec::new();
-        match Self::to_binary(text) {
-            Ok(rawdata) => data = rawdata,
-            Err(_err) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Bytes from tag invalid",
-                ));
-            }
-        }
+        let mut data: Vec<u8> = Self::to_binary(text).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
         if path.to_ascii_lowercase().ends_with(".zs") {
             data = self

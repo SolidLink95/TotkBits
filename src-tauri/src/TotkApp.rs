@@ -16,12 +16,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::Arc;
 
-#[derive(PartialEq, Clone, Copy)]
-pub enum ActiveTab {
-    DiretoryTree,
-    TextBox,
-    Settings,
-}
+
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SaveData {
@@ -579,6 +574,7 @@ impl<'a> TotkBitsApp<'a> {
         Some(data)
     }
 
+    // #[allow(unused_variables)]
     pub fn save(&mut self, save_data: SaveData) -> Option<SendData> {
         println!(
             "About to save {} text len {}",
@@ -586,7 +582,7 @@ impl<'a> TotkBitsApp<'a> {
             save_data.text.len()
         );
         let mut data = SendData::default();
-        let mut is_reload = false;
+        // let mut is_reload = false;
         let _text = &save_data.text;
 
         match save_data.tab.as_str() {
@@ -600,7 +596,7 @@ impl<'a> TotkBitsApp<'a> {
                             opened.reload();
                             match opened.save_default() {
                                 Ok(_) => {
-                                is_reload = true;
+                                // is_reload = true;
                                 data.tab = "SARC".to_string();
                                 data.status_text = format!("Saved SARC {}", &opened.path.full_path);}
                                 Err(err) => {
@@ -727,7 +723,7 @@ impl<'a> TotkBitsApp<'a> {
         let mut data = SendData::default();
         //let file_name = file.to_string_lossy().to_string().replace("\\", "/");
         if check_if_filepath_valid(&file_name) {
-            if let Some((pack, data)) = open_sarc(file_name.clone(), self.zstd.clone()) {
+            if let Some((pack, data)) = open_sarc(&file_name, self.zstd.clone()) {
                 self.pack = Some(pack);
                 self.internal_file = None;
                 return Some(data);
@@ -795,6 +791,7 @@ impl Default for InternalFile<'_> {
 }
 
 impl InternalFile<'_> {
+    #[allow(dead_code)]
     pub fn new(path: String) -> Self {
         let path = Pathlib::new(path);
         Self {

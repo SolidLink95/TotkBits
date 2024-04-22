@@ -17,7 +17,6 @@ dependencies = [
  "msyt",
  "native-dialog",
  "natord",
- "rayon",
  "restbl",
  "rfd 0.14.1",
  "roead",

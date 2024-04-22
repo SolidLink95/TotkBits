@@ -84,11 +84,11 @@ impl Pathlib {
             .map(|s| s.to_string())
             .unwrap_or("".to_string())
     }
-    pub fn path_to_string(path: &Path) -> String {
-        path.to_str()
-            .map(|s| s.to_string())
-            .unwrap_or("".to_string())
-    }
+    // pub fn path_to_string(path: &Path) -> String {
+    //     path.to_str()
+    //         .map(|s| s.to_string())
+    //         .unwrap_or("".to_string())
+    // }
 }
 
 pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
