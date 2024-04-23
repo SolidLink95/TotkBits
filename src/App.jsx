@@ -14,9 +14,9 @@ import MenuBarDisplay from "./MenuBar";
 import RstbTree from "./RstbTree";
 import { SearchTextInSarcPrompt } from './SearchTextInSarc';
 import { useEditorContext } from './StateManager';
+import InitializeEditor from './MonacoEditor';
 
 
-const defaultFontSize = 14;
 let triggered = false
 
 function App() {
@@ -89,40 +89,19 @@ function App() {
 
 
   useEffect(() => {
-    let startupData = { argv1: '', fontSize: defaultFontSize };
     // Initialize the Monaco editor only once
     if (!editorRef.current && editorContainerRef.current) {
-      console.log("Initializing Monaco editor");
-      console.log(startupData);
-      editorRef.current = monaco.editor.create(editorContainerRef.current, {
-        value: editorValue,
-        language: lang,
-        theme: "vs-dark",
-        minimap: { enabled: false },
-        wordWrap: 'on', // Enable word wrapping
-        fontSize: startupData.fontSize,
+      InitializeEditor({
+        editorRef,
+        editorContainerRef,
+        editorValue,
+        lang,
+        setStatusText,
+        setActiveTab,
+        setLabelTextDisplay,
+        setpaths,
+        updateEditorContent,
       });
-      try {
-        invoke('get_startup_data')
-          .then((data) => {
-            const arg = data["argv1"] || "";
-            const fontSize = data["fontSize"] || defaultFontSize;
-            editorRef.current.updateOptions({ fontSize: fontSize });
-            console.log("Startup data:", data, arg, fontSize );
-            startupData = { argv1: arg, fontSize: fontSize };
-            console.log("Startup data set:", startupData);
-            
-            if (arg && arg !== "" && arg !== null && arg !== undefined) {
-              console.log('Received command-line argument:', arg);
-              OpenFileFromPath(arg, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
-            } else {
-              console.log('No command-line argument provided.');
-            }
-          })
-          .catch((error) => console.error('Error fetching command-line argument:', error));
-      } catch (error) {
-        console.error('Failed to fetch command-line argument:', error);
-      }
     }
 
     // Function to update editor size, call it when needed

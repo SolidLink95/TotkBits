@@ -104,9 +104,11 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
 }
 export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
+    setStatusText("Opening file...");
     const content = await invoke('open_file_from_path', { path: argv1 });
     if (content === null) {
       console.log("No content returned from process_argv");
+      setStatusText("Error: unable to open file: " + argv1);
       return;
     }
     setStatusText(content.status_text);
@@ -128,6 +130,7 @@ export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLa
 
   } catch (error) {
     console.error('Failed to process argv[1]:', error);
+    setStatusText("Error: failed to open file: " + argv1);
   }
 }
 export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
