@@ -75,7 +75,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   const handleExtractInternalSarcFile = () => {
     closeContextMenu();
     if (isFile) {
-      extractFileClick({path: fullPath}, setStatusText);
+      extractFileClick({ path: fullPath }, setStatusText);
     }
   };
 
@@ -126,13 +126,25 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
-    backgroundColor: isSelected && isFile
-      ? 'darkgray' // Darker background for selected nodeComponent/AnimationParamComponent/AnimationParam/Upper_Common.engine__component__AnimationParam.bgyml
-      : sarcPaths.added_paths.includes(fullPath)
-        ? '#205F63'
-        : sarcPaths.modded_paths.includes(fullPath)
-          ? '#826C00'
-          : 'transparent'
+    color: isSelected && isFile ? 'black' : 'white',
+    // backgroundColor: isSelected && isFile
+    //   ? 'darkgray' // Darker background for selected nodeComponent/AnimationParamComponent/AnimationParam/Upper_Common.engine__component__AnimationParam.bgyml
+    //   : sarcPaths.added_paths.includes(fullPath)
+    //     ? '#205F63'
+    //     : sarcPaths.modded_paths.includes(fullPath)
+    //       ? '#826C00'
+    //       : 'transparent'
+    backgroundColor: isFile ?
+      isSelected ?
+        sarcPaths.added_paths.includes(fullPath) ? '#2D8589' :
+          sarcPaths.modded_paths.includes(fullPath) ? '#B78F00' :
+            '#303030' :
+        sarcPaths.added_paths.includes(fullPath) ? '#1E595B' :
+          sarcPaths.modded_paths.includes(fullPath) ? '#826C00' :
+            'transparent' :
+      'transparent'
+
+
   };
 
   const toggleCollapse = () => {
@@ -151,7 +163,8 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     e.preventDefault();
     let offsetX = window.scrollX || document.documentElement.scrollLeft;
     let offsetY = window.scrollY || document.documentElement.scrollTop;
-
+    offsetX = offsetX - 5;
+    offsetY = offsetY - 5;
     // If the tree container itself has a scroll, add this offset too
     // You need to replace '.tree-container' with the actual selector of your container
     const treeContainer = document.querySelector('.directory-tree');
@@ -174,7 +187,6 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   };
 
   const contextMenuActions = isFile ? [
-    // { label: 'Edit', method: () => console.log(`Edit clicked on ${fullPath}`) },
     { label: 'Edit', method: handleOpenInternalSarcFile },
     { label: 'Extract', method: handleExtractInternalSarcFile },
     // { label: 'Replace', method: () => console.log(`Replace clicked on ${fullPath}`) },

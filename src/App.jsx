@@ -15,17 +15,13 @@ import RstbTree from "./RstbTree";
 import { SearchTextInSarcPrompt } from './SearchTextInSarc';
 import { useEditorContext } from './StateManager';
 import InitializeEditor from './MonacoEditor';
+import { useFileDropHandler } from './FileDropHandler';
 
 
 let triggered = false
 
 function App() {
 
-  const BackendEnum = {
-    SARC: 'SARC',
-    YAML: 'YAML',
-    RSTB: 'RSTB',
-  };
 
   const {
     searchInSarcQuery, setSearchInSarcQuery,
@@ -37,47 +33,8 @@ function App() {
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
   } = useEditorContext();
-  const canProcessEvent = useRef(true);
-  useEffect(() => {
-    const handleFileDrop = async ({ payload }) => {
-      if (canProcessEvent.current && payload.length > 0) {
-        canProcessEvent.current = false; // Set the flag to false to block processing
-        const file = payload[0];
-        // console.log(performance.now(), 'File dropped:', file);
-
-        try {
-          OpenFileFromPath(file, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
-        } catch (error) {
-          console.error('Error processing file:', error);
-        }
-
-        // Reset the flag after 0.7 seconds
-        setTimeout(() => {
-          canProcessEvent.current = true;
-        }, 700);
-      }
-    };
-    let unlisten = null; // Declare unlisten outside to ensure scope availability
-
-    const setupListener = async () => {
-      try {
-        const listener = await listen('tauri://file-drop', handleFileDrop);
-        unlisten = listener.unlisten; // Correctly assign the unlisten method
-      } catch (error) {
-        console.error('Failed to set up listener:', error);
-      }
-    };
-
-    setupListener();
-
-    // Cleanup function to remove the event listener
-    return () => {
-      if (unlisten) { // Check if unlisten is a function
-        unlisten().catch(error => console.error('Error unlistening:', error));
-      }
-    };
-  }, []
-  );
+  
+  useFileDropHandler(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
 
 
 
@@ -173,7 +130,6 @@ function App() {
         isSearchInSarcOpened={isSearchInSarcOpened}
         setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
       </SearchTextInSarcPrompt>
-      {/* <h2>Add File to SARC</h2> */}
 
       <ButtonsDisplay
         editorRef={editorRef}
@@ -187,7 +143,6 @@ function App() {
         setIsModalOpen={setIsModalOpen}
         setIsAddPrompt={setIsAddPrompt}
       />
-      {/* {activeTab === 'SARC' && <DirectoryTree onNodeSelect={handleNodeSelect} sarcPaths={paths} />} */}
       {<DirectoryTree
         onNodeSelect={handleNodeSelect}
         sarcPaths={paths}
