@@ -111,6 +111,7 @@ body {
   background-color: #333;
   color: white;
   font-size: 12px;
+  min-width: 150px;
   /* padding: var(--menu-bar-padding) 0; */
 }
 

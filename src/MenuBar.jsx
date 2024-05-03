@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { clearSearchInSarcClick, restartApp, closeAllFilesClick,editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
+import { clearSearchInSarcClick, restartApp, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
 
 import { useEditorContext } from './StateManager';
 
@@ -73,7 +73,7 @@ function MenuBarDisplay() {
     closeMenu();
     if (activeTab === 'SARC') {
       if (selectedPath.isfile === true) {
-      extractFileClick(selectedPath, setStatusText);
+        extractFileClick(selectedPath, setStatusText);
       } else {
         setStatusText(`Select a file to extract, not directory ${selectedPath.path}`);
       }
@@ -103,7 +103,7 @@ function MenuBarDisplay() {
     //   setBackupPaths(paths);
     // }
     setpaths({ paths: paths.added_paths, added_paths: paths.added_paths, modded_paths: paths.modded_paths });
-    setStatusText(`Showing only added files (${paths.added_paths.length})` );
+    setStatusText(`Showing only added files (${paths.added_paths.length})`);
   }
 
   const handleShowModdedClick = (event) => {
@@ -113,7 +113,7 @@ function MenuBarDisplay() {
     //   setBackupPaths(paths);
     // }
     setpaths({ paths: paths.modded_paths, added_paths: paths.added_paths, modded_paths: paths.modded_paths });
-    setStatusText(`Showing only modded files (${paths.modded_paths.length})` );
+    setStatusText(`Showing only modded files (${paths.modded_paths.length})`);
   }
 
 
@@ -168,44 +168,74 @@ function MenuBarDisplay() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+  const iconSize = '20px';
 
-  // useEffect(() => {
-  //   // Reset backupPaths only if paths has been altered (not on initial render)
-  //   if (Object.keys(paths).length > 0) {
-  //     setBackupPaths({ paths: [], added_paths: [], modded_paths: [] });
-  //   }
-  // }, [labelTextDisplay]); //only when opened file is changed 
+  const fileMenuItems = [
+    { label: 'Open', onClick: handleOpenFileClick, icon: 'menu/open.png', shortcut: 'Ctrl+O' },
+    { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S' },
+    { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S' },
+    { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },
+    { label: 'Edit config', onClick: editConfigFile, icon: 'menu/edit_config.png', shortcut: '' },
+    { label: 'Restart', onClick: restartAppClick, icon: 'menu/restart.png', shortcut: '' },
+    { label: 'Exit', onClick: useExitApp, icon: 'menu/exit.png', shortcut: '' }
+  ];
+
+  const toolsMenuItems = [
+    { label: 'Search in sarc', onClick: handleSearchClick, icon: 'menu/lupa.png', shortcut: '', condition: true },
+    { label: 'Clear search', onClick: handleClearSearchTextInSarc, icon: 'menu/clear_search.png', shortcut: '', condition: searchInSarcQuery.length > 0 },
+    { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.png', shortcut: '', condition: true },
+    { label: 'Edit', onClick: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: '', condition: true },
+    { label: 'Extract', onClick: handleExtractClick, icon: 'context_menu/extract.png', shortcut: '', condition: paths.paths.length > 0 },
+    { label: 'Show all', onClick: handleShowAllClick, icon: 'menu/blank.png', shortcut: '', condition: paths.added_paths.length > 0 || paths.modded_paths.length > 0 },
+    { label: 'Show added', onClick: handleShowAddedClick, icon: 'menu/blank.png', shortcut: '', condition: paths.added_paths.length > 0 },
+    { label: 'Show modded', onClick: handleShowModdedClick, icon: 'menu/blank.png', shortcut: '', condition: paths.modded_paths.length > 0 }
+  ];
+
 
   return (
     <div className="menu-bar">
       <div className="menu-item" onClick={() => toggleDropdown('file')} ref={el => dropdownRefs.current.file = el}>
         File
         <div className="dropdown-content" style={{ display: showDropdown.file ? 'block' : 'none' }}>
-          <a href="#" onClick={handleOpenFileClick}>Open</a>
-          <a href="#" onClick={handleSaveClick}>Save</a>
-          <a href="#" onClick={handleSaveAsClick}>Save as</a>
-          <a href="#" onClick={handleCloseAllFilesClick}>Close all</a>
-          <a href="#" onClick={editConfigFile}>Edit config</a>
-          <a href="#" onClick={restartAppClick}>Restart</a>
-          <a href="#" onClick={useExitApp}>Exit</a >
+          {fileMenuItems.map(item => (
+            <li
+              className="menu-item"
+              onClick={item.onClick}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <img src={item.icon} alt={item.label} style={{ marginRight: '10px', width: iconSize, height: iconSize }} />
+                {item.label}
+              </div>
+              <span style={{ marginLeft: '20px', color: '#bcbcbc' }}>{item.shortcut}</span>
+            </li>
+            ))}
         </div>
       </div>
-      {activeTab == "SARC" && <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
-        Tools
-        <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
-          <a href="#" onClick={handleSearchClick}>Search in sarc</a>
-          {searchInSarcQuery.length > 0 && <a href="#" onClick={handleClearSearchTextInSarc}>Clear search</a>}
-          <a href="#" onClick={handleAddClick}>Add file</a>
-          <a href="#" onClick={handleOpenInternalSarcFile}>Edit</a>
-          <a href="#" onClick={handleExtractClick}>Extract</a>
-          {(paths.added_paths.length > 0 || paths.modded_paths.length > 0 ) && <a href="#" onClick={handleShowAllClick}>Show all</a>}
-          {paths.added_paths.length > 0 && <a href="#" onClick={handleShowAddedClick}>Show added</a>}
-          {paths.modded_paths.length > 0 && <a href="#" onClick={handleShowModdedClick}>Show modded</a>}
+      {activeTab === "SARC" && (
+        <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
+          Tools
+          <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
+            {toolsMenuItems.map(item => (
+              item.condition ? (<li
+                className="menu-item"
+                onClick={item.onClick}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <img src={item.icon} alt={item.label} style={{ marginRight: '10px', width: iconSize, height: iconSize }} />
+                  {item.label}
+                </div>
+                <span style={{ marginLeft: '20px', color: '#bcbcbc' }}>{item.shortcut}</span>
+              </li>
+              ) : null))}
+          </div>
         </div>
-      </div>}
-
+      )}
     </div>
   );
+
+
 }
 
 export default MenuBarDisplay;

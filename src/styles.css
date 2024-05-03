@@ -385,6 +385,7 @@ button {
 }
 
 .dropdown-content {
+  margin-top: 0px;
   left: 0px;
   text-align: left;
   /* left: calc(var(--menu-bar-padding) * -1); */

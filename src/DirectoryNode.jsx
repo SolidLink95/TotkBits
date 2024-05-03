@@ -131,15 +131,15 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     display: 'flex',
     alignItems: 'center',
     color: isSelected && isFile ? 'white' : 'white',
-    backgroundColor: isFile ?
+    backgroundColor: //isFile ?
       isSelected ?
         sarcPaths.added_paths.includes(fullPath) ? '#2D8589' :
           sarcPaths.modded_paths.includes(fullPath) ? '#B78F00' :
             '#303030' :
         sarcPaths.added_paths.includes(fullPath) ? '#1E595B' :
           sarcPaths.modded_paths.includes(fullPath) ? '#826C00' :
-            'transparent' :
-      'transparent'
+            'transparent'// :
+     // 'transparent'
 
 
   };

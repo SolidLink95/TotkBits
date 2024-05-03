@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { replaceInternalFileClick, clearSearchInSarcClick, searchTextInSarcClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
+import { removeInternalFileClick,replaceInternalFileClick, clearSearchInSarcClick, searchTextInSarcClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 
 
@@ -39,6 +39,11 @@ const ButtonsDisplay = () => {
       editInternalSarcFile(selectedPath.path, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
     }
   };
+
+  const handleRemoveInternalElement = () => {
+    removeInternalFileClick(selectedPath.path, setStatusText, setpaths);
+  };
+
   const handleSaveClick = () => {
     console.log(activeTabRef.current, activeTab);
     saveFileClick(setStatusText, activeTabRef.current, setpaths, editorRef);
@@ -166,7 +171,12 @@ const ButtonsDisplay = () => {
             break;
         }
       }
-      
+      if (event.keyCode === 46) {//Delete key
+        event.preventDefault();
+        console.log("Delete key pressed");
+        handleRemoveInternalElement();
+        return;
+      }
       // Check if Ctrl or Command (for macOS) is pressed
       if (!event.ctrlKey && !event.metaKey) return;
       if (event.ctrlKey && event.shiftKey && event.keyCode === 83) {
