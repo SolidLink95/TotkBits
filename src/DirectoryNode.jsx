@@ -17,7 +17,6 @@ const ContextMenu = ({ x, y, onClose, actions }) => {
         left: x,
         listStyleType: 'none',
         padding: '6px',
-        // border: '1px solid #ddd',
         boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
         zIndex: 100,
       }}
@@ -28,8 +27,13 @@ const ContextMenu = ({ x, y, onClose, actions }) => {
           key={index}
           className="context-menu-item"
           onClick={() => action.method()}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
         >
-          {action.label}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <img src={action.icon} alt={action.label} style={{ marginRight: '10px', width: '20px', height: '20px' }} />
+            {action.label}
+          </div>
+          <span style={{marginLeft: '10px', color: '#bcbcbc'}}>{action.shortcut} </span>
         </li>
       ))}
     </ul>
@@ -126,14 +130,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
-    color: isSelected && isFile ? 'black' : 'white',
-    // backgroundColor: isSelected && isFile
-    //   ? 'darkgray' // Darker background for selected nodeComponent/AnimationParamComponent/AnimationParam/Upper_Common.engine__component__AnimationParam.bgyml
-    //   : sarcPaths.added_paths.includes(fullPath)
-    //     ? '#205F63'
-    //     : sarcPaths.modded_paths.includes(fullPath)
-    //       ? '#826C00'
-    //       : 'transparent'
+    color: isSelected && isFile ? 'white' : 'white',
     backgroundColor: isFile ?
       isSelected ?
         sarcPaths.added_paths.includes(fullPath) ? '#2D8589' :
@@ -187,20 +184,18 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   };
 
   const contextMenuActions = isFile ? [
-    { label: 'Edit', method: handleOpenInternalSarcFile },
-    { label: 'Extract', method: handleExtractInternalSarcFile },
-    // { label: 'Replace', method: () => console.log(`Replace clicked on ${fullPath}`) },
-    { label: 'Replace', method: handleReplaceInternalSarcFile },
-    { label: 'Remove', method: handleRemoveInternalSarcFile },
-    { label: 'Rename', method: handleRenameInternalSarcFile },
-    { label: 'Copy path', method: () => handlePathToClipboard(fullPath) },
-    // { label: 'Copy name', method: () => handlePathToClipboard(name) },
-    { label: 'Close', method: () => closeContextMenu() },
+    { label: 'Edit', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: 'F3' },
+  { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },
+  { label: 'Replace', method: handleReplaceInternalSarcFile, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R' },
+  { label: 'Remove', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: 'Del' },
+  { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: 'F2' },
+  { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: 'Ctrl+C' },
+  { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },
   ] : [
-    { label: 'Add', method: handleAddInternalSarcFileToDir },
-    { label: 'Remove', method: handleRemoveInternalSarcFile },
-    { label: 'Rename', method: handleRenameInternalSarcFile },
-    { label: 'Close', method: () => closeContextMenu() },
+    { label: 'Add', method: handleAddInternalSarcFileToDir, icon: 'context_menu/edit.png', shortcut: 'F3' },
+    { label: 'Remove', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: 'Del' },
+    { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: 'F2' },
+    { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },
   ];
 
   return (

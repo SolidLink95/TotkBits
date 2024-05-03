@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import {clearSearchInSarcClick, searchTextInSarcClick,editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
+import { replaceInternalFileClick, clearSearchInSarcClick, searchTextInSarcClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
+
+
+
 
 const button_size = '33px';
 
@@ -15,6 +18,16 @@ const ButtonsDisplay = () => {
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
   } = useEditorContext();
+
+  const handlePathToClipboard = (text) => {
+    navigator.clipboard.writeText(text).then(() => {
+      console.log('Text copied to clipboard');
+    }).catch(err => {
+      console.error('Failed to copy text: ', err);
+    });
+    setStatusText(`Copied to clipboard`);
+  }
+
   const activeTabRef = useRef(activeTab);
 
   //Buttons functions
@@ -22,7 +35,9 @@ const ButtonsDisplay = () => {
     fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
   };
   const handleOpenInternalSarcFile = () => {
-    editInternalSarcFile(selectedPath.path, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    if (selectedPath.isfile) {
+      editInternalSarcFile(selectedPath.path, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    }
   };
   const handleSaveClick = () => {
     console.log(activeTabRef.current, activeTab);
@@ -41,6 +56,15 @@ const ButtonsDisplay = () => {
   const handleSearchClick = () => {
     setIsSearchInSarcOpened(!isSearchInSarcOpened);
   };
+  const handleReplaceSarcNodeClick = () => {
+    if (selectedPath.isfile) {
+      console.log(selectedPath);
+      replaceInternalFileClick(selectedPath.path, setStatusText, setpaths);
+      setStatusText("Replaced file");
+    } else {
+      setStatusText("No file selected");
+    }
+  }
 
   function ImageButton({ src, onClick, alt, title, style }) {
     // Apply both the background image and styles directly to the button
@@ -113,7 +137,7 @@ const ButtonsDisplay = () => {
   ]
     ;
 
-    
+
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
@@ -127,8 +151,22 @@ const ButtonsDisplay = () => {
       const functionKeys = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
       // Check if the pressed key is one of the function keys
       if (functionKeys.includes(event.code)) {
-        event.preventDefault(); // Prevent the default action
+        switch (event.code) {
+          case 'F2':
+            console.log("F2 pressed");
+            setIsAddPrompt(false);
+            setIsModalOpen(true);
+            break;
+          case 'F3':
+            console.log("F3 pressed");
+            handleOpenInternalSarcFile();
+            break;
+          default:
+            event.preventDefault();
+            break;
+        }
       }
+      
       // Check if Ctrl or Command (for macOS) is pressed
       if (!event.ctrlKey && !event.metaKey) return;
       if (event.ctrlKey && event.shiftKey && event.keyCode === 83) {
@@ -146,13 +184,27 @@ const ButtonsDisplay = () => {
           handleSaveClick();
           break;
         case 'e': // Ctrl+E,
+          event.preventDefault();
           if (activeTabRef.current === 'SARC') {
-            event.preventDefault();
             extractFileClick(selectedPath, setStatusText);
           }
           break;
         case 'f': // Ctrl+F: prevent the browser's default action
           event.preventDefault();
+          break;
+        case 'c': // Ctrl+C
+          event.preventDefault();
+          if (activeTabRef.current === 'SARC') {
+            handlePathToClipboard(selectedPath.path);
+          }
+          break;
+        case 'r': // Ctrl+R: prevent the browser's default action
+          event.preventDefault();
+          console.log("Replacing: ", selectedPath);
+          if (selectedPath.isfile) {
+            replaceInternalFileClick(selectedPath.path, setStatusText, setpaths);
+
+          }
           break;
       }
     };
@@ -166,7 +218,7 @@ const ButtonsDisplay = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, []); // Pass an empty dependency array to ensure this effect runs only once after the initial render
+  }, [selectedPath]); // Pass an empty dependency array to ensure this effect runs only once after the initial render
   const isClearSearchShown = activeTab == "SARC" && searchInSarcQuery.length > 0 && !isSearchInSarcOpened;
 
   return (

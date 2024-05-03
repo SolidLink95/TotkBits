@@ -99,7 +99,7 @@ body {
 
 
 .node-children.expanded {
-  max-height: 1000px; /* Adjust based on the expected maximum height */
+  max-height: none; /* Adjust based on the expected maximum height */
   opacity: 1;
 }
 
@@ -110,13 +110,14 @@ body {
   margin: 10 10px;
   background-color: #333;
   color: white;
+  font-size: 12px;
   /* padding: var(--menu-bar-padding) 0; */
 }
 
 .context-menu-item {
   cursor: pointer;
   /* margin-bottom: 5px; */
-  padding: 2px 5px;
+  padding: 2px 1px;
 }
 
 .context-menu-item:hover {
