@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "TotkBits",
-    "version": "0.0.4"
+    "version": "0.0.5"
   },
   "tauri": {
     "allowlist": {
@@ -25,7 +25,7 @@
     },
     "windows": [
       {
-        "title": "TotkBits v0.0.4",
+        "title": "TotkBits v0.0.5",
         "width": 800,
         "height": 600
       }

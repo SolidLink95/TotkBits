@@ -52,3 +52,4 @@ The YAML editor uses the Monaco editor from Visual Studio Code, which includes a
 
 # Known Issues
 - .szs files can be edited and saved, but for some reason, games like Super Mario Odyssey won't boot with these files (due to an issue with roead::Yaz0::compress). Reopening the file in Switch Toolbox and saving it again resolves this issue.
+- LayoutMsg/CtrlGuide_00.msbt can be previewed but it CANNOT BE EDITED at the moment

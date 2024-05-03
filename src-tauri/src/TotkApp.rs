@@ -187,7 +187,7 @@ impl<'a> TotkBitsApp<'a> {
     }
 
     pub fn close_all_click(&mut self) -> Option<SendData> {
-        if MessageDialog::new()
+        if self.zstd.totk_config.close_all_prompt && MessageDialog::new()
             .set_title("Close all")
             .set_description("All currently opened files will be closed. Proceed?")
             .set_buttons(rfd::MessageButtons::YesNo)

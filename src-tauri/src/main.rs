@@ -1,6 +1,6 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-// #![windows_subsystem = "windows"]
-// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![windows_subsystem = "windows"]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case, non_camel_case_types)]
 use std::{env, io};
 
@@ -46,6 +46,8 @@ impl StartupData {
         Ok(json!({
             "argv1": self.argv1,
             "fontSize": self.config.fontSize,
+            "theme": self.config.monaco_theme,
+            "minimap": self.config.monaco_minimap,
 
         }))
     }

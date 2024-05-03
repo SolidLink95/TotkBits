@@ -28,6 +28,7 @@ function SearchTextInSarcPrompt({  setStatusText, setpaths,
             <div className="modal-content">
                 <button className="close-button" onClick={cancelClick}>X</button>
                 <div >Search for text pattern in opened SARC file (NOT case sensitive).</div>
+                <div >May take a while for large SARC files.</div>
                 {/* <div className="modal-header">{renamePromptMessage.path}</div> */}
                 <div className="modal-row">
                     <input

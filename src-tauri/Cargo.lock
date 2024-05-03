@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "Totkbits"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "base64 0.21.7",
  "bitvec",
@@ -26,6 +26,7 @@ dependencies = [
  "sha2",
  "tauri",
  "tauri-build",
+ "toml 0.8.12",
  "walkdir",
  "windows 0.56.0",
  "zstd",

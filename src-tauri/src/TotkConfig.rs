@@ -18,6 +18,11 @@ use crate::Settings::write_string_to_file;
 pub struct TotkConfig {
     pub romfs: String,
     pub fontSize: i32,
+    pub close_all_prompt: bool,
+    pub monaco_theme: String,
+    pub monaco_minimap: bool,
+    #[serde(skip)]
+    pub available_themes: Vec<String>,
     #[serde(skip)]
     pub config_path: String,
 }
@@ -26,7 +31,11 @@ impl Default for TotkConfig {
     fn default() -> Self {
         Self {
             romfs: String::new(),
+            close_all_prompt: true,
             fontSize: 14,
+            monaco_theme: "vs-dark".into(),
+            monaco_minimap: false,
+            available_themes: vec!["vs".into(), "vs-dark".into(), "hc-black".into(), "hc-light".into()],
             config_path: String::new(),
         }
     }
@@ -51,7 +60,10 @@ impl TotkConfig {
         Ok(
             json!({
                 "romfs": self.romfs,
-                "fontSize": self.fontSize,
+                "font size": self.fontSize,
+                "Text editor theme": self.monaco_theme,
+                "Text editor minimap": self.monaco_minimap,
+                "Prompt on close all": self.close_all_prompt,
             })
         )
     }
@@ -98,7 +110,8 @@ impl TotkConfig {
     pub fn get_config_path(&mut self) -> io::Result<()> {
         let appdata = env::var("LOCALAPPDATA").map_err(|_| io::Error::new(io::ErrorKind::NotFound, "Cannot access appdata"))?;
         let mut conf_path = PathBuf::from(&appdata);
-        conf_path.push("Totkbits/config.json");
+        // conf_path.push("Totkbits/config.json");
+        conf_path.push("Totkbits/config.toml");
         makedirs(&conf_path)?;
         self.config_path = conf_path.to_string_lossy().to_string().replace("\\", "/");
         println!("config_path {:?}", &self.config_path);
@@ -106,6 +119,46 @@ impl TotkConfig {
         Ok(())
     }
 
+
+    pub fn update_default(&mut self) -> io::Result<()> {
+        let conf_str = fs::read_to_string(&self.config_path)?;
+        println!("conf_str {:?}", &conf_str);
+        // let conf: HashMap<String, serde_json::Value> = serde_json::from_str(&conf_str)?;
+        let conf: HashMap<String, serde_json::Value> = toml::from_str(&conf_str).map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("Unable to parse default config\n{:?}", e)))?;
+        
+        let theme = self.monaco_theme.as_str().into();
+        let theme = conf.get("Text editor theme").unwrap_or(&theme).as_str().unwrap_or(&self.monaco_theme).to_string();
+        if self.available_themes.contains(&theme) {
+            self.monaco_theme = theme;
+        }
+        self.fontSize = conf.get("font size").unwrap_or(&self.fontSize.into()).as_i64().unwrap_or(self.fontSize as i64) as i32;
+        self.close_all_prompt = conf.get("Prompt on close all").unwrap_or(&self.close_all_prompt.into()).as_bool().unwrap_or(self.close_all_prompt);
+        self.monaco_minimap = conf.get("Text editor minimap").unwrap_or(&self.monaco_minimap.into()).as_bool().unwrap_or(self.monaco_minimap);
+        let binding = "".into();
+        let romfs = conf.get("romfs").unwrap_or(&binding).as_str().unwrap_or("");
+        
+        if Self::check_for_zsdic(romfs) {
+            self.romfs = romfs.to_string().replace("\\", "/");
+            return Ok(());
+        }
+        
+        return Err(io::Error::new(io::ErrorKind::NotFound, "Unable to parse default config"));
+    }
+
+    pub fn update_from_NX(&mut self) -> io::Result<()> {
+        let appdata = env::var("LOCALAPPDATA").map_err(|_| io::Error::new(io::ErrorKind::NotFound, "Cannot access appdata"))?;
+        let mut nx_conf = PathBuf::from(&appdata);
+        nx_conf.push("Totk/config.json");
+        let nx_conf_str = fs::read_to_string(&nx_conf.to_string_lossy().to_string())?;
+        let nx_conf: HashMap<String, serde_json::Value> = serde_json::from_str(&nx_conf_str)?;
+        let binding = "".into();
+        let romfs = nx_conf.get("GamePath").unwrap_or(&binding).as_str().unwrap_or("");
+        if Self::check_for_zsdic(romfs) {
+            self.romfs = romfs.to_string().replace("\\", "/");
+            return Ok(());
+        }
+        return Err(io::Error::new(io::ErrorKind::NotFound, "Unable to parse nx editor config"));
+    }
     pub fn update_from_input(&mut self) -> io::Result<()> {
         let mut chosen = rfd::FileDialog::new()
             .set_title("Choose romfs path")
@@ -124,36 +177,6 @@ impl TotkConfig {
         }
         self.romfs = res;
         Ok(())
-    }
-
-    pub fn update_default(&mut self) -> io::Result<()> {
-        let conf_str = read_string_from_file(&self.config_path)?;
-        println!("conf_str {:?}", &conf_str);
-        let conf: HashMap<String, serde_json::Value> = serde_json::from_str(&conf_str)?;
-        self.fontSize = conf.get("fontSize").unwrap_or(&14.into()).as_i64().unwrap_or(14) as i32;
-        let binding = "".into();
-        let romfs = conf.get("romfs").unwrap_or(&binding).as_str().unwrap_or("");
-        if Self::check_for_zsdic(romfs) {
-            self.romfs = romfs.to_string().replace("\\", "/");
-            return Ok(());
-        }
-        
-        return Err(io::Error::new(io::ErrorKind::NotFound, "Unable to parse default config"));
-    }
-
-    pub fn update_from_NX(&mut self) -> io::Result<()> {
-        let appdata = env::var("LOCALAPPDATA").map_err(|_| io::Error::new(io::ErrorKind::NotFound, "Cannot access appdata"))?;
-        let mut nx_conf = PathBuf::from(&appdata);
-        nx_conf.push("Totk/config.json");
-        let nx_conf_str = read_string_from_file(&nx_conf.to_string_lossy().to_string())?;
-        let nx_conf: HashMap<String, serde_json::Value> = serde_json::from_str(&nx_conf_str)?;
-        let binding = "".into();
-        let romfs = nx_conf.get("GamePath").unwrap_or(&binding).as_str().unwrap_or("");
-        if Self::check_for_zsdic(romfs) {
-            self.romfs = romfs.to_string().replace("\\", "/");
-            return Ok(());
-        }
-        return Err(io::Error::new(io::ErrorKind::NotFound, "Unable to parse nx editor config"));
     }
 
     pub fn check_for_zsdic(romfs: &str) -> bool {
@@ -195,8 +218,16 @@ impl TotkConfig {
             return Err(io::Error::new(io::ErrorKind::NotFound, "Empty config path"));
         }
         makedirs(&PathBuf::from(&self.config_path))?;   
-        let json_str: String = serde_json::to_string_pretty(self)?;
-        write_string_to_file(&self.config_path, &json_str)?;
+        // let json_str: String = serde_json::to_string_pretty(self)?;
+        let json_data = self.to_json()?;
+        let toml_str = toml::to_string_pretty(&json_data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{:#?}",e)))?;
+        // write_string_to_file(&self.config_path, &json_str)?;
+        let mut res = String::new();
+        res.push_str("# Totkbits config\n");
+        res.push_str(&format!("# Available text editor themes: {}\n", self.available_themes.join(", ")));
+        res.push_str("# \n");
+        res.push_str(&toml_str);
+        write_string_to_file(&self.config_path, &res)?;
         Ok(())
     }
 

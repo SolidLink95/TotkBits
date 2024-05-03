@@ -197,8 +197,9 @@ function MenuBarDisplay() {
       <div className="menu-item" onClick={() => toggleDropdown('file')} ref={el => dropdownRefs.current.file = el}>
         File
         <div className="dropdown-content" style={{ display: showDropdown.file ? 'block' : 'none' }}>
-          {fileMenuItems.map(item => (
+          {fileMenuItems.map((item, id) => (
             <li
+              key={id}
               className="menu-item"
               onClick={item.onClick}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
@@ -216,8 +217,9 @@ function MenuBarDisplay() {
         <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
           Tools
           <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
-            {toolsMenuItems.map(item => (
+            {toolsMenuItems.map((item, id) => (
               item.condition ? (<li
+                key={id}
                 className="menu-item"
                 onClick={item.onClick}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}

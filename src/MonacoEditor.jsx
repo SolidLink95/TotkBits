@@ -4,7 +4,7 @@ import { OpenFileFromPath } from './ButtonClicks';
 
 
 const InitializeEditor = (props) => {
-  let startupData = { argv1: '', fontSize: 14 };
+  let startupData = { argv1: '', fontSize: 14, theme: 'vs-dark', minimap: false };
   const {
     editorRef,
     editorContainerRef,
@@ -22,8 +22,8 @@ const InitializeEditor = (props) => {
   editorRef.current = monaco.editor.create(editorContainerRef.current, {
     value: editorValue,
     language: lang,
-    theme: "vs-dark",
-    minimap: { enabled: false },
+    theme: startupData["theme"],
+    minimap: { enabled: startupData["minimap"] },
     wordWrap: 'on',
     fontSize: startupData["fontSize"], // Initial fontSize setup
   });
@@ -33,7 +33,11 @@ const InitializeEditor = (props) => {
       .then((data) => {
         const arg = data["argv1"] || startupData["argv1"];
         const fontSize = data["fontSize"] || startupData["fontSize"];
+        const theme = data["theme"] || startupData["theme"];
+        const minimap = data["theme"] || startupData["minimap"];
         editorRef.current.updateOptions({ fontSize: fontSize });
+        editorRef.current.updateOptions({ theme: theme });
+        editorRef.current.updateOptions({ minimap: { enabled: minimap } });
         console.log("Startup data:", data);
         
         if (arg) {

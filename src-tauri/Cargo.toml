@@ -1,6 +1,6 @@
 [package]
 name = "Totkbits"
-version = "0.0.4"
+version = "0.0.5"
 description = "A Tauri App"
 authors = ["Banan039/SolidLink95"]
 edition = "2021"
@@ -38,6 +38,7 @@ restbl = { version = "0.1", features = ["yaml"] }
 flate2 = "1.0.22"
 zstud-sys = {git = "https://github.com/SolidLink95/zstud-sys-rs"}
 windows = "0.56.0"
+toml = "0.8.12"
 
 [dev-dependencies]
 windows = "0.56.0"
