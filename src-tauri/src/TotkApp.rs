@@ -8,12 +8,13 @@ use crate::Settings::{write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{TotkFileType, TotkZstd};
 use rfd::{FileDialog, MessageDialog};
+use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
 use std::io::{Read, Write};
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 
@@ -59,6 +60,7 @@ impl Default for TotkBitsApp<'_> {
 }
 
 impl<'a> TotkBitsApp<'a> {
+    //RSTB
     pub fn get_rstb_entries_by_query(&mut self, entry: String) -> Option<SendData> {
         let mut data = SendData::default();
         let mut isDefaultAdded = false;
@@ -130,6 +132,47 @@ impl<'a> TotkBitsApp<'a> {
 
         Some(data)
     }
+    //END RSTB
+
+    pub fn extract_opened_sarc(&self) -> Option<SendData> {
+        let mut data = SendData::default();
+        let dest_folder = FileDialog::new()
+            .set_title("Choose folder to extract to")
+            .pick_folder();
+        if let Some(dest_folder) = dest_folder {
+            if let Some(pack) = &self.pack {
+                match pack.extract_all_to_folder(&dest_folder) {
+                    Ok(m) => {
+                        data.status_text = m;
+                    }
+                    Err(e) => {
+                        data.status_text = "Error: Failed to extract SARC".to_string();
+                        MessageDialog::new()
+                            .set_title("Error")
+                            .set_description(format!("Error: {}", e))
+                            .set_buttons(rfd::MessageButtons::Ok)
+                            .show();
+                    }
+                }
+                
+                return Some(data);
+                // if let Ok(m) = pack.extract_all_to_folder(&dest_folder) {
+                //     data.status_text = m;
+                // } else {
+                //     data.status_text = "Error: Failed to extract SARC".to_string();
+                // }
+            } else {
+                return None; //no sarc opened
+            }
+
+        } else {
+            return None; //no folder selected
+        }
+
+
+        Some(data)
+    }
+
 
     pub fn remove_internal_elem(&mut self, internal_path: String) -> Option<SendData> {
         let mut data = SendData::default();
@@ -375,15 +418,6 @@ impl<'a> TotkBitsApp<'a> {
                     .writer
                     .add_file(&internal_path.replace("\\", "/"), buffer);
                 data.status_text = format!("Added/replaced: {}", &internal_path);
-                //if overwrite {
-                //     format!(
-                //         "Replaced {} with {}",
-                //         &internal_path,
-                //         &Pathlib::new(path).name
-                //     )
-                // } else {
-                //     format!("Added {} to {}", &internal_path, &opened.path.name)
-                // };
             }
             if is_reload {
                 pack.compare_and_reload();
@@ -637,6 +671,39 @@ impl<'a> TotkBitsApp<'a> {
         }
 
         Some(data)
+    }
+
+    pub fn add_empty_byml(&mut self, folder: String) -> Option<SendData> {
+        let mut data = SendData::default();
+        let mut is_reload = false;
+        if let Some(pack) = &mut self.pack {
+            if let Some(opened) = &mut pack.opened {
+                let raw_data = Byml::default().to_binary(opened.endian);
+                let path = PathBuf::from(&folder);
+                let mut i: i32 = 1;
+                while (i < 9999) {
+                    let mut new_path = path.clone();
+                    new_path.push(format!("new_{}.byml", i));
+                    let dest_file = new_path.to_string_lossy().to_string().replace("\\", "/");
+                    if !opened.writer.files.contains_key(&dest_file) {
+                        opened.writer.add_file(&dest_file, raw_data.clone());
+                        data.status_text = format!("Added {}", &dest_file);
+                        is_reload = true;
+                        break;
+                    }
+                    i += 1;
+                }
+
+            }
+            if is_reload {
+                pack.compare_and_reload();
+                data.get_sarc_paths(pack);
+            }
+        }
+
+
+        Some(data)
+
     }
 
     pub fn edit_internal_file(&mut self, path: String) -> Option<SendData> {

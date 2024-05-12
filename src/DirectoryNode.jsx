@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick } from './ButtonClicks';
+import { editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick, addEmptyByml } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 
 const dirOpened = `dir_opened.png`;
@@ -7,11 +7,12 @@ const dirClosed = `dir_closed.png`;
 const fileIcon = `file.png`;
 const iconSize = '20px';
 
-const ContextMenu = ({ x, y, onClose, actions }) => {
+const ContextMenu = ({ x, y, onClose, actions, settings }) => {
   return (
-    <ul
+    <ul 
       className="context-menu"
       style={{
+        fontSize: settings.contextMenuFontSize,
         position: 'absolute',
         top: y,
         left: x,
@@ -42,6 +43,7 @@ const ContextMenu = ({ x, y, onClose, actions }) => {
 //{ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }
 const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, onSelect }) => {
   const {
+    settings, setSettings,
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
@@ -100,6 +102,10 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   const handleAddInternalSarcFileToDir = () => {
     closeContextMenu();
     addInternalFileToDir(fullPath, setStatusText, setpaths);
+  };
+  const handleAddEmptyByml = () => {
+    closeContextMenu();
+    addEmptyByml(fullPath, setStatusText, setpaths);
   };
 
   const handleRenameInternalSarcFile = () => {
@@ -189,10 +195,11 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   { label: 'Replace', method: handleReplaceInternalSarcFile, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R' },
   { label: 'Remove', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: 'Del' },
   { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: 'F2' },
-  { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: 'Ctrl+C' },
+  { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: '' },
   { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },
   ] : [
-    { label: 'Add', method: handleAddInternalSarcFileToDir, icon: 'context_menu/edit.png', shortcut: 'F3' },
+    { label: 'Add file', method: handleAddInternalSarcFileToDir, icon: 'context_menu/edit.png', shortcut: 'F3' },
+    { label: 'Add empty byml', method: handleAddEmptyByml, icon: 'context_menu/byml.png', shortcut: 'F3' },
     { label: 'Remove', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: 'Del' },
     { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: 'F2' },
     { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },
@@ -236,6 +243,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
           y={contextMenu.y}
           onClose={closeContextMenu}
           actions={contextMenuActions}
+          settings={settings}
         />
       )}
     </li>

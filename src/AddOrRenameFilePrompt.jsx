@@ -104,7 +104,7 @@ function AddOrRenameFilePrompt({ isOpen, onClose, setStatusText, setpaths,
         </div>
       </div>
     );
-  } else {
+  } else if (renamePromptMessage.path.length > 0) { //Rename prompt, ignore if nothing to rename
     return (
       <div className="modal-overlay">
         <div className="modal-content">

@@ -9,7 +9,6 @@ use crate::Zstd::is_ainb;
 pub struct Ainb_py {
     pub python_exe: String,
     pub python_script: String,
-    // pub current_dir: String,
     pub create_no_window: u32,
 }
 
@@ -17,9 +16,7 @@ impl Default for Ainb_py {
     fn default() -> Self {
         Self {
             python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
-            // python_script: "src/totkbits.py".to_string(),
             python_script: "src/totkbits.py".to_string(),
-            // current_dir: "bin/ainb/ainb".to_string(),
             create_no_window: 0x08000000,
         }
     }
@@ -54,9 +51,6 @@ impl Ainb_py {
         f_handle.read_to_end(&mut buffer)?; // Read the file into the buffer
         let text = String::from_utf8_lossy(&buffer).into_owned();
         let data = self.text_to_binary(&text)?;
-        if data.starts_with(b"Error") {
-            return Err(io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&data).into_owned()));
-        }
         // env::set_var("PATH", self.original_path.clone());
         Ok(data)
     }
@@ -70,6 +64,7 @@ impl Ainb_py {
             .arg("ainb_binary_to_text")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?;
 
         if let Some(ref mut stdin) = child.stdin.take() {
@@ -80,6 +75,12 @@ impl Ainb_py {
         let output = child.wait_with_output()?;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        if stdout.to_lowercase().starts_with("error") {
+            return Err(io::Error::new(io::ErrorKind::Other, stdout));
+        }
+        if stderr.to_lowercase().starts_with("error") {
+            return Err(io::Error::new(io::ErrorKind::Other, stderr));
+        }
 
         if output.status.success() {
             println!("Script executed successfully.");
@@ -88,11 +89,6 @@ impl Ainb_py {
             eprintln!("Script execution failed. {:#?}\n{}", output.status, &stderr);
             eprintln!("Data: {:?}", &stdout);
             return Err(io::Error::new(io::ErrorKind::Other, "Script execution failed."));
-        }
-        // env::set_var("PATH", self.original_path.clone());
-        // let text = String::from_utf8_lossy(&output.stdout);
-        if stdout.starts_with("Error") {
-            return Err(io::Error::new(io::ErrorKind::Other, stderr));
         }
         Ok(stdout)
     }
@@ -105,6 +101,7 @@ impl Ainb_py {
             .arg("ainb_text_to_binary")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?;
 
         if let Some(ref mut stdin) = child.stdin.take() {
@@ -113,10 +110,15 @@ impl Ainb_py {
 
         let output = child.wait_with_output()?;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        if output.stdout.starts_with(b"Error") {
+            return Err(io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&output.stdout).into_owned()));
+        }
+        if stderr.to_lowercase().starts_with("error") {
+            return Err(io::Error::new(io::ErrorKind::Other, stderr));
+        }
 
         if output.status.success() {
             println!("Script executed successfully.");
-            return Ok(output.stdout);
         } else {
             eprintln!("Script execution failed.");
             let e = format!("Script execution failed. Unable to convert ainb text to binary. \n{:#?}\n{}", output.status, &stderr);
@@ -125,7 +127,9 @@ impl Ainb_py {
                 e,
             ));
         }
+        Ok(output.stdout)
     }
+    
     pub fn test_winpython(&self) -> io::Result<()> {
         // env::set_var("PATH", self.newpath.clone());
         let output = Command::new(&self.python_exe)

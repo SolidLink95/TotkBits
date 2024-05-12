@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { clearSearchInSarcClick, restartApp, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
-
+import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 import { useEditorContext } from './StateManager';
 
 function MenuBarDisplay() {
@@ -82,17 +82,24 @@ function MenuBarDisplay() {
     }
   }
 
+  const handleExtractOpenedSarc = async (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    try {
+      const content = await invoke('extract_opened_sarc');
+      console.log(content);
+      if (content !== null && content.status_text !== undefined) {
+        setStatusText(content.status_text);
+      }
+    } catch (error) {
+      console.error('Failed to extract sarc: ', error);
+    }
+  }
+
   const handleShowAllClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
     clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery);
-    // if (backupPaths.paths.length > 0) {
-    //   setpaths({ paths: backupPaths.paths, added_paths: backupPaths.added_paths, modded_paths: backupPaths.modded_paths });
-    //   setBackupPaths({ paths: [], added_paths: [], modded_paths: [] });
-    // } else {
-    //   setBackupPaths(paths);
-    // }
-    // setStatusText(`Showing all sarc files` );
   }
 
   const handleShowAddedClick = (event) => {
@@ -181,11 +188,12 @@ function MenuBarDisplay() {
   ];
 
   const toolsMenuItems = [
+    { label: 'Extract sarc contents', onClick: handleExtractOpenedSarc, icon: 'context_menu/extract.png', shortcut: '', condition: true },
     { label: 'Search in sarc', onClick: handleSearchClick, icon: 'menu/lupa.png', shortcut: '', condition: true },
     { label: 'Clear search', onClick: handleClearSearchTextInSarc, icon: 'menu/clear_search.png', shortcut: '', condition: searchInSarcQuery.length > 0 },
     { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.png', shortcut: '', condition: true },
     { label: 'Edit', onClick: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: '', condition: true },
-    { label: 'Extract', onClick: handleExtractClick, icon: 'context_menu/extract.png', shortcut: '', condition: paths.paths.length > 0 },
+    { label: 'Extract file', onClick: handleExtractClick, icon: 'context_menu/extract.png', shortcut: '', condition: paths.paths.length > 0 && selectedPath.isfile },
     { label: 'Show all', onClick: handleShowAllClick, icon: 'menu/blank.png', shortcut: '', condition: paths.added_paths.length > 0 || paths.modded_paths.length > 0 },
     { label: 'Show added', onClick: handleShowAddedClick, icon: 'menu/blank.png', shortcut: '', condition: paths.added_paths.length > 0 },
     { label: 'Show modded', onClick: handleShowModdedClick, icon: 'menu/blank.png', shortcut: '', condition: paths.modded_paths.length > 0 }

@@ -8,6 +8,7 @@ use std::sync::Mutex;
 
 use serde_json::json;
 use tauri::Manager;
+use TotkConfig::update_json;
 // use TotkConfig::{init, TotkConfig};
 mod Open_and_Save;
 mod Settings;
@@ -17,10 +18,11 @@ mod TotkConfig;
 mod Zstd;
 mod file_format;
 use crate::TauriCommands::{
-    add_click, add_to_dir_click, clear_search_in_sarc, close_all_opened_files, edit_internal_file,
-    exit_app, extract_internal_file, open_file_dialog, open_file_from_path, open_file_struct,
-    remove_internal_sarc_file, rename_internal_sarc_file, rstb_edit_entry, rstb_get_entries,
-    rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,edit_config, restart_app
+    add_click, add_empty_byml_file, add_to_dir_click, clear_search_in_sarc, close_all_opened_files,
+    edit_config, edit_internal_file, exit_app, extract_internal_file, extract_opened_sarc,
+    open_file_dialog, open_file_from_path, open_file_struct, remove_internal_sarc_file,
+    rename_internal_sarc_file, restart_app, rstb_edit_entry, rstb_get_entries, rstb_remove_entry,
+    save_as_click, save_file_struct, search_in_sarc,
 };
 use crate::TotkApp::TotkBitsApp;
 
@@ -43,13 +45,9 @@ impl StartupData {
         Ok(Self { argv1, config })
     }
     fn to_json(&self) -> io::Result<serde_json::Value> {
-        Ok(json!({
-            "argv1": self.argv1,
-            "fontSize": self.config.fontSize,
-            "theme": self.config.monaco_theme,
-            "minimap": self.config.monaco_minimap,
-
-        }))
+        let mut res = json!({"argv1": self.argv1,});
+        res = update_json(res, self.config.to_react_json()?);
+        Ok(res)
     }
 }
 
@@ -65,6 +63,8 @@ fn main() -> io::Result<()> {
         })
         .manage(app)
         .invoke_handler(tauri::generate_handler![
+            add_empty_byml_file,
+            extract_opened_sarc,
             restart_app,
             edit_config,
             get_startup_data,

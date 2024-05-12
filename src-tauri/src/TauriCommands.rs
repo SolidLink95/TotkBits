@@ -5,7 +5,7 @@ use crate::{
 };
 use rfd::MessageDialog;
 use std::{
-    env,
+    env, 
     os::windows::process::CommandExt,
     process::{self, Command},
     sync::Mutex,
@@ -94,11 +94,33 @@ pub fn extract_internal_file(
 }
 
 #[tauri::command]
+pub fn add_empty_byml_file(app_handle: tauri::AppHandle, path: String) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+
+    match app.add_empty_byml(path) {
+        Some(result) => Some(result), // Safely return the result if present
+        None => None,                 // Return None if no result
+    }
+}
+
+#[tauri::command]
 pub fn edit_internal_file(app_handle: tauri::AppHandle, path: String) -> Option<SendData> {
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let mut app = binding.lock().expect("Failed to lock state");
 
     match app.edit_internal_file(path) {
+        Some(result) => Some(result), // Safely return the result if present
+        None => None,                 // Return None if no result
+    }
+}
+
+#[tauri::command]
+pub fn extract_opened_sarc(app_handle: tauri::AppHandle) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+
+    match app.extract_opened_sarc() {
         Some(result) => Some(result), // Safely return the result if present
         None => None,                 // Return None if no result
     }
@@ -330,3 +352,4 @@ pub fn clear_search_in_sarc(app_handle: tauri::AppHandle) -> Option<SendData> {
     }
     None
 }
+

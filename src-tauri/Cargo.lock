@@ -29,6 +29,7 @@ dependencies = [
  "toml 0.8.12",
  "walkdir",
  "windows 0.56.0",
+ "winreg 0.52.0",
  "zstd",
  "zstud-sys",
 ]

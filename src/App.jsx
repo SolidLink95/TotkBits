@@ -24,6 +24,7 @@ function App() {
 
 
   const {
+    settings, setSettings,
     searchInSarcQuery, setSearchInSarcQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
@@ -52,12 +53,13 @@ function App() {
         editorRef,
         editorContainerRef,
         editorValue,
-        lang,
+        // lang,
         setStatusText,
         setActiveTab,
         setLabelTextDisplay,
         setpaths,
         updateEditorContent,
+        settings, setSettings,
       });
     }
 

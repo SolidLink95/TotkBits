@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 //mod Zstd;
@@ -46,6 +46,30 @@ impl<'a> PackComparer<'a> {
         };
         pack.compare_and_reload();
         Some(pack)
+    }
+
+    pub fn extract_all_to_folder<P: AsRef<Path>>(&self, dest_path: P) -> io::Result<String> {
+        let mut p = PathBuf::from(dest_path.as_ref());
+        if let Some(pack) = &self.opened {
+            let mut i: i32 = 0;
+            let name = pack.path.stem.as_str();
+            p.push(name);
+            fs::create_dir_all(&p)?;
+            for file in pack.sarc.files() {
+                if let Some(file_name) = file.name() {
+                    let mut file_path = p.clone();
+                    file_path.push(file_name);
+                    makedirs(&file_path)?;
+                    fs::write(&file_path, file.data)?;
+                    i+=1;
+                }
+            }
+
+            return Ok(format!("Extracted {} files to {}", i, p.to_string_lossy().replace("\\", "/")));
+        }
+
+
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "No opened pack"));
     }
 
     pub fn get_sarc_paths(&self) -> SarcPaths {

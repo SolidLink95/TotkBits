@@ -10,36 +10,40 @@ export const EditorProvider = ({ children }) => {
   const [editorValue, setEditorValue] = useState(''); //monaco editor content
   const [lang, setLang] = useState('yaml'); //monaco editor content
   const [statusText, setStatusText] = useState("Ready"); //status bar text
-  const [renamePromptMessage, setRenamePromptMessage] = useState({ message: "Rename internal SARC file:", path: "" }); //status bar text
+  const [renamePromptMessage, setRenamePromptMessage] = useState({ message: "Rename internal SARC file:", path: "" });
   const [selectedPath, setSelectedPath] = useState({ path: "", isfile: false }); //selected path from directory tree
-  const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '',rstb: '' }); //labeltext display near tabs
+  const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '', rstb: '' }); //labeltext display near tabs
   const [paths, setpaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddPrompt, setIsAddPrompt] = useState(false);
 
+  const [settings, setSettings] = useState({ argv1: '', 
+    fontSize: 14, 
+    theme: 'vs-dark', 
+    minimap: false, 
+    lang: "yaml", 
+    contextMenuFontSize: 14 
+  }); //settings for monaco editor
+
   const [isSearchInSarcOpened, setIsSearchInSarcOpened] = useState(false);
-  const [searchInSarcQuery, setSearchInSarcQuery] = useState(""); 
+  const [searchInSarcQuery, setSearchInSarcQuery] = useState("");
 
 
   const updateEditorContent = (content, lang) => {
     //setText(content);
     if (editorRef.current) {
       editorRef.current.setValue(content);
-      //Doesnt work without custom web workers
-      // const model = editorRef.current.getModel();
-  
-      // monaco.editor.setModelLanguage(model, lang);
-      //console.log(content);
     }
   };
-  const changeModal = () => { 
+  const changeModal = () => {
     setIsAddPrompt(true);
-    setIsModalOpen(!isModalOpen) 
-  
+    setIsModalOpen(!isModalOpen)
+
   };
 
   // Combine all states and functions into a single object
   const value = {
+    settings, setSettings,
     searchInSarcQuery, setSearchInSarcQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,

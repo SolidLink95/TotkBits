@@ -1,4 +1,20 @@
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import { set } from 'lodash';
+
+
+export async function addEmptyByml(fullPath,setStatusText, setpaths) {
+  try {
+    const content = await invoke('add_empty_byml_file', { path: fullPath });
+    console.log(content);
+    if (content !== null && content.status_text !== undefined) {
+      setStatusText(content.status_text);
+      setpaths(content.sarc_paths);
+    }
+  } catch (error) {
+    console.error('Failed to add empty byml: ', error);
+  }
+}
+
 
 export const useExitApp = async () => {
   console.log('Exiting the app');
@@ -158,7 +174,7 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
     }
   } catch (error) {
     console.error('Failed to fetch editor content from Rust backend:', error);
-    
+
     setStatusText("");
   }
 }

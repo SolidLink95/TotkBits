@@ -84,13 +84,8 @@ impl<'a> Asb_py<'a> {
         let mut buffer = Vec::new(); // Create a buffer to store the data
         f_handle.read_to_end(&mut buffer)?; // Read the file into the buffer
         let text = String::from_utf8_lossy(&buffer).into_owned();
-        let data = self.text_to_binary(&text)?;
-        if data.starts_with(b"Error") {
-            return Err(io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&data).into_owned()));
-        }
         
-        // env::set_var("PATH", self.original_path.clone());
-        Ok(data)
+        self.text_to_binary(&text)
     }
 
     pub fn text_to_binary_file(&self, text: &str, file_path: &str) -> io::Result<()> {
@@ -112,6 +107,7 @@ impl<'a> Asb_py<'a> {
             .arg("asb_binary_to_text")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?;
 
         if let Some(ref mut stdin) = child.stdin.take() {
@@ -123,6 +119,12 @@ impl<'a> Asb_py<'a> {
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         write_string_to_file("stderr.log", &stderr)?;
         write_string_to_file("stdout.log", &stdout)?;
+        if stdout.to_lowercase().starts_with("error") {
+            return Err(io::Error::new(io::ErrorKind::Other, stdout));
+        }
+        if stderr.to_lowercase().starts_with("error") {
+            return Err(io::Error::new(io::ErrorKind::Other, stderr));
+        }
 
         if output.status.success() {
             // println!("Script executed successfully.");
@@ -136,10 +138,6 @@ impl<'a> Asb_py<'a> {
                 e,
             ));
         }
-        // env::set_var("PATH", self.original_path.clone());
-        if stdout.starts_with("Error") {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, stderr));
-        }
         Ok(stdout)
     }
 
@@ -148,11 +146,10 @@ impl<'a> Asb_py<'a> {
             .creation_flags(self.create_no_window)
             .arg(&self.python_script)
             .arg("asb_text_to_binary")
-            // .arg("asdf")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?;
-        // println!("Text: {:?}", text);
         if let Some(ref mut stdin) = child.stdin.take() {
             stdin.write_all(text.as_bytes())?;
         } // Dropping `stdin` here closes the pipe.
@@ -160,10 +157,18 @@ impl<'a> Asb_py<'a> {
         let output = child.wait_with_output()?;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         write_string_to_file("stderr.log", &stderr)?;
+        
+        if output.stdout.starts_with(b"Error") {
+            return Err(io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&output.stdout).into_owned()));
+        }
+        if stderr.to_lowercase().starts_with("Error") {
+            return Err(io::Error::new(io::ErrorKind::Other, stderr));
+        }
+
+
         // write_string_to_file("stdout.log", &stdout)?;
         if output.status.success() {
             println!("Script executed successfully.");
-            return Ok(output.stdout);
         } else {
             eprintln!("Script execution failed.");
             let e = format!("Script execution failed. Unable to convert asb text to binary. \n{:#?}\n{}", output.status, &stderr);
@@ -172,6 +177,7 @@ impl<'a> Asb_py<'a> {
                 e,
             ));
         }
+        Ok(output.stdout)
     }
 
 

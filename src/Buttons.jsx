@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { removeInternalFileClick,replaceInternalFileClick, clearSearchInSarcClick, searchTextInSarcClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
+import { removeInternalFileClick, replaceInternalFileClick, clearSearchInSarcClick, searchTextInSarcClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 
 
@@ -156,26 +156,30 @@ const ButtonsDisplay = () => {
       const functionKeys = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
       // Check if the pressed key is one of the function keys
       if (functionKeys.includes(event.code)) {
+        event.preventDefault();
         switch (event.code) {
           case 'F2':
-            console.log("F2 pressed");
-            setIsAddPrompt(false);
-            setIsModalOpen(true);
+            if (activeTabRef.current === 'SARC') {
+              console.log("F2 pressed");
+              setIsAddPrompt(false);
+              setIsModalOpen(true);
+            }
             break;
           case 'F3':
-            console.log("F3 pressed");
-            handleOpenInternalSarcFile();
-            break;
-          default:
-            event.preventDefault();
+            if (activeTabRef.current === 'SARC') {
+              console.log("F3 pressed");
+              handleOpenInternalSarcFile();
+            }
             break;
         }
       }
       if (event.keyCode === 46) {//Delete key
         event.preventDefault();
-        console.log("Delete key pressed");
-        handleRemoveInternalElement();
-        return;
+        if (activeTabRef.current === 'SARC') {
+          console.log("Delete key pressed");
+          handleRemoveInternalElement();
+          return;
+        }
       }
       // Check if Ctrl or Command (for macOS) is pressed
       if (!event.ctrlKey && !event.metaKey) return;
@@ -201,21 +205,24 @@ const ButtonsDisplay = () => {
           break;
         case 'f': // Ctrl+F: prevent the browser's default action
           event.preventDefault();
-          break;
-        case 'c': // Ctrl+C
-          event.preventDefault();
           if (activeTabRef.current === 'SARC') {
-            handlePathToClipboard(selectedPath.path);
+            event.preventDefault();
           }
           break;
-        case 'r': // Ctrl+R: prevent the browser's default action
-          event.preventDefault();
-          console.log("Replacing: ", selectedPath);
-          if (selectedPath.isfile) {
-            replaceInternalFileClick(selectedPath.path, setStatusText, setpaths);
+        // case 'c': // Ctrl+C
+        //   event.preventDefault();
+        //   if (activeTabRef.current === 'SARC') {
+        //     handlePathToClipboard(selectedPath.path);
+        //   }
+        //   break;
+        // case 'r': // Ctrl+R: prevent the browser's default action
+        //   event.preventDefault();
+        //   console.log("Replacing: ", selectedPath);
+        //   if (selectedPath.isfile) {
+        //     replaceInternalFileClick(selectedPath.path, setStatusText, setpaths);
 
-          }
-          break;
+        //   }
+        //   break;
       }
     };
 
