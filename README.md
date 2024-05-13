@@ -30,13 +30,13 @@ To save the file as plaintext, click `Save as` and choose one of the extensions:
 
 - [LLVM](https://github.com/llvm/llvm-project/releases)
 - [vite](https://vitejs.dev/guide/) (`npm install -g vite`)
+- [Cmake](https://cmake.org/download/) 
 
 # Keyboard Shortcuts
 
 - `Ctrl+S`: Save the file. This function applies to the SARC, YAML, or RSTB tabs, depending on which is active.
 - `Ctrl+O`: Open a file.
 - `Ctrl+E`: Extract a file. This function is only available in the SARC tab and when a file is selected.
-- `Ctrl+F`: Search. This feature is available in both the SARC and YAML tabs.
 
 ### Additional Shortcuts for the YAML Editor
 

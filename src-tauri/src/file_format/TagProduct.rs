@@ -7,7 +7,7 @@ use bitvec::prelude::*;
 
 use roead::byml::{self, Byml};
 use serde::{Deserialize, Serialize};
-use serde_json;
+use serde_json::{self, json};
 use std::collections::{BTreeMap, HashMap};
 
 use std::panic::AssertUnwindSafe;
@@ -98,7 +98,8 @@ impl<'a> TagProduct<'a> {
         let json_data: TagJsonData = serde_json::from_str(text)?;
         let cached_tag_list = &json_data.TagList;
         //PathList
-        for (path, _plist) in &json_data.PathList {
+        let sorted_map: BTreeMap<String, Vec<String>> = json_data.PathList.into_iter().collect();
+        for (path, _plist) in &sorted_map {
             if path.contains("|") {
                 for slice in path.split("|") {
                     let entry = roead::byml::Byml::String(slice.into());
@@ -109,13 +110,9 @@ impl<'a> TagProduct<'a> {
         //Bittable
         let mut bit_table_bits = Vec::new();
 
-        for (_actor_tag, tag_entries) in &json_data.PathList {
+        for (_actor_tag, tag_entries) in &sorted_map {
             for tag in cached_tag_list {
-                let bit = if tag_entries.contains(tag) {
-                    true
-                } else {
-                    false
-                };
+                let bit = tag_entries.contains(tag);
                 bit_table_bits.push(bit);
             }
         }
@@ -159,10 +156,14 @@ impl<'a> TagProduct<'a> {
 
     pub fn to_text(&mut self) -> String {
         let _actor_tag_data = &self.actor_tag_data;
-        let json_data = TagJsonData {
-            PathList: self.actor_tag_data.clone(),
-            TagList: self.tag_list.clone(),
-        };
+        // let json_data = TagJsonData {
+        //     PathList: self.actor_tag_data.clone(),
+        //     TagList: self.tag_list.clone(),
+        // };
+        let json_data = json!({
+            "PathList": self.actor_tag_data,
+            "TagList": self.tag_list
+        });
         serde_json::to_string_pretty(&json_data).unwrap_or(String::from("{}"))
     }
 

@@ -4,14 +4,12 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
-use std::str::FromStr;
 //use roead::byml::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::file_format::Pack::PackFile;
 use crate::Settings::makedirs;
-use crate::Settings::read_string_from_file;
 use crate::Settings::write_string_to_file;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -250,14 +248,3 @@ impl TotkConfig {
 
 }
 
-
-pub fn update_json(mut base: serde_json::Value, update: serde_json::Value) -> serde_json::Value {
-    if let Some(obj) = base.as_object_mut() {
-        if let Some(upd_obj) = update.as_object() {
-            for (key, value) in upd_obj {
-                obj.insert(key.to_string(), value.clone());
-            }
-        }
-    }
-    base
-}

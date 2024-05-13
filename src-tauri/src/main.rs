@@ -3,13 +3,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case, non_camel_case_types)]
 use std::{env, io};
-
 use std::sync::Mutex;
-
-use serde_json::json;
 use tauri::Manager;
-use TotkConfig::update_json;
-// use TotkConfig::{init, TotkConfig};
 mod Open_and_Save;
 mod Settings;
 mod TauriCommands;
@@ -17,6 +12,7 @@ mod TotkApp;
 mod TotkConfig;
 mod Zstd;
 mod file_format;
+use crate::Settings::{get_startup_data, StartupData};
 use crate::TauriCommands::{
     add_click, add_empty_byml_file, add_to_dir_click, clear_search_in_sarc, close_all_opened_files,
     edit_config, edit_internal_file, exit_app, extract_internal_file, extract_opened_sarc,
@@ -26,30 +22,7 @@ use crate::TauriCommands::{
 };
 use crate::TotkApp::TotkBitsApp;
 
-#[tauri::command]
-fn get_startup_data(state: tauri::State<serde_json::Value>) -> Result<serde_json::Value, String> {
-    Ok((*state.inner()).clone())
-}
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct StartupData {
-    pub argv1: String,
-    pub config: TotkConfig::TotkConfig,
-}
-
-impl StartupData {
-    fn new() -> io::Result<Self> {
-        let args: Vec<String> = env::args().collect();
-        let argv1 = args.get(1).cloned().unwrap_or_default();
-        let config = TotkConfig::TotkConfig::safe_new()?;
-        Ok(Self { argv1, config })
-    }
-    fn to_json(&self) -> io::Result<serde_json::Value> {
-        let mut res = json!({"argv1": self.argv1,});
-        res = update_json(res, self.config.to_react_json()?);
-        Ok(res)
-    }
-}
 
 fn main() -> io::Result<()> {
     #[allow(unused_variables)]

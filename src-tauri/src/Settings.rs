@@ -1,10 +1,40 @@
+use std::env;
 use std::fs;
 use std::io;
 use std::io::{BufWriter, Error, ErrorKind, Read, Write};
 use std::path::Path;
 use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+use crate::TotkConfig::TotkConfig;
+
+
+#[tauri::command]
+pub fn get_startup_data(state: tauri::State<serde_json::Value>) -> Result<serde_json::Value, String> {
+    Ok((*state.inner()).clone())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct StartupData {
+    pub argv1: String,
+    pub config: TotkConfig,
+}
+
+impl StartupData {
+    pub fn new() -> io::Result<Self> {
+        let args: Vec<String> = env::args().collect();
+        let argv1 = args.get(1).cloned().unwrap_or_default();
+        let config = TotkConfig::safe_new()?;
+        Ok(Self { argv1, config })
+    }
+    pub fn to_json(&self) -> io::Result<serde_json::Value> {
+        let mut res = json!({"argv1": self.argv1,});
+        res = update_json(res, self.config.to_react_json()?);
+        Ok(res)
+    }
+}
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Pathlib {
@@ -104,6 +134,7 @@ pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn read_string_from_file(path: &str) -> io::Result<String> {
     let mut file = fs::File::open(path)?;
     let mut contents = String::new();
@@ -128,4 +159,17 @@ pub fn makedirs(path: &PathBuf) -> std::io::Result<()> {
         fs::create_dir_all(par)?;
     }
     Ok(())
+}
+
+
+
+pub fn update_json(mut base: serde_json::Value, update: serde_json::Value) -> serde_json::Value {
+    if let Some(obj) = base.as_object_mut() {
+        if let Some(upd_obj) = update.as_object() {
+            for (key, value) in upd_obj {
+                obj.insert(key.to_string(), value.clone());
+            }
+        }
+    }
+    base
 }

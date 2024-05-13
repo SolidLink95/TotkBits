@@ -170,7 +170,6 @@ impl<'a> TotkBitsApp<'a> {
         }
 
 
-        Some(data)
     }
 
 
@@ -681,7 +680,7 @@ impl<'a> TotkBitsApp<'a> {
                 let raw_data = Byml::default().to_binary(opened.endian);
                 let path = PathBuf::from(&folder);
                 let mut i: i32 = 1;
-                while (i < 9999) {
+                while i < 9999 {
                     let mut new_path = path.clone();
                     new_path.push(format!("new_{}.byml", i));
                     let dest_file = new_path.to_string_lossy().to_string().replace("\\", "/");

@@ -118,7 +118,7 @@ pub fn edit_internal_file(app_handle: tauri::AppHandle, path: String) -> Option<
 #[tauri::command]
 pub fn extract_opened_sarc(app_handle: tauri::AppHandle) -> Option<SendData> {
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
+    let app = binding.lock().expect("Failed to lock state");
 
     match app.extract_opened_sarc() {
         Some(result) => Some(result), // Safely return the result if present
