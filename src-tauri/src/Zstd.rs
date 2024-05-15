@@ -13,7 +13,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 //use zstd::zstd_safe::CompressionLevel;
-use crate::Settings::check_file_exists;
 use std::fs;
 use std::io::{self, Cursor, Read, Write};
 use zstd::dict::{DecoderDictionary, EncoderDictionary};
@@ -219,7 +218,10 @@ impl ZsDic {
     fn get_zsdic_sarc(totk_config: &TotkConfig) -> io::Result<Sarc> {
         let mut zsdic = PathBuf::from(&totk_config.romfs);
         zsdic.push("Pack/ZsDic.pack.zs");
-        let _ = check_file_exists(&zsdic)?; //Path().exists()
+        if !zsdic.exists() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, format!("Zsdic file not found: {:?}", &zsdic)));
+        }
+        // let _ = check_file_exists(&zsdic)?; //Path().exists()
         let mut zs_file = fs::File::open(&zsdic)?; //with open() as f
         let mut raw_data = Vec::new();
         zs_file.read_to_end(&mut raw_data)?; //f.read()

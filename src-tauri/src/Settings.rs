@@ -143,15 +143,6 @@ pub fn read_string_from_file(path: &str) -> io::Result<String> {
     Ok(contents)
 }
 
-pub fn check_file_exists(path: &PathBuf) -> std::io::Result<()> {
-    match fs::metadata(&path) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(Error::new(
-            ErrorKind::NotFound,
-            format!("File {:?} does not exist", path),
-        )),
-    }
-}
 
 pub fn makedirs(path: &PathBuf) -> std::io::Result<()> {
     let par = path.parent();
