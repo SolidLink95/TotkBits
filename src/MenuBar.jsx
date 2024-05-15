@@ -188,7 +188,7 @@ function MenuBarDisplay() {
   ];
 
   const toolsMenuItems = [
-    { label: 'Extract sarc contents', onClick: handleExtractOpenedSarc, icon: 'context_menu/extract.png', shortcut: '', condition: true },
+    { label: 'Extract sarc contents', onClick: handleExtractOpenedSarc, icon: 'context_menu/extract_all.png', shortcut: '', condition: true },
     { label: 'Search in sarc', onClick: handleSearchClick, icon: 'menu/lupa.png', shortcut: '', condition: true },
     { label: 'Clear search', onClick: handleClearSearchTextInSarc, icon: 'menu/clear_search.png', shortcut: '', condition: searchInSarcQuery.length > 0 },
     { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.png', shortcut: '', condition: true },

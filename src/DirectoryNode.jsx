@@ -9,7 +9,7 @@ const iconSize = '20px';
 
 const ContextMenu = ({ x, y, onClose, actions, settings }) => {
   return (
-    <ul 
+    <ul
       className="context-menu"
       style={{
         fontSize: settings.contextMenuFontSize,
@@ -34,7 +34,7 @@ const ContextMenu = ({ x, y, onClose, actions, settings }) => {
             <img src={action.icon} alt={action.label} style={{ marginRight: '10px', width: '20px', height: '20px' }} />
             {action.label}
           </div>
-          <span style={{marginLeft: '10px', color: '#bcbcbc'}}>{action.shortcut} </span>
+          <span style={{ marginLeft: '10px', color: '#bcbcbc' }}>{action.shortcut} </span>
         </li>
       ))}
     </ul>
@@ -145,7 +145,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
         sarcPaths.added_paths.includes(fullPath) ? '#1E595B' :
           sarcPaths.modded_paths.includes(fullPath) ? '#826C00' :
             'transparent'// :
-     // 'transparent'
+    // 'transparent'
 
 
   };
@@ -191,15 +191,15 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
 
   const contextMenuActions = isFile ? [
     { label: 'Edit', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: 'F3' },
-  { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },
-  { label: 'Replace', method: handleReplaceInternalSarcFile, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R' },
-  { label: 'Remove', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: 'Del' },
-  { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: 'F2' },
-  { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: '' },
-  { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },
+    { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },
+    { label: 'Replace', method: handleReplaceInternalSarcFile, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R' },
+    { label: 'Remove', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: 'Del' },
+    { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: 'F2' },
+    { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: '' },
+    { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },
   ] : [
     { label: 'Add file', method: handleAddInternalSarcFileToDir, icon: 'context_menu/edit.png', shortcut: 'F3' },
-    { label: 'Add empty byml', method: handleAddEmptyByml, icon: 'context_menu/byml.png', shortcut: 'F3' },
+    { label: 'New byml', method: handleAddEmptyByml, icon: 'context_menu/byml.png', shortcut: 'F3' },
     { label: 'Remove', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: 'Del' },
     { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: 'F2' },
     { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },

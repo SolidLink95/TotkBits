@@ -234,7 +234,7 @@ impl TotkConfig {
         }
         makedirs(&PathBuf::from(&self.config_path))?;   
         // let json_str: String = serde_json::to_string_pretty(self)?;
-        let json_data = self.to_json()?;
+        let json_data =   self.to_json()?;
         let toml_str = toml::to_string_pretty(&json_data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{:#?}",e)))?;
         // write_string_to_file(&self.config_path, &json_str)?;
         let mut res = String::new();

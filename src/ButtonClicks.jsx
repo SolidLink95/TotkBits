@@ -27,7 +27,7 @@ export const useExitApp = async () => {
 
 export async function extractFileClick(selectedPath, setStatusText) {
   try {
-    if (selectedPath.path === null || selectedPath.path === undefined || selectedPath.path === "") {
+    if (selectedPath.path === null || selectedPath.path === undefined || selectedPath.path === "" || !selectedPath.isfile) {
       setStatusText("Select some file first!");
       return;
     }

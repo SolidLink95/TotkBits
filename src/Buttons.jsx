@@ -199,7 +199,8 @@ const ButtonsDisplay = () => {
           break;
         case 'e': // Ctrl+E,
           event.preventDefault();
-          if (activeTabRef.current === 'SARC') {
+          if (activeTabRef.current === 'SARC' && selectedPath.isfile) {
+            console.log("Edit: ", selectedPath);
             extractFileClick(selectedPath, setStatusText);
           }
           break;
