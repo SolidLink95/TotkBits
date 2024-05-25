@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::io;
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufWriter, Error, ErrorKind, Read, Write};
 use std::path::Path;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
