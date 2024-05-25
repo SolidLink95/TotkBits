@@ -1,10 +1,14 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![windows_subsystem = "windows"]
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// #![windows_subsystem = "windows"]
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case, non_camel_case_types)]
-use std::{env, io};
-use std::sync::Mutex;
+use std::{env, fs, io};
+use std::sync::{Arc, Mutex};
+use file_format::BinTextFile::BymlFile;
+use roead::byml::Byml;
 use tauri::Manager;
+use Zstd::TotkZstd;
+use std::time::SystemTime;
 mod Open_and_Save;
 mod Settings;
 mod TauriCommands;
@@ -22,10 +26,35 @@ use crate::TauriCommands::{
 };
 use crate::TotkApp::TotkBitsApp;
 
+#[allow(dead_code)]
+fn test_case() ->io::Result<()> {
+    let start = SystemTime::now();
+    let p = "D:/coding/TotkBits/tmp/GameDataList.Product.110.byml.zs";
+    println!("1 {}", SystemTime::now().duration_since(start).expect("").as_secs());
+    let zstd = TotkZstd::new(Arc::new(TotkConfig::TotkConfig::safe_new()?), 14)?;
+    let b = BymlFile::new(p.to_string(), Arc::new(zstd)).unwrap();
+    println!("2 {}", SystemTime::now().duration_since(start).expect("").as_secs());
+    let e = b.endian.unwrap().clone();
+    let text = b.pio.to_text();
+    println!("3 {}", SystemTime::now().duration_since(start).expect("").as_secs());
+    fs::write("D:/coding/TotkBits/tmp/GameDataList.yml", &text)?;
+    println!("4 {}", SystemTime::now().duration_since(start).expect("").as_secs());
+    let x = Byml::from_text(text).map_err(|_| io::Error::new(io::ErrorKind::Other, "asdasf"))?;
+    println!("5 {}", SystemTime::now().duration_since(start).expect("").as_secs());
+    let rawdata = x.to_binary(e);
+    println!("6 {}", SystemTime::now().duration_since(start).expect("").as_secs());
+    fs::write("D:/coding/TotkBits/tmp/GameDataList.byml", rawdata)?;
+    println!("7 {}", SystemTime::now().duration_since(start).expect("").as_secs());
 
+
+
+    Ok(())
+}
 
 fn main() -> io::Result<()> {
     #[allow(unused_variables)]
+    // test_case()?;
+    // return Ok(());
     let startup_data = StartupData::new()?.to_json()?;
     println!("{:?}", startup_data);
     let app = Mutex::<TotkBitsApp>::default();

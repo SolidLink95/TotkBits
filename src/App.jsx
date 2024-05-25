@@ -104,8 +104,8 @@ function App() {
 
 
   const statusStyle = {
-    color: statusText.toLowerCase().includes("error") ? 'red' :
-      statusText.toLowerCase().includes('warning') ? 'yellow' : 'white',
+    color: statusText.toLowerCase().startsWith("error") ? 'red' :
+      statusText.toLowerCase().startsWith('warning') ? 'yellow' : 'white',
   };
 
 
