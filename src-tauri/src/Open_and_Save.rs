@@ -349,7 +349,7 @@ fn write_data_to_file<P: AsRef<Path>>(path: P, data: Vec<u8>) -> io::Result<()> 
 
 #[allow(dead_code)]
 pub fn save_file_dialog(file_name: Option<String>) -> String {
-    let name = file_name.unwrap_or("".to_string());
+    let name = file_name.unwrap_or_default();
     let file = FileDialog::new().set_file_name(name).save_file();
     match file {
         Some(res) => {

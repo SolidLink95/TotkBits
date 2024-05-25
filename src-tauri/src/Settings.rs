@@ -36,6 +36,7 @@ impl StartupData {
 }
 
 
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Pathlib {
     pub parent: String,
@@ -48,78 +49,86 @@ pub struct Pathlib {
 
 impl Default for Pathlib {
     fn default() -> Self {
-        Self::new(String::new())
+        Self::new("")
     }
 }
 
 impl Pathlib {
-    pub fn new(path: String) -> Self {
-        let _p = Path::new(&path);
+    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+        let path_str = path.as_ref().to_str().unwrap_or_default().to_string();
         Self {
             parent: Pathlib::get_parent(&path),
             name: Pathlib::get_name(&path),
             stem: Pathlib::get_stem(&path),
             extension: Pathlib::get_extension(&path),
             ext_last: Self::get_ext_last(&path),
-            full_path: path,
+            full_path: path_str,
         }
     }
 
-    pub fn get_ext_last(path: &str) -> String {
+    pub fn is_file(&self) -> bool {
+        Path::new(&self.full_path).is_file()
+    }
+
+    pub fn is_dir(&self) -> bool {
+        Path::new(&self.full_path).is_dir()
+    }
+
+    pub fn get_ext_last<P: AsRef<Path>>(path: P) -> String {
         let extension = Pathlib::get_extension(&path);
-        if !extension.contains(".") {
+        if !extension.contains('.') {
             return "".to_string();
         }
-        return extension.split(".").last().unwrap_or("").to_string();
+        extension.split('.').last().unwrap_or_default().to_string()
     }
-    pub fn get_parent(path: &str) -> String {
-        //parent dir
-        Path::new(path)
+
+    pub fn get_parent<P: AsRef<Path>>(path: P) -> String {
+        Path::new(path.as_ref())
             .parent()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or("".to_string())
+            .unwrap_or_default()
     }
-    pub fn get_name(path: &str) -> String {
-        //file name + extension
-        Path::new(path)
+
+    pub fn get_name<P: AsRef<Path>>(path: P) -> String {
+        Path::new(path.as_ref())
             .file_name()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or("".to_string())
+            .unwrap_or_default()
     }
-    pub fn get_stem(path: &str) -> String {
-        //just file name
-        let res = Path::new(path)
+
+    pub fn get_stem<P: AsRef<Path>>(path: P) -> String {
+        let res = Path::new(path.as_ref())
             .file_stem()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or("".to_string());
-        if res.contains(".") {
-            return res.split(".").next().unwrap_or("").to_string();
+            .unwrap_or_default();
+        if res.contains('.') {
+            return res.split('.').next().unwrap_or_default().to_string();
         }
         res
     }
-    pub fn get_extension(path: &str) -> String {
-        let dots = path.chars().filter(|&x| x == '.').count();
+
+    pub fn get_extension<P: AsRef<Path>>(path: P) -> String {
+        let path_str = path.as_ref().to_str().unwrap_or_default();
+        let dots = path_str.chars().filter(|&x| x == '.').count();
         if dots == 0 {
             return String::new();
         }
         if dots > 1 {
-            return path.split('.').skip(1).collect::<Vec<&str>>().join(".");
+            return path_str.split('.').skip(1).collect::<Vec<&str>>().join(".");
         }
-        Path::new(path)
+        Path::new(path.as_ref())
             .extension()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or("".to_string())
+            .unwrap_or_default()
     }
-    // pub fn path_to_string(path: &Path) -> String {
-    //     path.to_str()
-    //         .map(|s| s.to_string())
-    //         .unwrap_or("".to_string())
-    // }
 }
+
+
+
 
 pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
     let file = fs::File::create(path)?;
