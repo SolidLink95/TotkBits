@@ -12,9 +12,9 @@ except ImportError:
 def rename_directory(source, new_name):
     source_path = Path(source)
     new_path = source_path.parent / new_name
-
-    source_path.rename(new_path)
-    print(f"Directory renamed from {source_path} to {new_path}")
+    if not new_path.exists():
+        source_path.rename(new_path)
+        print(f"Directory renamed from {source_path} to {new_path}")
     return new_path
 
 def create_directory(path):
@@ -99,7 +99,7 @@ def repo_init():
         raise Exception("Failed to install winpython dependencies")
     
     
-    print("Totkbits initialized successfully")
+    print("\nTotkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file")
         
 
 
