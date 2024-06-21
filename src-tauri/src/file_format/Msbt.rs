@@ -37,7 +37,7 @@ impl MsbtFile {
         let endian = MsbtFile::check_endianness(&data)?;
         let text = MsytFile::binary_to_text_safe(data).ok()?;
         Some(Self {
-            path: Pathlib::new(path.unwrap_or("".to_string())) ,
+            path: Pathlib::new(path.unwrap_or_default()) ,
             endian,
             file_type: TotkFileType::Msbt,
             text,
