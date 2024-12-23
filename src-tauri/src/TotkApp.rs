@@ -2,9 +2,11 @@ use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Esetb::Esetb;
 use crate::file_format::Pack::{PackComparer, SarcPaths};
 use crate::Open_and_Save::{
-    check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_ainb, open_asb, open_byml, open_esetb, open_msbt, open_restbl, open_sarc, open_tag, open_text, SaveFileDialog, SendData
+    check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_ainb,
+    open_asb, open_byml, open_esetb, open_msbt, open_restbl, open_sarc, open_tag, open_text,
+    SaveFileDialog, SendData,
 };
-use crate::Settings::{write_string_to_file, Pathlib};
+use crate::Settings::{list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{TotkFileType, TotkZstd};
 use rfd::{FileDialog, MessageDialog};
@@ -16,8 +18,6 @@ use std::io::{Read, Write};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-
-
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SaveData {
@@ -44,7 +44,7 @@ impl Default for TotkBitsApp<'_> {
             println!("Error while initializing romfs path");
             std::process::exit(0);
         }
-        
+
         let totk_config: Arc<TotkConfig> = Arc::new(conf.unwrap());
         let zstd: Arc<TotkZstd<'_>> = Arc::new(TotkZstd::new(totk_config, 16).unwrap());
         Self {
@@ -154,7 +154,7 @@ impl<'a> TotkBitsApp<'a> {
                             .show();
                     }
                 }
-                
+
                 return Some(data);
                 // if let Ok(m) = pack.extract_all_to_folder(&dest_folder) {
                 //     data.status_text = m;
@@ -164,14 +164,10 @@ impl<'a> TotkBitsApp<'a> {
             } else {
                 return None; //no sarc opened
             }
-
         } else {
             return None; //no folder selected
         }
-
-
     }
-
 
     pub fn remove_internal_elem(&mut self, internal_path: String) -> Option<SendData> {
         let mut data = SendData::default();
@@ -229,12 +225,13 @@ impl<'a> TotkBitsApp<'a> {
     }
 
     pub fn close_all_click(&mut self) -> Option<SendData> {
-        if self.zstd.totk_config.close_all_prompt && MessageDialog::new()
-            .set_title("Close all")
-            .set_description("All currently opened files will be closed. Proceed?")
-            .set_buttons(rfd::MessageButtons::YesNo)
-            .show()
-            == rfd::MessageDialogResult::No
+        if self.zstd.totk_config.close_all_prompt
+            && MessageDialog::new()
+                .set_title("Close all")
+                .set_description("All currently opened files will be closed. Proceed?")
+                .set_buttons(rfd::MessageButtons::YesNo)
+                .show()
+                == rfd::MessageDialogResult::No
         {
             return None;
         }
@@ -249,14 +246,19 @@ impl<'a> TotkBitsApp<'a> {
         Some(data)
     }
 
-
-    pub fn get_binary_for_opened_file(&mut self, text: &str, zstd: Arc<TotkZstd>, dest_file: &str) -> Option<Vec<u8>> {
+    pub fn get_binary_for_opened_file(
+        &mut self,
+        text: &str,
+        zstd: Arc<TotkZstd>,
+        dest_file: &str,
+    ) -> Option<Vec<u8>> {
         get_binary_by_filetype(
             self.opened_file.file_type,
             text,
             self.opened_file.endian.unwrap_or(roead::Endian::Little),
             zstd.clone(),
-            dest_file, &mut self.opened_file
+            dest_file,
+            &mut self.opened_file,
         )
     }
 
@@ -366,6 +368,44 @@ impl<'a> TotkBitsApp<'a> {
         None
     }
 
+    pub fn add_dir_to_sarc(&mut self, internal_dir: String, path: String) -> Option<SendData> {
+        let mut data = SendData::default();
+        let mut int_path = Pathlib::new(internal_dir.replace("\\", "/"));
+        let path_var = Pathlib::new(path.replace("\\", "/"));
+        let dirname = path_var.name.clone();
+        let dirname_len = dirname.len();
+        let mut path_root_len = path_var.full_path.len() - dirname_len;
+        let mut path_root = &path_var.full_path[..path_root_len];
+        if path_root.ends_with("/") {
+            path_root = &path_root[..path_root.len() - 1];
+        }
+        path_root_len = path_root.len();
+        if int_path.full_path.ends_with("/") {
+            int_path.full_path = int_path.full_path[..int_path.full_path.len() - 1].to_string();
+        }
+        let files = list_files_recursively(&path_var.full_path);
+        let files_len = files.len();
+        if files_len == 0 {
+            data.status_text = format!("No files found in {}", &path_var.full_path);
+        } else {
+            for file in files {
+                let file_path = Pathlib::new(&file);
+                let mut file_path_to_add = file_path.full_path[path_root_len..].to_string();
+                if file_path_to_add.starts_with("/") {
+                    file_path_to_add = file_path_to_add[1..].to_string();
+                }
+                let new_internal_path = format!("{}/{}", &int_path.full_path, &file_path_to_add);
+                let _ = self.add_internal_file_from_path(new_internal_path, file, true);
+            }
+            data.status_text = format!("Added {} files to {}", files_len, &int_path.full_path);
+        }
+        if let Some(pack) = &mut self.pack {
+            data.get_sarc_paths(pack);
+        }
+        Some(data)
+        // None
+    }
+
     pub fn add_internal_file_to_dir(
         &mut self,
         internal_dir: String,
@@ -472,7 +512,11 @@ impl<'a> TotkBitsApp<'a> {
                         data.path = Pathlib::new(dest_file.clone());
                         self.opened_file.path = Pathlib::new(dest_file);
                     } else {
-                        let rawdata = self.get_binary_for_opened_file(&save_data.text, self.zstd.clone(), &dest_file);
+                        let rawdata = self.get_binary_for_opened_file(
+                            &save_data.text,
+                            self.zstd.clone(),
+                            &dest_file,
+                        );
                         if let Some(rawdata) = rawdata {
                             let mut file = fs::File::create(&dest_file).ok()?;
                             file.write_all(&rawdata).ok()?;
@@ -557,7 +601,9 @@ impl<'a> TotkBitsApp<'a> {
                         internal_file.file_type,
                         text,
                         internal_file.endian.unwrap_or(roead::Endian::Little),
-                        self.zstd.clone(), &path, &mut self.opened_file
+                        self.zstd.clone(),
+                        &path,
+                        &mut self.opened_file,
                     )?;
                     if rawdata.is_empty() {
                         data.status_text =
@@ -586,7 +632,9 @@ impl<'a> TotkBitsApp<'a> {
                 self.opened_file.file_type,
                 text,
                 self.opened_file.endian.unwrap_or(roead::Endian::Little),
-                self.zstd.clone(), &fullpath, &mut self.opened_file
+                self.zstd.clone(),
+                &fullpath,
+                &mut self.opened_file,
             )?;
             if rawdata.is_empty() {
                 data.status_text =
@@ -629,16 +677,19 @@ impl<'a> TotkBitsApp<'a> {
                             opened.reload();
                             match opened.save_default() {
                                 Ok(_) => {
-                                // is_reload = true;
-                                data.tab = "SARC".to_string();
-                                data.status_text = format!("Saved SARC {}", &opened.path.full_path);}
+                                    // is_reload = true;
+                                    data.tab = "SARC".to_string();
+                                    data.status_text =
+                                        format!("Saved SARC {}", &opened.path.full_path);
+                                }
                                 Err(err) => {
                                     data.status_text = format!(
                                         "Error: Failed to save SARC {}",
                                         &opened.path.full_path
                                     );
                                     eprintln!("{:?}", err);
-                                }}
+                                }
+                            }
                             // } else {
                             //     data.status_text = format!(
                             //         "Error: Failed to save SARC {}",
@@ -692,7 +743,6 @@ impl<'a> TotkBitsApp<'a> {
                     }
                     i += 1;
                 }
-
             }
             if is_reload {
                 pack.compare_and_reload();
@@ -700,9 +750,7 @@ impl<'a> TotkBitsApp<'a> {
             }
         }
 
-
         Some(data)
-
     }
 
     pub fn edit_internal_file(&mut self, path: String) -> Option<SendData> {
@@ -756,16 +804,23 @@ impl<'a> TotkBitsApp<'a> {
             data.sarc_paths.paths = Vec::new();
             if let Some(opened) = &mut pack.opened {
                 for file in opened.sarc.files() {
-                    if let Some((_, text)) = get_string_from_data("".to_string(), file.data.to_vec(), self.zstd.clone()) {
+                    if let Some((_, text)) =
+                        get_string_from_data("".to_string(), file.data.to_vec(), self.zstd.clone())
+                    {
                         let filename = file.name.unwrap_or_default().to_string();
                         if !filename.is_empty() && text.to_lowercase().contains(&pattern) {
                             data.sarc_paths.paths.push(filename);
                         }
                     }
-                    
                 }
-                data.sarc_paths.paths.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
-                data.status_text = format!("Found {} entries for \"{}\"", data.sarc_paths.paths.len(), &query);
+                data.sarc_paths
+                    .paths
+                    .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+                data.status_text = format!(
+                    "Found {} entries for \"{}\"",
+                    data.sarc_paths.paths.len(),
+                    &query
+                );
                 return Some(data);
             }
             data.status_text = format!("Error: No SARC opened for Pack comparer");

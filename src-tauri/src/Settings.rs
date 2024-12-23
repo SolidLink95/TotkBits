@@ -173,3 +173,25 @@ pub fn update_json(mut base: serde_json::Value, update: serde_json::Value) -> se
     }
     base
 }
+
+pub fn list_files_recursively<T: AsRef<Path>>(path: &T) -> Vec<String> {
+    let mut files = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let entry_path = entry.path();
+                if entry_path.is_file() && entry_path.exists() {
+                    if let Some(path_str) = entry_path.to_str() {
+                        files.push(path_str.to_string());
+                    }
+                } else if entry_path.is_dir() {
+                    // Recurse into subdirectories
+                    files.extend( list_files_recursively(&entry_path));
+                }
+            }
+        }
+    }
+
+    files
+}

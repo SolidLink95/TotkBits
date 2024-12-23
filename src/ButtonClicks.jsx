@@ -270,7 +270,28 @@ export async function addInternalFileToDir(internalPath, setStatusText, setpaths
       setpaths(content.sarc_paths);
     }
   } catch (error) {
-    console.error("Error invoking 'add_click':", error);
+    console.error("Error invoking 'addInternalFileToDir':", error);
+  }
+
+}
+
+export async function addFilesFromDirRecursively(internalPath, setStatusText, setpaths) {
+  try {
+    const path = await invoke("open_dir_dialog");
+    if (path === "" || path === null || path === undefined) {
+      return;
+    }
+    const content = await invoke('add_files_from_dir_recursively', { internalPath: internalPath, path: path });
+    if (content === null) {
+      console.log("No content returned from add_click");
+      return;
+    }
+    setStatusText(content.status_text);
+    if (content.sarc_paths.paths.length > 0) {
+      setpaths(content.sarc_paths);
+    }
+  } catch (error) {
+    console.error("Error invoking 'addFilesFromDirRecursively':", error);
   }
 
 }

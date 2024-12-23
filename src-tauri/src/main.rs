@@ -23,34 +23,10 @@ use crate::TauriCommands::{
     edit_config, edit_internal_file, exit_app, extract_internal_file, extract_opened_sarc,
     open_file_dialog, open_file_from_path, open_file_struct, remove_internal_sarc_file,
     rename_internal_sarc_file, restart_app, rstb_edit_entry, rstb_get_entries, rstb_remove_entry,
-    save_as_click, save_file_struct, search_in_sarc,
+    save_as_click, save_file_struct, search_in_sarc, open_dir_dialog, add_files_from_dir_recursively
 };
 use crate::TotkApp::TotkBitsApp;
 
-#[allow(dead_code)]
-fn test_case() ->io::Result<()> {
-    let start = SystemTime::now();
-    let p = "D:/coding/TotkBits/tmp/GameDataList.Product.110.byml.zs";
-    println!("1 {}", SystemTime::now().duration_since(start).expect("").as_secs());
-    let zstd = TotkZstd::new(Arc::new(TotkConfig::TotkConfig::safe_new()?), 14)?;
-    let b = BymlFile::new(p.to_string(), Arc::new(zstd)).unwrap();
-    println!("2 {}", SystemTime::now().duration_since(start).expect("").as_secs());
-    let e = b.endian.unwrap().clone();
-    let text = b.pio.to_text();
-    println!("3 {}", SystemTime::now().duration_since(start).expect("").as_secs());
-    fs::write("D:/coding/TotkBits/tmp/GameDataList.yml", &text)?;
-    println!("4 {}", SystemTime::now().duration_since(start).expect("").as_secs());
-    let x = Byml::from_text(text).map_err(|_| io::Error::new(io::ErrorKind::Other, "asdasf"))?;
-    println!("5 {}", SystemTime::now().duration_since(start).expect("").as_secs());
-    let rawdata = x.to_binary(e);
-    println!("6 {}", SystemTime::now().duration_since(start).expect("").as_secs());
-    fs::write("D:/coding/TotkBits/tmp/GameDataList.byml", rawdata)?;
-    println!("7 {}", SystemTime::now().duration_since(start).expect("").as_secs());
-
-
-
-    Ok(())
-}
 
 fn main() -> io::Result<()> {
     #[allow(unused_variables)]
@@ -94,6 +70,8 @@ fn main() -> io::Result<()> {
             rstb_remove_entry,
             search_in_sarc,
             clear_search_in_sarc,
+            open_dir_dialog,
+            add_files_from_dir_recursively,
         ])
         .run(tauri::generate_context!())
     {

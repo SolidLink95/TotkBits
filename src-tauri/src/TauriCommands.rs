@@ -5,10 +5,7 @@ use crate::{
 };
 use rfd::MessageDialog;
 use std::{
-    env, 
-    os::windows::process::CommandExt,
-    process::{self, Command},
-    sync::Mutex,
+    env, os::windows::process::CommandExt, path::Path, process::{self, Command}, sync::Mutex
 };
 use tauri::Manager;
 
@@ -154,6 +151,22 @@ pub fn add_click(
 }
 
 #[tauri::command]
+pub fn add_files_from_dir_recursively(
+    app_handle: tauri::AppHandle,
+    internalPath: String,
+    path: String,
+) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    println!("internal_path: {}", internalPath);
+    // if path_
+    match app.add_dir_to_sarc(internalPath, path) {
+        Some(result) => Some(result), // Safely return the result if present
+        None => None,                 // Return None if no result
+    }
+}
+
+#[tauri::command]
 pub fn add_to_dir_click(
     app_handle: tauri::AppHandle,
     internalPath: String,
@@ -162,6 +175,7 @@ pub fn add_to_dir_click(
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let mut app = binding.lock().expect("Failed to lock state");
     println!("internal_path: {}", internalPath);
+    // if path_
     match app.add_internal_file_to_dir(internalPath, path) {
         Some(result) => Some(result), // Safely return the result if present
         None => None,                 // Return None if no result
@@ -279,6 +293,14 @@ pub fn exit_app() {
 #[tauri::command]
 pub fn open_file_dialog() -> Option<String> {
     match rfd::FileDialog::new().pick_file() {
+        Some(path) => Some(path.to_string_lossy().to_string().replace("\\", "/")),
+        None => None,
+    }
+}
+
+#[tauri::command]
+pub fn open_dir_dialog() -> Option<String> {
+    match rfd::FileDialog::new().pick_folder() {
         Some(path) => Some(path.to_string_lossy().to_string().replace("\\", "/")),
         None => None,
     }
