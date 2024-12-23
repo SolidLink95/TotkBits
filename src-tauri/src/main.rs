@@ -2,12 +2,13 @@
 // #![windows_subsystem = "windows"]
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case, non_camel_case_types)]
+use std::path::Path;
 use std::{env, fs, io};
 use std::sync::{Arc, Mutex};
 use file_format::BinTextFile::BymlFile;
 use roead::byml::Byml;
 use tauri::Manager;
-use Zstd::TotkZstd;
+use Zstd::{get_executable_dir, TotkZstd};
 use std::time::SystemTime;
 mod Open_and_Save;
 mod Settings;
@@ -53,6 +54,11 @@ fn test_case() ->io::Result<()> {
 
 fn main() -> io::Result<()> {
     #[allow(unused_variables)]
+    let exe_cwd = get_executable_dir();
+    if (exe_cwd.len() > 0) {
+        env::set_current_dir(get_executable_dir())?;
+    }
+    println!("Current directory: {:?}", exe_cwd);
     // test_case()?;
     // return Ok(());
     let startup_data = StartupData::new()?.to_json()?;

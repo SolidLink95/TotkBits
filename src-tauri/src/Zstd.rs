@@ -9,11 +9,11 @@ use zstd::zstd_safe::zstd_sys::{
 use std::collections::HashMap;
 
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 //use zstd::zstd_safe::CompressionLevel;
-use std::fs;
+use std::{env, fs};
 use std::io::{self, Cursor, Read, Write};
 use zstd::dict::{DecoderDictionary, EncoderDictionary};
 use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
@@ -385,6 +385,11 @@ pub fn is_restbl(data: &[u8]) -> bool {
     data.starts_with(b"RSTB") || data.starts_with(b"REST")
 }
 
+pub fn is_gamedatalist(path: impl AsRef<Path>) -> bool {
+    path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("gamedatalist")
+    // path.ends_with("GameDataList.Product.110.byml.zs")
+}
+
 pub fn sha256(data: Vec<u8>) -> String {
     // Create a Sha256 object
     let mut hasher = Sha256::new();
@@ -399,4 +404,18 @@ pub fn sha256(data: Vec<u8>) -> String {
 
 pub fn is_esetb(path: &str) -> bool {
     path.ends_with(".esetb.byml") || path.ends_with(".esetb.byml.zs")
+}
+
+
+pub fn get_executable_dir() -> String {
+    if cfg!(debug_assertions) {return "W:/coding/TotkBits/src-tauri".to_string();}
+    if let Ok(exe_path) = env::current_exe() {
+        // Get the directory of the executable
+        if let Some(exe_dir) = exe_path.parent() {
+            if let Some(exe_dir) = exe_dir.to_str() {
+                return exe_dir.to_string();
+            }
+        }
+    } 
+    return String::new();
 }

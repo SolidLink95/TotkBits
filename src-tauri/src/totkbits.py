@@ -1,6 +1,7 @@
 import io
 import os
 import sys
+import oead
 # sys.stdout.buffer.write(f"TEST asdf\n")
 sys.path.append(os.path.join(os.getcwd(), "bin/ainb/ainb"))
 sys.path.append(os.path.join(os.getcwd(), "bin/asb"))
@@ -719,6 +720,16 @@ def ainb_text_to_binary(encoding="utf-8"): # Converts input JSON file to AINB
     except Exception as e:
         sys.stdout.buffer.write(b"Error: " + str(e).encode(encoding))
 
+def byml_text_to_binary(encoding="utf-8"): # Converts input JSON file to AINB
+    try:
+        data = sys.stdin.buffer.read()
+        str_var = data.decode(encoding)
+        pio = oead.byml.from_text(str_var)
+        rawdata = oead.byml.to_binary(pio, big_endian=False)
+        sys.stdout.buffer.write(bytes(rawdata))
+    except Exception as e:
+        sys.stdout.buffer.write(b"Error: " + str(e).encode(encoding))
+
 if __name__ == "__main__":
     # asdf()
     # sys.exit()
@@ -729,6 +740,7 @@ if __name__ == "__main__":
             "ainb_text_to_binary": ainb_text_to_binary,
             "asb_binary_to_text": asb_binary_to_text,
             "asb_text_to_binary": asb_text_to_binary,  
+            "byml_text_to_binary": byml_text_to_binary,  
             "asdf": asdf  
         }
 
