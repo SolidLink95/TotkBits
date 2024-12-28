@@ -1,4 +1,5 @@
 #![allow(non_snake_case,non_camel_case_types)]
+use flate2::read::ZlibDecoder;
 use roead;
 use roead::sarc::{Sarc, SarcWriter};
 use serde::{Deserialize, Serialize};
@@ -15,7 +16,19 @@ use crate::Settings::{makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
 
-use super::SarcEntriesData::get_sarc_entries_data;
+// use super::SarcEntriesData::get_sarc_entries_data;
+
+pub fn get_sarc_entries_data() -> io::Result<HashMap<String, String>> {
+    //parse json
+    println!("Getting global sarc data ");
+    let json_zlibdata = fs::read("bin/totk_sarc_sha256.bin")?;
+    let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
+    let mut json_str = String::new();
+    decoder.read_to_string(&mut json_str)?;
+    let res: HashMap<String, String> = serde_json::from_str(&json_str)?;
+    Ok(res)
+
+}
 
 pub struct PackComparer<'a> {
     pub opened: Option<PackFile<'a>>,
@@ -33,8 +46,14 @@ impl<'a> PackComparer<'a> {
         let config = zstd.clone().totk_config.clone();
         // let vanila = PackComparer::get_vanila_sarc(&pack.path, zstd.clone());
         //Set to None - rely only on global_sarc_data (except for mals files)
-        let vanila = PackComparer::get_vanila_mals(&pack.path, zstd.clone());
-        //let vanila_path = config.get_pack_path_from_sarc(pack);
+        let mut vanila = PackComparer::get_vanila_mals(&pack.path, zstd.clone());
+        if vanila.is_none() {
+            if let Some(vanila_path) = config.get_pack_path(&pack.path.stem) {
+                if let Ok(van) = PackFile::new(vanila_path, zstd.clone()) {
+                    vanila = Some(van);
+                }
+            }
+        }
         let mut pack = Self {
             opened: Some(pack),
             vanila: vanila,
@@ -44,6 +63,7 @@ impl<'a> PackComparer<'a> {
             modded: HashMap::default(),
             global_sarc_data: HashMap::default(),
         };
+        println!("Comparing and reloading");
         pack.compare_and_reload();
         Some(pack)
     }
@@ -87,6 +107,7 @@ impl<'a> PackComparer<'a> {
                 paths.modded_paths.push(path.to_string());
             }
         }
+        println!("Paths: {:?}", paths);
         paths
     }
 
@@ -94,14 +115,18 @@ impl<'a> PackComparer<'a> {
         if let Some(opened) = &mut self.opened {
             opened.reload();
             opened.self_populate_hashes();
+            // println!("hasehs {:?}\nNow to compare", opened.hashes);
         }
-
+        // println!("Comparing, ready...");
         self.compare();
     }
 
     pub fn compare(&mut self) {
+        println!("Comparing");
         if let Some(opened) = &self.opened {
+            let mut is_compared = false;
             if let Some(vanila) = &mut self.vanila { //unreachable unless mals
+                println!("Comparing vanila actor");
                 let mut added: HashMap<String, String> = HashMap::default();
                 let mut modded: HashMap<String, String> = HashMap::default();
                 vanila.self_populate_hashes();
@@ -120,11 +145,14 @@ impl<'a> PackComparer<'a> {
                 }
                 self.added = added;
                 self.modded = modded;
+                is_compared = self.added.len() != opened.hashes.keys().len();
                 // println!("Added {:?}\nModded {:?}", self.added.keys(), self.modded.keys());
-            } else {
+            } 
+            if !is_compared {
                 //custom actor
+                println!("Comparing custom actor");
                 if self.global_sarc_data.is_empty() {
-                    self.global_sarc_data = get_sarc_entries_data();
+                    self.global_sarc_data = get_sarc_entries_data().unwrap_or_default();
                 }
                 let mut added: HashMap<String, String> = HashMap::default();
                 let mut modded: HashMap<String, String> = HashMap::default();
@@ -240,19 +268,19 @@ impl<'a> PackFile<'_> {
         })
     }
 
-    pub fn new(
-        path: String,
+    pub fn new<P: AsRef<Path>>(
+        path: P,
         //totk_config: Arc<TotkConfig>,
         zstd: Arc<TotkZstd<'a>>,
         //decompressor: &'a ZstdDecompressor,
         //compressor: &'a ZstdCompressor
     ) -> io::Result<PackFile<'a>> {
         let mut pack = Self::default(zstd.clone())?;
-        pack.sarc_file_to_bytes(path.as_str())?;
+        pack.sarc_file_to_bytes(&path)?;
         // pack.sarc = Sarc::new(&pack.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
         pack.writer = SarcWriter::from_sarc(&pack.sarc);
         pack.endian = pack.sarc.endian();
-        pack.path = Pathlib::new(path.clone());
+        pack.path = Pathlib::new(path.as_ref());
         Ok(pack)
 
 
@@ -351,8 +379,8 @@ impl<'a> PackFile<'_> {
         file_handle.write_all(&data)?;
         Ok(())
     }
-    pub fn sarc_file_to_bytes(&mut self, path: &str) ->io::Result<()> {
-        let mut f_handle: fs::File = fs::File::open(path)?;
+    pub fn sarc_file_to_bytes<P: AsRef<Path>>(&mut self, path: P) ->io::Result<()> {
+        let mut f_handle: fs::File = fs::File::open(&path)?;
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;
         if buffer.starts_with(b"Yaz0") {
@@ -366,7 +394,7 @@ impl<'a> PackFile<'_> {
                 return Ok(());
             }
         }
-        if path.to_lowercase().ends_with(".zs") {
+        if path.as_ref().to_string_lossy().to_lowercase().ends_with(".zs") {
             if let Ok(dec_data) = self.zstd.decompressor.decompress_pack(&buffer) {
                 if is_sarc(&dec_data) {
                     // self.data = dec_data;
@@ -449,6 +477,9 @@ impl<'a> PackFile<'_> {
     //         "Invalid data, not a sarc",
     //     ));
     // }
+
+
+    
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

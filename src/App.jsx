@@ -1,26 +1,28 @@
 
-import { listen } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/tauri';
+
+import "./App.css";
+import "./Comparer.css";
 import { debounce } from "lodash"; // or any other method/utility to debounce
-import * as monaco from "monaco-editor";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect } from "react";
+// import ReactDiffViewer from 'react-diff-viewer-continued';
 import ActiveTabDisplay from "./ActiveTab";
 import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
-import "./App.css";
-import { OpenFileFromPath } from './ButtonClicks';
 import ButtonsDisplay from "./Buttons";
 import DirectoryTree from "./DirectoryTree";
+import Comparer from "./Comparer";
+import { useFileDropHandler } from './FileDropHandler';
 import MenuBarDisplay from "./MenuBar";
+import InitializeEditor from './MonacoEditor';
 import RstbTree from "./RstbTree";
 import { SearchTextInSarcPrompt } from './SearchTextInSarc';
 import { useEditorContext } from './StateManager';
-import InitializeEditor from './MonacoEditor';
-import { useFileDropHandler } from './FileDropHandler';
 
 
 let triggered = false
 
 function App() {
+
+
 
 
   const {
@@ -32,7 +34,7 @@ function App() {
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
+    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, compareData
   } = useEditorContext();
   
   useFileDropHandler(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
@@ -107,13 +109,14 @@ function App() {
     color: statusText.toLowerCase().startsWith("error") ? 'red' :
       statusText.toLowerCase().startsWith('warning') ? 'yellow' : 'white',
   };
-
-
-
+  const isComparerWorking = compareData.content1.length >0;
+  const displayButtons = activeTab === 'SARC' || activeTab === 'RSTB' || activeTab === 'YAML';
+  const rootStyle = activeTab !== "COMPARER" ? {} : isComparerWorking ? {backgroundColor: "#2E303C"} : {};
   return (
-    <div className="maincontainer">
+    <div className="maincontainer" > 
       <MenuBarDisplay />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
+      {/* {activeTab === 'LOADING' ? <div className="modal-overlay">Loading...</div> : null} */}
       <AddOrRenameFilePrompt
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -161,6 +164,9 @@ function App() {
         activeTab={activeTab}
         style={{ display: activeTab === 'RSTB' ? "block" : "none" }}
       />}
+      {<Comparer setStatusText={setStatusText} activeTab={activeTab}/>}
+      
+
       <div ref={editorContainerRef} className="code_editor" style={{ display: activeTab === 'YAML' ? "block" : "none" }}></div>
       {/* <div className="statusbar" style={statusStyle}>Current path: "{selectedPath.path} {selectedPath.endian}"</div> */}
       <div className="statusbar" style={statusStyle}>{statusText}</div>

@@ -19,6 +19,9 @@ const ButtonsDisplay = () => {
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
   } = useEditorContext();
 
+  const displayButtons = activeTab === "SARC" || activeTab === "YAML" || activeTab === "RSTB";
+  if (!displayButtons) return null;
+  
   const handlePathToClipboard = (text) => {
     navigator.clipboard.writeText(text).then(() => {
       console.log('Text copied to clipboard');

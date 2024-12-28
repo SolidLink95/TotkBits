@@ -1,6 +1,7 @@
 /* :root {
 } */
 
+
 body {
   /*to prevent light mode*/
   background-color: var(--background-color);
@@ -71,6 +72,7 @@ body {
 
 
 .directory-tree {
+  list-style-type: none;
   font-size: 15px;
   background-color: #1E1E1E;
   position: absolute;

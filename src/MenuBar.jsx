@@ -1,8 +1,10 @@
+import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { clearSearchInSarcClick, restartApp, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
-import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import { clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
+import {clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
 import { useEditorContext } from './StateManager';
+import { set } from 'lodash';
 
 function MenuBarDisplay() {
   // const [backupPaths, setBackupPaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
@@ -15,14 +17,15 @@ function MenuBarDisplay() {
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
+    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
+    compareData, setCompareData,
   } = useEditorContext();
 
-  const [showDropdown, setShowDropdown] = useState({ file: false, view: false, tools: false });
-  const dropdownRefs = useRef({ file: null, view: null, tools: null });
+  const [showDropdown, setShowDropdown] = useState({ file: false, view: false, tools: false, compare: false });
+  const dropdownRefs = useRef({ file: null, view: null, tools: null, compare: null });
 
   const closeMenu = () => {
-    setShowDropdown({ file: false, view: false, tools: false });
+    setShowDropdown({ file: false, view: false, tools: false, compare: false });
   };
 
 
@@ -96,6 +99,60 @@ function MenuBarDisplay() {
     }
   }
 
+  const handleCompareFileInternalWithVanila = async (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    try {
+      if (activeTab === 'SARC') {
+        compareInternalFileWithOVanila(selectedPath.path, setStatusText, setActiveTab, setCompareData);
+      } else if (activeTab === 'YAML') {
+        //empty internal path, irrelevant
+        compareInternalFileWithOVanilaMonaco(setStatusText, setActiveTab, setCompareData, editorRef);
+      } else {
+        setStatusText("Switch to SARC or YAML tab to compare files!"); //should be unreachable
+        return;
+      }
+      if (activeTab === 'COMPARER') {
+        console.log('Menubarjsx: Files compared successfully');
+      }
+    } catch (error) {
+      console.error('Failed to compare files: ', error);
+    }
+  };
+
+  const handleClearCompareData = async (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    clearCompareData(setCompareData);
+    setStatusText("Compare data cleared");
+  };
+  
+  const handleCompareFilesDisk = async (event, isFromDisk) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    try {
+      setCompareData((prevData) => ({
+        ...prevData,
+        decision: 'FilesFromDisk', // simplest decision, no other arguments needed
+      }));
+      // compareFilesByDecision('', setStatusText, activeTab, setActiveTab, compareData, setCompareData, editorRef, 'FilesFromDisk', isFromDisk);
+      compareFilesByDecision(setStatusText,  setActiveTab,  setCompareData, editorRef,  isFromDisk, setLabelTextDisplay);
+      
+      const success = activeTab === 'COMPARER';
+      if (success) {
+        console.log('Menubarjsx: Files compared successfully');
+      }
+    } catch (error) {
+      console.error('Failed to compare files: ', error);
+    }
+  };
+  
+  //Poorly, but works
+  const handleCompareFilesFromDisk = (event) => handleCompareFilesDisk(event, true);
+  const handleCompareMonacoEditorFromDisk = (event) => handleCompareFilesDisk(event, false);
+  // const handleCompareInternalFromDisk= (event) => handleCompareFileInternal(event, "InternalFileWithFileFromDisk", true);
+  // const handleCompareMonacoInternalFromDisk= (event) => handleCompareFileInternal(event, "InternalFileWithFileFromDisk", false);
+
   const handleShowAllClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
@@ -127,7 +184,7 @@ function MenuBarDisplay() {
   const handleCloseAllFilesClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
-    closeAllFilesClick(setStatusText, setpaths, updateEditorContent, setLabelTextDisplay);
+    closeAllFilesClick(setCompareData, setStatusText, setpaths, updateEditorContent, setLabelTextDisplay);
   }
 
   const editConfigFile = (event) => {
@@ -150,7 +207,7 @@ function MenuBarDisplay() {
 
   const toggleDropdown = (menu) => {
     setShowDropdown(prevState => ({
-      ...{ file: false, view: false, tools: false }, // Reset all to false
+      ...{ file: false, view: false, tools: false, compare: false }, // Reset all to false
       [menu]: !prevState[menu] // Then toggle the clicked one
     }));
   };
@@ -176,6 +233,7 @@ function MenuBarDisplay() {
     };
   }, []);
   const iconSize = '20px';
+  const blankIcon = 'menu/blank.png';
 
   const fileMenuItems = [
     { label: 'Open', onClick: handleOpenFileClick, icon: 'menu/open.png', shortcut: 'Ctrl+O' },
@@ -194,11 +252,33 @@ function MenuBarDisplay() {
     { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.png', shortcut: '', condition: true },
     { label: 'Edit', onClick: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: '', condition: true },
     { label: 'Extract file', onClick: handleExtractClick, icon: 'context_menu/extract.png', shortcut: '', condition: paths.paths.length > 0 && selectedPath.isfile },
-    { label: 'Show all', onClick: handleShowAllClick, icon: 'menu/blank.png', shortcut: '', condition: paths.added_paths.length > 0 || paths.modded_paths.length > 0 },
-    { label: 'Show added', onClick: handleShowAddedClick, icon: 'menu/blank.png', shortcut: '', condition: paths.added_paths.length > 0 },
-    { label: 'Show modded', onClick: handleShowModdedClick, icon: 'menu/blank.png', shortcut: '', condition: paths.modded_paths.length > 0 }
+    { label: 'Show all', onClick: handleShowAllClick, icon: blankIcon, shortcut: '', condition: paths.added_paths.length > 0 || paths.modded_paths.length > 0 },
+    { label: 'Show added', onClick: handleShowAddedClick, icon: blankIcon, shortcut: '', condition: paths.added_paths.length > 0 },
+    { label: 'Show modded', onClick: handleShowModdedClick, icon: blankIcon, shortcut: '', condition: paths.modded_paths.length > 0 }
   ];
+  const isSelectedPathInPaths = () => {
+    for (const path of paths.paths) {
+      if (path === selectedPath.path) {
+        console.log(path);
+        return true;
+      }
+    }
+    return false;
+  }
+  const compToVanLabel = activeTab === "SARC" ? "Selected to vanila" : "This to vanila";
+  // const selToVanCond = (activeTab === "SARC") || (activeTab === "YAML") && paths.paths.some(path => path === selectedPath.path);
+  const selToVanCond = (activeTab === "SARC" && paths.paths.some(path => path === selectedPath.path)) || (activeTab === "YAML" && labelTextDisplay.yaml?.length > 0); 
+  const compareMenuItems = [
+    { label: 'Files', onClick: handleCompareFilesFromDisk, icon: blankIcon, shortcut: '', condition: true },
+    { label: 'This to file', onClick: handleCompareMonacoEditorFromDisk, icon: blankIcon, shortcut: '', condition: activeTab === "YAML" && labelTextDisplay.yaml?.length > 0 },
+    { label: compToVanLabel, onClick: handleCompareFileInternalWithVanila, icon: blankIcon, shortcut: '', condition: selToVanCond },
+    { label: 'Clear', onClick: handleClearCompareData, icon: blankIcon, shortcut: '', condition: activeTab === "COMPARER" && compareData.content1 !== '' },
 
+  ];
+  const menuSpanStyle = { marginLeft: '20px', color: '#bcbcbc' };
+  const menuDivStyle = { display: 'flex', alignItems: 'center' };
+  const menuItemStyle = { display: 'flex', alignItems: 'center' };
+  const menuItemImgStyle = { marginRight: '10px', width: iconSize, height: iconSize };
 
   return (
     <div className="menu-bar">
@@ -210,15 +290,34 @@ function MenuBarDisplay() {
               key={id}
               className="menu-item"
               onClick={item.onClick}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              style={menuItemStyle}
             >
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <img src={item.icon} alt={item.label} style={{ marginRight: '10px', width: iconSize, height: iconSize }} />
+              <div style={menuDivStyle}>
+                <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
                 {item.label}
               </div>
-              <span style={{ marginLeft: '20px', color: '#bcbcbc' }}>{item.shortcut}</span>
+              <span style={menuSpanStyle}>{item.shortcut}</span>
             </li>
-            ))}
+          ))}
+        </div>
+      </div>
+      <div className="menu-item" onClick={() => toggleDropdown('compare')} ref={el => dropdownRefs.current.compare = el}>
+        Compare
+        <div className="dropdown-content" style={{ display: showDropdown.compare ? 'block' : 'none' }}>
+          {compareMenuItems.map((item, id) => (
+            item.condition ? (<li
+              key={id}
+              className="menu-item"
+              onClick={item.onClick}
+              style={menuItemStyle}
+            >
+              <div style={menuDivStyle}>
+                <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
+                {item.label}
+              </div>
+              <span style={menuSpanStyle}>{item.shortcut}</span>
+            </li>
+            ) : null))}
         </div>
       </div>
       {activeTab === "SARC" && (
@@ -230,13 +329,13 @@ function MenuBarDisplay() {
                 key={id}
                 className="menu-item"
                 onClick={item.onClick}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                style={menuItemStyle}
               >
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <img src={item.icon} alt={item.label} style={{ marginRight: '10px', width: iconSize, height: iconSize }} />
+                <div style={menuDivStyle}>
+                  <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
                   {item.label}
                 </div>
-                <span style={{ marginLeft: '20px', color: '#bcbcbc' }}>{item.shortcut}</span>
+                <span style={menuSpanStyle}>{item.shortcut}</span>
               </li>
               ) : null))}
           </div>

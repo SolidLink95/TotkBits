@@ -1,5 +1,5 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case, non_camel_case_types)]
 use std::path::Path;
@@ -11,6 +11,7 @@ use tauri::Manager;
 use Zstd::{get_executable_dir, TotkZstd};
 use std::time::SystemTime;
 mod Open_and_Save;
+mod Comparer;
 mod Settings;
 mod TauriCommands;
 mod TotkApp;
@@ -23,7 +24,8 @@ use crate::TauriCommands::{
     edit_config, edit_internal_file, exit_app, extract_internal_file, extract_opened_sarc,
     open_file_dialog, open_file_from_path, open_file_struct, remove_internal_sarc_file,
     rename_internal_sarc_file, restart_app, rstb_edit_entry, rstb_get_entries, rstb_remove_entry,
-    save_as_click, save_file_struct, search_in_sarc, open_dir_dialog, add_files_from_dir_recursively
+    save_as_click, save_file_struct, search_in_sarc, open_dir_dialog, add_files_from_dir_recursively,
+    compare_files, compare_internal_file_with_vanila
 };
 use crate::TotkApp::TotkBitsApp;
 
@@ -32,7 +34,7 @@ fn main() -> io::Result<()> {
     #[allow(unused_variables)]
     let exe_cwd = get_executable_dir();
     if (exe_cwd.len() > 0) {
-        env::set_current_dir(get_executable_dir())?;
+        env::set_current_dir(&exe_cwd)?;
     }
     println!("Current directory: {:?}", exe_cwd);
     // test_case()?;
@@ -72,6 +74,9 @@ fn main() -> io::Result<()> {
             clear_search_in_sarc,
             open_dir_dialog,
             add_files_from_dir_recursively,
+            //COMPARER
+            compare_files,
+            compare_internal_file_with_vanila,
         ])
         .run(tauri::generate_context!())
     {

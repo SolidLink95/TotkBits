@@ -66,12 +66,19 @@ impl Pathlib {
         }
     }
 
+    pub fn is_valid(&self) -> bool {
+        self.full_path.len() > 0
+    }
+
     pub fn is_file(&self) -> bool {
         Path::new(&self.full_path).is_file()
     }
 
     pub fn is_dir(&self) -> bool {
         Path::new(&self.full_path).is_dir()
+    }
+    pub fn exists(&self) -> bool {
+        Path::new(&self.full_path).exists()
     }
 
     pub fn get_ext_last<P: AsRef<Path>>(path: P) -> String {
@@ -87,7 +94,7 @@ impl Pathlib {
             .parent()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or_default()
+            .unwrap_or_default().replace("\\", "/")
     }
 
     pub fn get_name<P: AsRef<Path>>(path: P) -> String {
@@ -95,7 +102,7 @@ impl Pathlib {
             .file_name()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or_default()
+            .unwrap_or_default().replace("\\", "/")
     }
 
     pub fn get_stem<P: AsRef<Path>>(path: P) -> String {
@@ -103,7 +110,7 @@ impl Pathlib {
             .file_stem()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or_default();
+            .unwrap_or_default().replace("\\", "/");
         if res.contains('.') {
             return res.split('.').next().unwrap_or_default().to_string();
         }
@@ -123,7 +130,7 @@ impl Pathlib {
             .extension()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or_default()
+            .unwrap_or_default().replace("\\", "/")
     }
 }
 
@@ -183,7 +190,7 @@ pub fn list_files_recursively<T: AsRef<Path>>(path: &T) -> Vec<String> {
                 let entry_path = entry.path();
                 if entry_path.is_file() && entry_path.exists() {
                     if let Some(path_str) = entry_path.to_str() {
-                        files.push(path_str.to_string());
+                        files.push(path_str.to_string().replace("\\", "/"));
                     }
                 } else if entry_path.is_dir() {
                     // Recurse into subdirectories

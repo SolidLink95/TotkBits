@@ -8,10 +8,7 @@ use crate::{
         PythonWrapper::PythonWrapper,
         Rstb::Restbl,
         TagProduct::TagProduct,
-    },
-    Settings::Pathlib,
-    TotkApp::InternalFile,
-    Zstd::{is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, TotkFileType, TotkZstd},
+    }, Comparer::DiffComparer, Settings::Pathlib, TotkApp::InternalFile, Zstd::{is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, TotkFileType, TotkZstd}
 };
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use rfd::{FileDialog, MessageDialog};
@@ -256,8 +253,8 @@ pub fn open_aamp(file_name: String) -> Option<(OpenedFile<'static>, SendData)> {
     None
 }
 
-pub fn get_string_from_data(
-    path: String,
+pub fn get_string_from_data<P: AsRef<Path>>(
+    filepath: P,
     data: Vec<u8>,
     zstd: Arc<TotkZstd>,
 ) -> Option<(InternalFile, String)> {
@@ -265,8 +262,8 @@ pub fn get_string_from_data(
     if data.is_empty() {
         return None;
     }
-
-    if is_esetb(&path) {
+    let path = filepath.as_ref().to_string_lossy().into_owned();
+    if is_esetb(&filepath) {
         if let Ok(esetb) = Esetb::from_binary(&data, zstd.clone()) {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
@@ -616,12 +613,7 @@ impl SaveFileDialog<'_> {
         if let Some(res) = file {
             result = res.to_string_lossy().into_owned();
         }
-        for ext in vec![".txt", ".yaml", ".json", ".yml"] {
-            if result.to_lowercase().ends_with(ext) {
-                self.isText = true;
-                break;
-            }
-        }
+        self.isText = vec![".txt", ".yaml", ".json", ".yml"].iter().any(|ext| result.to_lowercase().ends_with(ext));
         result
     }
 }
@@ -636,6 +628,7 @@ pub struct SendData {
     pub rstb_paths: Vec<serde_json::Value>,
     pub sarc_paths: SarcPaths,
     pub lang: String,
+    pub compare_data: DiffComparer
 }
 
 impl Default for SendData {
@@ -649,6 +642,7 @@ impl Default for SendData {
             rstb_paths: Vec::default(),
             sarc_paths: SarcPaths::default(),
             lang: "yaml".to_string(),
+            compare_data: DiffComparer::default()
         }
     }
 }
@@ -683,6 +677,13 @@ impl SendData {
             self.sarc_paths
                 .paths
                 .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+
+            // if self.sarc_paths.paths.len() == self.sarc_paths.added_paths.len() {
+            //     self.sarc_paths.added_paths.clear(); //avoid all files be lit blue as added
+            //     self.sarc_paths.modded_paths.clear(); //redundant
+            //     return; //skip sorting empty lists
+            // }
+
             self.sarc_paths
                 .added_paths
                 .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
@@ -692,4 +693,24 @@ impl SendData {
         }
         //println!("Sarc paths: {:?}", self.sarc_paths);
     }
+}
+
+
+pub fn file_from_disk_to_senddata<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+    let file_name = path.as_ref().to_string_lossy().to_string();
+    let res = open_tag(file_name.clone(), zstd.clone())
+                .or_else(|| open_esetb(file_name.clone(), zstd.clone()))
+                .or_else(|| open_restbl(file_name.clone(), zstd.clone()))
+                .or_else(|| open_asb(file_name.clone(), zstd.clone()))
+                .or_else(|| open_ainb(file_name.clone(), zstd.clone()))
+                .or_else(|| open_byml(file_name.clone(), zstd.clone()))
+                .or_else(|| open_msbt(file_name.clone()))
+                .or_else(|| open_aamp(file_name.clone()))
+                .or_else(|| open_text(file_name.clone()))
+                .map(|(opened_file, data)| {
+                    // self.opened_file = opened_file;
+                    // self.internal_file = None;
+                    (opened_file, data)
+                });
+    res
 }

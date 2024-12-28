@@ -1,5 +1,8 @@
+use crate::file_format::Pack::PackFile;
+use crate::Open_and_Save::get_string_from_data;
 use crate::TotkConfig::TotkConfig;
 use digest::Digest;
+use flate2::read::ZlibDecoder;
 use roead::sarc::*;
 use sha2::Sha256;
 use zstd::zstd_safe::zstd_sys::{
@@ -182,6 +185,52 @@ impl<'a> TotkZstd<'_> {
             "Unable to decompress with any dictionary!",
         ));
     }
+    pub fn find_vanila_internal_file_path_in_romfs<P: AsRef<Path>>(&self, internal_path: P) -> io::Result<String> {
+        //parse json
+        let json_zlibdata = fs::read("bin/totk_internal_filepaths.bin")?;
+        let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
+        let mut json_str = String::new();
+        decoder.read_to_string(&mut json_str)?;
+        let res: HashMap<String, String> = serde_json::from_str(&json_str)?;
+        //find the sarc file
+        let int_path_str = internal_path.as_ref().to_string_lossy().to_string();
+        let sarc_localpath = res.get(&int_path_str).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "File not found"))?;
+        let sarc_filepath = PathBuf::from(&self.totk_config.romfs).join(sarc_localpath);
+        Ok(sarc_filepath.to_string_lossy().to_string())
+    }
+    pub fn find_vanila_internal_file_data_from_path<P: AsRef<Path>>(&self, internal_path: P, sarc_filepath: String, zstd: Arc<TotkZstd>) -> io::Result<String> {
+
+        let int_path_str = internal_path.as_ref().to_string_lossy().to_string();
+        let sarc_var = PackFile::new(&sarc_filepath, zstd.clone())?;
+        //get the bytes
+        let rawdata = sarc_var.sarc.get_data(&int_path_str).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("File: {} not found in sarc: {:?}", &int_path_str, &sarc_filepath)))?;
+        //parse to string
+        let (_, result) = get_string_from_data("".to_string(), rawdata.to_vec(), zstd.clone())
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Unable to parse file:\n{}\n from sarc:\n{:?}", &int_path_str, &sarc_filepath)))?;;
+        Ok(result)
+    }
+    pub fn find_vanila_internal_file_data_in_romfs<P: AsRef<Path>>(&self, internal_path: P, zstd: Arc<TotkZstd>) -> io::Result<String> {
+        //parse json
+        // let json_zlibdata = fs::read("bin/totk_internal_filepaths.bin")?;
+        // let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
+        // let mut json_str = String::new();
+        // decoder.read_to_string(&mut json_str)?;
+        // let res: HashMap<String, String> = serde_json::from_str(&json_str)?;
+        // //find the sarc file
+        // let int_path_str = internal_path.as_ref().to_string_lossy().to_string();
+        // let sarc_localpath = res.get(&int_path_str).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "File not found"))?;
+        // let sarc_filepath = PathBuf::from(&self.totk_config.romfs).join(sarc_localpath);
+        let sarc_filepath = self.find_vanila_internal_file_path_in_romfs(&internal_path)?;
+        self.find_vanila_internal_file_data_from_path(&internal_path, sarc_filepath, zstd.clone())
+        // let sarc_var = PackFile::new(&sarc_filepath, zstd.clone())?;
+        // //get the bytes
+        // let rawdata = sarc_var.sarc.get_data(&int_path_str).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("File: {} not found in sarc: {:?}", &int_path_str, &sarc_filepath)))?;
+        // //parse to string
+        // let (_, result) = get_string_from_data("".to_string(), rawdata.to_vec(), zstd.clone())
+        //     .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Unable to parse file:\n{}\n from sarc:\n{:?}", &int_path_str, &sarc_filepath)))?;;
+        // Ok(result)
+    }
+
 }
 
 pub struct ZsDic {
@@ -357,6 +406,20 @@ impl<'a> ZstdCompressor<'_> {
     pub fn compress_empty(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         ZstdCompressor::compress(&self, &data, &self.empty)
     }
+
+    pub fn find_vanila_file_in_romfs<P: AsRef<Path>>(&self, path: P) -> io::Result<String> {
+        let json_zlibdata = fs::read("bin/totk_filename_to_localpath.bin")?;
+        let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
+        let mut json_str = String::new();
+        decoder.read_to_string(&mut json_str)?;
+        let res: HashMap<String, String> = serde_json::from_str(&json_str)?;
+        let filename = path.as_ref().file_name().unwrap_or_default().to_str().unwrap_or_default();
+        let file_in_romfs_path = res.get(filename).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "File not found"))?;
+        let result = PathBuf::from(&self.totk_config.romfs).join(file_in_romfs_path);
+        Ok(result.to_string_lossy().to_string())
+    }
+
+   
 }
 
 pub fn is_byml(data: &[u8]) -> bool {
@@ -385,7 +448,7 @@ pub fn is_restbl(data: &[u8]) -> bool {
     data.starts_with(b"RSTB") || data.starts_with(b"REST")
 }
 
-pub fn is_gamedatalist(path: impl AsRef<Path>) -> bool {
+pub fn is_gamedatalist<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("gamedatalist")
     // path.ends_with("GameDataList.Product.110.byml.zs")
 }
@@ -402,8 +465,9 @@ pub fn sha256(data: Vec<u8>) -> String {
     format!("{:X}", result)
 }
 
-pub fn is_esetb(path: &str) -> bool {
-    path.ends_with(".esetb.byml") || path.ends_with(".esetb.byml.zs")
+pub fn is_esetb<P: AsRef<Path>>(path: P) -> bool {
+    let tmp = path.as_ref().to_string_lossy().to_ascii_lowercase();
+    tmp.ends_with(".esetb.byml") || tmp.ends_with(".esetb.byml.zs")
 }
 
 

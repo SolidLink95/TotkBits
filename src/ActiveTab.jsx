@@ -3,7 +3,9 @@ import React, { useEffect, useRef, useState } from 'react';
 export const BackendEnum = {
   SARC: 'SARC',
   YAML: 'YAML',
+  COMPARER: 'COMPARER',
   RSTB: 'RSTB',
+  LOADING: 'LOADING',
 };
 
 function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
@@ -42,6 +44,8 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
         return labelTextDisplay.yaml;
       case BackendEnum.RSTB:
         return labelTextDisplay.rstb;
+      case BackendEnum.COMPARER:
+        return labelTextDisplay.comparer;
       default:
         return '';
     }
@@ -65,6 +69,13 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
           {"YAML"}
         </label>
         <label
+          key={"COMPARER"}
+          className={activeTab === "COMPARER" ? "active" : ""}
+          onClick={() => switchTab("COMPARER")}
+        >
+          {"COMPARER"}
+        </label>
+        <label
           key={"RSTB"}
           className={activeTab === "RSTB" ? "active" : ""}
           onClick={() => switchTab("RSTB")}
@@ -72,7 +83,7 @@ function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
           {"RSTB"}
         </label>
         {
-          windowWidth - labelTextWidth >= 220 && (
+          windowWidth - labelTextWidth >= 250 && (
             <div className="activetablabel" ref={labelTextRef}>
               {label}
             </div>

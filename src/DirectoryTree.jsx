@@ -57,7 +57,7 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) =>
   return (
     <>
       <ul className="directory-tree" 
-        style={{ listStyleType: 'none', marginBottom: '88px', //width: activeTab === 'SARC' ? "100%" : "0%", 
+        style={{ marginBottom: '88px', paddingBottom: '200px', //width: activeTab === 'SARC' ? "100%" : "0%", 
         ...activeTab !== 'SARC' ? { height: '0%', width: '0%', marginLeft: '-50px' } : {}
          }}//robust solution to hide tree when not active. This way collapsed nodes states are not lost
       >

@@ -1,10 +1,9 @@
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Esetb::Esetb;
 use crate::file_format::Pack::{PackComparer, SarcPaths};
+use crate::Comparer::{self, DiffComparer};
 use crate::Open_and_Save::{
-    check_if_save_in_romfs, get_binary_by_filetype, get_string_from_data, open_aamp, open_ainb,
-    open_asb, open_byml, open_esetb, open_msbt, open_restbl, open_sarc, open_tag, open_text,
-    SaveFileDialog, SendData,
+    check_if_save_in_romfs, file_from_disk_to_senddata, get_binary_by_filetype, get_string_from_data, open_aamp, open_ainb, open_asb, open_byml, open_esetb, open_msbt, open_restbl, open_sarc, open_tag, open_text, SaveFileDialog, SendData
 };
 use crate::Settings::{list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
@@ -849,29 +848,41 @@ impl<'a> TotkBitsApp<'a> {
                 self.internal_file = None;
                 return Some(data);
             }
-            let res = open_tag(file_name.clone(), self.zstd.clone())
-                .or_else(|| open_esetb(file_name.clone(), self.zstd.clone()))
-                .or_else(|| open_restbl(file_name.clone(), self.zstd.clone()))
-                .or_else(|| open_asb(file_name.clone(), self.zstd.clone()))
-                .or_else(|| open_ainb(file_name.clone(), self.zstd.clone()))
-                .or_else(|| open_byml(file_name.clone(), self.zstd.clone()))
-                .or_else(|| open_msbt(file_name.clone()))
-                .or_else(|| open_aamp(file_name.clone()))
-                .or_else(|| open_text(file_name.clone()))
-                .map(|(opened_file, data)| {
-                    self.opened_file = opened_file;
-                    self.internal_file = None;
-                    data
-                });
-            if res.is_some() {
-                return res;
+            let res = file_from_disk_to_senddata(&file_name, self.zstd.clone());
+            if let Some(res) = res {
+                self.opened_file = res.0;
+                self.internal_file = None;
+                return Some(res.1);
             }
+            // let res = open_tag(file_name.clone(), self.zstd.clone())
+            //     .or_else(|| open_esetb(file_name.clone(), self.zstd.clone()))
+            //     .or_else(|| open_restbl(file_name.clone(), self.zstd.clone()))
+            //     .or_else(|| open_asb(file_name.clone(), self.zstd.clone()))
+            //     .or_else(|| open_ainb(file_name.clone(), self.zstd.clone()))
+            //     .or_else(|| open_byml(file_name.clone(), self.zstd.clone()))
+            //     .or_else(|| open_msbt(file_name.clone()))
+            //     .or_else(|| open_aamp(file_name.clone()))
+            //     .or_else(|| open_text(file_name.clone()))
+            //     .map(|(opened_file, data)| {
+            //         self.opened_file = opened_file;
+            //         self.internal_file = None;
+            //         data
+            //     });
+            // if res.is_some() {
+            //     return res;
+            // }
         } else {
             return None;
         }
         data.tab = "ERROR".to_string();
         data.status_text = format!("Error: Failed to open {}", &file_name);
         return Some(data);
+    }
+
+    pub fn compare_files(&self, is_from_disk: bool)-> Option<SendData> {
+        // let mut c = DiffComparer::default();
+        // c.compare_by_choice(decision, &self.pack, &int_or_regular_path, self.zstd.clone(), is_from_disk)
+        DiffComparer::files_from_disk(self.zstd.clone(), is_from_disk)
     }
 
     pub fn open(&mut self) -> Option<SendData> {
@@ -883,6 +894,123 @@ impl<'a> TotkBitsApp<'a> {
         }
         None
     }
+
+    pub fn compare_opened_file_with_original_monaco(&mut self) -> Option<SendData> {
+        let mut data = SendData::default();
+        if self.opened_file.path.full_path.is_empty() {
+            data.status_text = "Error: No file from disk nor SARC opened".to_string();
+            return Some(data);
+        }
+        let mut van_path = String::new();
+        match self.zstd.clone().totk_config.find_vanila_file_in_romfs(&self.opened_file.path.full_path) {
+            Ok(p) => {
+                van_path = p;
+            },
+            Err(e) => {
+                eprintln!("{:?}", e);
+                data.status_text = format!("Error: {:?}", e);
+                return Some(data);
+            }
+        }
+        println!("Comparing {} with original {}", &self.opened_file.path.full_path, &van_path);
+        let mut text1 = String::new();
+        let mut text2 = String::new();
+        if let Some((_, t)) = file_from_disk_to_senddata(&van_path, self.zstd.clone()) {
+            text2 = t.text;
+        } else {
+            data.status_text = format!("Error: Failed to parse {}", &self.opened_file.path.full_path);
+            return Some(data);
+        }
+        data.compare_data.file1.label = self.opened_file.path.full_path.clone();
+        data.compare_data.file1.path = self.opened_file.path.clone();
+
+        data.compare_data.file2.label = van_path.clone();
+        data.compare_data.file2.path = Pathlib::new(van_path.clone());
+        data.compare_data.file2.text = text2;
+        data.tab = "COMPARE".to_string();
+        data.status_text = format!("Compared {} with original", &self.opened_file.path.full_path);
+        
+
+
+        //TODO: finish it 
+        //compare internal file 
+        // let mut data = SendData::default();
+        // let vanila_sarc_path = self.zstd.clone().find_vanila_internal_file_path_in_romfs(&path, self.zstd.clone());
+
+        Some(data)
+    }
+    
+    
+    pub fn compare_internal_file_with_original(&mut self, path: String, is_from_sarc: bool) -> Option<SendData> {
+        let mut data = SendData::default();
+        let mut path = path.clone();
+        let mut text1 = String::new();
+        let mut text2 = String::new();
+        let is_from_monaco = !is_from_sarc;
+        if is_from_monaco { //from monaco
+            if let Some(internal_file) = &self.internal_file {
+                path = internal_file.path.full_path.clone();
+                data.compare_data.file1.label = format!("{} (from YAML Editor)", &path);
+            } else {
+                // data.status_text = "Error: No SARC internal file opened".to_string();
+                // return Some(data);
+                // Perhaps the file is from disk, check self.opened_file
+                //simple fallback
+                return self.compare_opened_file_with_original_monaco();
+            }
+        }
+        println!("Comparing {} with original", &path);
+    
+        if let Some(pack) = &self.pack {
+            if let Some(opened) = &pack.opened {
+                if is_from_sarc {
+                if let Some(rawdata1) = opened.sarc.get_data(&path) {
+                    text1 = get_string_from_data(&path, rawdata1.to_vec(), self.zstd.clone())
+                        .map(|(_, t)| t)
+                        .unwrap_or_default();
+                }}
+    
+                    if let Some(vanila) = &pack.vanila {
+                        if let Some(rawdata2) = vanila.sarc.get_data(&path) {
+                            text2 = get_string_from_data(&path, rawdata2.to_vec(), self.zstd.clone())
+                                .map(|(_, t)| t)
+                                .unwrap_or_default();
+                        }
+                    }
+                    // println!("{} {}", text1.len(), text2.len());
+    
+                    if text2.is_empty() && (!text1.is_empty() || is_from_sarc) {
+                        text2 = self
+                            .zstd
+                            .clone()
+                            .find_vanila_internal_file_data_in_romfs(&path, self.zstd.clone())
+                            .unwrap_or_else(|err| {
+                                data.status_text = format!("ERROR: {:?}", &err);
+                                String::new()
+                            });
+                    }
+            }
+        }
+    
+        // println!("{} {}", text1.len(), text2.len());
+    
+        if (!text1.is_empty() || is_from_monaco) && !text2.is_empty() {
+            data.tab = "COMPARE".to_string();
+            data.compare_data.file1.text = text1;
+            data.compare_data.file2.text = text2;
+            data.status_text = format!("Compared {}", &path);
+            if data.compare_data.file1.label.is_empty() {
+                data.compare_data.file1.label = format!("{} (from SARC)", &path);
+            }
+            data.compare_data.file2.label = "Original".to_string();
+        } else {
+            data.status_text = format!("Error: Failed to compare {}", &path);
+        }
+    
+        Some(data)
+    }
+    
+    
 }
 
 pub struct InternalFile<'a> {

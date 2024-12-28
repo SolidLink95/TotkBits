@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick, addEmptyByml,addFilesFromDirRecursively } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
+import {compareInternalFileWithOVanila} from './Comparer';
 
 const dirOpened = `dir_opened.png`;
 const dirClosed = `dir_closed.png`;
@@ -49,7 +50,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
+    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, setCompareData
   } = useEditorContext();
 
   const [isCollapsed, setIsCollapsed] = useState(true);
@@ -89,6 +90,12 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     closeContextMenu();
     if (isFile) {
       editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    }
+  };
+  const handleCompareInternalSarcFile = () => {
+    closeContextMenu();
+    if (isFile) {
+      compareInternalFileWithOVanila(selectedPath.path, setStatusText, setActiveTab, setCompareData);
     }
   };
   const handleRemoveInternalSarcFile = () => {
@@ -179,11 +186,18 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
       offsetX += treeContainer.scrollLeft - treeContainer.getBoundingClientRect().left;
       offsetY += treeContainer.scrollTop - treeContainer.getBoundingClientRect().top;
     }
-
+    const height = 350;
+    let yval = e.clientY + offsetY + height;
+    if (yval > window.innerHeight) {
+      yval = window.innerHeight - height;
+    }
+    yval =  e.clientY + offsetY;
+    // console.log(parseInt(yval, 10), parseInt(yval, 10)+height, window.innerHeight, parseInt(yval, 10)+height-window.innerHeight);
     setContextMenu({
       visible: true,
       x: e.clientX + offsetX,
-      y: e.clientY + offsetY,
+      y: yval 
+      // y: e.clientY + offsetY > window.innerHeight ? window.innerHeight - height : yval,
     });
     e.stopPropagation();
     onContextMenu && onContextMenu(fullPath);
@@ -195,6 +209,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
 
   const contextMenuActions = isFile ? [
     { label: 'Edit', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: 'F3' },
+    { label: 'Compare', method: handleCompareInternalSarcFile, icon: 'context_menu/compare.png', shortcut: '' },
     { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },
     { label: 'Replace', method: handleReplaceInternalSarcFile, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R' },
     { label: 'Remove', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: '' },
@@ -202,8 +217,8 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: '' },
     { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },
   ] : [
-    { label: 'Add file', method: handleAddInternalSarcFileToDir, icon: 'context_menu/edit.png', shortcut: '' },
-    { label: 'Add folder', method: handleAddFilesFromDirRecursively, icon: 'context_menu/edit.png', shortcut: '' },
+    { label: 'Add file', method: handleAddInternalSarcFileToDir, icon: 'context_menu/add_file.png', shortcut: '' },
+    { label: 'Add folder', method: handleAddFilesFromDirRecursively, icon: 'context_menu/add_dir.png', shortcut: '' },
     { label: 'New byml', method: handleAddEmptyByml, icon: 'context_menu/byml.png', shortcut: '' },
     { label: 'Remove', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: '' },
     { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: '' },

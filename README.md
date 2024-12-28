@@ -3,6 +3,7 @@ TotkBits is a custom TOTK file editor project, similar to [WildBits](https://git
 
 ## Features
 This tool includes most functionalities found in the NX Editor and introduces additional features:
+- Comparing totk files with clean versions from dumped romfs
 - Filtering SARC contents.
 - Highlighting <span style="color:#205F63;">added</span> and <span style="color:#826C00;">modded</span> SARC entries. ![Alt text](preview/p1.png "")
 - Searching for specific text queries within the entire SARC archive.

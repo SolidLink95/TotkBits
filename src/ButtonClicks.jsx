@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 import { set } from 'lodash';
+import { act } from 'react';
 
 
 export async function addEmptyByml(fullPath,setStatusText, setpaths) {
@@ -27,12 +28,13 @@ export const useExitApp = async () => {
 
 export async function extractFileClick(selectedPath, setStatusText) {
   try {
-    if (selectedPath.path === null || selectedPath.path === undefined || selectedPath.path === "" || !selectedPath.isfile) {
+    const path = selectedPath.path ?? '';
+    if (path === "") {
       setStatusText("Select some file first!");
       return;
     }
 
-    const content = await invoke('extract_internal_file', { internalPath: selectedPath.path });
+    const content = await invoke('extract_internal_file', { internalPath: path });
     if (content !== null) {
       setStatusText(content.status_text);
     }
@@ -98,12 +100,13 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
       return;
     }
     //  setStatusText(content.status_text);
-    console.log(content.file_label);
+    console.log('content.file_label', content.file_label);
     if (content.tab === 'YAML') {
-      setActiveTab(content.tab);
+      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
       updateEditorContent(content.text, content.lang);
-      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
       setStatusText(`Opened file: ${fullPath}`);
+      setActiveTab(content.tab);
+      
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
       setStatusText("Unsupported file type");
@@ -130,15 +133,15 @@ export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLa
     setStatusText(content.status_text);
     if (content.tab === 'SARC') {
       setActiveTab(content.tab);
-      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label }));
+      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label.replace(/\/\//g, '/') }));
       setpaths(content.sarc_paths);
     } else if (content.tab === 'YAML') {
       setActiveTab(content.tab);
       updateEditorContent(content.text, content.lang);
-      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
+      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
     } else if (content.tab === 'RSTB') {
       setActiveTab(content.tab);
-      setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label }));
+      setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label.replace(/\/\//g, '/') }));
 
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
@@ -151,24 +154,26 @@ export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLa
 }
 export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
+    // setActiveTab("LOADING");
     setStatusText("Opening file...");
     const content = await invoke('open_file_struct');
     setStatusText(content.status_text);
     if (content.tab === 'SARC') {
       setActiveTab(content.tab);
-      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label }));
+      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label.replace(/\/\//g, '/') }));
       setpaths(content.sarc_paths);
       updateEditorContent("", content.lang);
     } else if (content.tab === 'YAML') {
       setActiveTab(content.tab);
       updateEditorContent(content.text, content.lang);
       console.log(content.lang);
-      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label }));
+      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
     } else if (content.tab === 'RSTB') {
       setActiveTab(content.tab);
-      setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label }));
+      setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label.replace(/\/\//g, '/') }));
 
     } else if (content.tab === 'ERROR') {
+      // setActiveTab(activeTabBak);
       console.log("Error opening file, no tab set");
       setStatusText("Error opening file");
     }
@@ -177,19 +182,22 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
 
     setStatusText("");
   }
+  // setActiveTab(activeTabBak);
 }
 
-export async function closeAllFilesClick(setStatusText, setpaths, updateEditorContent, setLabelTextDisplay) {
+export async function closeAllFilesClick(setCompareData, setStatusText, setpaths, updateEditorContent, setLabelTextDisplay) {
   try {
     const content = await invoke('close_all_opened_files');
-    if (content === null) {
+    if (!content) {
       console.log("No content returned from close_all_files");
       return;
     }
     setStatusText(content.status_text);
     setpaths(content.sarc_paths);
     updateEditorContent(content.text, content.lang);
-    setLabelTextDisplay({ sarc: '', yaml: '', rstb: '' });
+    setLabelTextDisplay({ sarc: '', yaml: '', rstb: '', comparer: '' });
+    setCompareData({ decision: 'FilesFromDisk', content1: '', content2: '', filepath1: '', filepath2: '', isSmall: true, isFromDisk: false, isInternal: false, label1: '', label2: '' });
+    // setCompareData({ decision: 'FilesFromDisk', content1: '', content2: '', filepath1: '', filepath2: '', isSmall: true, isFromDisk: false, isInternal: false, label1: '', label2: '' });
   } catch (error) {
     console.error('Failed to close all files:', error);
   }

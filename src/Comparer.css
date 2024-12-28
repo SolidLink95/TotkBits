@@ -1,0 +1,88 @@
+
+:root {
+    --line-h: 15px;
+    --diff-font-size: 11px;
+    --diff-line-height: 12px;
+    --diff-margin-l: 0px;
+    --diff-padding-l: 1px;
+    --font-family:  Consolas,Inter, Avenir, Helvetica, Arial, sans-serif;
+  }
+  
+.diff-viewer-div {
+    font-size: var(--diff-font-size) !important; /* Customize font size for line content */
+    line-height: var(--line-h) !important;
+    font-family: var(--font-family) !important;
+    overflow-y: auto; /* Added to allow scrolling */
+    overflow-x: hidden; /* Optional: to prevent horizontal scrolling */
+    margin-bottom: 30px;
+}
+
+  .react-diff-69s43g-content-text {
+    user-select: text !important;
+    color: white !important;
+    font-size: var(--diff-font-size) !important; /* Customize font size for line content */
+    line-height: var(--line-h) !important;
+    margin: 2px !important;
+    /* margin-left: -20px !important; */
+    font-family: var(--font-family) !important;
+    overflow-y: auto; /* Added to allow scrolling */
+    overflow-x: hidden; /* Optional: to prevent horizontal scrolling */
+  }
+  .react-diff-1ri4lr5-diff-container {
+    font-size: var(--diff-font-size) !important; /* Customize font size for line content */
+    line-height: var(--line-h) !important;
+    /* margin-left: var(--diff-margin-l) !important; */
+    /* padding-left: var(--diff-margin-l) !important; */
+    font-family: var(--font-family) !important;
+    overflow-y: auto; /* Added to allow scrolling */
+    overflow-x: hidden; /* Optional: to prevent horizontal scrolling */
+  }
+  .react-diff-1bg4f2i-split-view {
+    font-size: var(--diff-font-size) !important; /* Customize font size for line content */
+    line-height: var(--line-h) !important;
+    /* margin-left: var(--diff-margin-l) !important; */
+    padding-left: var(--diff-margin-l) !important;
+    font-family: var(--font-family) !important;
+    overflow-y: auto; /* Added to allow scrolling */
+    overflow-x: hidden; /* Optional: to prevent horizontal scrolling */
+  }
+  
+  .react-diff-1n7ec1i-line {
+    font-size: var(--diff-font-size) !important;
+    line-height: var(--line-h) !important;
+    margin-left: var(--diff-margin-l) !important;
+    padding-left: var(--diff-margin-l) !important;
+    font-family: var(--font-family) !important;
+  }
+  
+  .react-diff-127lblb-gutter  {
+    font-size: var(--diff-font-size) !important; /* Customize font size for line content */
+    margin-left: 20px !important;
+    padding-left: 0px !important;
+    /* padding-left: var(--diff-margin-l) !important; */
+    line-height: var(--line-h) !important;
+    font-family: var(--font-family) !important;
+  }
+  
+  .react-diff-174u0as-diff-removed {
+    font-size: var(--diff-font-size) !important; /* Customize font size for line content */
+    line-height: var(--line-h) !important;
+    margin-left: var(--diff-margin-l) !important;
+    padding-left: var(--diff-margin-l) !important;
+    font-family: var(--font-family) !important;
+  }
+  
+  .react-diff-nzrz0y-line-number {
+    font-size: var(--diff-font-size) !important; /* Customize font size for line content */
+    /* padding-left: 0px !important;
+    margin-left: 0px !important; */
+    line-height: var(--line-h) !important;
+    /* margin-left: var(--diff-margin-l) !important; */
+    padding-left: var(--diff-margin-l) !important;
+    font-family: var(--font-family) !important;
+  }
+  .react-diff-1hrzpyv-diff-added {
+    font-size: var(--diff-font-size) !important; /* Customize font size for line content */
+    line-height: var(--line-h) !important;
+    font-family: var(--font-family) !important;
+  }

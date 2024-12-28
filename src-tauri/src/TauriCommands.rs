@@ -375,3 +375,30 @@ pub fn clear_search_in_sarc(app_handle: tauri::AppHandle) -> Option<SendData> {
     None
 }
 
+//COMPARE stuff
+#[tauri::command]
+pub fn compare_files(app_handle: tauri::AppHandle, isFromDisk: bool) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let app = binding.lock().expect("Failed to lock state");
+    match app.compare_files(isFromDisk) {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
+
+#[tauri::command]
+pub fn compare_internal_file_with_vanila(app_handle: tauri::AppHandle,  internal_path: String, is_from_sarc: bool) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.compare_internal_file_with_original(internal_path, is_from_sarc) {
+        Some(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        None => {} // Return None if no result
+    }
+    None
+}
+
