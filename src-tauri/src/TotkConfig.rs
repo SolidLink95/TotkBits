@@ -405,6 +405,7 @@ impl TotkConfig {
 
     pub fn new() -> io::Result<TotkConfig> {
         let mut conf = Self::default();
+        conf.get_game_version().unwrap_or_default();//no point in handling error here
         //get config path
         conf.get_config_path()?;
         //try to update from toml config
@@ -426,12 +427,11 @@ impl TotkConfig {
             conf_json = toml::from_str(&conf_str).unwrap_or_default();
         } 
         conf.update_from_json_data(conf_json);
-        
         if !Self::check_for_zsdic(&conf.romfs) {
             //unable to find romfs path, get it from NX editor or user input
             conf.update_romfs_path()?;//throws error if not found
         }
-        conf.get_game_version().unwrap_or_default();//no point in handling error here
+        
 
 
 
@@ -462,7 +462,7 @@ impl TotkConfig {
     }
 
     pub fn get_config_path(&mut self) -> io::Result<()> {
-        let appdata = env::var("LOCALAPPDATA").map_err(|_| io::Error::new(io::ErrorKind::NotFound, "Cannot access appdata"))?;
+        let appdata = Self::get_config_root_path();
         let conf_path = Pathlib::new(Path::new(&appdata).join("Totkbits/config.toml"));
         if !Path::new(&conf_path.parent).exists() {
             fs::create_dir_all(&conf_path.parent)?;
@@ -470,6 +470,8 @@ impl TotkConfig {
         self.config_path = conf_path.full_path;
         Ok(())
     }
+
+
     pub fn save(&self) -> io::Result<()> {
         if self.config_path.is_empty() {
             return Err(io::Error::new(io::ErrorKind::NotFound, "Empty config path"));
@@ -477,8 +479,15 @@ impl TotkConfig {
         let json_data =   self.to_json()?;
         let toml_str = toml::to_string_pretty(&json_data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{:#?}",e)))?;
         let mut res = String::new();
-        res.push_str("# Totkbits config\n");
+        res.push_str("# Totkbits v0.0.8 config\n");
         res.push_str(&format!("# Available text editor themes: {}\n", self.available_themes.join(", ")));
+        if let Ok(exe_path) = env::current_exe() {
+            if let Some(cwd_path) = exe_path.parent() {
+                res.push_str(&format!("# Current working directory: {}\n", cwd_path.to_string_lossy().to_string().replace("\\", "/")));
+            } else {
+                res.push_str(&format!("# Executable path: {}\n", exe_path.to_string_lossy().to_string().replace("\\", "/")));
+            }
+        }
         res.push_str("# \n");
         res.push_str(&toml_str);
         write_string_to_file(&self.config_path, &res)?;
@@ -486,10 +495,11 @@ impl TotkConfig {
     }
 
     pub fn update_romfs_path(&mut self) -> io::Result<()> {
-        if let Err(_) = self.update_romfs_from_NX() {
-            return self.update_romfs_from_input();
+        if self.update_romfs_from_NX().is_err() && self.update_romfs_from_input().is_err() {
+            Err(io::Error::new(io::ErrorKind::NotFound, "Unable to get romfs path from NX editor or user input"))
+        } else {
+            Ok(())
         }
-        Err(io::Error::new(io::ErrorKind::NotFound, "Unable to get romfs path"))
     }
 
     pub fn check_for_zsdic<P:AsRef<Path>>(romfs_path: P) -> bool {
@@ -661,4 +671,20 @@ impl TotkConfig {
             })
         )
     }
+    pub fn get_config_root_path() -> String {
+        //save config in localappdata, if not possible save in appdata, if not possible save in exe path
+        if let Ok(appdata) = env::var("LOCALAPPDATA") {
+            return appdata;
+        }
+        if let Ok(appdata) = env::var("APPDATA") {
+            return appdata;
+        }
+        if let Ok(exe_path) = env::current_exe() {
+            if let Some(cwd_path) = exe_path.parent() {
+                return cwd_path.to_string_lossy().to_string().replace("\\", "/");
+            }
+        }
+        String::new()
+    }
 }
+

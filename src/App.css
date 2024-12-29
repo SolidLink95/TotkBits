@@ -181,6 +181,8 @@ body {
 }
 
 .modal-content {
+  width:  90%; /* Take up 95% of the window width */
+  max-width: 85%; /* Prevent exceeding 95% width */
   background-color: #555555;
   padding: 20px;
   border-radius: 5px;

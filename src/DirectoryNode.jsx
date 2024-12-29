@@ -50,7 +50,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, setCompareData
+    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, setCompareData, setInternalSarcPath
   } = useEditorContext();
 
   const [isCollapsed, setIsCollapsed] = useState(true);

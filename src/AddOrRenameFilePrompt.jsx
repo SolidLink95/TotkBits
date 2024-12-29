@@ -1,23 +1,38 @@
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-function AddOrRenameFilePrompt({ isOpen, onClose, setStatusText, setpaths,
-  isAddPrompt, selectedPath, renamePromptMessage }) {
-  const name = selectedPath.path.split("/").pop();
-  const [internal_path, setInternalSarcPath] = useState('');
-  const [path, setFilePath] = useState('');
-  // const [isAddPrompt, setIsAddPrompt] = useState(true);
+function AddOrRenameFilePrompt({
+  isOpen,
+  onClose,
+  setStatusText,
+  setpaths,
+  isAddPrompt,
+  selectedPath,
+  renamePromptMessage,
+}) {
+  const [internalPath, setInternalPath] = useState('');
+  const [filePath, setFilePath] = useState('');
+
+  // Update internalPath when the dialog opens or selectedPath changes
+  useEffect(() => {
+    if (isOpen && selectedPath?.path) {
+      setInternalPath(selectedPath.path);
+    }
+  }, [isOpen, selectedPath]);
 
   const cancelClick = () => {
-    setInternalSarcPath("");
-    setFilePath("");
+    setInternalPath('');
+    setFilePath('');
     onClose();
   };
 
   const handleRenameOkClick = async (internalPath) => {
     try {
-      const content = await invoke('rename_internal_sarc_file', { internalPath: selectedPath.path, newInternalPath: internalPath });
-      if (content === null) {
+      const content = await invoke('rename_internal_sarc_file', {
+        internalPath: selectedPath.path,
+        newInternalPath: internalPath,
+      });
+      if (!content) {
         console.log("No content returned from rename_internal_sarc_file");
         cancelClick();
         return;
@@ -26,20 +41,20 @@ function AddOrRenameFilePrompt({ isOpen, onClose, setStatusText, setpaths,
       if (content.sarc_paths.paths.length > 0) {
         setpaths(content.sarc_paths);
       }
-      setInternalSarcPath("");
-      setFilePath("");
-      onClose();
+      cancelClick();
     } catch (error) {
       console.error("Error invoking 'rename_click':", error);
     }
+  };
 
-  }
-  const handleAddOkClick = async (internalPath, path) => {
+  const handleAddOkClick = async (internalPath, filePath) => {
     try {
-      console.log("internal_path", internalPath);
-      console.log("path", path);
-      const content = await invoke('add_click', { internalPath: internalPath, path: path, overwrite: false });
-      if (content === null) {
+      const content = await invoke('add_click', {
+        internalPath,
+        path: filePath,
+        overwrite: false,
+      });
+      if (!content) {
         console.log("No content returned from add_click");
         cancelClick();
         return;
@@ -48,81 +63,121 @@ function AddOrRenameFilePrompt({ isOpen, onClose, setStatusText, setpaths,
       if (content.sarc_paths.paths.length > 0) {
         setpaths(content.sarc_paths);
       }
-      setInternalSarcPath("");
-      setFilePath("");
-      onClose();
+      cancelClick();
     } catch (error) {
       console.error("Error invoking 'add_click':", error);
     }
   };
 
   const handleSelectFileClick = async () => {
-    const content = await invoke("open_file_dialog");
-    if (content !== null) {
-      console.log(content);
-      setFilePath(content);
+    try {
+      const content = await invoke('open_file_dialog');
+      if (content) {
+        console.log(content);
+        setFilePath(content);
+      }
+    } catch (error) {
+      console.error('Error opening file dialog:', error);
     }
   };
 
   if (!isOpen || isAddPrompt === null) return null;
-  // console.log("isAddPrompt", isAddPrompt);
-  const canSubmit = (isAddPrompt && path && internal_path.length > 0 && internal_path.replace("//", "/").split("/").pop().includes(".") &&
-    path.length > 0) || (!isAddPrompt && internal_path.length > 0);
-  const okButtonClass = canSubmit ? "modal-footer-button" : "modal-footer-button-disabled";
+
+  const canSubmit =
+    (isAddPrompt && internalPath.includes('.') && filePath) ||
+    (!isAddPrompt && internalPath);
+
+  const okButtonClass = canSubmit
+    ? 'modal-footer-button'
+    : 'modal-footer-button-disabled';
 
   if (isAddPrompt) {
     return (
       <div className="modal-overlay">
         <div className="modal-content">
-          <button className="close-button" onClick={onClose}>X</button>
+          <button className="close-button" onClick={onClose}>
+            X
+          </button>
           <div>Select internal sarc path and file to be added.</div>
-          <div className="modal-header">Internal sarc path must contain "." in base name</div>
+          <div className="modal-header">
+            Internal sarc path must contain "." in base name
+          </div>
           <div className="modal-row">
             <input
               type="text"
-              placeholder='Full path inside sarc'
+              placeholder="Full path inside sarc"
               className="modal-input"
-              value={internal_path}
-              onChange={(e) => setInternalSarcPath(e.target.value)}
+              value={internalPath}
+              onChange={(e) => setInternalPath(e.target.value)}
             />
           </div>
           <div className="modal-row">
             <input
               type="text"
-              placeholder='Path to file'
+              placeholder="Path to file"
               className="modal-input"
               style={{ marginRight: '5px' }}
-              value={path}
+              value={filePath}
               onChange={(e) => setFilePath(e.target.value)}
             />
-            <button className="generic_button" onClick={handleSelectFileClick}>Select file</button>
+            <button className="generic_button" onClick={handleSelectFileClick}>
+              Select file
+            </button>
           </div>
           <div className="modal-footer">
-            <button className={okButtonClass} title="Proceed" disabled={!canSubmit} onClick={() => handleAddOkClick(internal_path, path)}>Ok</button>
-            <button className="modal-footer-button" title="Cancel operation" onClick={cancelClick}>Cancel</button>
+            <button
+              className={okButtonClass}
+              title="Proceed"
+              disabled={!canSubmit}
+              onClick={() => handleAddOkClick(internalPath, filePath)}
+            >
+              Ok
+            </button>
+            <button
+              className="modal-footer-button"
+              title="Cancel operation"
+              onClick={cancelClick}
+            >
+              Cancel
+            </button>
           </div>
         </div>
       </div>
     );
-  } else if (renamePromptMessage.path.length > 0) { //Rename prompt, ignore if nothing to rename
+  } else if (renamePromptMessage.path.length > 0) {
     return (
       <div className="modal-overlay">
         <div className="modal-content">
-          <button className="close-button" onClick={onClose}>X</button>
-          <div >{renamePromptMessage.message}</div>
+          <button className="close-button" onClick={onClose}>
+            X
+          </button>
+          <div>{renamePromptMessage.message}</div>
           <div className="modal-header">{renamePromptMessage.path}</div>
           <div className="modal-row">
             <input
               type="text"
-              placeholder='New name'
+              placeholder="Full path inside sarc"
               className="modal-input"
-              value={internal_path}
-              onChange={(e) => setInternalSarcPath(e.target.value)}
+              value={internalPath}
+              onChange={(e) => setInternalPath(e.target.value)}
             />
           </div>
           <div className="modal-footer">
-            <button className={okButtonClass} title="Proceed" disabled={!canSubmit} onClick={() => handleRenameOkClick(internal_path)}>Ok</button>
-            <button className="modal-footer-button" title="Cancel operation" onClick={cancelClick}>Cancel</button>
+            <button
+              className={okButtonClass}
+              title="Proceed"
+              disabled={!canSubmit}
+              onClick={() => handleRenameOkClick(internalPath)}
+            >
+              Ok
+            </button>
+            <button
+              className="modal-footer-button"
+              title="Cancel operation"
+              onClick={cancelClick}
+            >
+              Cancel
+            </button>
           </div>
         </div>
       </div>
