@@ -2,7 +2,7 @@ use crate::{
     file_format::{
         Ainb_py::Ainb_py,
         Asb_py::Asb_py,
-        BinTextFile::{BymlFile, OpenedFile},
+        BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile},
         Esetb::Esetb,
         Pack::{PackComparer, PackFile, SarcPaths},
         PythonWrapper::PythonWrapper,
@@ -183,7 +183,8 @@ pub fn open_byml(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, 
         opened_file.file_type = b.file_data.file_type.clone();
         data.status_text = format!("Opened {}", &file_name);
         data.path = Pathlib::new(file_name.clone());
-        data.text = Byml::to_text(&b.pio);
+        // data.text = Byml::to_text(&b.pio);
+        data.text = b.to_string();
         data.get_file_label(b.file_data.file_type, b.endian);
         return Some((opened_file, data));
     }
@@ -445,15 +446,15 @@ pub fn get_binary_by_filetype(
                         println!("Error: {}", e);
                     }
                 }
-                // if let Ok(some_data) =
-                //     p_wrap.text_to_binary(text, "byml_text_to_binary".to_string())
-                // {
-                //     rawdata = some_data;
-                //     println!("it worked");
-                // }
             }
             if (rawdata.is_empty()) {
-                let pio = Byml::from_text(text).ok()?;
+                let processed_text = if is_banc_path(&file_path) && zstd.totk_config.rotation_deg {
+                    &replace_rotate_deg_to_rad(&text)
+                } else {
+                    text
+                };
+                
+                let pio = Byml::from_text(processed_text).ok()?;
                 rawdata = pio.to_binary(endian);
             }
             if (!rawdata.is_empty()) {
@@ -465,7 +466,8 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::Bcett => {
-            let pio = Byml::from_text(text).ok()?;
+            let processed_text = if zstd.totk_config.rotation_deg {&replace_rotate_deg_to_rad(&text)} else {text};
+            let pio = Byml::from_text(processed_text).ok()?;
             rawdata = pio.to_binary(endian);
             if is_zs {
                 rawdata = zstd.cpp_compressor.compress_bcett(&rawdata).ok()?;
@@ -614,7 +616,7 @@ impl SaveFileDialog<'_> {
             result = res.to_string_lossy().into_owned();
         }
         self.isText = vec![".txt", ".yaml", ".json", ".yml"].iter().any(|ext| result.to_lowercase().ends_with(ext));
-        result
+        result.replace("\\", "/")
     }
 }
 

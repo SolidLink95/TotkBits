@@ -3,12 +3,13 @@ use crate::file_format::TagProduct::TagProduct;
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, TotkFileType, TotkZstd};
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
+use regex::Regex;
 use roead::byml::Byml;
 use std::any::type_name;
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Read, Write};
 use std::panic::AssertUnwindSafe;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io, panic};
 use super::Esetb::Esetb;
@@ -122,7 +123,10 @@ impl<'a> BymlFile<'_> {
         full_path: String,
     ) -> io::Result<BymlFile<'a>> {
         let pio = Byml::from_binary(&data.data);
-        let file_type = data.file_type;
+        let mut file_type = data.file_type;
+        if is_banc_path(&full_path) {
+            file_type = TotkFileType::Bcett;
+        }
         match pio {
             Ok(ok_pio) => Ok(BymlFile {
                 endian: BymlFile::get_endiannes(&data.data),
@@ -225,7 +229,79 @@ impl<'a> BymlFile<'_> {
         f_handle.read_to_end(&mut buffer)?;
         Self::byml_data_to_bytes(&buffer, zstd.clone())
     }
+
+    pub fn is_banc(&self) -> bool {
+        self.path.full_path.to_ascii_lowercase().ends_with(".bcett.byml") ||
+            self.path.full_path.to_ascii_lowercase().ends_with(".bcett.byml.zs")
+    }
+
+    pub fn to_string(&self) -> String {
+        if self.is_banc() && self.zstd.totk_config.rotation_deg {
+            return replace_rotate_rad_to_deg(&Byml::to_text(&self.pio));
+        }
+        Byml::to_text(&self.pio)
+    }
+
+
 }
+
+pub fn is_banc_path<P: AsRef<Path>>(path: P) -> bool {
+    let path = path.as_ref().to_str().unwrap_or_default().to_ascii_lowercase();
+    path.ends_with(".bcett.byml") || path.ends_with(".bcett.byml.zs")
+}
+
+fn rad_to_deg(rad: f64) -> f64 {
+    rad * (180.0 / std::f64::consts::PI)
+}
+
+/// Converts degrees to radians
+fn deg_to_rad(deg: f64) -> f64 {
+    deg * (std::f64::consts::PI / 180.0)
+}
+
+/// Finds and replaces `Rotate: [...]` with radian values converted to degrees
+fn replace_rotate_rad_to_deg(input: &str) -> String {
+    let re = Regex::new(r"Rotate:\s*\[([^\]]+)\]").unwrap();
+    re.replace_all(input, |caps: &regex::Captures| {
+        let array: Vec<f64> = caps[1]
+            .split(',')
+            .filter_map(|s| s.trim().parse::<f64>().ok())
+            .map(rad_to_deg)
+            .collect();
+        // format!("Rotate: [{}]", array.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(","))
+        format!(
+            "Rotate: [{}]",
+            array
+                .iter()
+                .map(|v| {
+                    if *v == 0.0 {
+                        "0.0".to_string()
+                    } else {
+                        format!("{:.7}", v)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    })
+    .into_owned()
+}
+
+/// Finds and replaces `Rotate: [...]` with degree values converted to radians
+pub fn replace_rotate_deg_to_rad(input: &str) -> String {
+    let re = Regex::new(r"Rotate:\s*\[([^\]]+)\]").unwrap();
+    re.replace_all(input, |caps: &regex::Captures| {
+        let array: Vec<f64> = caps[1]
+            .split(',')
+            .filter_map(|s| s.trim().parse::<f64>().ok())
+            .map(deg_to_rad)
+            .collect();
+        format!("Rotate: [{}]", array.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(","))
+    })
+    .into_owned()
+}
+
+
 
 pub fn bytes_to_file(data: Vec<u8>, path: &str) -> io::Result<()> {
     let f = fs::File::create(&path); //TODO check if the ::create is sufficient

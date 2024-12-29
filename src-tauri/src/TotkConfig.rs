@@ -357,6 +357,7 @@ pub struct TotkConfig {
     pub close_all_prompt: bool,
     pub monaco_theme: String,
     pub monaco_minimap: bool,
+    pub rotation_deg: bool,
     #[serde(skip)]
     pub game_version:String,
     #[serde(skip)]
@@ -377,6 +378,7 @@ impl Default for TotkConfig {
             context_menu_font_size: 14,
             monaco_theme: "vs-dark".into(),
             monaco_minimap: false,
+            rotation_deg: false,
             game_version: String::new(),
             game_versions: (100..130).rev().map(|e| e.to_string()).collect(),
             available_themes: vec!["vs".into(), "vs-dark".into(), "hc-black".into(), "hc-light".into()],
@@ -458,6 +460,7 @@ impl TotkConfig {
         self.context_menu_font_size = json_data.get("context menu font size").unwrap_or(&self.context_menu_font_size.into()).as_i64().unwrap_or(self.context_menu_font_size as i64) as i32;
         self.close_all_prompt = json_data.get("Prompt on close all").unwrap_or(&self.close_all_prompt.into()).as_bool().unwrap_or(self.close_all_prompt);
         self.monaco_minimap = json_data.get("Text editor minimap").unwrap_or(&self.monaco_minimap.into()).as_bool().unwrap_or(self.monaco_minimap);
+        self.rotation_deg = json_data.get("Rotation in degrees").unwrap_or(&self.rotation_deg.into()).as_bool().unwrap_or(self.rotation_deg);
         self.romfs = json_data.get("romfs").unwrap_or(&binding).as_str().unwrap_or("").to_string();
     }
 
@@ -655,6 +658,7 @@ impl TotkConfig {
                 "Text editor theme": self.monaco_theme,
                 "Text editor minimap": self.monaco_minimap,
                 "Prompt on close all": self.close_all_prompt,
+                "Rotation in degrees": self.rotation_deg,
             })
         )
     }

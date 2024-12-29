@@ -11,6 +11,7 @@ edition = "2021"
 tauri-build = { version = "1", features = [] }
 
 [dependencies]
+regex = "1.10.4"
 # glob = "0.3"
 msbt_bindings_rs = {git = "https://github.com/SolidLink95/msbt_bindings_rs"}
 # msbt_bindings_rs = {path = "W:/coding/msbt_bindings_rs"}
