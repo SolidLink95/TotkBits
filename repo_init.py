@@ -98,6 +98,14 @@ def repo_init():
     if p.returncode != 0:
         raise Exception("Failed to install winpython dependencies")
     
+    for file in (Path(cwd) / "src-tauri/misc").glob("*.bin"):
+        destfile = Path(cwd) / "src-tauri/bin" / file.name
+        if not destfile.exists():
+            print(f"Copying: {file.name}")
+            shutil.copyfile(file, destfile)
+    if tmp_path.exists():
+        shutil.rmtree(str(tmp_path))
+    
     
     print("\nTotkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file")
         

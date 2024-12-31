@@ -472,7 +472,13 @@ pub fn is_esetb<P: AsRef<Path>>(path: P) -> bool {
 
 
 pub fn get_executable_dir() -> String {
-    if cfg!(debug_assertions) {return "W:/coding/TotkBits/src-tauri".to_string();}
+    if cfg!(debug_assertions) {
+        let cwd = env::current_dir().unwrap_or_default().to_string_lossy().to_string();
+        if cwd.ends_with("src-tauri") {
+            return cwd;
+        }
+        return "W:/coding/TotkBits/src-tauri".to_string();
+    }
     if let Ok(exe_path) = env::current_exe() {
         // Get the directory of the executable
         if let Some(exe_dir) = exe_path.parent() {

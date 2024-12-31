@@ -32,6 +32,7 @@ use crate::TotkApp::TotkBitsApp;
 
 fn main() -> io::Result<()> {
     #[allow(unused_variables)]
+    println!("Starting {:?}", env::current_dir().unwrap_or_default());
     let exe_cwd = get_executable_dir();
     if (exe_cwd.len() > 0) {
         env::set_current_dir(&exe_cwd)?;
