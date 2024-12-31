@@ -24,7 +24,7 @@ zstd = "0.13"
 roead = { version = "1.0.0", features = ["yaml", "sarc", "byml"] }
 #roead = { version = "0.25.1", features = ["yaml", "sarc", "byml"] }
 serde_json = "1.0"
-rfd = "0.14.0"
+rfd = "0.15.1"
 native-dialog = "0.7.0"
 natord = "1.0.9"
 bitvec = "1.0.1"
@@ -36,16 +36,16 @@ byteordered = "0.6.0"
 sha2 = "0.10"
 digest = "0.10"
 fs2 = "0.4"
-base64 = "0.21.7"
+base64 = "0.22.1"
 restbl = { version = "0.1", features = ["yaml"] }
-flate2 = "1.0.22"
+flate2 = "1.0.35"
 zstud-sys = {git = "https://github.com/SolidLink95/zstud-sys-rs"}
-windows = "0.56.0"
-toml = "0.8.12"
+windows = "0.58.0"
+toml = "0.8.19"
 winreg = "0.52.0"
 
 [dev-dependencies]
-windows = "0.56.0"
+windows = "0.58.0"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

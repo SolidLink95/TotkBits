@@ -197,6 +197,7 @@ export async function closeAllFilesClick(setCompareData, setStatusText, setpaths
     updateEditorContent(content.text, content.lang);
     setLabelTextDisplay({ sarc: '', yaml: '', rstb: '', comparer: '' });
     setCompareData({ decision: 'FilesFromDisk', content1: '', content2: '', filepath1: '', filepath2: '', isSmall: true, isFromDisk: false, isInternal: false, label1: '', label2: '' });
+    
     // setCompareData({ decision: 'FilesFromDisk', content1: '', content2: '', filepath1: '', filepath2: '', isSmall: true, isFromDisk: false, isInternal: false, label1: '', label2: '' });
   } catch (error) {
     console.error('Failed to close all files:', error);

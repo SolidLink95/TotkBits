@@ -1,14 +1,29 @@
 #![allow(non_snake_case, non_camel_case_types)]
-use std::fs::File;
+use std::any;
+use std::fs::{self, File};
 use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::Settings::Pathlib;
+use crate::Settings::{list_files_recursively, Pathlib};
 use crate::Zstd::{is_restbl, TotkZstd};
+use flate2::read::ZlibDecoder;
 use restbl::bin::ResTblReader;
 use restbl::ResourceSizeTable;
+use serde_json::to_string_pretty;
 
-use super::RstbData::get_rstb_data;
+use super::Pack::PackFile;
+
+// use super::RstbData::get_rstb_data;
+
+fn get_rstb_data() -> io::Result<Vec<String>> {
+    let json_zlibdata = fs::read("bin/totk_rstb_paths.bin")?;
+    let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
+    let mut json_str = String::new();
+    decoder.read_to_string(&mut json_str)?;
+    let res: Vec<String> = serde_json::from_str(&json_str)?;
+    Ok(res)
+}
 
 pub struct Restbl<'a> {
     pub path: Pathlib,
@@ -20,7 +35,62 @@ pub struct Restbl<'a> {
 }
 
 impl<'a> Restbl<'_> {
-    pub fn from_path(path: String, zstd: Arc<TotkZstd<'_>>) -> Option<Restbl> {
+    pub fn get_restb_entries<P: AsRef<Path>>(&mut self, path: P) -> io::Result<Vec<String>> {
+        //read from zlib json
+        let json_zlibdata = fs::read("bin/totk_rstb_paths.bin")?;
+        let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
+        let mut json_str = String::new();
+        decoder.read_to_string(&mut json_str)?;
+        let mut res: Vec<String> = serde_json::from_str(&json_str)?;
+        let mut p = PathBuf::from(path.as_ref());
+        for _ in 0..3 {
+            if !p.pop() {
+                return Ok(res); //unable to go to mod romfs path
+            }
+        }
+        let mod_romfs_path = p.to_string_lossy().to_string().replace("\\", "/");
+        //No point in updating from romfs dump
+        if mod_romfs_path == self.zstd.totk_config.romfs {return Ok(res);}
+        let mod_romfs_path_len = mod_romfs_path.len();
+        //limit to map files and actors
+        let valid_paths = vec!["Pack/Actor",  "AI", "AS"];
+        for entry in valid_paths.iter() {
+            //no point in calling res.contains() since the check costs more time than
+            //adding redundant local path
+            let valid_path = PathBuf::from(&mod_romfs_path).join(entry);
+            if !valid_path.exists() {continue;}
+            for file in list_files_recursively(&valid_path) {
+                // println!("  {}", &file);
+                let mut local_path = file.replace("\\","/")[mod_romfs_path_len..].to_string();
+                if local_path.starts_with("/") {local_path = local_path[1..].to_string()}
+                let local_path_lower = local_path.to_ascii_lowercase();
+                if local_path.to_ascii_lowercase().ends_with(".zs") {local_path = local_path[..(local_path.len()-3)].to_string()}
+                // if !res.contains(&local_path) {
+                    // println!("Adding custom rstb path: {}", &local_path);
+                // }
+                if entry == &"Pack/Actor" && (local_path_lower.ends_with(".pack") || local_path_lower.ends_with(".sarc")) {
+                    if let Ok(pack) = PackFile::new(&file, self.zstd.clone()) {
+                        for entry in pack.sarc.files() {
+                            let entry_path = entry.name.unwrap_or_default().to_string();
+                            // if !entry_path.is_empty() && !res.contains(&entry_path) {
+                            if !entry_path.is_empty()  {
+                                // println!("Adding custom rstb sarc path: {}", &entry_path);
+                                res.push(entry_path);
+                            }
+                        }
+                    }
+                } else {
+                    
+                    res.push(local_path);
+                }
+                
+            }
+        }
+
+        Ok(res)
+    }
+
+    pub fn from_path<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'_>>) -> Option<Restbl> {
         let mut f_handle = File::open(&path).ok()?;
         let mut buffer = Vec::new();
         f_handle.read_to_end(&mut buffer).ok()?;
@@ -33,14 +103,19 @@ impl<'a> Restbl<'_> {
 
         match ResTblReader::new(buffer) {
             Ok(r) => {
-                let t = ResourceSizeTable::from_parser(&r);
-                return Some(Restbl {
-                    path: Pathlib::new(path),
+                let t: ResourceSizeTable = ResourceSizeTable::from_parser(&r);
+                // let hash_table = get_rstb_data().unwrap_or_default();
+                
+                let mut new_restbl = Restbl {
+                    path: Pathlib::new(&path),
                     zstd: zstd.clone(),
                     reader: r,
                     table: t,
-                    hash_table: get_rstb_data(),
-                });
+                    hash_table: Default::default(),
+                };
+                //TODO: check if self function works
+                new_restbl.hash_table = new_restbl.get_restb_entries(&path).unwrap_or_default();
+                return Some(new_restbl);
             }
             Err(err) => {
                 eprintln!("{:?}", err);
