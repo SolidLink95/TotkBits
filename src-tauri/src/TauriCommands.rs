@@ -210,7 +210,7 @@ pub fn open_file_struct(app_handle: tauri::AppHandle, _window: tauri::Window) ->
 pub fn open_file_from_path(app_handle: tauri::AppHandle, path: String) -> Option<SendData> {
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let mut app = binding.lock().expect("Failed to lock state");
-    match app.open_from_path(path) {
+    match app.open_from_path(path.replace("\\", "/")) {
         Some(result) => {
             return Some(result);
         } // Safely return the result if present

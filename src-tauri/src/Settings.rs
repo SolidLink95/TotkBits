@@ -4,6 +4,7 @@ use std::io;
 use std::io::{BufWriter, Error, ErrorKind, Read, Write};
 use std::path::Path;
 use std::path::PathBuf;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -201,4 +202,45 @@ pub fn list_files_recursively<T: AsRef<Path>>(path: &T) -> Vec<String> {
     }
 
     files
+}
+
+pub fn process_inline_content(mut input: String, inline_count: usize) -> String {
+       // Regex to match content between { and }
+       let re = Regex::new(r"(\s*)\{(.*?)\}").unwrap();
+
+       // Replace content in the input string
+       input = re.replace_all(&input, |caps: &regex::Captures| {
+           if let Some(indentation) = caps.get(1) {
+               let indent = indentation.as_str();
+            //    println!("Indentation: {:?}", indent);
+               if let Some(content) = caps.get(2) {
+                   let content_str = content.as_str();
+                
+                   // Split content by commas
+                   let items: Vec<&str> = content_str.split(',').collect();
+   
+                   if items.len() > inline_count {
+                       // If more than 9 items, format as multiline with proper indentation
+                       let mut multiline = String::new();
+                       for item in items {
+                           let parts: Vec<&str> = item.splitn(2, ':').map(|s| s.trim()).collect();
+                           if parts.len() == 2 {
+                                let res = &format!("{}{}: {}\n", indent, parts[0], parts[1]);
+                               multiline.push_str(res);
+                           }
+                       }
+                       while (multiline.ends_with("\n") || multiline.ends_with(" ")) && multiline.len() > 1 {
+                           multiline.pop();
+                       }
+                       return format!("{}",  multiline);
+                   } else {
+                       // Otherwise, keep as single-line content
+                       return format!("{}{{{}}}", indent, content_str);
+                   }
+               }
+           }
+           String::new()
+       }).to_string();
+   
+       input
 }

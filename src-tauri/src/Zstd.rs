@@ -422,32 +422,40 @@ impl<'a> ZstdCompressor<'_> {
    
 }
 
+#[inline]
 pub fn is_byml(data: &[u8]) -> bool {
     data.starts_with(b"BY") || data.starts_with(b"YB")
 }
 
+#[inline]
 pub fn is_sarc(data: &[u8]) -> bool {
     data.starts_with(b"SARC")
 }
 
+#[inline]
 pub fn is_aamp(data: &[u8]) -> bool {
     data.starts_with(b"AAMP")
 }
 
+#[inline]
 pub fn is_msyt(data: &[u8]) -> bool {
     data.starts_with(b"MsgStd")
 }
+#[inline]
 pub fn is_ainb(data: &[u8]) -> bool {
     data.starts_with(b"AIB ")
 }
+#[inline]
 pub fn is_asb(data: &[u8]) -> bool {
     data.starts_with(b"ASB ")
 }
 
+#[inline]
 pub fn is_restbl(data: &[u8]) -> bool {
     data.starts_with(b"RSTB") || data.starts_with(b"REST")
 }
 
+#[inline]
 pub fn is_gamedatalist<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("gamedatalist")
     // path.ends_with("GameDataList.Product.110.byml.zs")
@@ -465,6 +473,7 @@ pub fn sha256(data: Vec<u8>) -> String {
     format!("{:X}", result)
 }
 
+#[inline]
 pub fn is_esetb<P: AsRef<Path>>(path: P) -> bool {
     let tmp = path.as_ref().to_string_lossy().to_ascii_lowercase();
     tmp.ends_with(".esetb.byml") || tmp.ends_with(".esetb.byml.zs")

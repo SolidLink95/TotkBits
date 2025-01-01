@@ -28,6 +28,7 @@ dist-ssr
 *.sw?
 /src-tauri/target/
 /src-tauri/bin/
+/src-tauri/external
 /res/*
 /tmp/
 

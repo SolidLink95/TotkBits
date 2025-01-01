@@ -177,7 +177,7 @@ pub fn open_byml(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, 
         } else {
             ""
         };
-        println!("{} is a {}byml", &file_name, gamedatalist);
+        println!("{} is a {}byml, is banc? {}", &file_name, gamedatalist, b.is_banc());
         opened_file.path = Pathlib::new(file_name.clone());
         opened_file.endian = b.endian;
         opened_file.file_type = b.file_data.file_type.clone();
@@ -295,7 +295,8 @@ pub fn get_string_from_data<P: AsRef<Path>>(
     if is_byml(&data) {
         if let Ok(file_data) = BymlFile::byml_data_to_bytes(&data, zstd.clone()) {
             if let Ok(byml_file) = BymlFile::from_binary(file_data, zstd.clone(), path.clone()) {
-                let text = Byml::to_text(&byml_file.pio);
+                // let text = Byml::to_text(&byml_file.pio);
+                let text = byml_file.to_string();
                 internal_file.byml = Some(byml_file);
                 let byml_ref = internal_file.byml.as_ref().unwrap(); // Safe due to the line above
                 internal_file.endian = byml_ref.endian.clone();

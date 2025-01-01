@@ -1,6 +1,6 @@
 #![allow(non_snake_case,non_camel_case_types)]
 use crate::file_format::TagProduct::TagProduct;
-use crate::Settings::Pathlib;
+use crate::Settings::{process_inline_content, Pathlib};
 use crate::Zstd::{is_byml, TotkFileType, TotkZstd};
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use regex::Regex;
@@ -14,6 +14,8 @@ use std::sync::Arc;
 use std::{fs, io, panic};
 use super::Esetb::Esetb;
 use super::Rstb::Restbl;
+
+const FLOAT_PRECISION: i32 = 5;
 
 #[derive(Debug)]
 pub struct FileData {
@@ -236,10 +238,14 @@ impl<'a> BymlFile<'_> {
     }
 
     pub fn to_string(&self) -> String {
-        if self.is_banc() && self.zstd.totk_config.rotation_deg {
-            return replace_rotate_rad_to_deg(&Byml::to_text(&self.pio));
+        let mut text = Byml::to_text(&self.pio);
+        if self.is_banc() {
+            if self.zstd.totk_config.rotation_deg {
+            text = process_Rotate_in_banc(&text, self.zstd.totk_config.rotation_deg);}
         }
-        Byml::to_text(&self.pio)
+        // Byml::to_text(&self.pio)
+        lower_float_precision(&text)
+        // process_inline_content(Byml::to_text(&self.pio), self.zstd.totk_config.yaml_max_inl)
     }
 
 
@@ -250,24 +256,89 @@ pub fn is_banc_path<P: AsRef<Path>>(path: P) -> bool {
     path.ends_with(".bcett.byml") || path.ends_with(".bcett.byml.zs")
 }
 
+#[inline]
 fn rad_to_deg(rad: f64) -> f64 {
     rad * (180.0 / std::f64::consts::PI)
 }
 
 /// Converts degrees to radians
+#[inline]
 fn deg_to_rad(deg: f64) -> f64 {
     deg * (std::f64::consts::PI / 180.0)
 }
 
+
+fn lower_float_precision(input: &str) -> String {
+    let re = Regex::new(r"\[([^\]]+)\]").unwrap();
+    let text = re.replace_all(input, |caps: &regex::Captures| {
+        let inner = &caps[1];
+        // Process each float within the brackets
+        format!("[{}]", inner
+            .split(',')
+            .map(|s| {
+                s.trim()
+                    .parse::<f64>()
+                    .map(|num| 
+                        if num == 0.0 {
+                            "0.0".to_string()
+                        } else {
+                            format!("{:.5}", num).trim_end_matches('0').trim_end_matches('.').to_string()
+                        }
+                    ) // Lower precision to 5
+                    .unwrap_or_else(|_| s.to_string()) // Keep non-float values as is
+            })
+            .collect::<Vec<_>>()
+            .join(", ")) // Rejoin the floats with commas
+    })
+    .into_owned();
+
+    let re = Regex::new(r"\{([^}]+)\}").unwrap();
+    re.replace_all(&text, |caps: &regex::Captures| {
+        let inner = &caps[1];
+        // Process each key-value pair within the braces
+        format!("{{{}}}", inner
+            .split(',')
+            .map(|pair| {
+                let mut parts = pair.split(':');
+                let key = parts.next().unwrap_or("").trim();
+                let value = parts.next().unwrap_or("").trim();
+                let formatted_value = value
+                    .parse::<f64>()
+                    .map(|num| {
+                        if num == 0.0 {
+                            "0.0".to_string()
+                        } else {
+                            format!("{:.5}", num).trim_end_matches('0').trim_end_matches('.').to_string()
+                        }
+                    })
+                    .unwrap_or_else(|_| value.to_string()); // Keep non-float values as is
+                format!("{}: {}", key, formatted_value)
+            })
+            .collect::<Vec<_>>()
+            .join(", ")) // Rejoin the key-value pairs
+    })
+    .into_owned()
+
+    // text
+}
+
+
+
 /// Finds and replaces `Rotate: [...]` with radian values converted to degrees
-fn replace_rotate_rad_to_deg(input: &str) -> String {
+fn process_Rotate_in_banc(input: &str, deg_to_rad: bool) -> String {
     let re = Regex::new(r"Rotate:\s*\[([^\]]+)\]").unwrap();
     re.replace_all(input, |caps: &regex::Captures| {
-        let array: Vec<f64> = caps[1]
+        let array: Vec<f64> = if deg_to_rad {caps[1]
             .split(',')
             .filter_map(|s| s.trim().parse::<f64>().ok())
             .map(rad_to_deg)
-            .collect();
+            .collect()
+        } else {
+                caps[1]
+                .split(',')
+                .filter_map(|s| s.trim().parse::<f64>().ok())
+                .collect()
+            };
         // format!("Rotate: [{}]", array.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(","))
         format!(
             "Rotate: [{}]",
@@ -277,11 +348,11 @@ fn replace_rotate_rad_to_deg(input: &str) -> String {
                     if *v == 0.0 {
                         "0.0".to_string()
                     } else {
-                        format!("{:.7}", v)
+                        format!("{:.5}", v)
                     }
                 })
                 .collect::<Vec<_>>()
-                .join(",")
+                .join(", ")
         )
     })
     .into_owned()
@@ -296,7 +367,7 @@ pub fn replace_rotate_deg_to_rad(input: &str) -> String {
             .filter_map(|s| s.trim().parse::<f64>().ok())
             .map(deg_to_rad)
             .collect();
-        format!("Rotate: [{}]", array.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(","))
+        format!("Rotate: [{}]", array.iter().map(|v| format!("{:.5}", v)).collect::<Vec<_>>().join(","))
     })
     .into_owned()
 }

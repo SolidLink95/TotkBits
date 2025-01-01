@@ -21,6 +21,7 @@ dependencies = [
  "restbl",
  "rfd 0.15.1",
  "roead",
+ "ryml",
  "serde",
  "serde_json",
  "serde_yaml",
