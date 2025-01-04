@@ -43,16 +43,9 @@ pub struct BymlFile<'a> {
 
 #[allow(dead_code,unused_variables,unused_assignments)]
 impl<'a> BymlFile<'_> {
-    pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> Option<BymlFile<'a>> {
-        fn inner_func(path: String, zstd: Arc<TotkZstd>) -> io::Result<BymlFile> {
-            let data: FileData =
-                BymlFile::byml_file_to_bytes(&PathBuf::from(path.clone()), zstd.clone())?;
-            return BymlFile::from_binary(data, zstd, path);
-        }
-        if let Ok(byml) = inner_func(path, zstd.clone()) {
-            return Some(byml);
-        }
-        None
+    pub fn new<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<BymlFile<'a>> {
+        let data = BymlFile::byml_file_to_bytes(path.as_ref(), zstd.clone()).ok()?;
+        BymlFile::from_binary(data, zstd, path.as_ref().to_string_lossy().into()).ok()
     }
 
     pub fn save(&self, path: String) -> io::Result<()> {
@@ -225,7 +218,7 @@ impl<'a> BymlFile<'_> {
         ));
     }
 
-    pub fn byml_file_to_bytes(path: &PathBuf, zstd: Arc<TotkZstd>) -> Result<FileData, io::Error> {
+    pub fn byml_file_to_bytes<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Result<FileData, io::Error> {
         let mut f_handle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;

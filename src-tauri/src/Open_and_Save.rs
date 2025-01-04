@@ -1,24 +1,18 @@
 use crate::{
     file_format::{
-        Ainb_py::Ainb_py,
-        Asb_py::Asb_py,
-        BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile},
-        Esetb::Esetb,
-        Pack::{PackComparer, PackFile, SarcPaths},
-        PythonWrapper::PythonWrapper,
-        Rstb::Restbl,
-        TagProduct::TagProduct,
+        Ainb_py::Ainb_py, Asb_py::Asb_py, BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile}, Esetb::Esetb, Msbt::str_endian_to_roead, Pack::{PackComparer, PackFile, SarcPaths}, PythonWrapper::PythonWrapper, Rstb::Restbl, TagProduct::TagProduct
     }, Comparer::DiffComparer, Settings::Pathlib, TotkApp::InternalFile, Zstd::{is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, TotkFileType, TotkZstd}
 };
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use rfd::{FileDialog, MessageDialog};
 use roead::{aamp::ParameterIO, byml::Byml};
 use serde::{Deserialize, Serialize};
+use tauri::api::file;
 use std::{
     collections::BTreeMap,
     fs::{self, File},
     io::{self, Read, Write},
-    path::Path,
+    path::{self, Path},
     sync::Arc,
 };
 
@@ -52,51 +46,56 @@ pub fn open_sarc<P: AsRef<Path>>(
 
     None
 }
-pub fn open_esetb(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+pub fn open_esetb<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
     let mut opened_file = OpenedFile::default();
+    let path_ref = path.as_ref();
     let mut data = SendData::default();
-    println!("Is {} a esetb?", &file_name);
-    if is_esetb(&file_name) {
-        opened_file.esetb = Esetb::from_file(file_name.clone(), zstd.clone()).ok();
+    print!("Is {:?} a esetb? ", &path_ref);
+    if is_esetb(&path) {
+        opened_file.esetb = Esetb::from_file(path_ref, zstd.clone()).ok();
         if let Some(esetb) = &opened_file.esetb {
-            println!("{} is a esetb", &file_name);
+            println!(" yes!");
             data.tab = "YAML".to_string();
-            opened_file.path = Pathlib::new(file_name.clone());
+            opened_file.path = Pathlib::new(path_ref);
             opened_file.endian = esetb.byml.endian;
             opened_file.file_type = TotkFileType::Esetb;
-            data.status_text = format!("Opened {}", file_name.clone());
-            data.path = Pathlib::new(file_name);
+            data.status_text = format!("Opened {}", path_ref.display());
+            data.path = Pathlib::new(path_ref);
             data.text = esetb.to_text();
             data.get_file_label(TotkFileType::Esetb, esetb.byml.endian);
             return Some((opened_file, data));
         }
+        println!("no");
     }
 
     None
 }
-pub fn open_restbl(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+pub fn open_restbl<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
     let mut opened_file = OpenedFile::default();
+    let path_ref = path.as_ref();
     let mut data = SendData::default();
-    println!("Is {} a restbl?", &file_name);
-    if Pathlib::new(file_name.clone())
+    print!("Is {} a restbl? ", &path_ref.display());
+    let pathlib_var = Pathlib::new(path_ref);
+    if pathlib_var
         .name
         .to_lowercase()
         .starts_with("resourcesizetable.product")
     {
-        println!("{} is a restbl", &file_name);
-        opened_file.restbl = Restbl::from_path(file_name.clone(), zstd.clone());
+        println!(" yes!");
+        opened_file.restbl = Restbl::from_path(path_ref, zstd.clone());
         if let Some(_restbl) = &mut opened_file.restbl {
             data.tab = "RSTB".to_string();
-            opened_file.path = Pathlib::new(file_name.clone());
+            opened_file.path = pathlib_var.clone();
             opened_file.endian = Some(roead::Endian::Little);
             opened_file.file_type = TotkFileType::Restbl;
-            data.status_text = format!("Opened {}", &file_name);
-            data.path = Pathlib::new(file_name.clone());
+            data.status_text = format!("Opened {}", &pathlib_var.full_path);
+            data.path = pathlib_var;
             // data.text = restbl.to_text();
             data.get_file_label(TotkFileType::Restbl, Some(roead::Endian::Little));
             return Some((opened_file, data));
         }
     }
+    println!(" no");
     None
 }
 
@@ -126,75 +125,81 @@ pub fn open_tag(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, S
     None
 }
 
-pub fn open_asb(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+pub fn open_asb<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
     let mut opened_file = OpenedFile::default();
+    let path_ref = path.as_ref();
     let mut data = SendData::default();
-    println!("Is {} a asb?", &file_name);
-    if let Ok(asb) = Asb_py::from_binary_file(&file_name, zstd.clone()) {
+    print!("Is {} a asb? ", &path_ref.display());
+    if let Ok(asb) = Asb_py::from_binary_file(path_ref, zstd.clone()) {
         if let Ok(text) = asb.binary_to_text() {
-            println!("{} is a asb", &file_name);
-            opened_file.path = Pathlib::new(file_name.clone());
+            println!(" yes!");
+            opened_file.path = Pathlib::new(path_ref);
             opened_file.file_type = TotkFileType::ASB;
-            data.status_text = format!("Opened: {}", &file_name);
-            data.path = Pathlib::new(file_name.clone());
+            data.status_text = format!("Opened: {}", &opened_file.path.full_path);
+            data.path = Pathlib::new(path_ref);
             data.text = text;
             data.get_file_label(TotkFileType::ASB, Some(roead::Endian::Little));
             return Some((opened_file, data));
         } else {
-            println!("{} is a asb but failed to convert to text", &file_name);
+            println!("{} yes but failed to convert to text", &path_ref.display());
         }
     }
-
+    println!(" no");
     None
 }
-pub fn open_ainb(file_name: String, _zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+pub fn open_ainb<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
     let mut opened_file = OpenedFile::default();
     let mut data = SendData::default();
-    println!("Is {} a ainb?", &file_name);
-    if let Ok(text) = Ainb_py::new().binary_file_to_text(&file_name) {
-        println!("{} is a ainb", &file_name);
-        opened_file.path = Pathlib::new(file_name.clone());
+    let path_ref = path.as_ref();
+    print!("Is {} a ainb? ", &path_ref.display());
+    if let Ok(text) = Ainb_py::new().binary_file_to_text(path_ref) {
+        println!(" yes!");
+        opened_file.path = Pathlib::new(path_ref);
         opened_file.file_type = TotkFileType::AINB;
-        data.status_text = format!("Opened: {}", &file_name);
-        data.path = Pathlib::new(file_name.clone());
+        data.status_text = format!("Opened: {}", &opened_file.path.full_path);
+        data.path = Pathlib::new(path_ref);
         data.text = text;
         data.get_file_label(TotkFileType::AINB, None);
         return Some((opened_file, data));
     }
-
+    println!(" no");
     None
 }
-pub fn open_byml(file_name: String, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+pub fn open_byml<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
     let mut opened_file = OpenedFile::default();
     let mut data = SendData::default();
-    println!("Is {} a byml?", &file_name);
-    opened_file.byml = BymlFile::new(file_name.clone(), zstd.clone());
+    let path_ref = path.as_ref();
+    let pathlib_var = Pathlib::new(path_ref);
+    print!("Is {} a byml? ", &pathlib_var.full_path);
+    opened_file.byml = BymlFile::new(path_ref, zstd.clone());
     // if opened_file.byml.is_some() {
     if let Some(b) = &opened_file.byml {
         // let b = opened_file.byml.as_ref().unwrap();
-        let gamedatalist = if is_gamedatalist(&file_name) {
+        let gamedatalist = if is_gamedatalist(path_ref) {
             "(GameDataList) "
         } else {
             ""
         };
-        println!("{} is a {}byml, is banc? {}", &file_name, gamedatalist, b.is_banc());
-        opened_file.path = Pathlib::new(file_name.clone());
+        println!("yes {}!",  gamedatalist);
+        opened_file.path = pathlib_var.clone();
         opened_file.endian = b.endian;
         opened_file.file_type = b.file_data.file_type.clone();
-        data.status_text = format!("Opened {}", &file_name);
-        data.path = Pathlib::new(file_name.clone());
+        data.status_text = format!("Opened {}", &pathlib_var.full_path);
+        data.path = pathlib_var;
         // data.text = Byml::to_text(&b.pio);
         data.text = b.to_string();
         data.get_file_label(b.file_data.file_type, b.endian);
         return Some((opened_file, data));
     }
+    println!(" no");
     None
 }
 
-pub fn open_msbt(file_name: String) -> Option<(OpenedFile<'static>, SendData)> {
+pub fn open_msbt<P:AsRef<Path>>(path: P) -> Option<(OpenedFile<'static>, SendData)> {
+    let file_name = path.as_ref().to_string_lossy().to_string().replace("\\", "/");
     let mut opened_file = OpenedFile::default();
     let mut data = SendData::default();
-    println!("Is {} a msbt?", &file_name);
+    print!("Is {} a msbt?", &file_name);
     // opened_file.msyt = MsbtFile::from_filepath(&file_name);
     opened_file.msyt = MsbtCpp::from_binary_file(&file_name).ok();
 
@@ -202,55 +207,64 @@ pub fn open_msbt(file_name: String) -> Option<(OpenedFile<'static>, SendData)> {
     // if opened_file.msyt.is_some() {
     if let Some(m) = &opened_file.msyt {
         // let m = opened_file.msyt.as_ref().unwrap();
-        println!("{} is a msbt", &file_name);
-        opened_file.path = Pathlib::new(file_name.clone());
-        opened_file.endian = m.endian;
+        println!(" yes!");
+        let endian = str_endian_to_roead(&m.endian.clone().unwrap_or("LE".to_string()));
+        opened_file.path = Pathlib::new(&file_name);
+        opened_file.endian = Some(endian);
         opened_file.file_type = TotkFileType::Msbt;
         data.status_text = format!("Opened {}", &file_name);
         data.path = Pathlib::new(file_name.clone());
         data.text = m.text.clone();
-        data.get_file_label(opened_file.file_type, m.endian);
+        data.get_file_label(opened_file.file_type, Some(endian));
         return Some((opened_file, data));
     }
+    println!(" no");
     None
 }
 
-pub fn open_text(file_name: String) -> Option<(OpenedFile<'static>, SendData)> {
+pub fn open_text<P: AsRef<Path>>(path: P) -> Option<(OpenedFile<'static>, SendData)> {
     let mut opened_file = OpenedFile::default();
     let mut data = SendData::default();
-    println!("Is {} regular text file?", &file_name);
-    let mut file = fs::File::open(&file_name).ok()?;
+    let path_ref = path.as_ref();
+    let pathlib_var = Pathlib::new(path_ref);
+    print!("Is {} regular text file? ", &pathlib_var.full_path);
+    let mut file = fs::File::open(path_ref).ok()?;
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).ok()?;
-    if let Ok(text) = String::from_utf8(buffer) {
-        println!("{} is a text file", &file_name);
-        opened_file.path = Pathlib::new(file_name.clone());
-        opened_file.file_type = TotkFileType::Text;
-        data.status_text = format!("Opened {}", &file_name);
-        data.path = Pathlib::new(file_name.clone());
-        data.text = text;
-        data.get_file_label(TotkFileType::Text, None);
-        return Some((opened_file, data));
+    if let Ok(x) = file.read_to_end(&mut buffer) {
+        if let Ok(text) = String::from_utf8(buffer) {
+            println!(" yes!");
+            opened_file.path = pathlib_var.clone();
+            opened_file.file_type = TotkFileType::Text;
+            data.status_text = format!("Opened {}", &pathlib_var.full_path);
+            data.path = pathlib_var;
+            data.text = text;
+            data.get_file_label(TotkFileType::Text, None);
+            return Some((opened_file, data));
+        }
     }
+    println!(" no");
     None
 }
 
-pub fn open_aamp(file_name: String) -> Option<(OpenedFile<'static>, SendData)> {
+pub fn open_aamp<P: AsRef<Path>>(path: P) -> Option<(OpenedFile<'static>, SendData)> {
     let mut opened_file = OpenedFile::default();
     let mut data = SendData::default();
-    println!("Is {} an aamp?", &file_name);
-    let raw_data = std::fs::read(&file_name).ok()?;
+    let path_ref = path.as_ref();
+    let pathlib_var = Pathlib::new(path_ref);
+    print!("Is {} an aamp? ", &pathlib_var.full_path);
+    let raw_data = std::fs::read(path_ref).ok()?;
     if is_aamp(&raw_data) {
         let pio = ParameterIO::from_binary(&raw_data).ok()?; // Parse AAMP from binary data
-        println!("{} is an aamp", &file_name);
-        opened_file.path = Pathlib::new(file_name.clone());
+        println!(" yes!");
+        opened_file.path = pathlib_var.clone();
         opened_file.file_type = TotkFileType::Aamp;
-        data.status_text = format!("Opened {}", &file_name);
-        data.path = Pathlib::new(file_name.clone());
+        data.status_text = format!("Opened {}", &pathlib_var.full_path);
+        data.path = pathlib_var;
         data.text = pio.to_text();
         data.get_file_label(TotkFileType::Aamp, None);
         return Some((opened_file, data));
     }
+    println!(" no");
     None
 }
 
@@ -321,7 +335,7 @@ pub fn get_string_from_data<P: AsRef<Path>>(
         // internal_file.file_type = TotkFileType::Msbt;
         let msbt = MsbtCpp::from_binary(&data).ok()?;
 
-        internal_file.endian = msbt.endian;
+        internal_file.endian = Some(str_endian_to_roead(&msbt.endian.unwrap_or("LE".to_string())));
         internal_file.path = Pathlib::new(path.clone());
         internal_file.file_type = TotkFileType::Msbt;
         return Some((internal_file, msbt.text));
@@ -400,6 +414,10 @@ pub fn get_binary_by_filetype(
     opened_file: &mut OpenedFile<'_>,
 ) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
+    let endian_str = match endian {
+        roead::Endian::Big => "BE",
+        roead::Endian::Little => "LE",
+    };
     let is_zs = file_path.to_lowercase().ends_with(".zs");
     let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs");
     match file_type {
@@ -475,7 +493,7 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::Msbt => {
-            let result = MsbtCpp::from_text(text, endian);
+            let result = MsbtCpp::from_text(text, endian_str.to_string());
             if let Ok(msbt) = result {
                 rawdata = msbt.binary;
             }
@@ -700,16 +718,16 @@ impl SendData {
 
 
 pub fn file_from_disk_to_senddata<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
-    let file_name = path.as_ref().to_string_lossy().to_string();
+    let file_name = path.as_ref().to_string_lossy().to_string().replace("\\", "/");
     let res = open_tag(file_name.clone(), zstd.clone())
-                .or_else(|| open_esetb(file_name.clone(), zstd.clone()))
-                .or_else(|| open_restbl(file_name.clone(), zstd.clone()))
-                .or_else(|| open_asb(file_name.clone(), zstd.clone()))
-                .or_else(|| open_ainb(file_name.clone(), zstd.clone()))
-                .or_else(|| open_byml(file_name.clone(), zstd.clone()))
-                .or_else(|| open_msbt(file_name.clone()))
-                .or_else(|| open_aamp(file_name.clone()))
-                .or_else(|| open_text(file_name.clone()))
+                .or_else(|| open_esetb(&file_name, zstd.clone()))
+                .or_else(|| open_restbl(&file_name, zstd.clone()))
+                .or_else(|| open_asb(&file_name, zstd.clone()))
+                .or_else(|| open_ainb(&file_name, zstd.clone()))
+                .or_else(|| open_byml(&file_name, zstd.clone()))
+                .or_else(|| open_msbt(&file_name))
+                .or_else(|| open_aamp(&file_name))
+                .or_else(|| open_text(&file_name))
                 .map(|(opened_file, data)| {
                     // self.opened_file = opened_file;
                     // self.internal_file = None;

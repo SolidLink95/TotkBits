@@ -1,6 +1,6 @@
 #![allow(non_snake_case,non_camel_case_types)]
 use std::{
-    io::{self, Read, Write}, os::windows::process::CommandExt, process::{Command, Stdio}
+    io::{self, Read, Write}, os::windows::process::CommandExt, path::Path, process::{Command, Stdio}
 };
 
 
@@ -27,7 +27,7 @@ impl Ainb_py {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn binary_file_to_text(&self, file_path: &str) -> io::Result<String> {
+    pub fn binary_file_to_text<P:AsRef<Path>>(&self, file_path: P) -> io::Result<String> {
         // env::set_var("PATH", self.newpath.clone());
         let mut f_handle = std::fs::File::open(file_path)?; // Open the file
         let mut buffer = Vec::new(); // Create a buffer to store the data

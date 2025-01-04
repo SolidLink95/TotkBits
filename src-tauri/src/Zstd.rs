@@ -443,7 +443,7 @@ pub fn is_msyt(data: &[u8]) -> bool {
 }
 #[inline]
 pub fn is_ainb(data: &[u8]) -> bool {
-    data.starts_with(b"AIB ")
+    data.starts_with(b"AIB")
 }
 #[inline]
 pub fn is_asb(data: &[u8]) -> bool {
@@ -482,7 +482,7 @@ pub fn is_esetb<P: AsRef<Path>>(path: P) -> bool {
 
 pub fn get_executable_dir() -> String {
     if cfg!(debug_assertions) {
-        let cwd = env::current_dir().unwrap_or_default().to_string_lossy().to_string();
+        let cwd = env::current_dir().unwrap_or_default().to_string_lossy().to_string().replace("\\", "/");
         if cwd.ends_with("src-tauri") {
             return cwd;
         }
@@ -492,7 +492,7 @@ pub fn get_executable_dir() -> String {
         // Get the directory of the executable
         if let Some(exe_dir) = exe_path.parent() {
             if let Some(exe_dir) = exe_dir.to_str() {
-                return exe_dir.to_string();
+                return exe_dir.to_string().replace("\\", "/");
             }
         }
     } 

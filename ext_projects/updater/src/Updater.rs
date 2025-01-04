@@ -21,11 +21,14 @@ pub struct Updater {
 
 impl Default for Updater {
     fn default() -> Self {
+        let repo_owner = "SolidLink95".to_string();
+        let repo_name = "TotkBits".to_string();
+        let url = format!("https://api.github.com/repos/{}/{}/releases/latest", &repo_owner, &repo_name);
         Updater {
-            repo_owner: "SolidLink95".to_string(),
-            repo_name: "TotkBits".to_string(),
+            repo_owner: repo_owner,
+            repo_name: repo_name,
             repo_current_version: "0.0.1".to_string(),
-            url: "https://api.github.com/repos/SolidLink95/TotkBits/releases/latest".to_string(),
+            url: url,
             client: Client::new(),
             temp_dir: Default::default(),
             cwd_dir: Default::default(),
@@ -74,6 +77,7 @@ impl Updater {
         download_with_progress(&asset.browser_download_url, &file_path).await?;
         println!("Downloaded {}", asset.name);
         // let backup_dir = upd.cwd_dir.join("backup");
+        upd.backup_current_version()?;
 
         // Step 4: Extract the .7z file using `7z` command-line tool
         decompress_file(&file_path, &upd.cwd_dir)?;

@@ -58,3 +58,11 @@ impl MsbtFile {
         }
     }
 }
+
+pub fn str_endian_to_roead(endian: &str) -> roead::Endian {
+    match endian {
+        "BE" => roead::Endian::Big,
+        "LE" => roead::Endian::Little,
+        _ => roead::Endian::Little,
+    }
+}

@@ -11,7 +11,7 @@ edition = "2021"
 zip = "2.2.2"            # for extracting archives (alternative to 7z)
 flate2 = "1.0"         # for decompression (if using zip files)
 sevenz-rust = "0.6.1"
-
+miow = "0.6.0"
 reqwest = { version = "0.11", features = ["json", "blocking", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }

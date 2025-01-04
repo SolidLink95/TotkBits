@@ -12,6 +12,7 @@ dependencies = [
  "digest",
  "flate2",
  "fs2",
+ "miow",
  "msbt",
  "msbt_bindings_rs",
  "msyt",
@@ -2632,6 +2633,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "miow"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "359f76430b20a79f9e20e115b3428614e654f04fab314482fc0fda0ebd3c6044"
+dependencies = [
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "msbt"
 version = "0.1.1"
 source = "git+https://github.com/lojewalo/msbt-rs#fe14284a9082ab35cee115e5a59006bc1933d5a1"
@@ -2643,19 +2653,19 @@ dependencies = [
 [[package]]
 name = "msbt_bindings_rs"
 version = "0.1.0"
-source = "git+https://github.com/SolidLink95/msbt_bindings_rs#18bf4f09df7f168e5685c64ea7c3e220e9187e0e"
+source = "git+https://github.com/SolidLink95/msbt_bindings_rs#43de1e06b4b9944ecc9f4e9d92c063326fb40848"
 dependencies = [
  "bindgen 0.69.4",
+ "byteorder",
  "cc",
  "libc",
  "msyt",
- "roead",
 ]
 
 [[package]]
 name = "msyt"
 version = "1.1.0"
-source = "git+https://github.com/SolidLink95/msyt-lib#c92ac693a2b87f35e2cd0b4320e27cdbcc25c9a1"
+source = "git+https://github.com/SolidLink95/msyt-lib#e2c5240441c218f5fcb3a5fba7bf49f92d82162a"
 dependencies = [
  "base64 0.21.7",
  "byteordered 0.4.1",
@@ -2664,7 +2674,6 @@ dependencies = [
  "indexmap 1.9.3",
  "msbt",
  "rayon",
- "roead",
  "serde",
  "serde_derive",
  "serde_yaml",

@@ -4,7 +4,7 @@ import shutil
 import os, sys
 import requests
 try:
-    from tqdm import tqdm
+    from tqdm import tqdm # type: ignore
 except ImportError:
     print("Install tqdm first using command: pip install tqdm")
     sys.exit(1)

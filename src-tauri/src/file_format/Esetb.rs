@@ -1,5 +1,5 @@
 #![allow(non_snake_case,non_camel_case_types)]
-use std::{io, sync::Arc};
+use std::{io, path::Path, sync::Arc};
 use roead::byml::{self, Byml};
 use crate::{Settings::Pathlib, Zstd::{TotkFileType, TotkZstd}};
 use super::BinTextFile::{BymlFile, FileData};
@@ -51,8 +51,8 @@ impl<'a> Esetb<'a> {
         Ok(ptcl)
     }
 
-    pub fn from_file(file: String, zstd: Arc<TotkZstd<'a>>) -> io::Result<Esetb<'a>> {
-        if let Some(byml) = BymlFile::new(file.to_string(), zstd.clone()) {
+    pub fn from_file<P:AsRef<Path>>(file: P, zstd: Arc<TotkZstd<'a>>) -> io::Result<Esetb<'a>> {
+        if let Some(byml) = BymlFile::new(file.as_ref(), zstd.clone()) {
             let mut esetb = Esetb { byml: byml, ptcl: Vec::new() };
             esetb.ptcl = Self::get_ptcl_binary(&esetb.byml.pio)?;
             

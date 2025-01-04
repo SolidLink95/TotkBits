@@ -1,4 +1,5 @@
 #![allow(non_snake_case,non_camel_case_types)]
+use std::path::Path;
 use std::sync::Arc;
 use std::{
     io::{self, Read, Write}, os::windows::process::CommandExt, process::{Command, Stdio}
@@ -27,7 +28,7 @@ impl<'a> Asb_py<'a> {
             data: Vec::new(),
         }
     }
-    pub fn from_binary_file( file_path: &str ,zstd: Arc<TotkZstd<'a>>) -> io::Result<Asb_py<'a>> {
+    pub fn from_binary_file<P: AsRef<Path>>( file_path: P ,zstd: Arc<TotkZstd<'a>>) -> io::Result<Asb_py<'a>> {
         let mut f_handle = std::fs::File::open(file_path)?; // Open the file
         let mut buffer = Vec::new(); // Create a buffer to store the data
         f_handle.read_to_end(&mut buffer)?; // Read the file into the buffer
