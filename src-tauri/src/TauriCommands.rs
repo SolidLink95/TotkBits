@@ -22,7 +22,7 @@ pub fn restart_app() -> Option<()> {
         return Some(());
     }
     // let _ = Command::new(totkbits_exe)
-    let _ = Command::new("cmd")
+    let p = Command::new("cmd")
         .creation_flags(no_window_flag)
         .args([
             "/C",
@@ -30,12 +30,15 @@ pub fn restart_app() -> Option<()> {
             "",
             &totkbits_exe.to_string_lossy().into_owned(),
         ])
-        .spawn()
-        .map(|_| ())
-        .ok()?;
-
-    process::exit(0);
-    #[allow(unreachable_code)]
+        .spawn();
+        // .map(|_| ())?;
+        // .ok()?;
+    match p {
+        Ok(_) => process::exit(0),
+        Err(_) => {return None;},
+    };
+    // process::exit(0);
+    // #[allow(unreachable_code)]
     Some(())
 }
 
