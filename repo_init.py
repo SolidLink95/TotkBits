@@ -12,8 +12,12 @@ except ImportError:
 def remove_file(file):
     x = Path(file)
     if x.exists() and x.is_file():
-        subprocess.run(["cmd", "/c", "del", x.as_posix()], check=True)
-        print(f"[+] Removed: {x.name}")
+        file_str = str(x)
+        try:
+            subprocess.run(["cmd", "/c", "del", file_str], check=True)
+            print(f"[+] Removed: {file_str}")
+        except subprocess.CalledProcessError:
+            print(f"[-] Failed to remove: {file_str}")
 
 def rename_directory(source, new_name):
     source_path = Path(source)
@@ -103,7 +107,6 @@ def repo_init():
     if not python_exe.exists():
         sys.exit(f"[-] Unable to find python.exe: {python_exe}")
     
-    remove_file(winpython_installer_exe)
     print("[+] Intalling winpython dependencies") # python -m pip install --upgrade pip
 
     p = subprocess.run([python_exe_str, "-m", "pip", "install", "--upgrade", "pip"])
@@ -137,6 +140,7 @@ def repo_init():
             "src-tauri/bin/winpython/WinPython Control Panel.exe",
             "src-tauri/bin/winpython/VS Code.exe",
             "src-tauri/bin/winpython/WinPython Command Prompt.exe",
+            "src-tauri/bin/ainb/ainb_as_json_v1.9.7z"
             ]
     files_to_remove = [Path(f) for f in files_to_remove]
     files_to_remove += list(Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib").glob("*.exe"))
@@ -145,11 +149,12 @@ def repo_init():
     for file in files_to_remove:
         remove_file(file.resolve())
     
+    remove_file(winpython_installer_exe)
     if tmp_path.exists():
         shutil.rmtree(str(tmp_path))
     
     
-    print("/nTotkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file")
+    print("\n[+] Totkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file")
         
 
 
