@@ -57,6 +57,7 @@ def repo_init():
     cwd = os.getcwd()
     cwd_path = Path(cwd)
     bin_path = "src-tauri/bin"
+    Path(bin_path).mkdir(parents=True, exist_ok=True)
     if not Path(f"{bin_path}/asb/asb.py").exists() or not Path(f"{bin_path}/ainb/ainb/ainb.py").exists():
         p = subprocess.run(["git", "submodule", "init"]);
         # if p.returncode != 0:
