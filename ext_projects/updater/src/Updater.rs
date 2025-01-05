@@ -73,7 +73,7 @@ impl Updater {
             .find(|a| a.name.ends_with(".7z"))
             .ok_or("[-] No .7z file found in the latest release")?;
         println!("[+] Found .7z file: {}", asset.name);
-
+        
         // Step 3: Download the .7z file
         // let mut response = upd.client.get(&asset.browser_download_url).send().await?;
         let file_path = Path::new(&self.temp_dir).join(&asset.name);

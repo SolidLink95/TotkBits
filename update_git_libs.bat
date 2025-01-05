@@ -1,7 +1,7 @@
 @echo off
 cd src-tauri
-@REM cargo update -p msyt
-@REM cargo update -p msbt
-@REM cargo update -p msbt_bindings_rs
-cargo update -p zstud-sys
+cargo update -p msyt
+cargo update -p msbt
+cargo update -p msbt_bindings_rs
+@REM cargo update -p zstud-sys
 cd ..

@@ -13,6 +13,7 @@ def remove_file(file):
     x = Path(file)
     if x.exists() and x.is_file():
         subprocess.run(["cmd", "/c", "del", x.as_posix()], check=True)
+        print(f"[+] Removed: {x.name}")
 
 def rename_directory(source, new_name):
     source_path = Path(source)
@@ -54,11 +55,12 @@ def download_file(url, local_path):
     
 def repo_init():
     cwd = os.getcwd()
+    cwd_path = Path(cwd)
     bin_path = "src-tauri/bin"
     if not Path(f"{bin_path}/asb/asb.py").exists() or not Path(f"{bin_path}/ainb/ainb/ainb.py").exists():
         p = subprocess.run(["git", "submodule", "init"]);
-        if p.returncode != 0:
-            raise Exception("[-] Failed to init git submodule")
+        # if p.returncode != 0:
+        #     raise Exception("[-] Failed to init git submodule")
         p = subprocess.run(["git", "submodule", "update", "--init", "--recursive"]);
         if p.returncode != 0:
             raise Exception("[-] Failed to update git submodule")
@@ -79,7 +81,7 @@ def repo_init():
         download_file(url, winpython_installer_exe)
         
     #winpython_dir = Path(os.path.join(cwd, bin_path, "winpython"))
-    winpython_dir = Path(cwd) / bin_path
+    winpython_dir = cwd_path / bin_path
     python_exe = next((e for e in winpython_dir.rglob("*.exe") if e.name=="python.exe"), None) if winpython_dir.exists() else None
     if python_exe is None:
         print("[+] Installing winpython")
@@ -91,39 +93,62 @@ def repo_init():
     winpython_dir = rename_directory(winpython_dir / "WPy64-31180", str(winpython_dir / "winpython"))
     
     python_exe = next((e for e in winpython_dir.rglob("*.exe") if e.name=="python.exe"), None)
+    if python_exe is None:
+        sys.exit("[-] Unable to find python.exe in winpython directory")
+    python_exe_str = python_exe.as_posix()
     requirements_txt = "src-tauri/pip.txt"
     if not Path(requirements_txt).exists():
         sys.exit(f"[-] Unable to find pip.txt: {requirements_txt}")
     if not python_exe.exists():
         sys.exit(f"[-] Unable to find python.exe: {python_exe}")
+    
+    remove_file(winpython_installer_exe)
     print("[+] Intalling winpython dependencies") # python -m pip install --upgrade pip
 
-    p = subprocess.run([str(python_exe), "-m", "pip", "install", "--upgrade", "pip"])
-    p = subprocess.run([str(python_exe), "-m", "pip", "install", "-r", requirements_txt])
+    p = subprocess.run([python_exe_str, "-m", "pip", "install", "--upgrade", "pip"])
+    p = subprocess.run([python_exe_str, "-m", "pip", "install", "-r", requirements_txt])
     if p.returncode != 0:
         raise Exception("[-] Failed to install winpython dependencies")
+    print(f"[+] Copying compressed json files")
     
-    for file in (Path(cwd) / "src-tauri/misc").glob("*.bin"):
-        destfile = Path(cwd) / "src-tauri/bin" / file.name
+    for file in (cwd_path / "src-tauri/misc").glob("*.bin"):
+        destfile = cwd_path / "src-tauri/bin" / file.name
         if not destfile.exists():
             print(f"Copying: {file.name}")
             shutil.copyfile(file, destfile)
     print(f"[+] Removing unused exe files")
-    files_to_remove = ["bin\winpython\python-3.11.8.amd64\Lib\site-packages\pip\_vendor\distlib\t64-arm.exe",
-            "bin\winpython\python-3.11.8.amd64\Lib\site-packages\pip\_vendor\distlib\w64-arm.exe",
-            "bin\winpython\python-3.11.8.amd64\Lib\site-packages\setuptools\cli-arm64.exe",
-            "bin\winpython\python-3.11.8.amd64\Lib\site-packages\setuptools\gui-arm64.exe"
+    files_to_remove = [
+            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib/t64-arm.exe",
+            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib/w64-arm.exe",
+            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools/cli-arm64.exe",
+            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools/gui-arm64.exe",
+            "src-tauri/bin/winpython/Jupyter Lab.exe",
+            "src-tauri/bin/winpython/Jupyter Notebook.exe",
+            "src-tauri/bin/winpython/Pyzo.exe",
+            "src-tauri/bin/winpython/Qt Assistant.exe",
+            "src-tauri/bin/winpython/Qt Linguist.exe",
+            "src-tauri/bin/winpython/Qt Designer.exe",
+            "src-tauri/bin/winpython/Spyder reset.exe",
+            "src-tauri/bin/winpython/Spyder.exe",
+            "src-tauri/bin/winpython/WinPython Terminal.exe",
+            "src-tauri/bin/winpython/WinPython Powershell Prompt.exe",
+            "src-tauri/bin/winpython/WinPython Interpreter.exe",
+            "src-tauri/bin/winpython/WinPython Control Panel.exe",
+            "src-tauri/bin/winpython/VS Code.exe",
+            "src-tauri/bin/winpython/WinPython Command Prompt.exe",
             ]
+    files_to_remove = [Path(f) for f in files_to_remove]
+    files_to_remove += list(Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib").glob("*.exe"))
+    files_to_remove += list(Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools").glob("*.exe"))
     
     for file in files_to_remove:
-        x = Path(f"src-tauri/{file}")
-        remove_file(x)
+        remove_file(file.resolve())
     
     if tmp_path.exists():
         shutil.rmtree(str(tmp_path))
     
     
-    print("\nTotkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file")
+    print("/nTotkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file")
         
 
 
