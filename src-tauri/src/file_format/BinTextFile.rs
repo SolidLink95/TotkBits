@@ -45,7 +45,7 @@ pub struct BymlFile<'a> {
 impl<'a> BymlFile<'_> {
     pub fn new<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<BymlFile<'a>> {
         let data = BymlFile::byml_file_to_bytes(path.as_ref(), zstd.clone()).ok()?;
-        BymlFile::from_binary(data, zstd, path.as_ref().to_string_lossy().into()).ok()
+        BymlFile::from_binary(data, zstd, path.as_ref()).ok()
     }
 
     pub fn save(&self, path: String) -> io::Result<()> {
@@ -112,10 +112,10 @@ impl<'a> BymlFile<'_> {
         }
     }
 
-    pub fn from_binary(
+    pub fn from_binary<P: AsRef<Path>>(
         data: FileData,
         zstd: Arc<TotkZstd<'a>>,
-        full_path: String,
+        full_path: P,
     ) -> io::Result<BymlFile<'a>> {
         let pio = Byml::from_binary(&data.data);
         let mut file_type = data.file_type;

@@ -11,6 +11,7 @@ use serde_json::{self, json};
 use std::collections::{BTreeMap, HashMap};
 
 use std::panic::AssertUnwindSafe;
+use std::path::Path;
 use std::sync::Arc;
 use std::{io, panic};
 
@@ -27,6 +28,7 @@ struct YamlData {
     RankTable: String,
     TagList: Vec<String>,
 }
+#[allow(dead_code)]
 pub struct TagProduct<'a> {
     pub byml: BymlFile<'a>,
     pub path_list: Vec<String>,
@@ -42,8 +44,8 @@ pub struct TagProduct<'a> {
 }
 
 impl<'a> TagProduct<'a> {
-    pub fn new(path: String, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
-        if let Some(byml) = BymlFile::new(path.clone(), zstd.clone()) {
+    pub fn new<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
+        if let Some(byml) = BymlFile::new(path.as_ref(), zstd.clone()) {
             let mut tag_product = TagProduct {
                 byml: byml,
                 path_list: Vec::new(),

@@ -124,7 +124,7 @@ fn pipe_worker() {
 fn main_initialization() -> io::Result<()> {
     #[allow(unused_variables)]
     let exe_cwd = get_executable_dir();
-    if (exe_cwd.len() > 0) {
+    if exe_cwd.len() > 0 {
         env::set_current_dir(&exe_cwd)?;
     }
     let version = env!("CARGO_PKG_VERSION").to_string();

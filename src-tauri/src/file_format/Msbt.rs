@@ -4,6 +4,7 @@ use msyt::converter::MsytFile;
 use crate::{Settings::Pathlib, Zstd::TotkFileType};
 
 //assuming msbt is never compressed
+#[allow(dead_code)]
 pub struct MsbtFile {
     pub path: Pathlib,
     pub endian: roead::Endian,

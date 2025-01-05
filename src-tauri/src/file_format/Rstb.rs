@@ -1,5 +1,5 @@
 #![allow(non_snake_case, non_camel_case_types)]
-use std::any;
+// use std::any;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -10,12 +10,13 @@ use crate::Zstd::{is_restbl, TotkZstd};
 use flate2::read::ZlibDecoder;
 use restbl::bin::ResTblReader;
 use restbl::ResourceSizeTable;
-use serde_json::to_string_pretty;
+// use serde_json::to_string_pretty;
 
 use super::Pack::PackFile;
 
 // use super::RstbData::get_rstb_data;
 
+#[allow(dead_code)]
 fn get_rstb_data() -> io::Result<Vec<String>> {
     let json_zlibdata = fs::read("bin/totk_rstb_paths.bin")?;
     let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
@@ -25,6 +26,7 @@ fn get_rstb_data() -> io::Result<Vec<String>> {
     Ok(res)
 }
 
+#[allow(dead_code)]
 pub struct Restbl<'a> {
     pub path: Pathlib,
     pub zstd: Arc<TotkZstd<'a>>,

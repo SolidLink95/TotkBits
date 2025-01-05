@@ -33,7 +33,7 @@ pub fn get_sarc_entries_data() -> io::Result<HashMap<String, String>> {
 pub struct PackComparer<'a> {
     pub opened: Option<PackFile<'a>>,
     pub vanila: Option<PackFile<'a>>,
-    pub totk_config: Arc<TotkConfig>,
+    // pub totk_config: Arc<TotkConfig>,
     pub zstd: Arc<TotkZstd<'a>>,
     pub added: HashMap<String, String>,
     pub modded: HashMap<String, String>,
@@ -57,7 +57,7 @@ impl<'a> PackComparer<'a> {
         let mut pack = Self {
             opened: Some(pack),
             vanila: vanila,
-            totk_config: config,
+            // totk_config: config,
             zstd: zstd.clone(),
             added: HashMap::default(),
             modded: HashMap::default(),

@@ -11,6 +11,7 @@ edition = "2021"
 tauri-build = { version = "1", features = [] }
 
 [dependencies]
+zstud-sys = {git = "https://github.com/SolidLink95/zstud-sys-rs"}
 #BymlText
 ryml = "0.3.2"
 miow = "0.6.0"
@@ -24,7 +25,7 @@ serde = { version = "1", features = ["derive"] }
 # tauri-bundler = "1.5.1"
 msyt = { git = "https://github.com/SolidLink95/msyt-lib" }
 msbt = { git = "https://github.com/lojewalo/msbt-rs" }
-zstd = "0.13"
+zstd = "0.13.2"
 # roead = { git = "https://github.com/SolidLink95/roead", features = ["yaml", "sarc", "byml"] }
 # roead = { path = "./external/roead", features = ["yaml", "sarc", "byml"] }
 roead = { version = "1.0.0", features = ["yaml", "sarc", "byml"] }
@@ -45,7 +46,6 @@ fs2 = "0.4"
 base64 = "0.22.1"
 restbl = { version = "0.1", features = ["yaml"] }
 flate2 = "1.0.35"
-zstud-sys = {git = "https://github.com/SolidLink95/zstud-sys-rs"}
 windows = "0.58.0"
 toml = "0.8.19"
 winreg = "0.52.0"

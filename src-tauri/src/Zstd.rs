@@ -36,6 +36,8 @@ pub enum TotkFileType {
     Esetb,
     Text,
     Other,
+    //SMO
+    SmoSaveFile,
     None,
 }
 
@@ -167,7 +169,7 @@ impl<'a> TotkZstd<'_> {
         })
     }
     pub fn try_decompress(&self, data: &Vec<u8>) -> Result<Vec<u8>, io::Error> {
-        println!("Trying to decompress...");
+        // println!("Trying to decompress...");
         let mut dicts: HashMap<String, Arc<DecoderDictionary>> = Default::default();
         dicts.insert("zs".to_string(), self.decompressor.zs.clone());
         dicts.insert("packzs".to_string(), self.decompressor.packzs.clone());
@@ -176,7 +178,7 @@ impl<'a> TotkZstd<'_> {
 
         for (name, dictt) in dicts.iter() {
             if let Ok(dec_data) = self.decompressor.decompress(&data, &dictt) {
-                println!("Finally decompressed! Its {} dictionary", name);
+                // println!("Finally decompressed! Its {} dictionary", name);
                 return Ok(dec_data);
             }
         }

@@ -1,4 +1,4 @@
-use std::{fs, io, path::Path, sync::Arc};
+use std::{io, path::Path, sync::Arc};
 
 use crate::{
     file_format::{BinTextFile::OpenedFile, Pack::PackComparer}, Open_and_Save::{file_from_disk_to_senddata, get_string_from_data, SendData}, Settings::Pathlib, TotkApp::InternalFile, Zstd::TotkZstd
@@ -12,6 +12,7 @@ enum CompareDecision {
     InternalFileWithOriginal
 }
 impl CompareDecision {
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &str {
         match self {
             CompareDecision::FilesFromDisk => "FilesFromDisk",
