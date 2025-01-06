@@ -27,6 +27,7 @@ pub struct TotkConfig {
     pub font_size: i32,
     pub context_menu_font_size: i32,
     pub yaml_max_inl: usize,
+    pub lower_float_prec: bool,
     pub close_all_prompt: bool,
     pub monaco_theme: String,
     pub monaco_minimap: bool,
@@ -48,7 +49,8 @@ impl Default for TotkConfig {
             romfs: String::new(),
             close_all_prompt: true,
             font_size: 14,
-            yaml_max_inl: 10,
+            yaml_max_inl: 4,
+            lower_float_prec: true,
             context_menu_font_size: 14,
             monaco_theme: "vs-dark".into(),
             monaco_minimap: false,
@@ -107,11 +109,6 @@ impl TotkConfig {
             //unable to find romfs path, get it from NX editor or user input
             conf.update_romfs_path()?;//throws error if not found
         }
-        
-
-
-
-        
 
         conf.save()?;
         Ok(conf)
@@ -132,11 +129,45 @@ impl TotkConfig {
         }
         self.font_size = json_data.get("font size").unwrap_or(&self.font_size.into()).as_i64().unwrap_or(self.font_size as i64) as i32;
         self.yaml_max_inl = json_data.get("Byml inline container max count").unwrap_or(&self.yaml_max_inl.into()).as_i64().unwrap_or(self.yaml_max_inl as i64) as usize;
-        self.context_menu_font_size = json_data.get("context menu font size").unwrap_or(&self.context_menu_font_size.into()).as_i64().unwrap_or(self.context_menu_font_size as i64) as i32;
+        self.context_menu_font_size = json_data.get("Context menu font size").unwrap_or(&self.context_menu_font_size.into()).as_i64().unwrap_or(self.context_menu_font_size as i64) as i32;
         self.close_all_prompt = json_data.get("Prompt on close all").unwrap_or(&self.close_all_prompt.into()).as_bool().unwrap_or(self.close_all_prompt);
         self.monaco_minimap = json_data.get("Text editor minimap").unwrap_or(&self.monaco_minimap.into()).as_bool().unwrap_or(self.monaco_minimap);
+        self.lower_float_prec = json_data.get("Lower float precision").unwrap_or(&self.lower_float_prec.into()).as_bool().unwrap_or(self.lower_float_prec);
         self.rotation_deg = json_data.get("Rotation in degrees").unwrap_or(&self.rotation_deg.into()).as_bool().unwrap_or(self.rotation_deg);
         self.romfs = json_data.get("romfs").unwrap_or(&binding).as_str().unwrap_or("").to_string();
+        
+        self.yaml_max_inl = self.yaml_max_inl.max(1).min(10);
+    }
+
+    // JSON <-> STRUCT
+    #[allow(dead_code)]
+    pub fn to_json(&self) -> io::Result<serde_json::Value> {
+        Ok(
+            json!({
+                "romfs": self.romfs,
+                "font size": self.font_size,
+                "Byml inline container max count": self.yaml_max_inl,
+                "Lower float precision": self.lower_float_prec,
+                "Context menu font size": self.context_menu_font_size,
+                "Text editor theme": self.monaco_theme,
+                "Text editor minimap": self.monaco_minimap,
+                "Prompt on close all": self.close_all_prompt,
+                "Rotation in degrees": self.rotation_deg,
+            })
+        )
+    }
+
+    pub fn to_react_json(&self) -> io::Result<serde_json::Value> {
+        Ok(
+            json!({
+                "romfs": self.romfs,
+                "fontSize": self.font_size,
+                "contextMenuFontSize": self.context_menu_font_size,
+                "theme": self.monaco_theme,
+                "minimap": self.monaco_minimap,
+                // "Prompt on close all": self.close_all_prompt, unused in UI
+            })
+        )
     }
 
     pub fn get_config_path(&mut self) -> io::Result<()> {
@@ -218,7 +249,7 @@ impl TotkConfig {
     }
     pub fn get_game_version(&mut self) -> io::Result<()> {
         let region_lang_path = PathBuf::from(&self.romfs).join("System/RegionLangMask.txt");
-        println!("{:?}", &region_lang_path);
+        // println!("{:?}", &region_lang_path);
         let file = File::open(region_lang_path)?;
         let reader = BufReader::new(file);
 
@@ -322,35 +353,7 @@ impl TotkConfig {
         self.get_path(&format!("Mals/{}", name))
     }
 
-    // JSON <-> STRUCT
-    #[allow(dead_code)]
-    pub fn to_json(&self) -> io::Result<serde_json::Value> {
-        Ok(
-            json!({
-                "romfs": self.romfs,
-                "font size": self.font_size,
-                "Byml inline container max count": self.yaml_max_inl,
-                "context menu font size": self.context_menu_font_size,
-                "Text editor theme": self.monaco_theme,
-                "Text editor minimap": self.monaco_minimap,
-                "Prompt on close all": self.close_all_prompt,
-                "Rotation in degrees": self.rotation_deg,
-            })
-        )
-    }
-
-    pub fn to_react_json(&self) -> io::Result<serde_json::Value> {
-        Ok(
-            json!({
-                "romfs": self.romfs,
-                "fontSize": self.font_size,
-                "contextMenuFontSize": self.context_menu_font_size,
-                "theme": self.monaco_theme,
-                "minimap": self.monaco_minimap,
-                // "Prompt on close all": self.close_all_prompt, unused in UI
-            })
-        )
-    }
+    
     pub fn get_config_root_path() -> String {
         //save config in localappdata, if not possible save in appdata, if not possible save in exe path
         if let Ok(appdata) = env::var("LOCALAPPDATA") {

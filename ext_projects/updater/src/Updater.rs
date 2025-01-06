@@ -8,14 +8,22 @@ use std::io::{self, copy, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::TotkbitsVersion::TotkbitsVersion;
+
+
+
+#[derive(Serialize, Debug, Clone)]
 pub struct Updater {
     pub repo_owner: String,
     pub repo_name: String,
-    pub repo_current_version: String,
+    pub latest_ver: TotkbitsVersion,
     pub url: String,
+    pub asset: Asset,
+    #[serde(skip)]
     pub client: Client,
     pub temp_dir: PathBuf, // Temporary directory to store downloaded files
     pub cwd_dir: PathBuf, //where the download will be extracted
+    #[serde(skip)]
     pub bar: ProgressBar,
 }
 
@@ -30,33 +38,41 @@ impl Default for Updater {
         Updater {
             repo_owner: repo_owner,
             repo_name: repo_name,
-            repo_current_version: "0.0.1".to_string(),
+            latest_ver: Default::default(),
             url: url,
+            asset: Default::default(),
             client: Client::new(),
             temp_dir: Default::default(),
             cwd_dir: Default::default(),
-            bar: ProgressBar::new(100),
+            bar: ProgressBar::new(0),
         }
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct Release {
     pub tag_name: String,   // The release tag (e.g., "v1.0.0")
     pub assets: Vec<Asset>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct Asset {
     pub name: String,
     pub browser_download_url: String,
 }
 
-impl Updater {
-    pub async fn download_7z(&mut self) -> Result<PathBuf, Box<dyn Error>> {
-        if !self.temp_dir.exists() {
-            fs::create_dir_all(&self.temp_dir)?;
+impl Default for Asset {
+    fn default() -> Self {
+        Asset {
+            name: "".to_string(),
+            browser_download_url: "".to_string(),
         }
+    }
+}
+
+impl Updater {
+
+    pub async fn get_asset_and_version(&mut self) -> Result<(), Box<dyn Error>> {
         let response = self
             .client
             .get(&self.url)
@@ -66,26 +82,36 @@ impl Updater {
             .json::<Release>()
             .await?;
         println!("[+] Release tag: {}", response.tag_name);
+        self.latest_ver = TotkbitsVersion::from_str(&response.tag_name);
+        if !self.latest_ver.is_valid() {
+            println!("[-] Invalid version number");
+            return Err("[-] Invalid version number".into());
+        }
 
         let asset = response
             .assets
             .iter()
             .find(|a| a.name.ends_with(".7z"))
             .ok_or("[-] No .7z file found in the latest release")?;
-        println!("[+] Found .7z file: {}", asset.name);
+        println!("[+] Found .7z file: {}", &asset.name);
+        self.asset = asset.clone();
         
+        Ok(())
+    }
+
+    pub async fn download_7z(&mut self) -> Result<PathBuf, Box<dyn Error>> {
+        if self.asset.name.is_empty() || self.asset.browser_download_url.is_empty() {
+            println!("[-] Execute get_asset_and_version first!");
+            return Err("[-] Execute get_asset_and_version first!".into());
+        }
+        if !self.temp_dir.exists() {
+            fs::create_dir_all(&self.temp_dir)?;
+        }
         // Step 3: Download the .7z file
-        // let mut response = upd.client.get(&asset.browser_download_url).send().await?;
-        let file_path = Path::new(&self.temp_dir).join(&asset.name);
-        // let mut file = File::create(&file_path)?;
-        // copy(&mut response.bytes().await?.as_ref(), &mut file)?;
+        let file_path = Path::new(&self.temp_dir).join(&self.asset.name);
         println!("[+] Downloadeding {}...", &file_path.display());
-        download_with_progress(&asset.browser_download_url, &file_path).await?;
+        download_with_progress(&self.asset.browser_download_url, &file_path).await?;
         println!("[+] Downloaded {}...", &file_path.display());
-        // decompress_file(&file_path, &self.cwd_dir)?;
-        // println!("[+] Decompression complete, removing {} ...", &asset.name);
-        // fs::remove_file(&file_path)?;
-        // println!("[+] {} removed", &asset.name);
         Ok(file_path)
     }
     

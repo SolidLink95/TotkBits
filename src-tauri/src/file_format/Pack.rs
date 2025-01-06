@@ -85,7 +85,7 @@ impl<'a> PackComparer<'a> {
                 }
             }
 
-            return Ok(format!("Extracted {} files to {}", i, p.to_string_lossy().replace("\\", "/")));
+            return Ok(format!("Extracted {} files to {}", i, p.display()));
         }
 
 
@@ -107,7 +107,7 @@ impl<'a> PackComparer<'a> {
                 paths.modded_paths.push(path.to_string());
             }
         }
-        println!("Paths: {:?}", paths);
+        // println!("Paths: {:?}", paths);
         paths
     }
 
@@ -283,23 +283,6 @@ impl<'a> PackFile<'_> {
         pack.path = Pathlib::new(path.as_ref());
         Ok(pack)
 
-
-
-        // let (is_yaz0, file_data) = PackFile::sarc_file_to_bytes(&PathBuf::from(path.clone()), &zstd.clone())?;
-        // println!("asdf");
-        // let sarc: Sarc = Sarc::new(file_data.data.clone()).expect("Failed");
-        // let writer: SarcWriter = SarcWriter::from_sarc(&sarc);
-        // Ok(PackFile {
-        //     path: Pathlib::new(path),
-        //     totk_config: zstd.totk_config.clone(),
-        //     zstd: zstd.clone(),
-        //     data: file_data,
-        //     endian: sarc.endian(),
-        //     writer: writer,
-        //     hashes: PackFile::populate_hashes(&sarc),
-        //     sarc: sarc,
-        //     is_yaz0: is_yaz0
-        // })
     }
 
     pub fn rename(&mut self, old_name: &str, new_name: &str) -> io::Result<()> {

@@ -4,6 +4,8 @@
 #![allow(non_snake_case, non_camel_case_types)]
 use miow::pipe::NamedPipeBuilder;
 use std::io::{BufRead, BufReader};
+use std::{fs, process};
+use std::process::Command;
 use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::Duration;
@@ -28,13 +30,18 @@ use crate::TauriCommands::{
     rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,
 };
 use crate::TotkApp::TotkBitsApp;
+use updater::TotkbitsVersion::TotkbitsVersion;
+
+
+
+
 
 fn main() -> io::Result<()> {
     main_initialization()?;
     // test_case()?;
     // return Ok(());
     let startup_data = StartupData::new()?.to_json()?;
-    println!("{:?}", startup_data);
+    // println!("{:?}", startup_data);
     let app = Mutex::<TotkBitsApp>::default();
     if let Err(err) = tauri::Builder::default()
         .setup(|app_setup| {
@@ -86,7 +93,7 @@ fn main() -> io::Result<()> {
 
 fn pipe_worker() {
     thread::spawn(|| {
-        let pipe_name = r"\\.\pipe\tauri_pipe";
+        let pipe_name = r"//./pipe/tauri_pipe";
 
         // Create the named pipe
         if let Ok(pipe) = NamedPipeBuilder::new(pipe_name).first(true).create() {
@@ -97,9 +104,14 @@ fn pipe_worker() {
                 for line in reader.lines() {
                     match line {
                         Ok(msg) => {
-                            if msg.len() >= 3 && &msg[0..3] == "END" {
+                            let size = msg.len();
+                            if size >= 3 && &msg[0..3] == "END" {
                                 println!("Received end message, closing pipe...");
                                 break;
+                            }
+                            if size >= 4 && &msg[0..4] == "KILL" {
+                                println!("Received kill message, ending program...");
+                                process::exit(0);
                             }
                             println!("Received message: {}", msg);
                         }
@@ -128,7 +140,30 @@ fn main_initialization() -> io::Result<()> {
         env::set_current_dir(&exe_cwd)?;
     }
     let version = env!("CARGO_PKG_VERSION").to_string();
-    println!("Totkbits version: {}", &version);
-    println!("Current directory: {:?}", exe_cwd);
+    println!("[+] Totkbits version: {}", &version);
+    println!("[+] Current directory: {:?}", exe_cwd);
+    // let installed_ver = TotkbitsVersion::from_str(&version);
+    let mut upd_exe = if cfg!(debug_assertions) {
+        "../ext_projects/updater/target/debug/updater.exe"
+    } else {
+        "updater.exe"
+    }.to_string();
+    let upd_path = fs::canonicalize(&upd_exe)?;
+    if !upd_path.exists() {
+        println!("[-] Updater executable not found: {}", &upd_exe);
+        process::exit(1);
+    }
+    upd_exe = upd_path.to_string_lossy().to_string().replace("\\\\?\\", "");
+    println!("[+] Updater executable found: {}", upd_exe);
+    let p = Command::new("cmd")
+        .arg("/c")
+        .arg("start")
+        .arg(upd_exe)
+        .arg(&version)
+        .arg(process::id().to_string())
+        .arg("no")
+        .spawn()?;
+    pipe_worker();
     Ok(())
 }
+

@@ -3,8 +3,14 @@ name = "updater"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
 
+[lib]
+name = "updater"
+path = "src/lib.rs"
+
+[dependencies]
+sysinfo = "0.33.1"
+winapi = { version = "0.3", features = ["processthreadsapi", "handleapi", "minwindef", "winnt"] }
 # reqwest = "0.12.12"       # for HTTP requests
 # tokio = { version = "1", features = ["full"] } # async runtime for reqwest
 # serde = { version = "1.0", features = ["derive"] } # for JSON parsing
@@ -12,7 +18,7 @@ zip = "2.2.2"            # for extracting archives (alternative to 7z)
 flate2 = "1.0"         # for decompression (if using zip files)
 sevenz-rust = "0.6.1"
 miow = "0.6.0"
-reqwest = { version = "0.11", features = ["json", "blocking", "rustls-tls"] }
+reqwest = { version = "0.12.12", features = ["json", "blocking", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 indicatif = "0.17"

@@ -1,6 +1,6 @@
 use crate::{
     file_format::{
-        Ainb_py::Ainb_py, Asb_py::Asb_py, BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile}, Esetb::Esetb, Msbt::str_endian_to_roead, Pack::{PackComparer, PackFile, SarcPaths}, PythonWrapper::PythonWrapper, Rstb::Restbl, TagProduct::TagProduct
+        Ainb_py::Ainb_py, Asb_py::Asb_py, BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile}, Esetb::Esetb, Msbt::str_endian_to_roead, Pack::{PackComparer, PackFile, SarcPaths}, PythonWrapper::PythonWrapper, Rstb::Restbl, TagProduct::TagProduct, SMO::SmoSaveFile::SmoSaveFile
     }, Comparer::DiffComparer, Settings::Pathlib, TotkApp::InternalFile, Zstd::{is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, TotkFileType, TotkZstd}
 };
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
@@ -220,29 +220,29 @@ pub fn open_msbt<P:AsRef<Path>>(path: P) -> Option<(OpenedFile<'static>, SendDat
     None
 }
 
-// pub fn open_smo_save_file<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile<'static>, SendData)> {
-//     let file_name = path.as_ref().to_string_lossy().to_string().replace("\\", "/");
-//     let mut opened_file = OpenedFile::default();
-//     let mut data = SendData::default();
-//     let pathlib_var = Pathlib::new(&file_name);
-//     print!("Is {} a smo save file?", &file_name);
-//     if let Ok(smo_file) = &mut SmoSaveFile::from_file(&file_name, zstd.clone()) {
-//         if let Ok(text) = smo_file.to_string() {
-//             println!(" yes!");
-//             opened_file.path = pathlib_var.clone();
-//             opened_file.endian = Some(smo_file.endian);
-//             opened_file.file_type = TotkFileType::SmoSaveFile;
-//             data.status_text = format!("Opened {}", &pathlib_var.full_path);
-//             data.path = pathlib_var;
-//             data.text = text;
-//             data.get_file_label(opened_file.file_type, Some(smo_file.endian));
-//             return Some((opened_file, data));
-//         }
-//         // let m = opened_file.msyt.as_ref().unwrap();
-//     }
-//     println!(" no");
-//     None
-// }
+pub fn open_smo_save_file<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile<'static>, SendData)> {
+    let file_name = path.as_ref().to_string_lossy().to_string().replace("\\", "/");
+    let mut opened_file = OpenedFile::default();
+    let mut data = SendData::default();
+    let pathlib_var = Pathlib::new(&file_name);
+    print!("Is {} a smo save file?", &file_name);
+    if let Ok(smo_file) = &mut SmoSaveFile::from_file(&file_name, zstd.clone()) {
+        if let Ok(text) = smo_file.to_string() {
+            println!(" yes!");
+            opened_file.path = pathlib_var.clone();
+            opened_file.endian = Some(smo_file.endian);
+            opened_file.file_type = TotkFileType::SmoSaveFile;
+            data.status_text = format!("Opened {}", &pathlib_var.full_path);
+            data.path = pathlib_var;
+            data.text = text;
+            data.get_file_label(opened_file.file_type, Some(smo_file.endian));
+            return Some((opened_file, data));
+        }
+        // let m = opened_file.msyt.as_ref().unwrap();
+    }
+    println!(" no");
+    None
+}
 
 pub fn open_text<P: AsRef<Path>>(path: P) -> Option<(OpenedFile<'static>, SendData)> {
     let mut opened_file = OpenedFile::default();
@@ -524,11 +524,11 @@ pub fn get_binary_by_filetype(
             let pio = ParameterIO::from_text(text).ok()?;
             rawdata = pio.to_binary();
         }
-        // TotkFileType::SmoSaveFile => {
-        //     let mut smo_file = SmoSaveFile::from_string(text, zstd.clone()).ok()?;
-        //     smo_file.endian = endian;
-        //     rawdata = smo_file.to_binary().ok()?;
-        // }
+        TotkFileType::SmoSaveFile => {
+            let mut smo_file = SmoSaveFile::from_string(text, zstd.clone()).ok()?;
+            smo_file.endian = endian;
+            rawdata = smo_file.to_binary().ok()?;
+        }
         TotkFileType::Text => {
             rawdata = text.as_bytes().to_vec();
         }
@@ -754,7 +754,7 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) 
                 .or_else(|| open_byml(&file_name, zstd.clone()))
                 .or_else(|| open_msbt(&file_name))
                 .or_else(|| open_aamp(&file_name))
-                // .or_else(|| open_smo_save_file(&file_name, zstd.clone()))
+                .or_else(|| open_smo_save_file(&file_name, zstd.clone()))
                 .or_else(|| open_text(&file_name))
                 .map(|(opened_file, data)| {
                     // self.opened_file = opened_file;

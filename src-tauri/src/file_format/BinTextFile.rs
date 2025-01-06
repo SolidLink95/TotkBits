@@ -1,6 +1,6 @@
 #![allow(non_snake_case,non_camel_case_types)]
 use crate::file_format::TagProduct::TagProduct;
-use crate::Settings::{process_inline_content, Pathlib};
+use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, TotkFileType, TotkZstd};
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use regex::Regex;
@@ -9,13 +9,13 @@ use std::any::type_name;
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Read, Write};
 use std::panic::AssertUnwindSafe;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::{fs, io, panic};
 use super::Esetb::Esetb;
 use super::Rstb::Restbl;
 
-const FLOAT_PRECISION: i32 = 5;
+// const FLOAT_PRECISION: i32 = 5;
 
 #[derive(Debug)]
 pub struct FileData {
@@ -231,14 +231,19 @@ impl<'a> BymlFile<'_> {
     }
 
     pub fn to_string(&self) -> String {
-        let mut text = Byml::to_text(&self.pio);
+        let float_prec = if self.zstd.totk_config.lower_float_prec { Some(4) } else { None };
+        let max_inl = self.zstd.totk_config.yaml_max_inl;
+        // println!("max_inl: {}", max_inl);
+        let mut text = Byml::to_text_advanced(&self.pio, max_inl, float_prec);
+        // let mut text = Byml::to_text(&self.pio);
         if self.is_banc() {
             if self.zstd.totk_config.rotation_deg {
             text = process_Rotate_in_banc(&text, self.zstd.totk_config.rotation_deg);}
         }
         // Byml::to_text(&self.pio)
-        lower_float_precision(&text)
+        // lower_float_precision(&text)
         // process_inline_content(Byml::to_text(&self.pio), self.zstd.totk_config.yaml_max_inl)
+        text
     }
 
 
@@ -260,7 +265,7 @@ fn deg_to_rad(deg: f64) -> f64 {
     deg * (std::f64::consts::PI / 180.0)
 }
 
-
+#[allow(dead_code)]
 fn lower_float_precision(input: &str) -> String {
     let re = Regex::new(r"\[([^\]]+)\]").unwrap();
     let text = re.replace_all(input, |caps: &regex::Captures| {
@@ -341,7 +346,7 @@ fn process_Rotate_in_banc(input: &str, deg_to_rad: bool) -> String {
                     if *v == 0.0 {
                         "0.0".to_string()
                     } else {
-                        format!("{:.5}", v)
+                        format!("{:.4}", v)
                     }
                 })
                 .collect::<Vec<_>>()

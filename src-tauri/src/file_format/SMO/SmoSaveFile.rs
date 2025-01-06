@@ -45,6 +45,11 @@ impl<'a> SmoSaveFile<'a> {
         data.extend_from_slice(&self.header);
         let byml_binary_data = self.byml_file.pio.to_binary(self.endian);
         data.extend_from_slice(&byml_binary_data);
+        //padding
+        let written_size = 16 + byml_binary_data.len();
+        let size_to_write = (0x20000C - written_size) as usize;
+        let padding: Vec<u8> = vec![0u8; size_to_write];
+        data.extend_from_slice(&padding);
         Ok(data)
     }
 
@@ -96,6 +101,11 @@ impl<'a> SmoSaveFile<'a> {
         file.write_all(&self.header)?;
         let byml_binary_data = self.byml_file.pio.to_binary(self.endian);
         file.write_all(&byml_binary_data)?;
+        //padding
+        let written_size = 16 + byml_binary_data.len();
+        let size_to_write = (0x20000C - written_size) as usize;
+        let padding: Vec<u8> = vec![0u8; size_to_write];
+        file.write_all(&padding)?;
         Ok(())
     }
     pub fn save<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
@@ -103,14 +113,24 @@ impl<'a> SmoSaveFile<'a> {
             .write(true)
             .create(true)
             .open(path.as_ref())?;
+        //header
         file.write_all(&self.header)?;
+        //byml data
         let byml_binary_data = self.byml_file.pio.to_binary(self.endian);
         file.write_all(&byml_binary_data)?;
+        //padding
+        let written_size = 16 + byml_binary_data.len();
+        let size_to_write = (0x20000C - written_size) as usize;
+        let padding: Vec<u8> = vec![0u8; size_to_write];
+        file.write_all(&padding)?;
         Ok(())
     }
 
     pub fn is_smo_save_binary(data: &[u8]) -> bool {
-        if data.len() < (16 + 2) {
+        // if data.len() < (16 + 2) {
+        //     return false;
+        // }
+        if data.len() != 0x20000C {
             return false;
         }
         is_byml(&data[16..])

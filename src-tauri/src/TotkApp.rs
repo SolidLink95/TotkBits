@@ -1,9 +1,9 @@
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Esetb::Esetb;
 use crate::file_format::Pack::{PackComparer, SarcPaths};
-use crate::Comparer::{self, DiffComparer};
+use crate::Comparer::DiffComparer;
 use crate::Open_and_Save::{
-    check_if_save_in_romfs, file_from_disk_to_senddata, get_binary_by_filetype, get_string_from_data, open_aamp, open_ainb, open_asb, open_byml, open_esetb, open_msbt, open_restbl, open_sarc, open_tag, open_text, SaveFileDialog, SendData
+    check_if_save_in_romfs, file_from_disk_to_senddata, get_binary_by_filetype, get_string_from_data, open_sarc, SaveFileDialog, SendData
 };
 use crate::Settings::{list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
@@ -38,23 +38,34 @@ unsafe impl<'a> Send for TotkBitsApp<'a> {}
 
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
-        let conf = TotkConfig::safe_new();
-        if conf.is_err() {
-            println!("Error while initializing romfs path");
-            std::process::exit(0);
+        match TotkConfig::safe_new() {
+            Ok(conf) => {
+                let totk_config: Arc<TotkConfig> = Arc::new(conf);
+                match TotkZstd::new(totk_config, 16) {
+                    Ok(zstd) => {
+                        let zstd: Arc<TotkZstd> = Arc::new(zstd);
+                        return Self {
+                            opened_file: OpenedFile::default(),
+                            text: "".to_string(),
+                            status_text: "Ready".to_string(),
+                            zstd: zstd.clone(),
+                            pack: None,
+                            internal_file: None,
+                        };
+                    }
+                    Err(_) => {
+                        println!("Error while initializing romfs path");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Err(_) => {
+                println!("Error while initializing romfs path");
+                std::process::exit(2);
+            }
         }
 
-        let totk_config: Arc<TotkConfig> = Arc::new(conf.unwrap());
-        let zstd: Arc<TotkZstd<'_>> = Arc::new(TotkZstd::new(totk_config, 16).unwrap());
-        Self {
-            opened_file: OpenedFile::default(),
-            text: "".to_string(),
-            status_text: "Ready".to_string(),
-            zstd: zstd.clone(),
-            // zstd_cpp: Arc::new(ZstdCppCompressor::from_totk_zstd(zstd.clone())),
-            pack: None,
-            internal_file: None,
-        }
+        // std::process::exit(3); //should never reach here
     }
 }
 
@@ -913,7 +924,6 @@ impl<'a> TotkBitsApp<'a> {
             }
         }
         println!("Comparing {} with original {}", &self.opened_file.path.full_path, &van_path);
-        let mut text1 = String::new();
         let mut text2 = String::new();
         if let Some((_, t)) = file_from_disk_to_senddata(&van_path, self.zstd.clone()) {
             text2 = t.text;
