@@ -16,6 +16,7 @@ import InitializeEditor from './MonacoEditor';
 import RstbTree from "./RstbTree";
 import { SearchTextInSarcPrompt } from './SearchTextInSarc';
 import { useEditorContext } from './StateManager';
+import { checkIfUpdateNeeded } from './ButtonClicks';
 
 
 let triggered = false
@@ -26,7 +27,7 @@ function App() {
 
 
   const {
-    settings, setSettings,
+    settings, setSettings, setIsUpdateNeeded,
     searchInSarcQuery, setSearchInSarcQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
@@ -63,6 +64,7 @@ function App() {
         updateEditorContent,
         settings, setSettings,
       });
+      checkIfUpdateNeeded(setIsUpdateNeeded);
     }
 
     // Function to update editor size, call it when needed

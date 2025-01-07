@@ -5,13 +5,14 @@ use crate::Comparer::DiffComparer;
 use crate::Open_and_Save::{
     check_if_save_in_romfs, file_from_disk_to_senddata, get_binary_by_filetype, get_string_from_data, open_sarc, SaveFileDialog, SendData
 };
-use crate::Settings::{list_files_recursively, write_string_to_file, Pathlib};
+use crate::Settings::{get_default_updater, list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{TotkFileType, TotkZstd};
 use rfd::{FileDialog, MessageDialog};
 use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use updater::Updater::Updater;
 use std::fs;
 use std::io::{Read, Write};
 
@@ -32,6 +33,7 @@ pub struct TotkBitsApp<'a> {
     // pub zstd_cpp: Arc<ZstdCppCompressor>,
     pub pack: Option<PackComparer<'a>>,
     pub internal_file: Option<InternalFile<'a>>,
+    pub updater: Updater
 }
 
 unsafe impl<'a> Send for TotkBitsApp<'a> {}
@@ -51,6 +53,7 @@ impl Default for TotkBitsApp<'_> {
                             zstd: zstd.clone(),
                             pack: None,
                             internal_file: None,
+                            updater: get_default_updater(),
                         };
                     }
                     Err(_) => {

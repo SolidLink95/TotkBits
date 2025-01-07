@@ -5,7 +5,7 @@ use std::{env, fs};
 use std::io::{self, Write};
 // use std::fs::OpenOptions;
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
 use winapi::um::processthreadsapi::OpenProcess;
 use winapi::um::processthreadsapi::TerminateProcess;
@@ -20,66 +20,115 @@ use sysinfo::{Pid, System};
 mod Updater;
 mod TotkbitsVersion;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+struct ArgvStruct {
+    installed_ver: String,
+    download_url: String,
+    asset_name: String,
+    latest_ver: String,
+}
+impl ArgvStruct {
+    fn is_valid(&self) -> bool {
+        if self.installed_ver.is_empty() {
+            println!("[-] Installed version not provided");
+            return false;
+        }
+        if self.download_url.is_empty() {
+            println!("[-] Download  url not provided");
+            return false;
+        }
+        if self.asset_name.is_empty() {
+            println!("[-] Asset name not provided");
+            return false;
+        }
+        if self.latest_ver.is_empty() {
+            println!("[-] Latest version not provided");
+            return false;
+        }
+        return true;
+    }
+}
+
+
+async fn main_process() -> Result<(), Box<dyn Error>>  {
     let mut msgs: Vec<&str> = vec![];
     //parse argv
     let args: Vec<String> = env::args().collect();
-    let installed_ver = args.get(1).cloned().unwrap_or_else(|| String::from(""));
-    let totkbits_exe_pid_str = args.get(2).cloned().unwrap_or_else(|| String::from(""));
-    let is_update_needed = args.get(3).cloned().unwrap_or_else(|| String::from("no")) == "yes";
-    if installed_ver.is_empty() {
-        println!("[-] Installed version not provided");
+    let installed_ver_str = args.get(1).cloned().unwrap_or_else(|| String::from(""));
+    let download_url = args.get(2).cloned().unwrap_or_else(|| String::from(""));
+    let asset_name = args.get(3).cloned().unwrap_or_else(|| String::from(""));
+    let latest_ver_str = args.get(4).cloned().unwrap_or_else(|| String::from(""));
+    let argv = ArgvStruct {
+        installed_ver: installed_ver_str.clone(),
+        download_url: download_url.clone(),
+        asset_name: asset_name.clone(),
+        latest_ver: latest_ver_str.clone(),
+    };
+    if !argv.is_valid() {
         pause();
         return Ok(());
     }
-    let mut totkbits_exe_pid: u32 = 0;
-    match totkbits_exe_pid_str.parse::<u32>() {
-        Ok(pid) => totkbits_exe_pid = pid,
-        Err(_) => {
-            println!("[-] Invalid Totkbits.exe pid: {:?}, exiting", &totkbits_exe_pid_str);
-            pause();
-            return Ok(());
-        }
-    }
-
-    println!("[+] Installed version: {}, Totkbits.exe pid: {}", &installed_ver, &totkbits_exe_pid);
     //Updater
-    let mut updater = Updater::Updater::default();
-    let root_path = PathBuf::from("C:/Users/Luiza/Documents/coding/TotkBits/tmp");
-    updater.temp_dir = root_path.clone().join("updater_temp");
-    updater.cwd_dir = root_path.clone().join("updater_cwd_dir");
-    updater.get_asset_and_version().await?;
-    //calculate installed and newest version
-    let installed_ver = TotkbitsVersion::TotkbitsVersion::from_str(&installed_ver);
+    let installed_ver = TotkbitsVersion::TotkbitsVersion::from_str(&installed_ver_str);
+    let latest_ver = TotkbitsVersion::TotkbitsVersion::from_str(&latest_ver_str);
     if !installed_ver.is_valid() {
-        println!("[-] Invalid installed version: {}", installed_ver.as_str());
+        println!("[-] Invalid installed version: {}", installed_ver_str);
         pause();
         return Ok(());
     }
-    if installed_ver >= updater.latest_ver {
-        println!("[+] Latest version installed, no need to update: {} > {}", installed_ver.as_str(), updater.latest_ver.as_str());
-        msgs.push("Latest version installed, no need to update");
-        // return Ok(());
-    } else {
-        println!("[+] Update needed: {} < {}", installed_ver.as_str(), updater.latest_ver.as_str());
-        msgs.push("Update needed");
+    if !latest_ver.is_valid() {
+        println!("[-] Invalid latest version: {}", latest_ver_str);
+        pause();
+        return Ok(());
     }
-    // msgs.push("KILL"); //test kill
-    
-    // sleep(Duration::from_secs(10));
-    // terminate_process_by_pid(totkbits_exe_pid as DWORD)?;
-    println!("[+] Totkbits.exe process terminated pid: {}", totkbits_exe_pid);
-    pipe_test(msgs);
-    println!("[+] Nothing more to do, just debugging");
+    if installed_ver >= latest_ver {
+        println!("[+] Latest version installed, no need to update: {} > {}", installed_ver.as_str(), latest_ver.as_str());
+        pause();
+        return Ok(());
+    } 
+    let mut updater = Updater::Updater::default();
+    updater.latest_ver = latest_ver;
+    updater.installed_ver = installed_ver;
+    updater.asset.name = asset_name;
+    updater.asset.browser_download_url = download_url;
+    updater.get_cwd_dir()?;
+    updater.get_temp_dir()?;
+    if let Err(e) = updater.backup_current_version() {
+        println!("[-] Error backing up current version: {:?}", e);
+        fs::remove_dir_all(&updater.temp_dir)?;
+        pause();
+        return Ok(());
+    }
+    if let Err(e) = updater.download_asset().await {
+        println!("[-] Error downloading asset: {:?}", e);
+        pause();
+        return Ok(());
+    }
+    let file_path = Path::new(&updater.temp_dir).join(&updater.asset.name);
+    if let Err(e) = updater.decompress_asset(&file_path) {
+        println!("[-] Error decompressing asset {} with subprocess: {:?}", &file_path.display(), e);
+        pause();
+        return Ok(());
+    }
+    if let Err(e) = fs::remove_file(&file_path) {
+        println!("[-] Error removing asset file: {:?}", e);
+        pause();
+        return Ok(());
+    }
+    if let Err(e) = updater.clean_up() {
+        println!("[-] Error cleaning up: {:?}", e);
+        pause();
+        return Ok(());
+    }
+    println!("[+] Update successful: {} -> {}", &updater.installed_ver.as_str(), updater.latest_ver.as_str());
 
-    // if updater.temp_dir.exists() {
-    //     fs::remove_dir_all(&updater.temp_dir)?;
-    // }
-    // let asset_path = updater.download_7z().await?;
-    // updater.backup_current_version()?;
-    // updater.decompress_asset(&asset_path)?;
-    pause();
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    main_process().await?;
+
     Ok(())
 }
 
@@ -107,6 +156,7 @@ fn pipe_test(msgs: Vec<&str>) {
 }
 
 fn pause() {
+    println!("[+] Usage: updater <installed_ver> <download_url> <asset_name> <latest_ver>");
     println!("[+] Press Enter to exit");
     let mut input = String::new();
     let _ = io::stdin().read_line(&mut input); // Wait for user to press Enter

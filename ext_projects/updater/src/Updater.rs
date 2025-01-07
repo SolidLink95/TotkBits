@@ -1,7 +1,8 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
-use sevenz_rust::decompress_file;
+use sevenz_rust::decompress_file as decompress_7z_file;
+use zip::ZipArchive;
 use std::error::Error;
 use std::fs::{self, create_dir_all, read_dir, File};
 use std::io::{self, copy, Write};
@@ -17,6 +18,7 @@ pub struct Updater {
     pub repo_owner: String,
     pub repo_name: String,
     pub latest_ver: TotkbitsVersion,
+    pub installed_ver: TotkbitsVersion,
     pub url: String,
     pub asset: Asset,
     #[serde(skip)]
@@ -39,6 +41,7 @@ impl Default for Updater {
             repo_owner: repo_owner,
             repo_name: repo_name,
             latest_ver: Default::default(),
+            installed_ver: Default::default(),
             url: url,
             asset: Default::default(),
             client: Client::new(),
@@ -56,7 +59,7 @@ struct Release {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct Asset {
+pub struct Asset {
     pub name: String,
     pub browser_download_url: String,
 }
@@ -71,8 +74,28 @@ impl Default for Asset {
 }
 
 impl Updater {
+    pub fn is_update_needed(&self) -> bool {
+        self.installed_ver < self.latest_ver
+    }
 
-    pub async fn get_asset_and_version(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn check_if_update_needed(&mut self, installed_ver: &str) -> Result<(), Box<dyn Error>> {
+        if !self.installed_ver.is_valid() {
+            self.installed_ver = TotkbitsVersion::from_str(&installed_ver);
+        }
+        if let Err(_) =    self.get_asset_and_version(".7z").await {
+            self.get_asset_and_version(".zip").await?;
+        }
+        if !self.is_update_needed() {
+            println!("[+] Latest version installed, no need to update: {} > {}", &self.installed_ver.as_str(), &self.latest_ver.as_str());
+            return Err("Latest version installed".into());
+        }
+    
+    
+        Ok(())
+    }
+
+
+    pub async fn get_asset_and_version(&mut self, ext: &str) -> Result<(), Box<dyn Error>> {
         let response = self
             .client
             .get(&self.url)
@@ -91,15 +114,15 @@ impl Updater {
         let asset = response
             .assets
             .iter()
-            .find(|a| a.name.ends_with(".7z"))
+            .find(|a| a.name.ends_with(ext))
             .ok_or("[-] No .7z file found in the latest release")?;
-        println!("[+] Found .7z file: {}", &asset.name);
+        println!("[+] Found {}  file: {}", ext,  &asset.name);
         self.asset = asset.clone();
         
         Ok(())
     }
 
-    pub async fn download_7z(&mut self) -> Result<PathBuf, Box<dyn Error>> {
+    pub async fn download_asset(&mut self) -> Result<PathBuf, Box<dyn Error>> {
         if self.asset.name.is_empty() || self.asset.browser_download_url.is_empty() {
             println!("[-] Execute get_asset_and_version first!");
             return Err("[-] Execute get_asset_and_version first!".into());
@@ -109,20 +132,27 @@ impl Updater {
         }
         // Step 3: Download the .7z file
         let file_path = Path::new(&self.temp_dir).join(&self.asset.name);
-        println!("[+] Downloadeding {}...", &file_path.display());
+        println!("[+] Downloading {}...", &file_path.display());
         download_with_progress(&self.asset.browser_download_url, &file_path).await?;
         println!("[+] Downloaded {}...", &file_path.display());
         Ok(file_path)
     }
     
     pub fn decompress_asset<P: AsRef<Path>>(&mut self, asset: P) -> Result<(), Box<dyn Error>> {
+        let path_str = asset.as_ref().to_string_lossy().to_string();
         println!("[+] Decompressing:/n      {:?}/n  to:/n       {} ...", &asset.as_ref().display(), &self.cwd_dir.display());
-        decompress_file(&asset, &self.cwd_dir)
-            .or_else(|_| self.decompress_subprocess(asset.as_ref()))?;
-        fs::remove_file(&asset)?;
-        Ok(())
+        if path_str.to_ascii_lowercase().ends_with(".zip") {
+            return unpack_zip_file(&path_str, &self.cwd_dir.to_string_lossy());
+        }
+        
+        if let Err(e) = decompress_7z_file(&asset, &self.cwd_dir) {
+            println!("[-] Error decompressing {} with sevenz_rust, attempting subprocess: {:?}", &asset.as_ref().display(), e);
+        } else {
+            return Ok(());
+        }
+        self.decompress_subprocess_7z(asset.as_ref())
     }
-    pub fn decompress_subprocess<P: AsRef<Path>>(&mut self, asset: P) -> Result<(), Box<dyn Error>> {
+    pub fn decompress_subprocess_7z<P: AsRef<Path>>(&mut self, asset: P) -> Result<(), Box<dyn Error>> {
         let output = Command::new("C:/Program Files/7-Zip/7z.exe")
         .arg("x")
         .arg(asset.as_ref())
@@ -151,7 +181,7 @@ impl Updater {
         upd.get_temp_dir()?;
         upd.get_cwd_dir()?;
         upd.backup_current_version()?;
-        let asset_path = upd.download_7z().await?;
+        let asset_path = upd.download_asset().await?;
         upd.decompress_asset(&asset_path)?;
         // let backup_dir = upd.cwd_dir.join("backup");
 
@@ -160,9 +190,19 @@ impl Updater {
         Ok(upd)
     }
 
+    pub fn clean_up(&mut self) -> io::Result<()> {
+        if self.temp_dir.exists() {
+            fs::remove_dir_all(&self.temp_dir)?;
+        }
+        let backup_path = self.cwd_dir.join("backup");
+        if backup_path.exists() {
+            fs::remove_dir_all(&backup_path)?;
+        }
+        Ok(())
+    }
+
     pub fn get_temp_dir(&mut self) -> io::Result<()> {
-        let temp_dir = std::env::temp_dir();
-        let temp_dir = temp_dir.join("TotkBitsTmp");
+        let temp_dir = std::env::temp_dir().join("TotkBitsTmp");
         if temp_dir.exists() {
             std::fs::remove_dir_all(&temp_dir)?;
         }
@@ -171,20 +211,20 @@ impl Updater {
         Ok(())
     }
     pub fn get_cwd_dir(&mut self) -> io::Result<()> {
-        let mut is_good = false;
         if let Ok(exe_path) = std::env::current_exe() {
             if let Some(cwd_dir) = exe_path.parent() {
                 self.cwd_dir = cwd_dir.to_path_buf();
-                is_good = true;
+                return Ok(());
             }
         }
-        if !is_good {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Failed to get current working directory",
-            ));
+        if let Ok(cwd) = std::env::current_dir() {
+            self.cwd_dir = cwd;
+            return Ok(());
         }
-        Ok(())
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Failed to get current working directory",
+        ));
     }
     pub fn backup_current_version(&mut self) -> io::Result<()> {
         let backup_dir = self.cwd_dir.join("backup");
@@ -199,6 +239,7 @@ impl Updater {
             "pip.txt",
             "TotkBits.exe",
             "uninstall.exe",
+            "updater.exe",
         ];
         let all_files = list_files_recursively(&self.cwd_dir);
         let files_count = all_files.len() as u64;
@@ -270,7 +311,7 @@ fn extract_7z_file<P: AsRef<Path>>(archive_path: P, output_dir: P) -> Result<(),
     // let output = Path::new(output_dir);
 
     // Extract the .7z archive to the specified output directory
-    decompress_file(&archive_path, &output_dir)?;
+    decompress_7z_file(&archive_path, &output_dir)?;
 
     println!(
         "Successfully extracted {:?} to {:?}",
@@ -333,5 +374,34 @@ async fn download_with_progress(url: &str, file_path: &Path) -> Result<(), Box<d
     }
 
     pb.finish_with_message("Download complete/n");
+    Ok(())
+}
+
+
+
+fn unpack_zip_file(zip_path: &str, output_dir: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Open the ZIP file
+    let file = File::open(zip_path)?;
+    let mut archive = ZipArchive::new(file)?;
+
+    // Iterate through the files in the archive
+    for i in 0..archive.len() {
+        let mut file_in_zip = archive.by_index(i)?;
+        let outpath = Path::new(output_dir).join(file_in_zip.name());
+
+        if file_in_zip.is_dir() {
+            // Create the directory if it doesn't exist
+            std::fs::create_dir_all(&outpath)?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+
+            // Create and write to the output file
+            let mut outfile = File::create(&outpath)?;
+            std::io::copy(&mut file_in_zip, &mut outfile)?;
+        }
+    }
+
     Ok(())
 }

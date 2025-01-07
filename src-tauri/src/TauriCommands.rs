@@ -1,13 +1,15 @@
 //tauri commands
 use crate::{
-    Open_and_Save::SendData,
-    TotkApp::{SaveData, TotkBitsApp},
+    Open_and_Save::SendData, Settings::check_if_update_needed_standalone, TotkApp::{SaveData, TotkBitsApp}
 };
 use rfd::MessageDialog;
+use serde::Deserialize;
+use updater::TotkbitsVersion::TotkbitsVersion;
 use std::{
-    env, os::windows::process::CommandExt, path::Path, process::{self, Command}, sync::Mutex
+    env, error::Error, os::windows::process::CommandExt, path::Path, process::{self, Command}, sync::Mutex
 };
 use tauri::Manager;
+use reqwest::blocking::{get, Client};
 
 #[tauri::command]
 pub fn restart_app() -> Option<()> {
@@ -405,3 +407,38 @@ pub fn compare_internal_file_with_vanila(app_handle: tauri::AppHandle,  internal
     None
 }
 
+#[derive(Deserialize)]
+struct ReleaseInfo {
+    tag_name: String,
+}
+
+#[tauri::command]
+pub fn check_if_update_needed() -> bool {
+    let repo_owner = "SolidLink95".to_string();
+    let repo_name = "TotkBits".to_string();
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        repo_owner, repo_name
+    );
+    println!("Checking for updates...");
+    let client = Client::new();
+    let response = client
+        .get(&url)
+        .header("User-Agent", "MyAppName")
+        .send();
+
+        if let Ok(response) = response {
+            println!("Response: {:?}", response);
+    
+            if let Ok(json_value) = response.json::<serde_json::Value>() {
+                println!("\n\nJson value: {:?}", json_value);
+                if let Some(release_info) = json_value["tag_name"].as_str() {
+                    println!("\n\nRelease info: {}", release_info);
+                    let installed_ver = TotkbitsVersion::from_str(env!("CARGO_PKG_VERSION"));
+                    let latest_ver = TotkbitsVersion::from_str(release_info);
+                    return latest_ver >= installed_ver;
+                }
+            }
+        }
+    false
+}

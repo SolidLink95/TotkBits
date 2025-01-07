@@ -27,7 +27,7 @@ use crate::TauriCommands::{
     edit_config, edit_internal_file, exit_app, extract_internal_file, extract_opened_sarc,
     open_dir_dialog, open_file_dialog, open_file_from_path, open_file_struct,
     remove_internal_sarc_file, rename_internal_sarc_file, restart_app, rstb_edit_entry,
-    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,
+    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,check_if_update_needed
 };
 use crate::TotkApp::TotkBitsApp;
 use updater::TotkbitsVersion::TotkbitsVersion;
@@ -79,6 +79,7 @@ fn main() -> io::Result<()> {
             //COMPARER
             compare_files,
             compare_internal_file_with_vanila,
+            check_if_update_needed
         ])
         .run(tauri::generate_context!())
     {
@@ -143,27 +144,6 @@ fn main_initialization() -> io::Result<()> {
     println!("[+] Totkbits version: {}", &version);
     println!("[+] Current directory: {:?}", exe_cwd);
     // let installed_ver = TotkbitsVersion::from_str(&version);
-    let mut upd_exe = if cfg!(debug_assertions) {
-        "../ext_projects/updater/target/debug/updater.exe"
-    } else {
-        "updater.exe"
-    }.to_string();
-    let upd_path = fs::canonicalize(&upd_exe)?;
-    if !upd_path.exists() {
-        println!("[-] Updater executable not found: {}", &upd_exe);
-        process::exit(1);
-    }
-    upd_exe = upd_path.to_string_lossy().to_string().replace("\\\\?\\", "");
-    println!("[+] Updater executable found: {}", upd_exe);
-    let p = Command::new("cmd")
-        .arg("/c")
-        .arg("start")
-        .arg(upd_exe)
-        .arg(&version)
-        .arg(process::id().to_string())
-        .arg("no")
-        .spawn()?;
-    pipe_worker();
     Ok(())
 }
 

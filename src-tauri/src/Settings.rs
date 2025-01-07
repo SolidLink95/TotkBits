@@ -1,14 +1,21 @@
 use std::env;
+use std::error::Error;
 use std::fs;
 use std::io;
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 use std::path::PathBuf;
+use std::process;
+use std::process::Command;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use updater::TotkbitsVersion::TotkbitsVersion;
+use updater::Updater::Updater;
 
 use crate::TotkConfig::TotkConfig;
+
+
 
 
 #[tauri::command]
@@ -70,14 +77,15 @@ impl Pathlib {
     pub fn is_valid(&self) -> bool {
         self.full_path.len() > 0
     }
-
+    #[inline]
     pub fn is_file(&self) -> bool {
         Path::new(&self.full_path).is_file()
     }
-
+    #[inline]
     pub fn is_dir(&self) -> bool {
         Path::new(&self.full_path).is_dir()
     }
+    #[inline]
     pub fn exists(&self) -> bool {
         Path::new(&self.full_path).exists()
     }
@@ -243,4 +251,55 @@ pub fn process_inline_content(mut input: String, inline_count: usize) -> String 
        }).to_string();
    
        input
+}
+
+pub fn get_default_updater() -> Updater {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let mut upd = Updater::default();
+    let old_ver= TotkbitsVersion::from_str(&version);
+    upd.installed_ver = old_ver;
+    upd
+}
+
+pub async fn check_if_update_needed_standalone() -> Result<(), Box<dyn Error>> {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let mut upd = Updater::default();
+    let old_ver= TotkbitsVersion::from_str(&version);
+    if let Err(_) =    upd.get_asset_and_version(".7z").await {
+        upd.get_asset_and_version(".zip").await?;
+    }
+    if old_ver >= upd.latest_ver {
+        println!("[+] Latest version installed, no need to update: {} > {}", old_ver.as_str(), upd.latest_ver.as_str());
+        return Err("Latest version installed".into());
+    }
+
+
+    Ok(())
+}
+
+
+pub fn spawn_updater() -> io::Result<()> {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let mut upd_exe = if cfg!(debug_assertions) {
+        "../ext_projects/updater/target/debug/updater.exe"
+    } else {
+        "updater.exe"
+    }.to_string();
+    let upd_path = fs::canonicalize(&upd_exe)?;
+    if !upd_path.exists() {
+        println!("[-] Updater executable not found: {}", &upd_exe);
+        process::exit(1);
+    }
+    upd_exe = upd_path.to_string_lossy().to_string().replace("\\\\?\\", "");
+    println!("[+] Updater executable found: {}", upd_exe);
+    let p = Command::new("cmd")
+        .arg("/c")
+        .arg("start")
+        .arg(upd_exe)
+        .arg(&version)
+        .arg(process::id().to_string())
+        .arg("no")
+        .spawn()?;
+    // pipe_worker();
+    Ok(())
 }

@@ -19,6 +19,7 @@ export const EditorProvider = ({ children }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddPrompt, setIsAddPrompt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isUpdateNeeded, setIsUpdateNeeded] = useState(false);
 
   const [compareData, setCompareData] = useState({ decision: 'FilesFromDisk', 
                       content1: '', content2: '', filepath1: '', filepath2: '', 
@@ -52,6 +53,7 @@ export const EditorProvider = ({ children }) => {
 
   // Combine all states and functions into a single object
   const value = {
+    isUpdateNeeded, setIsUpdateNeeded,
     compareData, setCompareData,
     settings, setSettings,
     searchInSarcQuery, setSearchInSarcQuery,

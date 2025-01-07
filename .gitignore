@@ -32,4 +32,5 @@ dist-ssr
 /res/*
 /tmp/
 /ext_projects/updater/target
+/src-tauri/updater.exe
 

@@ -19,6 +19,7 @@ dependencies = [
  "native-dialog",
  "natord",
  "regex",
+ "reqwest 0.12.12",
  "restbl",
  "rfd 0.15.1",
  "roead",

@@ -48,7 +48,8 @@
         "bin",
         "misc",
         "src/totkbits.py",
-        "pip.txt"
+        "pip.txt",
+        "updater.exe"
       ]
     }
   }

@@ -26,6 +26,18 @@ export const useExitApp = async () => {
   }
 };
 
+export async function checkIfUpdateNeeded(setIsUpdateNeeded) {
+  try {
+
+    const content = await invoke('check_if_update_needed');
+    console.log('Update needed:', content);
+    // const result = content === null ? false : content === "yes" ? true : false;
+    setIsUpdateNeeded(content);
+  }
+  catch (error) {
+    console.error('Failed to check update:', error);
+  }
+}
 export async function extractFileClick(selectedPath, setStatusText) {
   try {
     const path = selectedPath.path ?? '';

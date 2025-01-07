@@ -9,6 +9,7 @@ const button_size = '33px';
 
 const ButtonsDisplay = () => {
   const {
+    isUpdateNeeded, setIsUpdateNeeded,
     searchInSarcQuery, setSearchInSarcQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
@@ -248,6 +249,7 @@ const ButtonsDisplay = () => {
         <ImageButton key={index} src={button.src} alt={button.alt} onClick={button.onClick} title={button.title} style={button.alt === 'back' || button.alt === "find" ? { marginLeft: '10px' } : {}} />
       ))}
       {isClearSearchShown && <button className="modal-footer-button" onClick={handleClearSarcSearch} title="Clear active search" >Clear search</button>}
+      {isUpdateNeeded && <button className="modal-footer-button" onClick={handleClearSarcSearch} title="Update needed!">Update needed!</button>}
     </div>
   );
 };
