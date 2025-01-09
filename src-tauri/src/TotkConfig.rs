@@ -14,12 +14,16 @@ use flate2::read::ZlibDecoder;
 //use roead::byml::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tauri::api::version;
+use updater::TotkbitsVersion::TotkbitsVersion;
 
 use crate::file_format::Pack::PackFile;
 use crate::Settings::makedirs;
 use crate::Settings::write_string_to_file;
 use crate::Settings::Pathlib;
 
+const MAX_INLINE_BYML_ITEMS: usize = 10;
+const MIN_INLINE_BYML_ITEMS: usize = 1;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct TotkConfig {
@@ -40,6 +44,7 @@ pub struct TotkConfig {
     pub available_themes: Vec<String>,
     #[serde(skip)]
     pub config_path: String,
+    pub botw_romfs_path: String,
 }
 
 impl Default for TotkConfig {
@@ -59,6 +64,7 @@ impl Default for TotkConfig {
             game_versions: (100..130).rev().map(|e| e.to_string()).collect(),
             available_themes: vec!["vs".into(), "vs-dark".into(), "hc-black".into(), "hc-light".into()],
             config_path: String::new(),
+            botw_romfs_path: String::new(),
         }
     }
 }
@@ -135,8 +141,9 @@ impl TotkConfig {
         self.lower_float_prec = json_data.get("Lower float precision").unwrap_or(&self.lower_float_prec.into()).as_bool().unwrap_or(self.lower_float_prec);
         self.rotation_deg = json_data.get("Rotation in degrees").unwrap_or(&self.rotation_deg.into()).as_bool().unwrap_or(self.rotation_deg);
         self.romfs = json_data.get("romfs").unwrap_or(&binding).as_str().unwrap_or("").to_string();
+        self.botw_romfs_path = json_data.get("BOTW WIIU path (optional)").unwrap_or(&binding).as_str().unwrap_or("").to_string();
         
-        self.yaml_max_inl = self.yaml_max_inl.max(1).min(10);
+        self.yaml_max_inl = self.yaml_max_inl.max(MIN_INLINE_BYML_ITEMS).min(MAX_INLINE_BYML_ITEMS);
     }
 
     // JSON <-> STRUCT
@@ -153,6 +160,7 @@ impl TotkConfig {
                 "Text editor minimap": self.monaco_minimap,
                 "Prompt on close all": self.close_all_prompt,
                 "Rotation in degrees": self.rotation_deg,
+                "BOTW WIIU path (optional)": self.botw_romfs_path,
             })
         )
     }
@@ -181,15 +189,23 @@ impl TotkConfig {
     }
 
 
-    pub fn save(&self) -> io::Result<()> {
+    pub fn save(&mut self) -> io::Result<()> {
+        if self.game_version.is_empty() {
+            self.get_game_version().unwrap_or_default();//no point in handling error here
+        }
         if self.config_path.is_empty() {
             return Err(io::Error::new(io::ErrorKind::NotFound, "Empty config path"));
         }
         let json_data =   self.to_json()?;
         let toml_str = toml::to_string_pretty(&json_data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{:#?}",e)))?;
         let mut res = String::new();
-        res.push_str("# Totkbits v0.0.8 config\n");
+        let version = TotkbitsVersion::from_str(env!("CARGO_PKG_VERSION"));
+        res.push_str(&format!("# TotkBits v{} config\n#\n", version.as_str()));
         res.push_str(&format!("# Available text editor themes: {}\n", self.available_themes.join(", ")));
+        if !self.game_version.is_empty() {
+            res.push_str(&format!("# Detected game version: {}\n", self.game_version));
+        }
+        res.push_str(&format!("# Byml inline container max count must be between {} and {}\n#\n", MIN_INLINE_BYML_ITEMS, MAX_INLINE_BYML_ITEMS));
         if let Ok(exe_path) = env::current_exe() {
             if let Some(cwd_path) = exe_path.parent() {
                 res.push_str(&format!("# Current working directory: {}\n", cwd_path.to_string_lossy().to_string().replace("\\", "/")));

@@ -11,7 +11,7 @@ import ButtonsDisplay from "./Buttons";
 import DirectoryTree from "./DirectoryTree";
 import Comparer from "./Comparer";
 import { useFileDropHandler } from './FileDropHandler';
-import MenuBarDisplay from "./MenuBar";
+import {MenuBarDisplayWithUpdater, MenuBarDisplay} from "./MenuBar";
 import InitializeEditor from './MonacoEditor';
 import RstbTree from "./RstbTree";
 import { SearchTextInSarcPrompt } from './SearchTextInSarc';
@@ -27,7 +27,7 @@ function App() {
 
 
   const {
-    settings, setSettings, setIsUpdateNeeded,
+    settings, setSettings, updateState, setUpdateState,
     searchInSarcQuery, setSearchInSarcQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
@@ -64,7 +64,9 @@ function App() {
         updateEditorContent,
         settings, setSettings,
       });
-      checkIfUpdateNeeded(setIsUpdateNeeded);
+      if (!updateState.wasChecked) {
+        checkIfUpdateNeeded(setUpdateState);
+      }
     }
 
     // Function to update editor size, call it when needed
@@ -116,7 +118,7 @@ function App() {
   const rootStyle = activeTab !== "COMPARER" ? {} : isComparerWorking ? {backgroundColor: "#2E303C"} : {};
   return (
     <div className="maincontainer" > 
-      <MenuBarDisplay />
+      <MenuBarDisplayWithUpdater />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
       {/* {activeTab === 'LOADING' ? <div className="modal-overlay">Loading...</div> : null} */}
       <AddOrRenameFilePrompt

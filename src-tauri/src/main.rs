@@ -3,7 +3,9 @@
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case, non_camel_case_types)]
 use miow::pipe::NamedPipeBuilder;
+use Settings::BACKUP_UPDATER_NAME;
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 use std::{fs, process};
 use std::process::Command;
 use std::sync::Mutex;
@@ -27,7 +29,7 @@ use crate::TauriCommands::{
     edit_config, edit_internal_file, exit_app, extract_internal_file, extract_opened_sarc,
     open_dir_dialog, open_file_dialog, open_file_from_path, open_file_struct,
     remove_internal_sarc_file, rename_internal_sarc_file, restart_app, rstb_edit_entry,
-    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,check_if_update_needed
+    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,check_if_update_needed,update_app
 };
 use crate::TotkApp::TotkBitsApp;
 use updater::TotkbitsVersion::TotkbitsVersion;
@@ -79,7 +81,8 @@ fn main() -> io::Result<()> {
             //COMPARER
             compare_files,
             compare_internal_file_with_vanila,
-            check_if_update_needed
+            check_if_update_needed,
+            update_app
         ])
         .run(tauri::generate_context!())
     {
@@ -139,6 +142,13 @@ fn main_initialization() -> io::Result<()> {
     let exe_cwd = get_executable_dir();
     if exe_cwd.len() > 0 {
         env::set_current_dir(&exe_cwd)?;
+        let backup_updater = PathBuf::from(&exe_cwd).join(BACKUP_UPDATER_NAME);
+        if backup_updater.exists() {
+            if let Ok(_) = fs::remove_file(&backup_updater) {
+                println!("[+] Removed {}", BACKUP_UPDATER_NAME);
+            }
+
+        }
     }
     let version = env!("CARGO_PKG_VERSION").to_string();
     println!("[+] Totkbits version: {}", &version);

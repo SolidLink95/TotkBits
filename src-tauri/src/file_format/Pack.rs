@@ -106,6 +106,11 @@ impl<'a> PackComparer<'a> {
             for (path, _) in self.modded.iter() {
                 paths.modded_paths.push(path.to_string());
             }
+            let size = paths.paths.len();
+            if size == paths.added_paths.len() {
+                paths.added_paths.clear();
+                paths.modded_paths.clear();
+            }
         }
         // println!("Paths: {:?}", paths);
         paths

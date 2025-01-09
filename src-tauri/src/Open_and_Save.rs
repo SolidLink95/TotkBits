@@ -21,28 +21,24 @@ pub fn open_sarc<P: AsRef<Path>>(
     zstd: Arc<TotkZstd>,
 ) -> Option<(PackComparer, SendData)> {
     let mut data = SendData::default();
-    println!("Is {:?} a sarc?", &file_name.as_ref().to_string_lossy());
-    let sarc = PackFile::new(
-        file_name.as_ref().to_string_lossy().into_owned(),
-        zstd.clone(),
-    );
-    if sarc.is_ok() {
-        println!("{:?} is a sarc", &file_name.as_ref().to_string_lossy());
-        let s = sarc.as_ref().unwrap();
-        let endian = s.endian.clone();
-        let pack = PackComparer::from_pack(sarc.unwrap(), zstd.clone());
-        if pack.is_none() {
-            return None;
+    let path_ref = file_name.as_ref();
+    print!("Is {:?} a sarc? ", &path_ref.display());
+    let pathlib_var = Pathlib::new(path_ref); 
+    if let Ok(sarc) = PackFile::new(path_ref, zstd.clone()) {
+        let e_s = if sarc.endian==roead::Endian::Little {" [LE]"} else {" [BE]"};
+        let yaz0_s = if sarc.is_yaz0 {" [Yaz0] "} else {" "};
+        if let Some(pack) = PackComparer::from_pack(sarc, zstd.clone()) {
+            println!(" yes!");
+            data.get_sarc_paths(&pack);
+            data.status_text = format!("Opened {}", &path_ref.to_string_lossy().replace("\\","/"));
+            data.path = pathlib_var.clone();
+            data.tab = "SARC".to_string();
+            data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, yaz0_s, e_s);
+            return Some((pack, data));
         }
-        data.get_sarc_paths(pack.as_ref().unwrap());
-        data.status_text = format!("Opened {}", &file_name.as_ref().to_string_lossy());
-        //internal_file = None;
-        data.path = Pathlib::new(file_name.as_ref().to_string_lossy().into_owned());
-        // data.text = "SARC".to_string();
-        data.tab = "SARC".to_string();
-        data.get_file_label(TotkFileType::Sarc, Some(endian));
-        return Some((pack.unwrap(), data));
+
     }
+    println!(" no");
 
     None
 }
@@ -726,11 +722,11 @@ impl SendData {
                 .paths
                 .sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
 
-            // if self.sarc_paths.paths.len() == self.sarc_paths.added_paths.len() {
-            //     self.sarc_paths.added_paths.clear(); //avoid all files be lit blue as added
-            //     self.sarc_paths.modded_paths.clear(); //redundant
-            //     return; //skip sorting empty lists
-            // }
+            if self.sarc_paths.paths.len() == self.sarc_paths.added_paths.len() {
+                self.sarc_paths.added_paths.clear(); //avoid all files be lit blue as added
+                self.sarc_paths.modded_paths.clear(); //redundant
+                return; //skip sorting empty lists
+            }
 
             self.sarc_paths
                 .added_paths

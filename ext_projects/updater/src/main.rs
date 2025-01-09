@@ -1,4 +1,5 @@
 use std::fs::OpenOptions;
+use std::process::{self, Command};
 use std::thread::sleep;
 use std::time::Duration;
 use std::{env, fs};
@@ -7,128 +8,226 @@ use std::io::{self, Write};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
+use indicatif::ProgressBar;
+use reqwest::blocking::Client;
+use serde::Deserialize;
+use updater::Updater::{backup_current_version, copy_dir_recursive, get_cwd_dir, pause, unpack_zip_file};
 use winapi::um::processthreadsapi::OpenProcess;
 use winapi::um::processthreadsapi::TerminateProcess;
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::winnt::PROCESS_TERMINATE;
 use winapi::shared::minwindef::DWORD;
 use sysinfo::{Pid, System};
+use serde_json;
+use sevenz_rust::decompress_file as decompress_7z_file;
 
 // use std::thread::sleep;
 // use std::time::Duration;
 // use miow::pipe::NamedPipeBuilder;
-mod Updater;
+// mod Updater;
 mod TotkbitsVersion;
 
-struct ArgvStruct {
-    installed_ver: String,
-    download_url: String,
-    asset_name: String,
-    latest_ver: String,
-}
-impl ArgvStruct {
-    fn is_valid(&self) -> bool {
-        if self.installed_ver.is_empty() {
-            println!("[-] Installed version not provided");
-            return false;
-        }
-        if self.download_url.is_empty() {
-            println!("[-] Download  url not provided");
-            return false;
-        }
-        if self.asset_name.is_empty() {
-            println!("[-] Asset name not provided");
-            return false;
-        }
-        if self.latest_ver.is_empty() {
-            println!("[-] Latest version not provided");
-            return false;
-        }
-        return true;
+fn download_and_extract(name: &str, url: &str, cwd_dir: &str) -> io::Result<()> {
+    let client = Client::new();
+    let temp_path = env::temp_dir();
+    let temp_file = temp_path.join(name);
+    if !temp_path.exists() {
+        fs::create_dir_all(&temp_path)?;
     }
+    println!("[+] Downloading {} to {}...", name, temp_file.display());
+    let response = client.get(url).send().map_err(|e| io::Error::new(io::ErrorKind::Other, "[-] Failed to get reponse"))?;
+    let bytes = response.bytes().map_err(|e| io::Error::new(io::ErrorKind::Other, "[-] Failed to get bytes from response"))?;
+    let mut file = OpenOptions::new().write(true).create(true).open(&temp_file).map_err(|e| io::Error::new(io::ErrorKind::Other, "[-] Failed to open file"))?;
+    file.write_all(&bytes)?;
+    println!("[+] Downloaded {} to {} ({}MB)", name, temp_file.display(), bytes.len() / 1024 / 1024);
+    //extract
+    let mut is_done = false;
+    if name.to_ascii_lowercase().ends_with(".7z"){
+        println!("[+] Extracting 7z file to {}...", cwd_dir);
+        if let Err(e) = decompress_7z_file(&temp_file, cwd_dir) {
+            println!("[-] Failed to extract 7z file: {}", e);
+            pause();
+            return Ok(());
+        } else {
+            println!("[+] 7z file extracted to {}", cwd_dir);
+            is_done = true;
+        }
+    }
+    if name.to_ascii_lowercase().ends_with(".zip"){
+        println!("[+] Extracting zip file to {}...", cwd_dir);
+        if let Err(e) = unpack_zip_file(&temp_file, &PathBuf::from(cwd_dir)) {
+            println!("[-] Failed to extract zip file: {}", e);
+            pause();
+            return Ok(());
+        } else {
+            println!("[+] Zip extracted to {}", cwd_dir);
+            is_done = true;
+        }
+    }
+    fs::remove_file(&temp_file).unwrap_or_default();
+    if is_done {
+        let backup_dir = PathBuf::from(cwd_dir).join("backup");
+        if backup_dir.exists() {
+            if let Ok(_) = fs::remove_dir_all(&backup_dir) {
+                println!("[+] Removed backup directory.");
+            } else {
+                println!("[-] Failed to remove backup directory. Please remove it manually.");
+            }
+        }
+        return Ok(());
+    }
+    Err(io::Error::new(io::ErrorKind::Other, "[-] Failed to extract file."))
 }
 
-
-async fn main_process() -> Result<(), Box<dyn Error>>  {
-    let mut msgs: Vec<&str> = vec![];
-    //parse argv
+fn process_main() -> io::Result<()> {
+    //Init
+    let binding = "".to_string();
+    let repo_owner = "SolidLink95".to_string();
+    let repo_name = "TotkBits".to_string();
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        &repo_owner, &repo_name
+    );
     let args: Vec<String> = env::args().collect();
-    let installed_ver_str = args.get(1).cloned().unwrap_or_else(|| String::from(""));
-    let download_url = args.get(2).cloned().unwrap_or_else(|| String::from(""));
-    let asset_name = args.get(3).cloned().unwrap_or_else(|| String::from(""));
-    let latest_ver_str = args.get(4).cloned().unwrap_or_else(|| String::from(""));
-    let argv = ArgvStruct {
-        installed_ver: installed_ver_str.clone(),
-        download_url: download_url.clone(),
-        asset_name: asset_name.clone(),
-        latest_ver: latest_ver_str.clone(),
-    };
-    if !argv.is_valid() {
+    let cur_ver_str = args.get(1).cloned().unwrap_or_else(|| String::from(""));
+    let latest_ver_str = args.get(2).cloned().unwrap_or_else(|| String::from(""));
+    if cur_ver_str.is_empty() {
+        println!("[-] No current version provided.");
         pause();
         return Ok(());
     }
-    //Updater
-    let installed_ver = TotkbitsVersion::TotkbitsVersion::from_str(&installed_ver_str);
-    let latest_ver = TotkbitsVersion::TotkbitsVersion::from_str(&latest_ver_str);
-    if !installed_ver.is_valid() {
-        println!("[-] Invalid installed version: {}", installed_ver_str);
+    if latest_ver_str.is_empty() {
+        println!("[-] No latest version provided.");
         pause();
         return Ok(());
     }
-    if !latest_ver.is_valid() {
-        println!("[-] Invalid latest version: {}", latest_ver_str);
-        pause();
-        return Ok(());
-    }
-    if installed_ver >= latest_ver {
-        println!("[+] Latest version installed, no need to update: {} > {}", installed_ver.as_str(), latest_ver.as_str());
-        pause();
-        return Ok(());
-    } 
-    let mut updater = Updater::Updater::default();
-    updater.latest_ver = latest_ver;
-    updater.installed_ver = installed_ver;
-    updater.asset.name = asset_name;
-    updater.asset.browser_download_url = download_url;
-    updater.get_cwd_dir()?;
-    updater.get_temp_dir()?;
-    if let Err(e) = updater.backup_current_version() {
-        println!("[-] Error backing up current version: {:?}", e);
-        fs::remove_dir_all(&updater.temp_dir)?;
-        pause();
-        return Ok(());
-    }
-    if let Err(e) = updater.download_asset().await {
-        println!("[-] Error downloading asset: {:?}", e);
-        pause();
-        return Ok(());
-    }
-    let file_path = Path::new(&updater.temp_dir).join(&updater.asset.name);
-    if let Err(e) = updater.decompress_asset(&file_path) {
-        println!("[-] Error decompressing asset {} with subprocess: {:?}", &file_path.display(), e);
-        pause();
-        return Ok(());
-    }
-    if let Err(e) = fs::remove_file(&file_path) {
-        println!("[-] Error removing asset file: {:?}", e);
-        pause();
-        return Ok(());
-    }
-    if let Err(e) = updater.clean_up() {
-        println!("[-] Error cleaning up: {:?}", e);
-        pause();
-        return Ok(());
-    }
-    println!("[+] Update successful: {} -> {}", &updater.installed_ver.as_str(), updater.latest_ver.as_str());
 
+    println!("[+] Checking for updates...");
+    let client = Client::new();
+    let response = client
+        .get(&url)
+        .header("User-Agent", "MyAppName")
+        .send();
 
+    if let Ok(response) = response {
+
+        if let Ok(json_value) = response.json::<serde_json::Value>() {
+            // println!("\n\nJson value: {:?}", json_value);
+            if let Some(git_ver_str) = json_value["tag_name"].as_str() {
+                let latest_ver = TotkbitsVersion::TotkbitsVersion::from_str(&latest_ver_str);
+                let git_ver = TotkbitsVersion::TotkbitsVersion::from_str(git_ver_str);
+                if git_ver < latest_ver {
+                    println!("[-] Latest version is behind currently installed version: {} vs {}", git_ver_str, latest_ver_str);
+                    pause();
+                    return Ok(());
+                }
+                let empty_vec = vec![];
+                let assets = json_value["assets"].as_array().unwrap_or(&empty_vec);
+                if assets.is_empty() {
+                    println!("[-] No assets found for download in the latest release.");
+                    pause();
+                    return Ok(());
+                }
+
+                let filtered_assets_7z: Vec<(String, String)> = assets
+                .iter()
+                .filter_map(|asset| {
+                    let name = asset["name"].as_str()?;
+                    let url = asset["browser_download_url"].as_str()?;
+                    if name.ends_with(".7z") {
+                        Some((name.to_string(), url.to_string()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+                let filtered_assets_zip: Vec<(String, String)> = assets
+                .iter()
+                .filter_map(|asset| {
+                    let name = asset["name"].as_str()?;
+                    let url = asset["browser_download_url"].as_str()?;
+                    if name.ends_with(".7z") {
+                        Some((name.to_string(), url.to_string()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+                if filtered_assets_7z.is_empty() && filtered_assets_zip.is_empty() {
+                    println!("[-] No 7z or zip assets found for download in the latest release.");
+                    pause();
+                    return Ok(());
+                }
+                let mut cwd_dir:PathBuf = Default::default();
+                if let Ok(cwd) = get_cwd_dir() {
+                    cwd_dir = cwd;
+                } else {
+                    println!("[-] Failed to get current working directory.");
+                    pause();
+                    return Ok(());
+                }
+                let cwd_dir_str = cwd_dir.to_string_lossy().to_string();
+                println!("[+] Backing up current version...");
+                if let Err(e) = backup_current_version(&cwd_dir) {
+                    println!("[-] Failed to backup current version: {}", e);
+                    pause();
+                    return Ok(());
+                }
+                let mut is_done = false;
+                if !filtered_assets_7z.is_empty() {
+                    let (name, url) = &filtered_assets_7z[0];
+                    println!("[+] Downloading {}...", name);
+                    if let Err(e) = download_and_extract(name, url, &cwd_dir_str) {
+                        println!("[-] Failed to download and extract 7z file: \n    {:?}", e);
+                    } else {
+                        is_done = true;
+                    }
+                }
+                if !is_done && !filtered_assets_zip.is_empty() {
+                    let (name, url) = &filtered_assets_zip[0];
+                    println!("[+] Downloading {}...", name);
+                    if let Err(e) = download_and_extract(name, url, &cwd_dir_str) {
+                        println!("[-] Failed to download and extract 7z file: \n    {:?}", e);
+                    } else {
+                        is_done = true;
+                    }
+                }
+                if !is_done {
+                    println!("[-] Failed to download and extract any file. Reverting backup...");
+                    let mut bar = ProgressBar::new(100);
+                    if let Ok(_) = copy_dir_recursive(&mut bar,&cwd_dir.join("backup"), &cwd_dir) {
+                        println!("[+] Reverted backup successfully.");
+                    } else {
+                        println!("[-] Failed to revert backup.");
+                    }
+                    pause();
+                    process::exit(1);
+                    return Ok(());
+                }
+            }
+        }
+    }
+    
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    main_process().await?;
 
+
+fn main() -> io::Result<()> {
+    // decompress_7z_file(r"W:\coding\TotkBits\res\Totkbits_portable_v008(1).7z", r"W:\coding\TotkBits\res");
+    process_main()?;
+    if let Ok(_) =  Command::new("cmd")
+        .arg("/c")
+        .arg("start")
+        .arg("TotkBits.exe")
+        .spawn() {
+        println!("[+] Started TotkBits.exe");
+        } else {
+            println!("[-] Failed to start TotkBits.exe");
+        }
+    println!("\n\n[+] Update applied successfully. You can safely close this window.");
+    pause();
     Ok(())
 }
 
@@ -153,13 +252,6 @@ fn pipe_test(msgs: Vec<&str>) {
     }
     writeln!(pipe, "END").unwrap();
     println!("[+] Message sent to the Tauri app.");
-}
-
-fn pause() {
-    println!("[+] Usage: updater <installed_ver> <download_url> <asset_name> <latest_ver>");
-    println!("[+] Press Enter to exit");
-    let mut input = String::new();
-    let _ = io::stdin().read_line(&mut input); // Wait for user to press Enter
 }
 
 fn terminate_process_by_pid(pid: DWORD) -> Result<(), String> {

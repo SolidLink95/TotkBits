@@ -7,7 +7,7 @@ use std::error::Error;
 use std::fs::{self, create_dir_all, read_dir, File};
 use std::io::{self, copy, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{self, Command};
 
 use crate::TotkbitsVersion::TotkbitsVersion;
 
@@ -142,7 +142,7 @@ impl Updater {
         let path_str = asset.as_ref().to_string_lossy().to_string();
         println!("[+] Decompressing:/n      {:?}/n  to:/n       {} ...", &asset.as_ref().display(), &self.cwd_dir.display());
         if path_str.to_ascii_lowercase().ends_with(".zip") {
-            return unpack_zip_file(&path_str, &self.cwd_dir.to_string_lossy());
+            return unpack_zip_file(&path_str, &self.cwd_dir.to_string_lossy().to_string());
         }
         
         if let Err(e) = decompress_7z_file(&asset, &self.cwd_dir) {
@@ -379,8 +379,10 @@ async fn download_with_progress(url: &str, file_path: &Path) -> Result<(), Box<d
 
 
 
-fn unpack_zip_file(zip_path: &str, output_dir: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn unpack_zip_file<P:AsRef<Path>>(zip_path_p: P, output_dir_p: P) -> Result<(), Box<dyn std::error::Error>> {
     // Open the ZIP file
+    let zip_path = zip_path_p.as_ref();
+    let output_dir = output_dir_p.as_ref();
     let file = File::open(zip_path)?;
     let mut archive = ZipArchive::new(file)?;
 
@@ -404,4 +406,142 @@ fn unpack_zip_file(zip_path: &str, output_dir: &str) -> Result<(), Box<dyn std::
     }
 
     Ok(())
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pub fn pause() {
+    // println!("[+] Usage: updater <latest_ver>");
+    println!("[+] Press Enter to exit");
+    let mut input = String::new();
+    let _ = io::stdin().read_line(&mut input); // Wait for user to press Enter
+}
+
+
+
+
+pub fn copy_dir_recursive<P: AsRef<Path>>(bar: &mut ProgressBar, src_path: P, dst_path: P) -> io::Result<()> {
+    let src = src_path.as_ref();
+    let dst = dst_path.as_ref();
+    if !src.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Source is not a directory",
+        ));
+    }
+
+    // Create the destination directory if it doesn't exist
+    create_dir_all(dst).unwrap_or_default();
+
+    // Iterate over entries in the source directory
+    for entry in read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            // Recursively copy subdirectories
+            copy_dir_recursive(bar, &src_path, &dst_path)?;
+        } else if src_path.is_file() {
+            // Copy files
+            copy_file(&src_path, &dst_path)?;
+            bar.inc(1);
+        }
+    }
+
+    Ok(())
+}
+
+pub fn backup_current_version<P: AsRef<Path>>(cwd_dir_path: P) -> io::Result<()> {
+    let cwd_dir =cwd_dir_path.as_ref();
+    let backup_dir = cwd_dir.join("backup");
+    if backup_dir.exists() {
+        std::fs::remove_dir_all(&backup_dir)?;
+    }
+    std::fs::create_dir_all(&backup_dir)?;
+    let entries = vec![
+        "bin",
+        "misc",
+        "src",
+        "pip.txt",
+        "TotkBits.exe",
+        "uninstall.exe",
+        "updater.exe",
+    ];
+    let all_files = list_files_recursively(&cwd_dir);
+    let files_count = all_files.len() as u64;
+    // let mut skipped_files: i32 = 0;
+    // let mut not_copied_files: i32 = 0;
+    let mut bar = ProgressBar::new(files_count); // Create a progress bar with 100 steps
+    println!("[+] Backing up current version from {}: approximately {} files to copy", &cwd_dir.display(), files_count);
+    for entry in entries {
+        let entry_path = cwd_dir.join(entry);
+        let dest_path = backup_dir.join(entry);
+        if entry_path.exists() {
+            if entry_path.is_dir() {
+                if let Err(e) = copy_dir_recursive(&mut bar, &entry_path, &dest_path) {
+                    println!("[-] Error while backing up directory: {:?}", e);
+                    pause();
+                    process::exit(1);
+                }
+            } else if entry_path.is_file() {
+                if let Err(e) = fs::copy(&entry_path, &dest_path) {
+                    println!("[-] Error while backing up file: {:?}", e);
+                    pause();
+                    process::exit(1);
+                }
+                bar.inc(1);
+            }
+        } 
+        if dest_path.exists() { //success
+            if entry_path.is_dir() {
+                if let Err(e) = fs::remove_dir_all(&entry_path) {
+                    println!("[-] Error while removing directory: {:?}", e);
+                    pause();
+                    process::exit(1);
+                }
+            } else if entry_path.is_file() {
+                if let Err(e) = fs::remove_file(&entry_path) {
+                    println!("[-] Error while removing file: {:?}", e);
+                    pause();
+                    process::exit(1);
+                }
+            }
+        } 
+    }
+    bar.finish_with_message("[+] Finished backup\n");
+    println!("[+] Backup to {} complete", &backup_dir.display());
+    // let current_dir = self.cwd_dir.join("current");
+    // std::fs::rename(&current_dir, &backup_dir)?;
+    Ok(())
+}
+
+pub fn get_cwd_dir() -> io::Result<PathBuf> {
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(cwd_dir) = exe_path.parent() {
+            return Ok(cwd_dir.to_path_buf());
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        return Ok(cwd);
+    }
+    return Err(io::Error::new(
+        io::ErrorKind::Other,
+        "Failed to get current working directory",
+    ));
 }

@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::process;
 use std::process::Command;
 use regex::Regex;
+use rfd::MessageDialog;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use updater::TotkbitsVersion::TotkbitsVersion;
@@ -15,7 +16,7 @@ use updater::Updater::Updater;
 
 use crate::TotkConfig::TotkConfig;
 
-
+pub const BACKUP_UPDATER_NAME: &str = "backup_updater.exe";
 
 
 #[tauri::command]
@@ -278,8 +279,18 @@ pub async fn check_if_update_needed_standalone() -> Result<(), Box<dyn Error>> {
 }
 
 
-pub fn spawn_updater() -> io::Result<()> {
+pub fn spawn_updater(latest_ver: &str) -> io::Result<()> {
     let version = env!("CARGO_PKG_VERSION").to_string();
+    if MessageDialog::new()
+        .set_title("Update Available")
+        .set_description(&format!("Update available: {} -> {}\nTotkBits will be closed, make sure to save all opened files.\nProceed?", version, latest_ver))
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        != rfd::MessageDialogResult::Yes
+    {
+        return Ok(());
+    }
+
     let mut upd_exe = if cfg!(debug_assertions) {
         "../ext_projects/updater/target/debug/updater.exe"
     } else {
@@ -291,15 +302,24 @@ pub fn spawn_updater() -> io::Result<()> {
         process::exit(1);
     }
     upd_exe = upd_path.to_string_lossy().to_string().replace("\\\\?\\", "");
-    println!("[+] Updater executable found: {}", upd_exe);
+    let backup_upd_exe = format!("{}\\{}", Pathlib::new(&upd_exe).parent, BACKUP_UPDATER_NAME).replace("/", "\\");
+    if Path::new(&backup_upd_exe).exists() {
+        println!("[+] Removing old backup updater: {}", &backup_upd_exe);
+        fs::remove_file(&backup_upd_exe)?;
+    }
+    println!("[+] Backing up: {}", &backup_upd_exe);
+    fs::copy(&upd_exe, &backup_upd_exe)?;
+    println!("[+] Updater executable found: {}", &backup_upd_exe);
     let p = Command::new("cmd")
         .arg("/c")
         .arg("start")
-        .arg(upd_exe)
+        .arg(&backup_upd_exe)
         .arg(&version)
-        .arg(process::id().to_string())
-        .arg("no")
+        .arg(latest_ver)
+        // .arg(process::id().to_string())
+        // .arg("no")
         .spawn()?;
     // pipe_worker();
+    process::exit(0);
     Ok(())
 }

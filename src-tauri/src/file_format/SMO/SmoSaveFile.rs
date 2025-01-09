@@ -55,6 +55,7 @@ impl<'a> SmoSaveFile<'a> {
 
     pub fn from_file<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
         let data = std::fs::read(path.as_ref())?;
+        Self::backup_file(path.as_ref())?;
         Self::from_binary(&data, zstd, path)
     }
 
@@ -134,6 +135,24 @@ impl<'a> SmoSaveFile<'a> {
             return false;
         }
         is_byml(&data[16..])
+    }
+
+    pub fn backup_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
+        let backup_path = path.as_ref().with_extension("bak").to_string_lossy().to_string();
+        for i in 0..100 {
+            let backup_path = if i == 0 {
+                backup_path.clone()
+            } else {
+                format!("{}{}", &backup_path, i)
+            };
+            if !Path::new(&backup_path).exists() {
+                if let Ok(_) = std::fs::copy(path.as_ref(), backup_path) {
+                    return Ok(());
+                }
+            }
+        }
+        std::fs::copy(path.as_ref(), backup_path).unwrap_or_default();
+        Ok(())
     }
 }
 

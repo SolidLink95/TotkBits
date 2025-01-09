@@ -1,8 +1,9 @@
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
+import { ImageButton } from "./Buttons";
 import { clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
-import {clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
+import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
 import { useEditorContext } from './StateManager';
 import { set } from 'lodash';
 
@@ -10,7 +11,7 @@ function MenuBarDisplay() {
   // const [backupPaths, setBackupPaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
 
   const {
-    searchInSarcQuery, setSearchInSarcQuery,
+    searchInSarcQuery, setSearchInSarcQuery, isUpdateNeeded, setIsUpdateNeeded,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,
@@ -126,7 +127,7 @@ function MenuBarDisplay() {
     clearCompareData(setCompareData);
     setStatusText("Compare data cleared");
   };
-  
+
   const handleCompareFilesDisk = async (event, isFromDisk) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
@@ -136,8 +137,8 @@ function MenuBarDisplay() {
         decision: 'FilesFromDisk', // simplest decision, no other arguments needed
       }));
       // compareFilesByDecision('', setStatusText, activeTab, setActiveTab, compareData, setCompareData, editorRef, 'FilesFromDisk', isFromDisk);
-      compareFilesByDecision(setStatusText,  setActiveTab,  setCompareData, editorRef,  isFromDisk, setLabelTextDisplay);
-      
+      compareFilesByDecision(setStatusText, setActiveTab, setCompareData, editorRef, isFromDisk, setLabelTextDisplay);
+
       const success = activeTab === 'COMPARER';
       if (success) {
         console.log('Menubarjsx: Files compared successfully');
@@ -146,7 +147,7 @@ function MenuBarDisplay() {
       console.error('Failed to compare files: ', error);
     }
   };
-  
+
   //Poorly, but works
   const handleCompareFilesFromDisk = (event) => handleCompareFilesDisk(event, true);
   const handleCompareMonacoEditorFromDisk = (event) => handleCompareFilesDisk(event, false);
@@ -267,7 +268,7 @@ function MenuBarDisplay() {
   }
   const compToVanLabel = activeTab === "SARC" ? "Selected to vanila" : "This to vanila";
   // const selToVanCond = (activeTab === "SARC") || (activeTab === "YAML") && paths.paths.some(path => path === selectedPath.path);
-  const selToVanCond = (activeTab === "SARC" && paths.paths.some(path => path === selectedPath.path)) || (activeTab === "YAML" && labelTextDisplay.yaml?.length > 0); 
+  const selToVanCond = (activeTab === "SARC" && paths.paths.some(path => path === selectedPath.path)) || (activeTab === "YAML" && labelTextDisplay.yaml?.length > 0);
   const compareMenuItems = [
     { label: 'Files', onClick: handleCompareFilesFromDisk, icon: blankIcon, shortcut: '', condition: true },
     { label: 'This to file', onClick: handleCompareMonacoEditorFromDisk, icon: blankIcon, shortcut: '', condition: activeTab === "YAML" && labelTextDisplay.yaml?.length > 0 },
@@ -281,50 +282,32 @@ function MenuBarDisplay() {
   const menuItemImgStyle = { marginRight: '10px', width: iconSize, height: iconSize };
 
   return (
-    <div className="menu-bar">
-      <div className="menu-item" onClick={() => toggleDropdown('file')} ref={el => dropdownRefs.current.file = el}>
-        File
-        <div className="dropdown-content" style={{ display: showDropdown.file ? 'block' : 'none' }}>
-          {fileMenuItems.map((item, id) => (
-            <li
-              key={id}
-              className="menu-item"
-              onClick={item.onClick}
-              style={menuItemStyle}
-            >
-              <div style={menuDivStyle}>
-                <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
-                {item.label}
-              </div>
-              <span style={menuSpanStyle}>{item.shortcut}</span>
-            </li>
-          ))}
+    <div>
+      <div className="menu-bar" >
+
+        <div className="menu-item" onClick={() => toggleDropdown('file')} ref={el => dropdownRefs.current.file = el}>
+          File
+          <div className="dropdown-content" style={{ display: showDropdown.file ? 'block' : 'none' }}>
+            {fileMenuItems.map((item, id) => (
+              <li
+                key={id}
+                className="menu-item"
+                onClick={item.onClick}
+                style={menuItemStyle}
+              >
+                <div style={menuDivStyle}>
+                  <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
+                  {item.label}
+                </div>
+                <span style={menuSpanStyle}>{item.shortcut}</span>
+              </li>
+            ))}
+          </div>
         </div>
-      </div>
-      <div className="menu-item" onClick={() => toggleDropdown('compare')} ref={el => dropdownRefs.current.compare = el}>
-        Compare
-        <div className="dropdown-content" style={{ display: showDropdown.compare ? 'block' : 'none' }}>
-          {compareMenuItems.map((item, id) => (
-            item.condition ? (<li
-              key={id}
-              className="menu-item"
-              onClick={item.onClick}
-              style={menuItemStyle}
-            >
-              <div style={menuDivStyle}>
-                <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
-                {item.label}
-              </div>
-              <span style={menuSpanStyle}>{item.shortcut}</span>
-            </li>
-            ) : null))}
-        </div>
-      </div>
-      {activeTab === "SARC" && (
-        <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
-          Tools
-          <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
-            {toolsMenuItems.map((item, id) => (
+        <div className="menu-item" onClick={() => toggleDropdown('compare')} ref={el => dropdownRefs.current.compare = el}>
+          Compare
+          <div className="dropdown-content" style={{ display: showDropdown.compare ? 'block' : 'none' }}>
+            {compareMenuItems.map((item, id) => (
               item.condition ? (<li
                 key={id}
                 className="menu-item"
@@ -340,11 +323,80 @@ function MenuBarDisplay() {
               ) : null))}
           </div>
         </div>
-      )}
+        {activeTab === "SARC" && (
+          <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
+            Tools
+            <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
+              {toolsMenuItems.map((item, id) => (
+                item.condition ? (<li
+                  key={id}
+                  className="menu-item"
+                  onClick={item.onClick}
+                  style={menuItemStyle}
+                >
+                  <div style={menuDivStyle}>
+                    <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
+                    {item.label}
+                  </div>
+                  <span style={menuSpanStyle}>{item.shortcut}</span>
+                </li>
+                ) : null))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 
 
 }
 
-export default MenuBarDisplay;
+function MenuBarDisplayWithUpdater() {
+  const {
+    updateState, setUpdateState, setStatusText
+  } = useEditorContext();
+  const handleUpdateClick = async (event) => {
+    console.log("Update button clicked!");
+
+    try {
+      if (updateState.latestVersion === '') {
+        setStatusText('ERROR: No update available');
+        return;
+      }
+      const content = await invoke('update_app',  { latestVer: updateState.latestVersion });
+      console.log(content);
+      const msg = content??'';
+      if (msg !== '') {
+        setStatusText(msg);
+      }
+    } catch (error) {
+      console.error('Failed to update app: ', error);
+    }
+  }
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      backgroundColor: '#333',
+      // fontWeight: 'bold',
+    }}>
+      <MenuBarDisplay />
+      {updateState.isUpdateNeeded && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <ImageButton
+            key='UpdaterButton'
+            src='update.png'
+            alt={"Update to " + updateState.latestVersion}
+            onClick={handleUpdateClick}
+            title={"Update to " + updateState.latestVersion}
+            style={{ padding: '5px', backgroundColor: '#232529', width: '28px', height: '28px' }}
+          />
+          {/* </div> */}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export { MenuBarDisplay, MenuBarDisplayWithUpdater };
+// export default MenuBarDisplayWithUpdater;

@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "Totkbits"
-version = "0.0.8"
+version = "0.0.9"
 dependencies = [
  "base64 0.22.1",
  "bitvec",
@@ -4538,12 +4538,13 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.117"
+version = "1.0.135"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "455182ea6142b14f93f4bc5320a2b31c1f266b66a4a5c858b013302a5d8cbfc3"
+checksum = "2b0d7ba2887406110130a978386c4e1befb98c674b4fba677954e4db976630d9"
 dependencies = [
  "indexmap 2.7.0",
  "itoa 1.0.11",
+ "memchr",
  "ryu",
  "serde",
 ]
@@ -5823,6 +5824,7 @@ dependencies = [
  "miow",
  "reqwest 0.12.12",
  "serde",
+ "serde_json",
  "sevenz-rust",
  "sysinfo",
  "tokio",

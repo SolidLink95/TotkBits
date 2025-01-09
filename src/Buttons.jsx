@@ -7,9 +7,32 @@ import { useEditorContext } from './StateManager';
 
 const button_size = '33px';
 
+function ImageButton({ src, onClick, alt, title, style }) {
+  // Apply both the background image and styles directly to the button
+  return (
+    <button
+      onClick={onClick}
+      className='button'
+      style={{
+        backgroundImage: `url(${src})`,
+        backgroundSize: 'cover', // Cover the entire area of the button
+        backgroundPosition: 'center', // Center the background image
+        width: button_size, // Define your desired width
+        height: button_size, // Define your desired height 
+        display: 'flex', // Ensure the button content (if any) is centered
+        justifyContent: 'left', // Center horizontally
+        alignItems: 'left', // Center vertically
+        ...style // Spread additional styles here
+      }}
+      aria-label={alt} // Accessibility label for the button if the image fails to load or for screen readers
+      title={title}
+    >
+    </button>
+  );
+}
+
 const ButtonsDisplay = () => {
   const {
-    isUpdateNeeded, setIsUpdateNeeded,
     searchInSarcQuery, setSearchInSarcQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
@@ -22,7 +45,7 @@ const ButtonsDisplay = () => {
 
   const displayButtons = activeTab === "SARC" || activeTab === "YAML" || activeTab === "RSTB";
   if (!displayButtons) return null;
-  
+
   const handlePathToClipboard = (text) => {
     navigator.clipboard.writeText(text).then(() => {
       console.log('Text copied to clipboard');
@@ -75,29 +98,7 @@ const ButtonsDisplay = () => {
     }
   }
 
-  function ImageButton({ src, onClick, alt, title, style }) {
-    // Apply both the background image and styles directly to the button
-    return (
-      <button
-        onClick={onClick}
-        className='button'
-        style={{
-          backgroundImage: `url(${src})`,
-          backgroundSize: 'cover', // Cover the entire area of the button
-          backgroundPosition: 'center', // Center the background image
-          width: button_size, // Define your desired width
-          height: button_size, // Define your desired height 
-          display: 'flex', // Ensure the button content (if any) is centered
-          justifyContent: 'left', // Center horizontally
-          alignItems: 'left', // Center vertically
-          ...style // Spread additional styles here
-        }}
-        aria-label={alt} // Accessibility label for the button if the image fails to load or for screen readers
-        title={title}
-      >
-      </button>
-    );
-  }
+ 
   const triggerSearchInEditor = useCallback(() => {
     if (editorRef.current) {
       editorRef.current.getAction('actions.find').run();
@@ -244,14 +245,32 @@ const ButtonsDisplay = () => {
   const isClearSearchShown = activeTab == "SARC" && searchInSarcQuery.length > 0 && !isSearchInSarcOpened;
 
   return (
-    <div className="buttons-container">
-      {imageButtonsData.map((button, index) => (
-        <ImageButton key={index} src={button.src} alt={button.alt} onClick={button.onClick} title={button.title} style={button.alt === 'back' || button.alt === "find" ? { marginLeft: '10px' } : {}} />
-      ))}
-      {isClearSearchShown && <button className="modal-footer-button" onClick={handleClearSarcSearch} title="Clear active search" >Clear search</button>}
-      {isUpdateNeeded && <button className="modal-footer-button" onClick={handleClearSarcSearch} title="Update needed!">Update needed!</button>}
+    <div>
+      <div className="buttons-container">
+        {imageButtonsData.map((button, index) => (
+          <ImageButton
+            key={index}
+            src={button.src}
+            alt={button.alt}
+            onClick={button.onClick}
+            title={button.title}
+            style={button.alt === 'back' || button.alt === 'find' ? { marginLeft: '10px' } : {}}
+          />
+        ))}
+        {isClearSearchShown && (
+          <button
+            className="modal-footer-button"
+            onClick={handleClearSarcSearch}
+            title="Clear active search"
+          >
+            Clear search
+          </button>
+        )}
+      </div>
     </div>
   );
+  
 };
 
+export { ImageButton };
 export default ButtonsDisplay;

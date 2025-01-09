@@ -33,7 +33,6 @@ pub struct TotkBitsApp<'a> {
     // pub zstd_cpp: Arc<ZstdCppCompressor>,
     pub pack: Option<PackComparer<'a>>,
     pub internal_file: Option<InternalFile<'a>>,
-    pub updater: Updater
 }
 
 unsafe impl<'a> Send for TotkBitsApp<'a> {}
@@ -53,7 +52,6 @@ impl Default for TotkBitsApp<'_> {
                             zstd: zstd.clone(),
                             pack: None,
                             internal_file: None,
-                            updater: get_default_updater(),
                         };
                     }
                     Err(_) => {
@@ -922,7 +920,7 @@ impl<'a> TotkBitsApp<'a> {
             },
             Err(e) => {
                 eprintln!("{:?}", e);
-                data.status_text = format!("Error: {:?}", e);
+                data.status_text = format!("Error: {} not found", &self.opened_file.path.name);
                 return Some(data);
             }
         }

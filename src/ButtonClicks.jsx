@@ -26,13 +26,21 @@ export const useExitApp = async () => {
   }
 };
 
-export async function checkIfUpdateNeeded(setIsUpdateNeeded) {
+export async function checkIfUpdateNeeded(setUpdateState) {
   try {
 
     const content = await invoke('check_if_update_needed');
-    console.log('Update needed:', content);
+    if (content === null || content === undefined) {
+      console.log("No content returned from check_if_update_needed");
+      setUpdateState({wasChecked: true, isUpdateNeeded: false, latestVersion: ''});
+      return;
+    }
+    const latestVersion = content;
+    const isUpdateNeeded = latestVersion !== null && latestVersion !== undefined && latestVersion !== '' && latestVersion !== '0.0.0' ? true : false;
+    
     // const result = content === null ? false : content === "yes" ? true : false;
-    setIsUpdateNeeded(content);
+    setUpdateState({wasChecked: true, isUpdateNeeded: isUpdateNeeded, latestVersion: latestVersion})
+    console.log('Update needed: ', content);
   }
   catch (error) {
     console.error('Failed to check update:', error);

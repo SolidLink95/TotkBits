@@ -1,6 +1,6 @@
 //tauri commands
 use crate::{
-    Open_and_Save::SendData, Settings::check_if_update_needed_standalone, TotkApp::{SaveData, TotkBitsApp}
+    Open_and_Save::SendData, Settings::{check_if_update_needed_standalone, spawn_updater}, TotkApp::{SaveData, TotkBitsApp}
 };
 use rfd::MessageDialog;
 use serde::Deserialize;
@@ -407,13 +407,9 @@ pub fn compare_internal_file_with_vanila(app_handle: tauri::AppHandle,  internal
     None
 }
 
-#[derive(Deserialize)]
-struct ReleaseInfo {
-    tag_name: String,
-}
 
 #[tauri::command]
-pub fn check_if_update_needed() -> bool {
+pub fn check_if_update_needed() -> String {
     let repo_owner = "SolidLink95".to_string();
     let repo_name = "TotkBits".to_string();
     let url = format!(
@@ -428,17 +424,29 @@ pub fn check_if_update_needed() -> bool {
         .send();
 
         if let Ok(response) = response {
-            println!("Response: {:?}", response);
+            // println!("Response: {:?}", response);
     
             if let Ok(json_value) = response.json::<serde_json::Value>() {
-                println!("\n\nJson value: {:?}", json_value);
+                // println!("\n\nJson value: {:?}", json_value);
                 if let Some(release_info) = json_value["tag_name"].as_str() {
-                    println!("\n\nRelease info: {}", release_info);
+                    // println!("\n\nRelease info: {}", release_info);
                     let installed_ver = TotkbitsVersion::from_str(env!("CARGO_PKG_VERSION"));
                     let latest_ver = TotkbitsVersion::from_str(release_info);
-                    return latest_ver >= installed_ver;
+                    if latest_ver > installed_ver {
+                        return release_info.to_string();
+                    }
                 }
             }
         }
-    false
+    String::new()
+}
+
+#[tauri::command]
+pub fn update_app(latestVer: String) -> String {
+    
+    if let Err(e) = spawn_updater(latestVer.as_str()) {
+        return format!("Error spawning updater: {:?}", e);
+    }
+    // process::exit(1);
+    String::new()
 }
