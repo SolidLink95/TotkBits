@@ -54,9 +54,13 @@ impl<'a> SmoSaveFile<'a> {
     }
 
     pub fn from_file<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
-        let data = std::fs::read(path.as_ref())?;
-        Self::backup_file(path.as_ref())?;
-        Self::from_binary(&data, zstd, path)
+        let path_ref = path.as_ref();
+        let data = std::fs::read(path_ref)?;
+        let tmp = Self::from_binary(&data, zstd, path_ref);
+        if tmp.is_ok() {
+            Self::backup_file(path_ref)?;
+        }
+        tmp
     }
 
     pub fn to_string(&mut self) -> io::Result<String> {
