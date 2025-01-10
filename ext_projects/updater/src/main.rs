@@ -1,23 +1,12 @@
 use std::fs::OpenOptions;
-use std::process::{self, Command};
-use std::thread::sleep;
-use std::time::Duration;
+use std::process::Command;
 use std::{env, fs};
 use std::io::{self, Write};
 // use std::fs::OpenOptions;
-use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::ptr::null_mut;
+use std::path::PathBuf;
 use indicatif::ProgressBar;
 use reqwest::blocking::Client;
-use serde::Deserialize;
-use updater::Updater::{backup_current_version, copy_dir_recursive, get_cwd_dir, pause, unpack_zip_file};
-use winapi::um::processthreadsapi::OpenProcess;
-use winapi::um::processthreadsapi::TerminateProcess;
-use winapi::um::handleapi::CloseHandle;
-use winapi::um::winnt::PROCESS_TERMINATE;
-use winapi::shared::minwindef::DWORD;
-use sysinfo::{Pid, System};
+use updater::Updater::{backup_current_version, copy_dir_recursive, get_cwd_dir, pause, pause_and_exit, unpack_zip_file};
 use serde_json;
 use sevenz_rust::decompress_file as decompress_7z_file;
 
@@ -35,9 +24,9 @@ fn download_and_extract(name: &str, url: &str, cwd_dir: &str) -> io::Result<()> 
         fs::create_dir_all(&temp_path)?;
     }
     println!("[+] Downloading {} to {}...", name, temp_file.display());
-    let response = client.get(url).send().map_err(|e| io::Error::new(io::ErrorKind::Other, "[-] Failed to get reponse"))?;
-    let bytes = response.bytes().map_err(|e| io::Error::new(io::ErrorKind::Other, "[-] Failed to get bytes from response"))?;
-    let mut file = OpenOptions::new().write(true).create(true).open(&temp_file).map_err(|e| io::Error::new(io::ErrorKind::Other, "[-] Failed to open file"))?;
+    let response = client.get(url).send().map_err(|_| io::Error::new(io::ErrorKind::Other, "[-] Failed to get reponse"))?;
+    let bytes = response.bytes().map_err(|_| io::Error::new(io::ErrorKind::Other, "[-] Failed to get bytes from response"))?;
+    let mut file = OpenOptions::new().write(true).create(true).open(&temp_file).map_err(|_| io::Error::new(io::ErrorKind::Other, "[-] Failed to open file"))?;
     file.write_all(&bytes)?;
     println!("[+] Downloaded {} to {} ({}MB)", name, temp_file.display(), bytes.len() / 1024 / 1024);
     //extract
@@ -81,7 +70,6 @@ fn download_and_extract(name: &str, url: &str, cwd_dir: &str) -> io::Result<()> 
 
 fn process_main() -> io::Result<()> {
     //Init
-    let binding = "".to_string();
     let repo_owner = "SolidLink95".to_string();
     let repo_name = "TotkBits".to_string();
     let url = format!(
@@ -93,12 +81,12 @@ fn process_main() -> io::Result<()> {
     let latest_ver_str = args.get(2).cloned().unwrap_or_else(|| String::from(""));
     if cur_ver_str.is_empty() {
         println!("[-] No current version provided.");
-        pause();
+        pause_and_exit();
         return Ok(());
     }
     if latest_ver_str.is_empty() {
         println!("[-] No latest version provided.");
-        pause();
+        pause_and_exit();
         return Ok(());
     }
 
@@ -118,14 +106,14 @@ fn process_main() -> io::Result<()> {
                 let git_ver = TotkbitsVersion::TotkbitsVersion::from_str(git_ver_str);
                 if git_ver < latest_ver {
                     println!("[-] Latest version is behind currently installed version: {} vs {}", git_ver_str, latest_ver_str);
-                    pause();
+                    pause_and_exit();
                     return Ok(());
                 }
                 let empty_vec = vec![];
                 let assets = json_value["assets"].as_array().unwrap_or(&empty_vec);
                 if assets.is_empty() {
                     println!("[-] No assets found for download in the latest release.");
-                    pause();
+                    pause_and_exit();
                     return Ok(());
                 }
 
@@ -164,7 +152,7 @@ fn process_main() -> io::Result<()> {
                     cwd_dir = cwd;
                 } else {
                     println!("[-] Failed to get current working directory.");
-                    pause();
+                    pause_and_exit();
                     return Ok(());
                 }
                 let cwd_dir_str = cwd_dir.to_string_lossy().to_string();
@@ -199,10 +187,9 @@ fn process_main() -> io::Result<()> {
                     if let Ok(_) = copy_dir_recursive(&mut bar,&cwd_dir.join("backup"), &cwd_dir) {
                         println!("[+] Reverted backup successfully.");
                     } else {
-                        println!("[-] Failed to revert backup.");
+                        println!("[-] Failed to revert backup. Please reinstall TotkBits manually.");
                     }
-                    pause();
-                    process::exit(1);
+                    pause_and_exit();
                     return Ok(());
                 }
             }
@@ -232,44 +219,44 @@ fn main() -> io::Result<()> {
 }
 
 
-fn pipe_test(msgs: Vec<&str>) {
-    let pipe_name = r"//./pipe/tauri_pipe";
+// fn pipe_test(msgs: Vec<&str>) {
+//     let pipe_name = r"//./pipe/tauri_pipe";
     
-    // Connect to the named pipe created by the Tauri app
-    let mut pipe = loop {
-        match OpenOptions::new().write(true).open(pipe_name) {
-            Ok(pipe) => break pipe,
-            Err(_) => {
-                println!("Waiting for pipe...");
-                sleep(Duration::from_secs(1));
-            }
-        }
-    };
+//     // Connect to the named pipe created by the Tauri app
+//     let mut pipe = loop {
+//         match OpenOptions::new().write(true).open(pipe_name) {
+//             Ok(pipe) => break pipe,
+//             Err(_) => {
+//                 println!("Waiting for pipe...");
+//                 sleep(Duration::from_secs(1));
+//             }
+//         }
+//     };
 
-    // Write message to the pipe
-    for msg in msgs {
-        writeln!(pipe, "{}", msg).unwrap();
-    }
-    writeln!(pipe, "END").unwrap();
-    println!("[+] Message sent to the Tauri app.");
-}
+//     // Write message to the pipe
+//     for msg in msgs {
+//         writeln!(pipe, "{}", msg).unwrap();
+//     }
+//     writeln!(pipe, "END").unwrap();
+//     println!("[+] Message sent to the Tauri app.");
+// }
 
-fn terminate_process_by_pid(pid: DWORD) -> Result<(), String> {
-    unsafe {
-        // Open the process with PROCESS_TERMINATE access rights
-        let process_handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
-        if process_handle.is_null() {
-            return Err(format!("Failed to open process with PID {}.", pid));
-        }
+// fn terminate_process_by_pid(pid: DWORD) -> Result<(), String> {
+//     unsafe {
+//         // Open the process with PROCESS_TERMINATE access rights
+//         let process_handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
+//         if process_handle.is_null() {
+//             return Err(format!("Failed to open process with PID {}.", pid));
+//         }
 
-        // Attempt to terminate the process
-        let result = TerminateProcess(process_handle, 1); // Exit code 1
-        CloseHandle(process_handle); // Always close the handle
+//         // Attempt to terminate the process
+//         let result = TerminateProcess(process_handle, 1); // Exit code 1
+//         CloseHandle(process_handle); // Always close the handle
 
-        if result == 0 {
-            return Err(format!("Failed to terminate process with PID {}.", pid));
-        }
-    }
+//         if result == 0 {
+//             return Err(format!("Failed to terminate process with PID {}.", pid));
+//         }
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }

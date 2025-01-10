@@ -12,7 +12,6 @@ use rfd::MessageDialog;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use updater::TotkbitsVersion::TotkbitsVersion;
-use updater::Updater::Updater;
 
 use crate::TotkConfig::TotkConfig;
 
@@ -254,29 +253,6 @@ pub fn process_inline_content(mut input: String, inline_count: usize) -> String 
        input
 }
 
-pub fn get_default_updater() -> Updater {
-    let version = env!("CARGO_PKG_VERSION").to_string();
-    let mut upd = Updater::default();
-    let old_ver= TotkbitsVersion::from_str(&version);
-    upd.installed_ver = old_ver;
-    upd
-}
-
-pub async fn check_if_update_needed_standalone() -> Result<(), Box<dyn Error>> {
-    let version = env!("CARGO_PKG_VERSION").to_string();
-    let mut upd = Updater::default();
-    let old_ver= TotkbitsVersion::from_str(&version);
-    if let Err(_) =    upd.get_asset_and_version(".7z").await {
-        upd.get_asset_and_version(".zip").await?;
-    }
-    if old_ver >= upd.latest_ver {
-        println!("[+] Latest version installed, no need to update: {} > {}", old_ver.as_str(), upd.latest_ver.as_str());
-        return Err("Latest version installed".into());
-    }
-
-
-    Ok(())
-}
 
 
 pub fn spawn_updater(latest_ver: &str) -> io::Result<()> {

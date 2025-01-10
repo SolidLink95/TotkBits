@@ -21,9 +21,11 @@ impl TotkbitsVersion {
             low: parts.next().unwrap_or(-1),
         }
     }
+    #[allow(dead_code)]
     pub fn is_valid(&self) -> bool {
         self.major >= 0 && self.mid >= 0 && self.low >= 0
     }
+    #[allow(dead_code)]
     pub fn as_str(&self) -> String {
         format!("{}.{}.{}", self.major, self.mid, self.low)
     }

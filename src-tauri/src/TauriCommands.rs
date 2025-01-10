@@ -1,6 +1,6 @@
 //tauri commands
 use crate::{
-    Open_and_Save::SendData, Settings::{check_if_update_needed_standalone, spawn_updater}, TotkApp::{SaveData, TotkBitsApp}
+    Open_and_Save::SendData, Settings::spawn_updater, TotkApp::{SaveData, TotkBitsApp}
 };
 use rfd::MessageDialog;
 use serde::Deserialize;
@@ -93,6 +93,7 @@ pub fn extract_internal_file(
         Some(result) => Some(result), // Safely return the result if present
         None => None,                 // Return None if no result
     }
+    
 }
 
 #[tauri::command]
