@@ -305,8 +305,8 @@ const CompareFiles = () => {
         fontWeight: 'bold',
         fontSize: fontSize,
       }}>
-        <div style={{marginLeft: margin}}>{compareData.label1.replace(/\/\//g, '/') || 'Original File'}</div>
-        <div style={{marginRight: margin}}>{compareData.label2.replace(/\/\//g, '/') || 'Modified File'}</div>
+        <div style={{marginLeft: margin}}>{compareData.label1.replace(/\/\//g, '/') || 'Modified File'}</div>
+        <div style={{marginRight: margin}}>{compareData.label2.replace(/\/\//g, '/') || 'Original File'}</div>
       </div>
 
       <div style={{ height: 'calc(100vh - 177px)', width: '100%', flexDirection: 'column' }}>

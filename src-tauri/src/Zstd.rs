@@ -453,6 +453,11 @@ pub fn is_asb(data: &[u8]) -> bool {
 }
 
 #[inline]
+pub fn is_evfl(data: &[u8]) -> bool {
+    data.starts_with(b"BFEVFL")
+}
+
+#[inline]
 pub fn is_restbl(data: &[u8]) -> bool {
     data.starts_with(b"RSTB") || data.starts_with(b"REST")
 }

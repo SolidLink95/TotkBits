@@ -128,23 +128,37 @@ impl TotkConfig {
         if json_data.is_empty() {
             return;
         }
-        let binding = "".into();
-        let theme = json_data.get("Text editor theme").unwrap_or(&binding).as_str().unwrap_or("").to_string();
+    
+        fn get_string(data: &HashMap<String, serde_json::Value>, key: &str) -> String {
+            data.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string()
+        }
+    
+        fn get_i64(data: &HashMap<String, serde_json::Value>, key: &str, default: i64) -> i64 {
+            data.get(key).and_then(|v| v.as_i64()).unwrap_or(default)
+        }
+    
+        fn get_bool(data: &HashMap<String, serde_json::Value>, key: &str, default: bool) -> bool {
+            data.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
+        }
+    
+        let theme = get_string(&json_data, "Text editor theme");
         if self.available_themes.contains(&theme) {
             self.monaco_theme = theme;
         }
-        self.font_size = json_data.get("font size").unwrap_or(&self.font_size.into()).as_i64().unwrap_or(self.font_size as i64) as i32;
-        self.yaml_max_inl = json_data.get("Byml inline container max count").unwrap_or(&self.yaml_max_inl.into()).as_i64().unwrap_or(self.yaml_max_inl as i64) as usize;
-        self.context_menu_font_size = json_data.get("Context menu font size").unwrap_or(&self.context_menu_font_size.into()).as_i64().unwrap_or(self.context_menu_font_size as i64) as i32;
-        self.close_all_prompt = json_data.get("Prompt on close all").unwrap_or(&self.close_all_prompt.into()).as_bool().unwrap_or(self.close_all_prompt);
-        self.monaco_minimap = json_data.get("Text editor minimap").unwrap_or(&self.monaco_minimap.into()).as_bool().unwrap_or(self.monaco_minimap);
-        self.lower_float_prec = json_data.get("Lower float precision").unwrap_or(&self.lower_float_prec.into()).as_bool().unwrap_or(self.lower_float_prec);
-        self.rotation_deg = json_data.get("Rotation in degrees").unwrap_or(&self.rotation_deg.into()).as_bool().unwrap_or(self.rotation_deg);
-        self.romfs = json_data.get("romfs").unwrap_or(&binding).as_str().unwrap_or("").to_string();
-        self.botw_romfs_path = json_data.get("BOTW WIIU path (optional)").unwrap_or(&binding).as_str().unwrap_or("").to_string();
-        
+    
+        self.font_size = get_i64(&json_data, "font size", self.font_size as i64) as i32;
+        self.yaml_max_inl = get_i64(&json_data, "Byml inline container max count", self.yaml_max_inl as i64) as usize;
+        self.context_menu_font_size = get_i64(&json_data, "Context menu font size", self.context_menu_font_size as i64) as i32;
+        self.close_all_prompt = get_bool(&json_data, "Prompt on close all", self.close_all_prompt);
+        self.monaco_minimap = get_bool(&json_data, "Text editor minimap", self.monaco_minimap);
+        self.lower_float_prec = get_bool(&json_data, "Lower float precision", self.lower_float_prec);
+        self.rotation_deg = get_bool(&json_data, "Rotation in degrees", self.rotation_deg);
+        self.romfs = get_string(&json_data, "romfs");
+        self.botw_romfs_path = get_string(&json_data, "BOTW WIIU path (optional)");
+    
         self.yaml_max_inl = self.yaml_max_inl.max(MIN_INLINE_BYML_ITEMS).min(MAX_INLINE_BYML_ITEMS);
     }
+    
 
     // JSON <-> STRUCT
     #[allow(dead_code)]

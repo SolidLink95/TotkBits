@@ -61,18 +61,22 @@ def repo_init():
     cwd = os.getcwd()
     cwd_path = Path(cwd)
     bin_path = "src-tauri/bin"
-    Path(bin_path).mkdir(parents=True, exist_ok=True)
+    bin_path_p = Path(bin_path)
+    if bin_path_p.exists() and bin_path_p.is_dir():
+        shutil.rmtree(bin_path)
+    bin_path_p.mkdir(parents=True, exist_ok=True)
     if not Path(f"{bin_path}/asb/asb.py").exists() or not Path(f"{bin_path}/ainb/ainb/ainb.py").exists():
-        p = subprocess.run(["git", "submodule", "init"]);
-        # if p.returncode != 0:
-        #     raise Exception("[-] Failed to init git submodule")
-        p = subprocess.run(["git", "submodule", "update", "--init", "--recursive"]);
+        p = subprocess.run(["git", "submodule", "init"])
+        p = subprocess.run(["git", "submodule", "update", "--init", "--recursive"])
         if p.returncode != 0:
             raise Exception("[-] Failed to update git submodule")
-    file1 = "src-tauri/misc/asb.py"
-    file2 = f"{bin_path}/asb/asb.py"
-    shutil.copyfile(file1, file2)
-    print(f"[+] Copied {file1} -> {file2}")
+    files_to_copy = {
+        "src-tauri/misc/asb.py": f"{bin_path}/asb/asb.py",
+        "src-tauri/misc/ptcl.py": f"{bin_path}/ptcl/ptcl.py",
+    }
+    for file1, file2 in files_to_copy.items():
+        shutil.copyfile(file1, file2)
+        print(f"[+] Copied {file1} -> {file2}")
     
     tmp_path = Path("tmp")
     winpython_installer_exe = tmp_path / "winpython.exe"

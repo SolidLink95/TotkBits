@@ -57,12 +57,12 @@ pub fn open_esetb<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(Opened
             opened_file.file_type = TotkFileType::Esetb;
             data.status_text = format!("Opened {}", path_ref.display());
             data.path = Pathlib::new(path_ref);
-            data.text = esetb.to_text();
+            data.text = esetb.to_string();
             data.get_file_label(TotkFileType::Esetb, esetb.byml.endian);
             return Some((opened_file, data));
         }
-        println!("no");
     }
+    println!("no");
 
     None
 }
@@ -129,18 +129,33 @@ pub fn open_asb<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedF
     let mut data = SendData::default();
     print!("Is {} a asb? ", &path_ref.display());
     if let Ok(asb) = Asb_py::from_binary_file(path_ref, zstd.clone()) {
-        if let Ok(text) = asb.binary_to_text() {
-            println!(" yes!");
-            opened_file.path = Pathlib::new(path_ref);
-            opened_file.file_type = TotkFileType::ASB;
-            data.status_text = format!("Opened: {}", &opened_file.path.full_path);
-            data.path = Pathlib::new(path_ref);
-            data.text = text;
-            data.get_file_label(TotkFileType::ASB, Some(roead::Endian::Little));
-            return Some((opened_file, data));
-        } else {
-            println!("{} yes but failed to convert to text", &path_ref.display());
+        match asb.binary_to_text()  {
+            Ok(text) => {
+                println!(" yes!");
+                opened_file.path = Pathlib::new(path_ref);
+                opened_file.file_type = TotkFileType::ASB;
+                data.status_text = format!("Opened: {}", &opened_file.path.full_path);
+                data.path = Pathlib::new(path_ref);
+                data.text = text;
+                data.get_file_label(TotkFileType::ASB, Some(roead::Endian::Little));
+                return Some((opened_file, data));
+            }
+            Err(e) => {
+                println!(" yes but failed to open: {}", e);
+            }
         }
+        // if let Ok(text) = asb.binary_to_text() {
+        //     println!(" yes!");
+        //     opened_file.path = Pathlib::new(path_ref);
+        //     opened_file.file_type = TotkFileType::ASB;
+        //     data.status_text = format!("Opened: {}", &opened_file.path.full_path);
+        //     data.path = Pathlib::new(path_ref);
+        //     data.text = text;
+        //     data.get_file_label(TotkFileType::ASB, Some(roead::Endian::Little));
+        //     return Some((opened_file, data));
+        // } else {
+        //     println!("{} yes but failed to convert to text", &path_ref.display());
+        // }
     }
     println!(" no");
     None
@@ -150,17 +165,32 @@ pub fn open_ainb<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(Opened
     let mut data = SendData::default();
     let path_ref = path.as_ref();
     print!("Is {} a ainb? ", &path_ref.display());
-    if let Ok(text) = Ainb_py::new().binary_file_to_text(path_ref) {
-        println!(" yes!");
-        opened_file.path = Pathlib::new(path_ref);
-        opened_file.file_type = TotkFileType::AINB;
-        data.status_text = format!("Opened: {}", &opened_file.path.full_path);
-        data.path = Pathlib::new(path_ref);
-        data.text = text;
-        data.get_file_label(TotkFileType::AINB, None);
-        return Some((opened_file, data));
+    match Ainb_py::new().binary_file_to_text(path_ref) {
+        Ok(text) => {
+            println!(" yes!");
+            opened_file.path = Pathlib::new(path_ref);
+            opened_file.file_type = TotkFileType::AINB;
+            data.status_text = format!("Opened: {}", &opened_file.path.full_path);
+            data.path = Pathlib::new(path_ref);
+            data.text = text;
+            data.get_file_label(TotkFileType::AINB, None);
+            return Some((opened_file, data));
+        }
+        Err(e) => {
+            println!(" no: {}", e);
+        }
     }
-    println!(" no");
+    // if let Ok(text) = Ainb_py::new().binary_file_to_text(path_ref) {
+    //     println!(" yes!");
+    //     opened_file.path = Pathlib::new(path_ref);
+    //     opened_file.file_type = TotkFileType::AINB;
+    //     data.status_text = format!("Opened: {}", &opened_file.path.full_path);
+    //     data.path = Pathlib::new(path_ref);
+    //     data.text = text;
+    //     data.get_file_label(TotkFileType::AINB, None);
+    //     return Some((opened_file, data));
+    // }
+    // println!(" no");
     None
 }
 pub fn open_byml<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
@@ -301,7 +331,7 @@ pub fn get_string_from_data<P: AsRef<Path>>(
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
             internal_file.file_type = TotkFileType::Esetb;
-            let text = esetb.to_text();
+            let text = esetb.to_string();
             internal_file.esetb = Some(esetb);
             return Some((internal_file, text));
         }
@@ -474,7 +504,7 @@ pub fn get_binary_by_filetype(
             if (is_gamedatalist(file_path)) {
                 println!("is_gamedatalist, attempting to use oead python");
                 let p_wrap = PythonWrapper::new();
-                match p_wrap.text_to_binary(text, "byml_text_to_binary".to_string()) {
+                match p_wrap.text_to_binary(&text.as_bytes().to_vec(), "byml_text_to_binary".to_string()) {
                     Ok(some_data) => {
                         rawdata = some_data;
                         println!("it worked");

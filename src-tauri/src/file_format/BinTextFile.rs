@@ -1,7 +1,7 @@
 #![allow(non_snake_case,non_camel_case_types)]
 use crate::file_format::TagProduct::TagProduct;
 use crate::Settings::Pathlib;
-use crate::Zstd::{is_byml, TotkFileType, TotkZstd};
+use crate::Zstd::{is_byml, is_gamedatalist, TotkFileType, TotkZstd};
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use regex::Regex;
 use roead::byml::Byml;
@@ -232,7 +232,7 @@ impl<'a> BymlFile<'_> {
 
     pub fn to_string(&self) -> String {
         let float_prec = if self.zstd.totk_config.lower_float_prec { Some(4) } else { None };
-        let max_inl = self.zstd.totk_config.yaml_max_inl;
+        let max_inl = if is_gamedatalist(&self.path.full_path) && self.zstd.totk_config.yaml_max_inl < 5 {5} else {self.zstd.totk_config.yaml_max_inl};
         // println!("max_inl: {}", max_inl);
         let mut text = Byml::to_text_advanced(&self.pio, max_inl, float_prec);
         // let mut text = Byml::to_text(&self.pio);

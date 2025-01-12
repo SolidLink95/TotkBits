@@ -47,7 +47,7 @@
       "resources": [
         "bin",
         "misc",
-        "src/totkbits.py",
+        "totkbits.py",
         "pip.txt",
         "updater.exe"
       ]

@@ -16,7 +16,7 @@ impl Default for Ainb_py {
     fn default() -> Self {
         Self {
             python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
-            python_script: "src/totkbits.py".to_string(),
+            python_script: "totkbits.py".to_string(),
             create_no_window: 0x08000000,
         }
     }
@@ -87,7 +87,7 @@ impl Ainb_py {
         } else {
             // eprintln!("Script execution failed.");
             eprintln!("Script execution failed. {:#?}\n{}", output.status, &stderr);
-            eprintln!("Data: {:?}", &stdout);
+            // eprintln!("Data: {:?}", &stdout);
             return Err(io::Error::new(io::ErrorKind::Other, "Script execution failed."));
         }
         Ok(stdout)

@@ -4,3 +4,6 @@
 [submodule "src-tauri/bin/asb"]
 	path = src-tauri/bin/asb
 	url = https://github.com/dt-12345/asb.git
+[submodule "src-tauri/bin/ptcl"]
+	path = src-tauri/bin/ptcl
+	url = https://github.com/dt-12345/ptcl
