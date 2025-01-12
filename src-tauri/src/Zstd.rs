@@ -467,6 +467,11 @@ pub fn is_gamedatalist<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("gamedatalist")
     // path.ends_with("GameDataList.Product.110.byml.zs")
 }
+#[inline]
+pub fn is_tagproduct<P: AsRef<Path>>(path: P) -> bool {
+    path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("tag.product")
+    // path.ends_with("GameDataList.Product.110.byml.zs")
+}
 
 pub fn sha256(data: Vec<u8>) -> String {
     // Create a Sha256 object

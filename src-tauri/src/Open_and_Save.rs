@@ -1,7 +1,7 @@
 use crate::{
     file_format::{
         Ainb_py::Ainb_py, Asb_py::Asb_py, BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile}, Esetb::Esetb, Msbt::str_endian_to_roead, Pack::{PackComparer, PackFile, SarcPaths}, PythonWrapper::PythonWrapper, Rstb::Restbl, TagProduct::TagProduct, SMO::SmoSaveFile::SmoSaveFile
-    }, Comparer::DiffComparer, Settings::Pathlib, TotkApp::InternalFile, Zstd::{is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, TotkFileType, TotkZstd}
+    }, Comparer::DiffComparer, Settings::Pathlib, TotkApp::InternalFile, Zstd::{is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, is_tagproduct, TotkFileType, TotkZstd}
 };
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use rfd::{FileDialog, MessageDialog};
@@ -101,9 +101,7 @@ pub fn open_tag<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFi
     let path_ref = path.as_ref();
     let pathlib_var = Pathlib::new(path_ref);
     print!("Is {} a tag? ", &pathlib_var.full_path);
-    if pathlib_var.full_path
-        .to_lowercase()
-        .starts_with("tag.product")
+    if is_tagproduct(path_ref)
     {
         opened_file.tag = TagProduct::new(path_ref, zstd.clone());
         if let Some(tag) = &mut opened_file.tag {
