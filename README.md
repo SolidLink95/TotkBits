@@ -14,6 +14,7 @@ This tool includes most functionalities found in the NX Editor and introduces ad
 All `*.zs` files are automatically compressed or decompressed. If you wish to save the file without compression, click `Save as`, then simply remove the `.zs` extension from the file path.
 
 # Supported Formats
+- Super Mario Odyssey save files
 - ASB
 - AINB
 - Tag.Product
