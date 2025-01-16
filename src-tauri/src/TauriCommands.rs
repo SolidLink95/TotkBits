@@ -1,6 +1,6 @@
 //tauri commands
 use crate::{
-    Open_and_Save::SendData, Settings::spawn_updater, TotkApp::{SaveData, TotkBitsApp}
+    Open_and_Save::SendData, Settings::{spawn_updater, NO_WINDOW_FLAG}, TotkApp::{SaveData, TotkBitsApp}
 };
 use rfd::MessageDialog;
 use serde::Deserialize;
@@ -14,7 +14,7 @@ use reqwest::blocking::{get, Client};
 #[tauri::command]
 pub fn restart_app() -> Option<()> {
     let totkbits_exe = env::current_exe().ok()?;
-    let no_window_flag = 0x08000000;
+    let no_window_flag = NO_WINDOW_FLAG;
     if let rfd::MessageDialogResult::No = MessageDialog::new()
         .set_title("Warning")
         .set_description("Totkbits will be restarted, all unsaved progress will be lost. Proceed?")
@@ -46,7 +46,7 @@ pub fn restart_app() -> Option<()> {
 
 #[tauri::command]
 pub fn edit_config(app_handle: tauri::AppHandle) -> Option<()> {
-    let no_window_flag = 0x08000000;
+    let no_window_flag = NO_WINDOW_FLAG;
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let app = binding.lock().expect("Failed to lock state");
     let file_path = app.zstd.clone().totk_config.config_path.clone();

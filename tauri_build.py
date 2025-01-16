@@ -4,7 +4,12 @@ import shutil
 from pathlib import Path
 import subprocess
 import time
+os.system('cls')
 
+def remove_file_if_exists(file):
+    x = Path(file)
+    if x.exists() and x.is_file():
+        run(["cmd", "/c", "del", "/f", "/q", str(x)])
 
 def run(cmd):
     # subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
@@ -29,11 +34,46 @@ def restore_main_rs(cwd):
     data = data.replace("""#![windows_subsystem = "windows"]""", """// #![windows_subsystem = "windows"]""")
     main_rs.write_text(data)
 
+def build_dotnet(cwd:Path):
+    name = "DotNetWrapper"
+    project_dir = cwd / f"ext_projects/{name}"
+    publish_path = (project_dir / "publish" ).resolve()
+    bin_path = (cwd / "src-tauri" / f"bin/cs").resolve()
+    if bin_path.exists():
+        shutil.rmtree(bin_path)
+    bin_path.mkdir(parents=True, exist_ok=True)
+    cs_source_path = Path(r"src-tauri\misc\DotNetWrapper.cs").resolve()
+    cs_dest_path = (project_dir / "Program.cs").resolve()
+    packages = ["Newtonsoft.Json", "BfevLibrary", "YamlDotNet"]
+    print(f"[+] Building dotnet wrapper")
+    if project_dir.exists():
+        print(f"[+] Deleting old project")
+        shutil.rmtree(project_dir)
+    os.chdir(str(project_dir.parent))
+    run(["dotnet","new",  "console", "-n" , name])
+    os.chdir(str(project_dir))
+    for package in packages:
+        subprocess.run(["dotnet", "add", "package", package], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    shutil.copyfile(cs_source_path, cs_dest_path)
+    print(f"[+] Copied {cs_source_path} to {cs_dest_path}")
+    run(['dotnet', 'publish', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-o', 'publish'])
+    if bin_path.exists():
+        shutil.rmtree(bin_path)
+    shutil.copytree(publish_path, bin_path)
+    
+    os.chdir(str(cwd))
+    if project_dir.exists():
+        print(f"[+] Deleting project")
+        shutil.rmtree(project_dir)
+    print("[+] Dotnet wrapper built")
+
 def tauri_build():
     t1 = time.time()
     os.system("cls")
     cwd_str = os.getcwd()
     cwd  = Path(cwd_str)
+    #Dotnet wrapper
+    build_dotnet(cwd)
     # Updater
     print(f"[+] Building updater")
     os.chdir(str(cwd / "ext_projects/updater"))

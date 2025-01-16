@@ -363,9 +363,9 @@ function MenuBarDisplayWithUpdater() {
         setStatusText('ERROR: No update available');
         return;
       }
-      const content = await invoke('update_app',  { latestVer: updateState.latestVersion });
+      const content = await invoke('update_app', { latestVer: updateState.latestVersion });
       console.log(content);
-      const msg = content??'';
+      const msg = content ?? '';
       if (msg !== '') {
         setStatusText(msg);
       }
@@ -373,6 +373,8 @@ function MenuBarDisplayWithUpdater() {
       console.error('Failed to update app: ', error);
     }
   }
+  const iconSize = '28px';
+  const isUp = updateState.isUpdateNeeded;
   return (
     <div style={{
       display: 'flex',
@@ -381,19 +383,29 @@ function MenuBarDisplayWithUpdater() {
       // fontWeight: 'bold',
     }}>
       <MenuBarDisplay />
-      {updateState.isUpdateNeeded && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <ImageButton
-            key='UpdaterButton'
-            src='update.png'
-            alt={"Update to " + updateState.latestVersion}
-            onClick={handleUpdateClick}
-            title={"Update to " + updateState.latestVersion}
-            style={{ padding: '5px', backgroundColor: '#232529', width: '28px', height: '28px' }}
-          />
-          {/* </div> */}
-        </div>
-      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <ImageButton
+          key={isUp ? 'UpdaterButton' : 'NoUpdaterButton'}
+          src={isUp ? 'update.png' : 'noupdate.png'}
+          alt={
+            isUp
+              ? `Update to ${updateState.latestVersion}`
+              : 'Totkbits is up to date'
+          }
+          onClick={isUp ? handleUpdateClick : null}
+          title={
+            isUp
+              ? `Update to ${updateState.latestVersion}`
+              : 'Totkbits is up to date'
+          }
+          style={{
+            padding: '5px',
+            backgroundColor: '#232529',
+            width: iconSize,
+            height: iconSize,
+          }}
+        />
+      </div>
     </div>
   );
 }

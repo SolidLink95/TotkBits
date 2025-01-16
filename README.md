@@ -22,7 +22,8 @@ All `*.zs` files are automatically compressed or decompressed. If you wish to sa
 - AAMP
 - MSBT
 - RESTBL (RSTB)
-- esetb.byml (editing everything except the PTCL file section is supported)
+- BFEVL (events)
+- esetb.byml + PTCL 
 - JSON/YAML and other plaintext formats
 
 To save the file as plaintext, click `Save as` and choose one of the extensions: json, yaml, yml, txt.
@@ -46,8 +47,9 @@ The YAML editor uses the Monaco editor from Visual Studio Code, which includes a
 - `Ctrl+H`: Replace text.
 
 # Contributors
+- [Arch Leaders](https://github.com/ArchLeaders): BfevLibrary
 - [NiceneNerd](https://github.com/NiceneNerd): Contributions to [roead](https://github.com/NiceneNerd/roead), part of the [msbt](https://github.com/NiceneNerd/msyt) library (used only for Big Endian msbt), and the [RESTBL library](https://github.com/NiceneNerd/restbl).
-- [jordanbtucker](https://github.com/jordanbtucker): Development of the [msbt C++ library](https://github.com/EPD-Libraries/msbt) (used for Little Endian msbt).
+- [jordanbtucker](https://github.com/jordanbtucker) and [Arch Leaders](https://github.com/ArchLeaders): Development of the [msbt C++ library](https://github.com/EPD-Libraries/msbt) (used for Little Endian msbt).
 - [dt-12345](https://github.com/dt-12345): Development of [AINB](https://github.com/dt-12345/ainb.git) and [ASB](https://github.com/dt-12345/asb.git) parsers.
 - [Winpython Team](https://github.com/winpython): The latest release includes [Winpython v3.11.8](https://github.com/winpython/winpython/releases/tag/7.1.20240203final), which supports ASB and AINB parsing.
 

@@ -34,6 +34,7 @@ pub enum TotkFileType {
     Msbt,
     Bcett,
     Esetb,
+    Evfl,
     Text,
     Other,
     //SMO
@@ -454,7 +455,7 @@ pub fn is_asb(data: &[u8]) -> bool {
 
 #[inline]
 pub fn is_evfl(data: &[u8]) -> bool {
-    data.starts_with(b"BFEVFL")
+    data.starts_with(b"BFEVFL") && is_little_endian(data)
 }
 
 #[inline]
@@ -471,6 +472,11 @@ pub fn is_gamedatalist<P: AsRef<Path>>(path: P) -> bool {
 pub fn is_tagproduct<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("tag.product")
     // path.ends_with("GameDataList.Product.110.byml.zs")
+}
+
+#[inline]
+pub fn is_little_endian(data: &[u8]) -> bool {
+    data.len() >= 14 && data.get(12..14) == Some(&[0xFF, 0xFE])
 }
 
 pub fn sha256(data: Vec<u8>) -> String {

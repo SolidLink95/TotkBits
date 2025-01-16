@@ -3,6 +3,7 @@ from pathlib import Path
 import shutil
 import os, sys
 import requests
+from tauri_build import build_dotnet
 try:
     from tqdm import tqdm # type: ignore
 except ImportError:
@@ -65,6 +66,8 @@ def repo_init():
     if bin_path_p.exists() and bin_path_p.is_dir():
         shutil.rmtree(bin_path)
     bin_path_p.mkdir(parents=True, exist_ok=True)
+    #dotnet
+    build_dotnet(cwd_path)
     if not Path(f"{bin_path}/asb/asb.py").exists() or not Path(f"{bin_path}/ainb/ainb/ainb.py").exists():
         p = subprocess.run(["git", "submodule", "init"])
         p = subprocess.run(["git", "submodule", "update", "--init", "--recursive"])
@@ -113,8 +116,8 @@ def repo_init():
     
     print("[+] Intalling winpython dependencies") # python -m pip install --upgrade pip
 
-    p = subprocess.run([python_exe_str, "-m", "pip", "install", "--upgrade", "pip"])
-    p = subprocess.run([python_exe_str, "-m", "pip", "install", "-r", requirements_txt])
+    p = subprocess.run([python_exe_str, "-m", "pip", "install", "--upgrade", "pip"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True) #
+    p = subprocess.run([python_exe_str, "-m", "pip", "install", "-r", requirements_txt], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     if p.returncode != 0:
         raise Exception("[-] Failed to install winpython dependencies")
     print(f"[+] Copying compressed json files")
@@ -130,6 +133,7 @@ def repo_init():
             # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib/w64-arm.exe",
             # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools/cli-arm64.exe",
             # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools/gui-arm64.exe",
+            "src-tauri/bin/asb/asb_as_json.7z",
             "src-tauri/bin/winpython/Jupyter Lab.exe",
             "src-tauri/bin/winpython/Jupyter Notebook.exe",
             "src-tauri/bin/winpython/Pyzo.exe",

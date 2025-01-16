@@ -13,6 +13,7 @@ res/asdf/*
 # /bin/ainb/
 dist
 .vscode
+/.vscode
 dist-ssr
 *.local
 
@@ -33,4 +34,8 @@ dist-ssr
 /tmp/
 /ext_projects/updater/target
 /src-tauri/updater.exe
+/src-tauri/DotNetWrapper.exe
 
+/ext_projects/DotNetWrapper/*
+
+/__pycache__

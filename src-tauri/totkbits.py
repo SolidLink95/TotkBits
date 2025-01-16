@@ -69,44 +69,7 @@ def evfl_binary_to_text() -> str: # Converts input PTCL file to JSON
     #TODO: Implement this function
     try:
         data = sys.stdin.buffer.read()
-        flow = evfl.EventFlow()
-        flow.read(data)
-        res = {}
-        # res['name'] = flow.name
-        res["version"] = "0.3.0.0"
-        res["Flowcharts"] = {}
-        res["Timelines"] = {}
-        res["Flowcharts"]["Actors"] = []
-        res["Flowcharts"]["Events"] = []
-        res["Flowcharts"]["EntryPoints"] = {}
-        for a in flow.flowchart.actors:
-            res["Flowcharts"]["Actors"].append({
-                "Name": a.identifier.name,
-                "SecondaryName": a.identifier.sub_name,
-                "ArgumentName": a.argument_name,
-                "EntryPointIndex": -1 if a.argument_entry_point is None else a.argument_entry_point,
-                # "CutNumber" : getattr(a.params, 'concurrent_clips', -1),
-                "CutNumber" : a.params.data.get('concurrent_clips', -1),
-                "Actions": [x.v for x in a.actions],
-                "Queries": [x.v for x in a.queries],
-                "Params": dict(a.params.data)
-            })
-        for e in flow.flowchart.events:
-            res["Flowcharts"]["Events"][e.name] = {
-                
-            }
-        for t in flow.flowchart.timeline:
-            res["Timelines"][t.name] = {
-                "Name": t.name,
-                "SecondaryName": t.identifier.sub_name,
-                "ArgumentName": t.argument_name,
-                "EntryPointIndex": -1 if t.argument_entry_point is None else t.argument_entry_point,
-                # "CutNumber" : getattr(t.params, 'concurrent_clips', -1),
-                "CutNumber" : t.params.data.get('concurrent_clips', -1),
-                "Actions": [x.v for x in t.actions],
-                "Queries": [x.v for x in t.queries],
-                "Params": dict(t.params.data)
-            }
+        
         text = ptcl_binary_to_text_lib(data)
         sys.stdout.buffer.write(text if isinstance(text, bytes) else text.encode("utf-8"))
     except Exception as e:
@@ -143,12 +106,9 @@ def asb_text_to_binary(encoding="utf-8"): # Converts input JSON file to ASB
     
 def ainb_binary_to_text(): # Converts input AINB file to JSON
     try:
-        # import bin.ainb.ainb.ainb as ainb
         data = sys.stdin.buffer.read()
         file = ainb_lib.AINB(data)
-        # text = json.dumps(file.output_dict, ensure_ascii=False, indent=4)
         text = yaml.dump(file.output_dict, sort_keys=False, allow_unicode=True, indent=4, encoding='utf-8')
-        # print(text)
         sys.stdout.buffer.write(text)
     except Exception as e:
         sys.stdout.buffer.write(b"Error: " + str(e).encode("utf-8"))

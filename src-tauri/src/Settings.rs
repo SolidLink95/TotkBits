@@ -18,6 +18,8 @@ use crate::TotkConfig::TotkConfig;
 pub const BACKUP_UPDATER_NAME: &str = "backup_updater.exe";
 
 
+pub const NO_WINDOW_FLAG: u32 = 0x08000000;
+
 #[tauri::command]
 pub fn get_startup_data(state: tauri::State<serde_json::Value>) -> Result<serde_json::Value, String> {
     Ok((*state.inner()).clone())

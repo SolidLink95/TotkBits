@@ -1,6 +1,6 @@
 use crate::{
     file_format::{
-        Ainb_py::Ainb_py, Asb_py::Asb_py, BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile}, Esetb::Esetb, Msbt::str_endian_to_roead, Pack::{PackComparer, PackFile, SarcPaths}, PythonWrapper::PythonWrapper, Rstb::Restbl, TagProduct::TagProduct, SMO::SmoSaveFile::SmoSaveFile
+        Ainb_py::Ainb_py, Asb_py::Asb_py, BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile}, Esetb::Esetb, Evfl_cs::{self, Evfl}, Msbt::str_endian_to_roead, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct, Wrapper::PythonWrapper, SMO::SmoSaveFile::SmoSaveFile
     }, Comparer::DiffComparer, Settings::Pathlib, TotkApp::InternalFile, Zstd::{is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, is_tagproduct, TotkFileType, TotkZstd}
 };
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
@@ -335,6 +335,8 @@ pub fn get_string_from_data<P: AsRef<Path>>(
         }
     }
 
+
+
     if let Ok(asb) = Asb_py::from_binary(&data, zstd.clone()) {
         if let Ok(text) = asb.binary_to_text() {
             internal_file.endian = Some(roead::Endian::Little);
@@ -467,6 +469,19 @@ pub fn get_binary_by_filetype(
     let is_zs = file_path.to_lowercase().ends_with(".zs");
     let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs");
     match file_type {
+        TotkFileType::Evfl => {
+          let evfl = Evfl::new(zstd.clone());
+          if let Ok(new_data) = evfl.string_to_binary(text) {
+            if is_zs {
+                if let Ok(compressed_data) = zstd.cpp_compressor.compress_zs(&new_data) {
+                    rawdata = compressed_data;
+                }
+            } else {
+                rawdata = new_data;
+            }
+              
+          }
+        }
         TotkFileType::Esetb => {
             if let Some(esetb) = &mut opened_file.esetb {
                 esetb.update_from_text(text).ok()?;
@@ -778,6 +793,7 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) 
                 .or_else(|| open_byml(&file_name, zstd.clone()))
                 .or_else(|| open_msbt(&file_name))
                 .or_else(|| open_aamp(&file_name))
+                .or_else(|| Evfl::open_file(&file_name, zstd.clone()))
                 .or_else(|| open_smo_save_file(&file_name, zstd.clone()))
                 .or_else(|| open_text(&file_name))
                 .map(|(opened_file, data)| {

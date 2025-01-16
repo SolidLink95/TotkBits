@@ -1,7 +1,103 @@
 use std::io::{self, Write};
 // use std::io::Read;
 use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+use updater::Updater::get_cwd_dir;
+
+use crate::Settings::NO_WINDOW_FLAG;
+
+pub struct ExeWrapper {
+    pub exe: String,
+    pub args: Vec<String>,
+}
+
+impl ExeWrapper {
+    pub fn new(exe: String, args: Vec<String>) -> Self {
+        Self { exe, args }
+    }
+    pub fn dotnet_new() -> Self {
+        // let exe = PathBuf::from(get_cwd_dir().unwrap_or_default()).join("bin/DotNetWrapper.exe").to_string_lossy().to_string();
+
+        Self {
+            exe: "bin/cs/DotNetWrapper.exe".to_string(),
+            args: vec![],
+        }
+    }
+
+    pub fn binary_to_string(&self, data: &Vec<u8>, fname: String) -> io::Result<String> {
+        // if Path::new(&self.exe).exists() == false {
+        //     println!("ExeWrapper: {} does not exist.", &self.exe);
+        // } else {
+        //     println!("ExeWrapper: {} exists.", &self.exe);
+        // }
+        let mut child = Command::new(&self.exe)
+            .creation_flags(NO_WINDOW_FLAG)
+            .args(&self.args)
+            .arg(&fname)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        if let Some(ref mut stdin) = child.stdin.take() {
+            stdin.write_all(data)?;
+        } // Dropping `stdin` here closes the pipe.
+
+        let output = child.wait_with_output()?;
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        if stdout.to_lowercase().starts_with("error") {
+            return Err(io::Error::new(io::ErrorKind::Other, stdout));
+        }
+        if stderr.to_lowercase().starts_with("error") {
+            return Err(io::Error::new(io::ErrorKind::Other, stderr));
+        }
+
+        if output.status.success() {
+            // println!("Script executed successfully: {}.", &fname);
+        } else {
+            eprintln!("Script execution failed.");
+            println!("{}", &stderr);
+            return Err(io::Error::new(io::ErrorKind::Other, "Script execution failed."));
+        }
+        Ok(stdout)
+    }
+
+    pub fn string_to_binary(&self, text_data: &str, fname: String) -> io::Result<Vec<u8>> {
+        let mut child = Command::new(&self.exe)
+            .creation_flags(NO_WINDOW_FLAG)
+            .args(&self.args)
+            .arg(&fname)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        if let Some(ref mut stdin) = child.stdin.take() {
+            stdin.write_all(text_data.as_bytes())?;
+        } // Dropping `stdin` here closes the pipe.
+
+        let output = child.wait_with_output()?;
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        if output.stdout.starts_with(b"Error") {
+            return Err(io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&output.stdout).into_owned()));
+        }
+        if stderr.to_lowercase().starts_with("error") {
+            return Err(io::Error::new(io::ErrorKind::Other, stderr));
+        }
+
+        if output.status.success() {
+            // println!("Script executed successfully.");
+        } else {
+            eprintln!("Script execution failed.");
+            return Err(io::Error::new(io::ErrorKind::Other, "Script execution failed."));
+        }
+        Ok(output.stdout)
+    }
+}
+
 
 pub struct PythonWrapper {
     pub python_exe: String,
@@ -14,7 +110,7 @@ impl Default for PythonWrapper {
         Self {
             python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
             python_script: "totkbits.py".to_string(),
-            create_no_window: 0x08000000,
+            create_no_window: NO_WINDOW_FLAG,
         }
     }
 }

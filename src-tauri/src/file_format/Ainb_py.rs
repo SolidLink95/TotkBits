@@ -4,7 +4,7 @@ use std::{
 };
 
 
-use crate::Zstd::is_ainb;
+use crate::{Settings::NO_WINDOW_FLAG, Zstd::is_ainb};
 
 pub struct Ainb_py {
     pub python_exe: String,
@@ -17,7 +17,7 @@ impl Default for Ainb_py {
         Self {
             python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
             python_script: "totkbits.py".to_string(),
-            create_no_window: 0x08000000,
+            create_no_window: NO_WINDOW_FLAG,
         }
     }
 }

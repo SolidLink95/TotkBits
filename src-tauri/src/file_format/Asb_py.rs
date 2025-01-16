@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::{
     io::{self, Read, Write}, os::windows::process::CommandExt, process::{Command, Stdio}
 };
+use crate::Settings::NO_WINDOW_FLAG;
 use crate::Zstd::{is_asb, TotkZstd};
 use super::BinTextFile::write_string_to_file;
 
@@ -24,7 +25,7 @@ impl<'a> Asb_py<'a> {
             zstd: zstd.clone(),
             python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
             python_script: "totkbits.py".to_string(),
-            create_no_window: 0x08000000,
+            create_no_window: NO_WINDOW_FLAG,
             data: Vec::new(),
         }
     }

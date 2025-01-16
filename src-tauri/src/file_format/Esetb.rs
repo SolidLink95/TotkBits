@@ -2,7 +2,7 @@
 use std::{fs, io, path::Path, result, sync::Arc};
 use roead::byml::{self, Byml};
 use crate::{Settings::Pathlib, Zstd::{TotkFileType, TotkZstd}};
-use super::{BinTextFile::{BymlFile, FileData}, PythonWrapper::PythonWrapper};
+use super::{BinTextFile::{BymlFile, FileData}, Wrapper::PythonWrapper};
 
 const PTCL_JSON_KEY: &str = "PTCL_JSON";
 const PTCL_BIN_KEY: &str = "PtclBin";

@@ -6,7 +6,7 @@ use std::{
 };
 use crate::Zstd::{is_asb, is_evfl, TotkZstd};
 use super::BinTextFile::write_string_to_file;
-use super::PythonWrapper::PythonWrapper;
+use super::Wrapper::PythonWrapper;
 
 
 
