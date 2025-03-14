@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { ImageButton } from "./Buttons";
-import { clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
+import { addFilesFromDirRecursivelyToRoot, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
 import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
 import { useEditorContext } from './StateManager';
 import { set } from 'lodash';
@@ -11,6 +11,7 @@ function MenuBarDisplay() {
   // const [backupPaths, setBackupPaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
 
   const {
+    setIsOptionsOpen, isOptionsOpen,
     searchInSarcQuery, setSearchInSarcQuery, isUpdateNeeded, setIsUpdateNeeded,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
@@ -71,6 +72,11 @@ function MenuBarDisplay() {
     } else {
       setStatusText("Switch to SARC tab to add files");
     }
+  }
+  const handleAddFolderClick = (event) => {
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    addFilesFromDirRecursivelyToRoot(setStatusText, setpaths);
   }
   const handleExtractClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent () => extractFileClick(selectedPath, setStatusText)
@@ -205,6 +211,15 @@ function MenuBarDisplay() {
     closeMenu();
     clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery);
   }
+  const handleEditOptions = (event) => {
+    console.log("Edit options clicked");
+    event.stopPropagation(); // Prevent click event from reaching parent
+    closeMenu();
+    
+    setIsModalOpen(true);
+    setIsOptionsOpen(!isOptionsOpen);
+    console.log("Config options open: ", isOptionsOpen);
+  }
 
   const toggleDropdown = (menu) => {
     setShowDropdown(prevState => ({
@@ -241,22 +256,25 @@ function MenuBarDisplay() {
     { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S' },
     { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S' },
     { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },
-    { label: 'Edit config', onClick: editConfigFile, icon: 'menu/edit_config.png', shortcut: '' },
+    { label: 'Options', onClick: handleEditOptions, icon: 'menu/edit_config.png', shortcut: '' },
     { label: 'Restart', onClick: restartAppClick, icon: 'menu/restart.png', shortcut: '' },
     { label: 'Exit', onClick: useExitApp, icon: 'menu/exit.png', shortcut: '' }
   ];
-
+  const isSarcOpened = paths.paths.length > 0 && activeTab === "SARC";
+  const isInternalFileSelected = isSarcOpened && selectedPath.path !== '' && selectedPath.isfile;
   const toolsMenuItems = [
-    { label: 'Extract sarc contents', onClick: handleExtractOpenedSarc, icon: 'context_menu/extract_all.png', shortcut: '', condition: true },
-    { label: 'Search in sarc', onClick: handleSearchClick, icon: 'menu/lupa.png', shortcut: '', condition: true },
+    { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.png', shortcut: '', condition: isSarcOpened },
+    { label: 'Add folder', onClick: handleAddFolderClick, icon: 'menu/add_folder.png', shortcut: '', condition: isSarcOpened },
+    { label: 'Extract sarc contents', onClick: handleExtractOpenedSarc, icon: 'context_menu/extract_all.png', shortcut: '', condition: isSarcOpened },
+    { label: 'Search in sarc', onClick: handleSearchClick, icon: 'menu/lupa.png', shortcut: '', condition: isSarcOpened },
     { label: 'Clear search', onClick: handleClearSearchTextInSarc, icon: 'menu/clear_search.png', shortcut: '', condition: searchInSarcQuery.length > 0 },
-    { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.png', shortcut: '', condition: true },
-    { label: 'Edit', onClick: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: '', condition: true },
-    { label: 'Extract file', onClick: handleExtractClick, icon: 'context_menu/extract.png', shortcut: '', condition: paths.paths.length > 0 && selectedPath.isfile },
-    { label: 'Show all', onClick: handleShowAllClick, icon: blankIcon, shortcut: '', condition: paths.added_paths.length > 0 || paths.modded_paths.length > 0 },
-    { label: 'Show added', onClick: handleShowAddedClick, icon: blankIcon, shortcut: '', condition: paths.added_paths.length > 0 },
-    { label: 'Show modded', onClick: handleShowModdedClick, icon: blankIcon, shortcut: '', condition: paths.modded_paths.length > 0 }
+    { label: 'Edit', onClick: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: '', condition: isInternalFileSelected },
+    { label: 'Extract file', onClick: handleExtractClick, icon: 'context_menu/extract.png', shortcut: '', condition: isInternalFileSelected },
+    // { label: 'Show all', onClick: handleShowAllClick, icon: blankIcon, shortcut: '', condition: paths.added_paths.length > 0 || paths.modded_paths.length > 0 },
+    // { label: 'Show added', onClick: handleShowAddedClick, icon: blankIcon, shortcut: '', condition: paths.added_paths.length > 0 },
+    // { label: 'Show modded', onClick: handleShowModdedClick, icon: blankIcon, shortcut: '', condition: paths.modded_paths.length > 0 }
   ];
+  const isToolsMenuVisible = toolsMenuItems.some(item => item.condition);
   const isSelectedPathInPaths = () => {
     for (const path of paths.paths) {
       if (path === selectedPath.path) {
@@ -323,7 +341,7 @@ function MenuBarDisplay() {
               ) : null))}
           </div>
         </div>
-        {activeTab === "SARC" && (
+        {activeTab === "SARC" && isToolsMenuVisible && (
           <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
             Tools
             <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
@@ -353,7 +371,7 @@ function MenuBarDisplay() {
 
 function MenuBarDisplayWithUpdater() {
   const {
-    updateState, setUpdateState, setStatusText
+    updateState, setUpdateState, setStatusText, settings
   } = useEditorContext();
   const handleUpdateClick = async (event) => {
     console.log("Update button clicked!");
@@ -384,6 +402,7 @@ function MenuBarDisplayWithUpdater() {
     }}>
       <MenuBarDisplay />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      {settings.zstd_msg && <div style={{padding: '2px', color: 'yellow'}}>{settings.zstd_msg}</div>}
         <ImageButton
           key={isUp ? 'UpdaterButton' : 'NoUpdaterButton'}
           src={isUp ? 'update.png' : 'noupdate.png'}

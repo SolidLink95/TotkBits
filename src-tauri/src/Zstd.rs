@@ -21,6 +21,8 @@ use std::io::{self, Cursor, Read, Write};
 use zstd::dict::{DecoderDictionary, EncoderDictionary};
 use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
 
+pub const  COMPRESSION_LEVEL: i32 = 16;
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TotkFileType {
     AINB,
@@ -52,13 +54,6 @@ pub struct ZstdCppCompressor {
 
 impl ZstdCppCompressor {
     
-    #[allow(dead_code)]
-    pub fn from_totk_zstd(zstd: Arc<TotkZstd>) -> ZstdCppCompressor {
-        Self::from_zsdic(
-            zstd.clone().zsdic.clone(),
-            zstd.clone().compressor.comp_level,
-        )
-    }
     pub fn from_zsdic(zsdic: Arc<ZsDic>, comp_level: i32) -> ZstdCppCompressor {
         // let zsdic = &zstd.zsdic;
         // let comp_level = zstd.compressor.comp_level;
@@ -147,49 +142,146 @@ impl ZstdCppCompressor {
 
 pub struct TotkZstd<'a> {
     pub totk_config: Arc<TotkConfig>,
-    pub decompressor: ZstdDecompressor<'a>,
-    pub compressor: ZstdCompressor<'a>,
-    pub zsdic: Arc<ZsDic>,
-    pub cpp_compressor: ZstdCppCompressor,
+    pub decompressor: Option<ZstdDecompressor<'a>>,
+    pub compressor: Option<ZstdCompressor<'a>>,
+    pub zsdic: Option<Arc<ZsDic>>,
+    pub cpp_compressor: Option<ZstdCppCompressor>,
 }
 
 impl<'a> TotkZstd<'_> {
     pub fn new(totk_config: Arc<TotkConfig>, comp_level: i32) -> io::Result<TotkZstd<'a>> {
-        let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_config.clone())?);
-        let decompressor: ZstdDecompressor =
-            ZstdDecompressor::new(totk_config.clone(), zsdic.clone())?;
-        let compressor: ZstdCompressor =
-            ZstdCompressor::new(totk_config.clone(), zsdic.clone(), comp_level)?;
+        let mut zsdic: Option<Arc<ZsDic>> = None;
+        // let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_config.clone())?);
+        let mut decompressor: Option<ZstdDecompressor<'_>> = None;
+        let mut compressor: Option<ZstdCompressor<'_>> = None;
+        let mut cpp_compressor: Option<ZstdCppCompressor> = None;
+        if totk_config.is_valid() {
+            if let Ok(_zsdic) = ZsDic::new(totk_config.clone()) {
+                let arc_zsdic = Arc::new(_zsdic);
+                zsdic = Some(arc_zsdic.clone());
+
+            if let Ok(_decompressor) = ZstdDecompressor::new(totk_config.clone(), arc_zsdic.clone()) {
+                decompressor = Some(_decompressor);
+            }
+            if let Ok(_compressor) = ZstdCompressor::new(totk_config.clone(), arc_zsdic.clone(), comp_level) {
+                compressor = Some(_compressor);
+            }
+            if compressor.is_some() {
+                cpp_compressor = Some(ZstdCppCompressor::from_zsdic(arc_zsdic.clone(), comp_level));
+            }
+        }
+        }
+        // let compressor: ZstdCompressor =
+        //     ZstdCompressor::new(totk_config.clone(), zsdic.clone(), comp_level)?;
 
         Ok(TotkZstd {
             totk_config,
             decompressor,
             compressor,
-            zsdic: zsdic.clone(),
-            cpp_compressor: ZstdCppCompressor::from_zsdic(zsdic.clone(), comp_level),
+            zsdic: zsdic,
+            cpp_compressor: cpp_compressor
         })
     }
+
+    pub fn is_valid(&self) -> bool {
+        self.totk_config.is_valid() && self.zsdic.is_some()
+    }
+
+    fn throw_zstd_unavailable() -> io::Error {
+        io::Error::new(io::ErrorKind::InvalidInput, "No romfs path found, zstd unavailable")
+    }
+
+    pub fn compress_zs(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
+        if let Some(compressor) = &self.compressor {
+            return compressor.compress_zs(data);
+        }
+        Err(Self::throw_zstd_unavailable())
+    }
+
+    pub fn compress_pack(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
+        if let Some(compressor) = &self.compressor {
+            return compressor.compress_pack(data);
+        }
+        Err(Self::throw_zstd_unavailable())
+    }
+
+    pub fn compress_bcett(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
+        if let Some(compressor) = &self.compressor {
+            return compressor.compress_bcett(data);
+        }
+        Err(Self::throw_zstd_unavailable())
+    }
+
+    pub fn compress_empty(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
+        if let Some(compressor) = &self.compressor {
+            return compressor.compress_empty(data);
+        }
+        Err(Self::throw_zstd_unavailable())
+    }
+
+    pub fn decompress(&self, data: &Vec<u8>, dictt: &Arc<DecoderDictionary>) -> io::Result<Vec<u8>> {
+        if let Some(decompressor) = &self.decompressor {
+            return decompressor.decompress(data, dictt);
+        }
+        Err(Self::throw_zstd_unavailable())
+    }
+    pub fn decompress_zs(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
+        if let Some(decompressor) = &self.decompressor {
+            return decompressor.decompress(data, &decompressor.zs.clone());
+        }
+        Err(Self::throw_zstd_unavailable())
+    }
+
+    pub fn decompress_pack(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
+        if let Some(decompressor) = &self.decompressor {
+            return decompressor.decompress(data, &decompressor.packzs.clone());
+        }
+        Err(Self::throw_zstd_unavailable())
+    }
+
+    pub fn decompress_bcett(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
+        if let Some(decompressor) = &self.decompressor {
+            return decompressor.decompress(data, &decompressor.bcett.clone());
+        }
+        Err(Self::throw_zstd_unavailable())
+    }
+
+    pub fn decompress_empty(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
+        if let Some(decompressor) = &self.decompressor {
+            return decompressor.decompress(data, &decompressor.empty.clone());
+        }
+        Err(Self::throw_zstd_unavailable())
+    }
+
     pub fn try_decompress(&self, data: &Vec<u8>) -> Result<Vec<u8>, io::Error> {
         // println!("Trying to decompress...");
-        let mut dicts: HashMap<String, Arc<DecoderDictionary>> = Default::default();
-        dicts.insert("zs".to_string(), self.decompressor.zs.clone());
-        dicts.insert("packzs".to_string(), self.decompressor.packzs.clone());
-        dicts.insert("empty".to_string(), self.decompressor.empty.clone());
-        dicts.insert("bcett".to_string(), self.decompressor.bcett.clone());
-
-        for (name, dictt) in dicts.iter() {
-            if let Ok(dec_data) = self.decompressor.decompress(&data, &dictt) {
-                // println!("Finally decompressed! Its {} dictionary", name);
-                return Ok(dec_data);
+        if let Some(decompressor) = &self.decompressor {
+            let mut dicts: HashMap<String, Arc<DecoderDictionary>> = Default::default();
+            dicts.insert("zs".to_string(), decompressor.zs.clone());
+            dicts.insert("packzs".to_string(), decompressor.packzs.clone());
+            dicts.insert("empty".to_string(), decompressor.empty.clone());
+            dicts.insert("bcett".to_string(), decompressor.bcett.clone());
+    
+            for (name, dictt) in dicts.iter() {
+                if let Ok(dec_data) = self.decompress(&data, &dictt) {
+                    // println!("Finally decompressed! Its {} dictionary", name);
+                    return Ok(dec_data);
+                }
             }
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Unable to decompress with any dictionary!",
+            ));
         }
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Unable to decompress with any dictionary!",
-        ));
+        Err(Self::throw_zstd_unavailable())
+
+        
     }
     pub fn find_vanila_internal_file_path_in_romfs<P: AsRef<Path>>(&self, internal_path: P) -> io::Result<String> {
         //parse json
+        if !self.is_valid() {
+            return Err(Self::throw_zstd_unavailable());
+        }
         let json_zlibdata = fs::read("bin/totk_internal_filepaths.bin")?;
         let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
         let mut json_str = String::new();
@@ -213,6 +305,9 @@ impl<'a> TotkZstd<'_> {
         Ok(result)
     }
     pub fn find_vanila_internal_file_data_in_romfs<P: AsRef<Path>>(&self, internal_path: P, zstd: Arc<TotkZstd>) -> io::Result<String> {
+        if !zstd.is_valid() {
+            return Err(Self::throw_zstd_unavailable());
+        }
         //parse json
         // let json_zlibdata = fs::read("bin/totk_internal_filepaths.bin")?;
         // let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);

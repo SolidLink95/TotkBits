@@ -17,6 +17,7 @@ import RstbTree from "./RstbTree";
 import { SearchTextInSarcPrompt } from './SearchTextInSarc';
 import { useEditorContext } from './StateManager';
 import { checkIfUpdateNeeded } from './ButtonClicks';
+import  OptionsEditor  from './OptionsEditor';
 
 
 let triggered = false
@@ -27,6 +28,7 @@ function App() {
 
 
   const {
+    isOptionsOpen,
     settings, setSettings, updateState, setUpdateState,
     searchInSarcQuery, setSearchInSarcQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
@@ -131,6 +133,7 @@ function App() {
         renamePromptMessage={renamePromptMessage}
       >
       </AddOrRenameFilePrompt>
+      <OptionsEditor />
       <SearchTextInSarcPrompt
         setStatusText={setStatusText}
         setpaths={setpaths}

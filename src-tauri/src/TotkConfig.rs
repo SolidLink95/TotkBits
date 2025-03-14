@@ -77,17 +77,22 @@ impl TotkConfig {
                 Ok(conf)
             },
             Err(err) => {
-                rfd::MessageDialog::new()
-                    .set_buttons(rfd::MessageButtons::Ok)
-                    .set_title("Error")
-                    .set_description(&format!("{}", err))
-                    .show();
-                Err(err)
+                // let e = format!("Unable to create config file. ZSTD disabled and comparison suppport limited:\n{}", err);
+                // rfd::MessageDialog::new()
+                //     .set_buttons(rfd::MessageButtons::Ok)
+                //     .set_title("Error")
+                //     .set_description(&e)
+                //     .show();
+                Ok(Self::default())
             }
         }
     }
 
-    pub fn new() -> io::Result<TotkConfig> {
+    pub fn is_valid(&self) -> bool {
+        !self.romfs.is_empty() && Self::check_for_zsdic(&self.romfs)
+    }
+
+    pub fn from_toml() -> io::Result<TotkConfig> {
         let mut conf = Self::default();
         conf.get_game_version().unwrap_or_default();//no point in handling error here
         //get config path
@@ -111,7 +116,22 @@ impl TotkConfig {
             conf_json = toml::from_str(&conf_str).unwrap_or_default();
         } 
         conf.update_from_json_data(conf_json);
-        if !Self::check_for_zsdic(&conf.romfs) {
+        Ok(conf)
+    }
+
+    pub fn new() -> io::Result<TotkConfig> {
+        let mut conf = Self::default();
+        if let Ok(_conf) = Self::from_toml() {
+            if _conf.is_valid() {
+                return Ok(_conf);
+            }
+            conf = _conf;
+        }
+
+
+        conf.get_game_version().unwrap_or_default();//no point in handling error here
+        
+        if !conf.is_valid() {
             //unable to find romfs path, get it from NX editor or user input
             conf.update_romfs_path()?;//throws error if not found
         }
@@ -126,6 +146,7 @@ impl TotkConfig {
     //UPDATE INTERNAL INFO
     pub fn update_from_json_data(&mut self, json_data: HashMap<String, serde_json::Value>) {
         if json_data.is_empty() {
+            println!("Empty json data");
             return;
         }
     
@@ -134,7 +155,13 @@ impl TotkConfig {
         }
     
         fn get_i64(data: &HashMap<String, serde_json::Value>, key: &str, default: i64) -> i64 {
-            data.get(key).and_then(|v| v.as_i64()).unwrap_or(default)
+            if let Some(value) = data.get(key).and_then(|v| v.as_i64()) {
+                return value;
+            }
+            match data.get(key).and_then(|v| v.as_str()).and_then(|s| s.parse::<i64>().ok()) {
+                Some(num) => num,
+                None => default,
+            }
         }
     
         fn get_bool(data: &HashMap<String, serde_json::Value>, key: &str, default: bool) -> bool {
@@ -157,6 +184,7 @@ impl TotkConfig {
         self.botw_romfs_path = get_string(&json_data, "BOTW WIIU path (optional)");
     
         self.yaml_max_inl = self.yaml_max_inl.max(MIN_INLINE_BYML_ITEMS).min(MAX_INLINE_BYML_ITEMS);
+        // println!("Updated config from json data {:?}", self);
     }
     
 
@@ -191,6 +219,18 @@ impl TotkConfig {
             })
         )
     }
+    pub fn to_react_options_json(&self) -> io::Result<serde_json::Value> {
+        Ok(
+            json!({
+                "romfs": self.romfs,
+                "fontSize": self.font_size,
+                "contextMenuFontSize": self.context_menu_font_size,
+                "theme": self.monaco_theme,
+                "minimap": self.monaco_minimap,
+                // "Prompt on close all": self.close_all_prompt, unused in UI
+            })
+        )
+    }
 
     pub fn get_config_path(&mut self) -> io::Result<()> {
         let appdata = Self::get_config_root_path();
@@ -204,6 +244,9 @@ impl TotkConfig {
 
 
     pub fn save(&mut self) -> io::Result<()> {
+        if self.config_path.is_empty() {
+            self.get_config_path()?;
+        }
         if self.game_version.is_empty() {
             self.get_game_version().unwrap_or_default();//no point in handling error here
         }
@@ -260,18 +303,22 @@ impl TotkConfig {
     }
     pub fn update_romfs_from_input(&mut self) -> io::Result<()> {
         let mut chosen = rfd::FileDialog::new()
-            .set_title("Choose romfs path")
+            .set_title("Choose Tears of The Kingdom path to dumped romfs")
             .pick_folder()
             .unwrap_or_default();
         let res = chosen.to_string_lossy().to_string().replace("\\", "/");
         if !Self::check_for_zsdic(&res) {
             chosen.push("Pack/ZsDic.pack.zs");
-            let e = format!("Invalid romfs path! ZsDic.pack.zs not found:\n{}", chosen.to_string_lossy().to_string().replace("\\", "/"));
-            rfd::MessageDialog::new()
-                .set_buttons(rfd::MessageButtons::Ok)
-                .set_title("Invalid romfs path")
-                .set_description(&e)
-                .show();
+            let t = if !res.is_empty() {"Invalid romfs path".to_string()} else {"No romfs path selected".to_string()};
+            // let e = if !res.is_empty() {format!("Invalid romfs path! ZsDic.pack.zs not found:\n{}", chosen.to_string_lossy().to_string().replace("\\", "/")) } else {"No romfs path selected. ZSTD disabled and comparison support limited".to_string()};
+            let e = if !res.is_empty() {format!("Invalid romfs path! ZsDic.pack.zs not found:\n{}", chosen.to_string_lossy().to_string().replace("\\", "/")) } else {"".to_string()};
+            if !e.is_empty() {
+                rfd::MessageDialog::new()
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .set_title(&t)
+                    .set_description(&e)
+                    .show();
+            }
             return Err(io::Error::new(io::ErrorKind::NotFound, e));
         }
         self.romfs = res;

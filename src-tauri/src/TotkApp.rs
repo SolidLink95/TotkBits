@@ -7,7 +7,7 @@ use crate::Open_and_Save::{
 };
 use crate::Settings::{ list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{TotkFileType, TotkZstd};
+use crate::Zstd::{TotkFileType, TotkZstd, COMPRESSION_LEVEL};
 use rfd::{FileDialog, MessageDialog};
 use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
@@ -38,10 +38,10 @@ unsafe impl<'a> Send for TotkBitsApp<'a> {}
 
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
-        match TotkConfig::safe_new() {
-            Ok(conf) => {
-                let totk_config: Arc<TotkConfig> = Arc::new(conf);
-                match TotkZstd::new(totk_config, 16) {
+        // match TotkConfig::from_toml() {
+            // Ok(conf) => {
+                let totk_config: Arc<TotkConfig> = Arc::new(TotkConfig::from_toml().unwrap_or(TotkConfig::default()));
+                match TotkZstd::new(totk_config, COMPRESSION_LEVEL) {
                     Ok(zstd) => {
                         let zstd: Arc<TotkZstd> = Arc::new(zstd);
                         return Self {
@@ -58,16 +58,16 @@ impl Default for TotkBitsApp<'_> {
                         std::process::exit(1);
                     }
                 }
-            }
-            Err(_) => {
-                println!("Error while initializing romfs path");
-                std::process::exit(2);
+            // }
+            // Err(_) => {
+            //     println!("Error while initializing romfs path");
+            //     std::process::exit(2);
             }
         }
 
         // std::process::exit(3); //should never reach here
-    }
-}
+//     }
+// }
 
 impl<'a> TotkBitsApp<'a> {
     //RSTB
@@ -404,7 +404,10 @@ impl<'a> TotkBitsApp<'a> {
                 if file_path_to_add.starts_with("/") {
                     file_path_to_add = file_path_to_add[1..].to_string();
                 }
-                let new_internal_path = format!("{}/{}", &int_path.full_path, &file_path_to_add);
+                let mut new_internal_path = format!("{}/{}", &int_path.full_path, &file_path_to_add);
+                if new_internal_path.starts_with("/") { //if adding to root
+                    new_internal_path = new_internal_path[1..].to_string();
+                }
                 let _ = self.add_internal_file_from_path(new_internal_path, file, true);
             }
             data.status_text = format!("Added {} files to {}", files_len, &int_path.full_path);

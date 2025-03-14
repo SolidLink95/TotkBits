@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useRef, useState } from 'react';
-import { DiffEditor } from '@monaco-editor/react';
 
 const EditorContext = createContext();
 
@@ -39,6 +38,9 @@ export const EditorProvider = ({ children }) => {
   const [isSearchInSarcOpened, setIsSearchInSarcOpened] = useState(false);
   const [searchInSarcQuery, setSearchInSarcQuery] = useState("");
 
+  const [config, setConfig] = useState({});
+  const [configLoading, setConfigLoading] = useState(false);
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
 
   const updateEditorContent = (content, lang) => {
     //setText(content);
@@ -54,6 +56,9 @@ export const EditorProvider = ({ children }) => {
 
   // Combine all states and functions into a single object
   const value = {
+    isOptionsOpen, setIsOptionsOpen,
+    config, setConfig,
+    configLoading, setConfigLoading,
     updateState, setUpdateState,
     compareData, setCompareData,
     settings, setSettings,

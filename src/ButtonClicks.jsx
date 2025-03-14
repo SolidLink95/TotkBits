@@ -40,7 +40,7 @@ export async function checkIfUpdateNeeded(setUpdateState) {
     
     // const result = content === null ? false : content === "yes" ? true : false;
     setUpdateState({wasChecked: true, isUpdateNeeded: isUpdateNeeded, latestVersion: latestVersion})
-    console.log('Update needed: ', content);
+    // console.log('Update needed: ', content);
   }
   catch (error) {
     console.error('Failed to check update:', error);
@@ -302,6 +302,10 @@ export async function addInternalFileToDir(internalPath, setStatusText, setpaths
     console.error("Error invoking 'addInternalFileToDir':", error);
   }
 
+}
+
+export async function addFilesFromDirRecursivelyToRoot(setStatusText, setpaths) {
+  return addFilesFromDirRecursively("", setStatusText, setpaths);
 }
 
 export async function addFilesFromDirRecursively(internalPath, setStatusText, setpaths) {

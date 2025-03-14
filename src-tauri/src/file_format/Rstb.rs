@@ -97,7 +97,7 @@ impl<'a> Restbl<'_> {
         let mut buffer = Vec::new();
         f_handle.read_to_end(&mut buffer).ok()?;
         if !is_restbl(&buffer) {
-            buffer = zstd.decompressor.decompress_zs(&buffer).ok()?;
+            buffer = zstd.decompress_zs(&buffer).ok()?;
         }
         if !is_restbl(&buffer) {
             return None; //invalid rstb
@@ -136,7 +136,7 @@ impl<'a> Restbl<'_> {
         let mut f = File::create(&path)?;
         if path.to_lowercase().ends_with(".zs") {
             // buffer = self.zstd.compressor.compress_empty(&buffer)?;
-            buffer = self.zstd.cpp_compressor.compress_empty(&buffer)?;
+            buffer = self.zstd.compress_empty(&buffer)?;
         }
         f.write_all(&buffer)?;
         Ok(())

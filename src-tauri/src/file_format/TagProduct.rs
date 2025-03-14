@@ -81,8 +81,6 @@ impl<'a> TagProduct<'a> {
             data = self
                 .byml
                 .zstd
-                // .compressor
-                .cpp_compressor
                 .compress_zs(&data)
                 .expect("Failed to compress with zs");
         }

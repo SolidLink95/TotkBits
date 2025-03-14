@@ -29,18 +29,25 @@ pub fn get_startup_data(state: tauri::State<serde_json::Value>) -> Result<serde_
 pub struct StartupData {
     pub argv1: String,
     pub config: TotkConfig,
+    pub zstd_msg: String,
 }
 
 impl StartupData {
     pub fn new() -> io::Result<Self> {
         let args: Vec<String> = env::args().collect();
         let argv1 = args.get(1).cloned().unwrap_or_default();
-        let config = TotkConfig::safe_new()?;
-        Ok(Self { argv1, config })
+        let config = TotkConfig::safe_new().unwrap_or(TotkConfig::default());
+        let zstd_msg = if config.is_valid() {
+            ""
+        } else {
+            "ZSTD disabled"
+        };
+        Ok(Self { argv1, config, zstd_msg: zstd_msg.to_string() })
     }
     pub fn to_json(&self) -> io::Result<serde_json::Value> {
         let mut res = json!({"argv1": self.argv1,});
         res = update_json(res, self.config.to_react_json()?);
+        res = update_json(res, json!({"zstd_msg": self.zstd_msg}));
         Ok(res)
     }
 }

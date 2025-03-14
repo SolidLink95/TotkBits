@@ -1,12 +1,12 @@
 //tauri commands
 use crate::{
-    Open_and_Save::SendData, Settings::{spawn_updater, NO_WINDOW_FLAG}, TotkApp::{SaveData, TotkBitsApp}
+    Open_and_Save::SendData, Settings::{spawn_updater, NO_WINDOW_FLAG}, TotkApp::{SaveData, TotkBitsApp}, TotkConfig::TotkConfig, Zstd::{TotkZstd, COMPRESSION_LEVEL}
 };
 use rfd::MessageDialog;
 use serde::Deserialize;
 use updater::TotkbitsVersion::TotkbitsVersion;
 use std::{
-    env, error::Error, os::windows::process::CommandExt, path::Path, process::{self, Command}, sync::Mutex
+    collections::HashMap, env, error::Error, os::windows::process::CommandExt, path::Path, process::{self, Command}, sync::{Arc, Mutex}
 };
 use tauri::Manager;
 use reqwest::blocking::{get, Client};
@@ -49,6 +49,9 @@ pub fn edit_config(app_handle: tauri::AppHandle) -> Option<()> {
     let no_window_flag = NO_WINDOW_FLAG;
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let app = binding.lock().expect("Failed to lock state");
+    if !app.zstd.clone().totk_config.is_valid() {
+        return None;
+    }
     let file_path = app.zstd.clone().totk_config.config_path.clone();
     let os_type = env::consts::OS;
 
@@ -407,6 +410,50 @@ pub fn compare_internal_file_with_vanila(app_handle: tauri::AppHandle,  internal
     }
     None
 }
+#[tauri::command]
+pub fn get_toml_config(app_handle: tauri::AppHandle) -> Option<serde_json::Value> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    match app.zstd.totk_config.to_json() {
+        Ok(result) => {
+            return Some(result);
+        } // Safely return the result if present
+        Err(_) => {} // Return None if no result
+    }
+    None
+}
+
+#[tauri::command]
+pub fn update_toml_config(app_handle: tauri::AppHandle, newConfig: HashMap<String, serde_json::Value>) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    let mut send_data = SendData::default();
+    let mut new_config_var = TotkConfig::default();
+    // println!("newConfig: {:?}", newConfig);
+    new_config_var.update_from_json_data(newConfig);
+    let mut is_saved_str = " NOT saved";
+    match new_config_var.save() {
+        Ok(_) => {
+            is_saved_str = " saved";
+        }
+        Err(e) => {
+            println!("Error saving config: {:?}", e);
+        }
+    }
+    if let Ok(_) = new_config_var.save() {
+        is_saved_str = " saved";
+    }
+    match TotkZstd::new(Arc::new(new_config_var), COMPRESSION_LEVEL) {
+        Ok(new_zstd) => {
+            app.zstd = Arc::new(new_zstd);
+            send_data.status_text = "ZSTD available, options ".to_string() + is_saved_str;
+        } // Safely return the result if present
+        Err(_) => {
+            send_data.status_text = "ZSTD unavailable, options ".to_string()+ is_saved_str;
+        } // Return None if no result
+    }
+    return Some(send_data);
+}
 
 
 #[tauri::command]
@@ -417,7 +464,7 @@ pub fn check_if_update_needed() -> String {
         "https://api.github.com/repos/{}/{}/releases/latest",
         repo_owner, repo_name
     );
-    println!("Checking for updates...");
+    println!("[+] Checking for updates...");
     let client = Client::new();
     let response = client
         .get(&url)
@@ -436,6 +483,7 @@ pub fn check_if_update_needed() -> String {
                     if latest_ver > installed_ver {
                         return release_info.to_string();
                     }
+                    println!("[+] Software is up to date");
                 }
             }
         }

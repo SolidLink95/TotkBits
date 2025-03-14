@@ -23,7 +23,7 @@ impl<'a> Evfl<'a> {
     }
     pub fn binary_to_string(&self, data: &Vec<u8>) -> io::Result<String> {
         let new_data = if !is_evfl(data) {
-            self.zstd.decompressor.decompress_zs(data)?
+            self.zstd.decompress_zs(data)?
         } else {
             data.to_vec()
         };

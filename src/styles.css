@@ -421,3 +421,52 @@ button {
 .dropdown-content a:hover {
   background-color: #515151;
 }
+
+
+
+/* OPTIONS EDITOR */
+.modal-content {
+  padding: 20px;
+  max-width: 600px; /* Slightly wider to fit columns */
+  margin: auto;
+}
+
+.options-modal-footer {
+  display: flex;
+  justify-content: center;
+  gap: 15px; /* More spacing for better clarity */
+  margin-top: 15px; /* Space above buttons */
+}
+
+.options-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr; /* Left column (labels) is 1 fraction, Right column (inputs) is 2 fractions */
+  gap: 15px; /* Spacing between rows and columns */
+  padding: 10px;
+}
+
+.config-label {
+  text-align: right; /* Align labels to the right */
+  font-weight: bold;
+  white-space: nowrap;
+  padding-right: 10px; /* Space between label and input */
+}
+
+.config-value {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.config-value input,
+.config-value select {
+  width: 100%; /* Inputs and selects take full width of right column */
+  padding: 5px;
+  background: #222;
+  border: 1px solid #555;
+  color: white;
+}
+
+.config-value input[type="checkbox"] {
+  width: auto; /* Prevent checkboxes from stretching */
+}

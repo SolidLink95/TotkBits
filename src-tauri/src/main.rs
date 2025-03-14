@@ -29,7 +29,7 @@ use crate::TauriCommands::{
     edit_config, edit_internal_file, exit_app, extract_internal_file, extract_opened_sarc,
     open_dir_dialog, open_file_dialog, open_file_from_path, open_file_struct,
     remove_internal_sarc_file, rename_internal_sarc_file, restart_app, rstb_edit_entry,
-    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,check_if_update_needed,update_app
+    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,check_if_update_needed,update_app,get_toml_config,update_toml_config
 };
 use crate::TotkApp::TotkBitsApp;
 use updater::TotkbitsVersion::TotkbitsVersion;
@@ -82,7 +82,8 @@ fn main() -> io::Result<()> {
             compare_files,
             compare_internal_file_with_vanila,
             check_if_update_needed,
-            update_app
+            update_app,
+            get_toml_config,update_toml_config
         ])
         .run(tauri::generate_context!())
     {

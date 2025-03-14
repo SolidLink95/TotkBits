@@ -213,6 +213,9 @@ impl<'a> PackComparer<'a> {
     }
     #[allow(dead_code)]
     pub fn get_vanila_sarc(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
+        if !zstd.clone().is_valid() {
+            return None;
+        }
         let pack = PackComparer::get_vanila_pack(path, zstd.clone());
         if pack.is_some() {
             return pack;
@@ -341,12 +344,12 @@ impl<'a> PackFile<'_> {
             TotkFileType::Sarc => {
                 println!("Compressing SARC");
                 // return self.zstd.compressor.compress_pack(data);
-                return self.zstd.cpp_compressor.compress_pack(data);
+                return self.zstd.compress_pack(data);
             }
             TotkFileType::MalsSarc => {
                 println!("Compressing MALS SARC");
                 // return self.zstd.compressor.compress_zs(data);
-                return self.zstd.cpp_compressor.compress_zs(data);
+                return self.zstd.compress_zs(data);
             }
             _ => {
                 return Ok(data.to_vec());
@@ -383,7 +386,7 @@ impl<'a> PackFile<'_> {
             }
         }
         if path.as_ref().to_string_lossy().to_lowercase().ends_with(".zs") {
-            if let Ok(dec_data) = self.zstd.decompressor.decompress_pack(&buffer) {
+            if let Ok(dec_data) = self.zstd.decompress_pack(&buffer) {
                 if is_sarc(&dec_data) {
                     // self.data = dec_data;
                     self.sarc = Sarc::new(dec_data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
@@ -391,7 +394,7 @@ impl<'a> PackFile<'_> {
                     return Ok(());
                 }
             }
-            if let Ok(dec_data) = self.zstd.decompressor.decompress_zs(&buffer) {
+            if let Ok(dec_data) = self.zstd.decompress_zs(&buffer) {
                 if is_sarc(&dec_data) {
                     // self.data = dec_data;
                     self.sarc = Sarc::new(dec_data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
@@ -432,14 +435,14 @@ impl<'a> PackFile<'_> {
     //         file_data.data = buffer;
     //         return Ok((is_yaz0, file_data));
     //     }
-    //     match zstd.decompressor.decompress_pack(&buffer) {
+    //     match zstd.decompress_pack(&buffer) {
     //         Ok(res) => {
     //             if is_sarc(&res) {
     //                 file_data.data = res;
     //             }
     //         }
     //         Err(_) => {
-    //             match zstd.decompressor.decompress_zs(&buffer) {
+    //             match zstd.decompress_zs(&buffer) {
     //                 //try decompressing with other dicts
     //                 Ok(res) => {
     //                     if is_sarc(&res) {

@@ -166,7 +166,6 @@ body {
 
 
 
-
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -178,15 +177,18 @@ body {
   justify-content: center;
   align-items: center;
   z-index: 1000; /* Ensure it's on top of other content */
+  overflow: hidden; /* Prevents the background from scrolling */
 }
 
 .modal-content {
-  width:  90%; /* Take up 95% of the window width */
-  max-width: 85%; /* Prevent exceeding 95% width */
+  width: 90%; /* Take up 90% of the window width */
+  max-width: 85%; /* Prevent exceeding 85% width */
+  max-height: 80vh; /* Ensure the modal does not exceed 80% of the viewport height */
   background-color: #555555;
   padding: 20px;
   border-radius: 5px;
   z-index: 1001; /* Above the overlay */
+  overflow-y: auto; /* Enables vertical scrolling */
 }
 
 .close-button {

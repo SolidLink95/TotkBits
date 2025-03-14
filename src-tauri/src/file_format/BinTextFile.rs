@@ -64,24 +64,18 @@ impl<'a> BymlFile<'_> {
                 TotkFileType::Byml => {
                     data = self
                         .zstd
-                        .cpp_compressor
-                        // .compressor
                         .compress_zs(&data)
                         .expect("Failed to compress with zs");
                 }
                 TotkFileType::Bcett => {
                     data = self
                         .zstd
-                        .cpp_compressor
-                        // .compressor
                         .compress_bcett(&data)
                         .expect("Failed to compress with bcett");
                 }
                 _ => {
                     data = self
                         .zstd
-                        // .compressor
-                        .cpp_compressor
                         .compress_zs(&data)
                         .expect("Failed to compress with zs");
                 }
@@ -173,7 +167,7 @@ impl<'a> BymlFile<'_> {
             data.file_type = TotkFileType::Byml;
             return Ok(data);
         } else {
-            match zstd.decompressor.decompress_zs(&buffer) {
+            match zstd.decompress_zs(&buffer) {
                 //regular byml file compressed with zs
                 Ok(res) => {
                     if is_byml(&res) {
@@ -185,7 +179,7 @@ impl<'a> BymlFile<'_> {
             }
         }
         if !is_byml(&data.data) {
-            match zstd.decompressor.decompress_bcett(&buffer) {
+            match zstd.decompress_bcett(&buffer) {
                 //bcett map file
                 Ok(res) => {
                     data.data = res;

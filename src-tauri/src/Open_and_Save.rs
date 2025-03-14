@@ -473,7 +473,7 @@ pub fn get_binary_by_filetype(
           let evfl = Evfl::new(zstd.clone());
           if let Ok(new_data) = evfl.string_to_binary(text) {
             if is_zs {
-                if let Ok(compressed_data) = zstd.cpp_compressor.compress_zs(&new_data) {
+                if let Ok(compressed_data) = zstd.compress_zs(&new_data) {
                     rawdata = compressed_data;
                 }
             } else {
@@ -487,7 +487,7 @@ pub fn get_binary_by_filetype(
                 esetb.update_from_text(text).ok()?;
                 rawdata = esetb.to_binary();
                 if file_path.to_lowercase().ends_with(".zs") {
-                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
+                    rawdata = zstd.compress_zs(&rawdata).ok()?;
                 }
             }
         }
@@ -496,7 +496,7 @@ pub fn get_binary_by_filetype(
             if let Ok(some_data) = asb.text_to_binary(text) {
                 rawdata = some_data;
                 if is_zs {
-                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
+                    rawdata = zstd.compress_zs(&rawdata).ok()?;
                 }
             }
         }
@@ -509,7 +509,7 @@ pub fn get_binary_by_filetype(
             if let Ok(some_data) = TagProduct::to_binary(text) {
                 rawdata = some_data;
                 if is_zs {
-                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
+                    rawdata = zstd.compress_zs(&rawdata).ok()?;
                 }
             }
         }
@@ -539,9 +539,9 @@ pub fn get_binary_by_filetype(
             }
             if (!rawdata.is_empty()) {
                 if is_bcett {
-                    rawdata = zstd.cpp_compressor.compress_bcett(&rawdata).ok()?;
+                    rawdata = zstd.compress_bcett(&rawdata).ok()?;
                 } else if is_zs {
-                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
+                    rawdata = zstd.compress_zs(&rawdata).ok()?;
                 }
             }
         }
@@ -550,7 +550,7 @@ pub fn get_binary_by_filetype(
             let pio = Byml::from_text(processed_text).ok()?;
             rawdata = pio.to_binary(endian);
             if is_zs {
-                rawdata = zstd.cpp_compressor.compress_bcett(&rawdata).ok()?;
+                rawdata = zstd.compress_bcett(&rawdata).ok()?;
             }
         }
         TotkFileType::Msbt => {

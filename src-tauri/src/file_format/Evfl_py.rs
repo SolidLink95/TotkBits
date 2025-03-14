@@ -34,7 +34,7 @@ impl<'a> Evfl_py<'a> {
     }
     pub fn from_binary( data: &Vec<u8>,zstd: Arc<TotkZstd<'a>>) -> io::Result<Evfl_py<'a>> {
         let new_data = if !is_evfl(data) {
-            zstd.decompressor.decompress_zs(data)?
+            zstd.decompress_zs(data)?
         } else {
             data.to_vec()
         };
@@ -60,7 +60,7 @@ impl<'a> Evfl_py<'a> {
         let mut buffer = Vec::new(); // Create a buffer to store the data
         f_handle.read_to_end(&mut buffer)?; // Read the file into the buffer
         if !is_evfl( &buffer) {
-            buffer = self.zstd.decompressor.decompress_zs(&buffer)?;
+            buffer = self.zstd.decompress_zs(&buffer)?;
         }
         if !is_evfl( &buffer) {
             return Err(io::Error::new(
@@ -91,7 +91,7 @@ impl<'a> Evfl_py<'a> {
         let mut data = self.text_to_binary(&text)?;
         if path_ref.to_string_lossy().to_lowercase().ends_with(".zs") {
             // data = self.zstd.compressor.compress_zs(&data)?;
-            data = self.zstd.cpp_compressor.compress_zs(&data)?;
+            data = self.zstd.compress_zs(&data)?;
         }
         let mut f_handle = std::fs::File::create(file_path)?;
         f_handle.write_all(&data)?;
