@@ -64,6 +64,27 @@ export async function extractFileClick(selectedPath, setStatusText) {
   }
 }
 
+export async function extractFolderClick(sourcePath, setStatusText) {
+  try {
+    // if (sourcePath === "") {
+    //   setStatusText("Select some folder first!");
+    //   return;
+    // }
+    console.log('Extracting folder:', sourcePath);
+    const content = await invoke('extract_folder_from_opened_sarc', { sourceFolder: sourcePath });
+    if (content !== null) {
+      setStatusText(content.status_text);
+    }
+  }
+  catch (error) {
+    console.error('Failed to extract folder:', error);
+  }
+}
+
+export async function extractRootFolderClick(setStatusText) {
+  return extractFolderClick("", setStatusText);
+}
+
 export async function searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened) {
   try {
     if (searchInSarcQuery === "") {

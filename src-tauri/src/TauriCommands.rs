@@ -122,11 +122,11 @@ pub fn edit_internal_file(app_handle: tauri::AppHandle, path: String) -> Option<
 }
 
 #[tauri::command]
-pub fn extract_opened_sarc(app_handle: tauri::AppHandle) -> Option<SendData> {
+pub fn extract_folder_from_opened_sarc(app_handle: tauri::AppHandle, sourceFolder: String) -> Option<SendData> {
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let app = binding.lock().expect("Failed to lock state");
 
-    match app.extract_opened_sarc() {
+    match app.extract_folder_from_opened_sarc(sourceFolder) {
         Some(result) => Some(result), // Safely return the result if present
         None => None,                 // Return None if no result
     }

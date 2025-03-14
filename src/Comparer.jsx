@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/tauri';
 import React, { useEffect, useRef, useState } from 'react';
-import ReactDiffViewer from 'react-diff-viewer-continued';
 import { useEditorContext } from './StateManager';
 
 import { DiffEditor, useMonaco } from '@monaco-editor/react';
@@ -28,7 +27,7 @@ const handleCompare = async (event) => {
   event.stopPropagation(); // Prevent click event from reaching parent
   closeMenu();
   try {
-    const content = await invoke('extract_opened_sarc');
+    const content = await invoke('extract_folder_from_opened_sarc', {source_folder: ""});
     console.log(content);
     if (content !== null && content.status_text !== undefined) {
       setStatusText(content.status_text);

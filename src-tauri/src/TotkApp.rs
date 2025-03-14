@@ -7,7 +7,7 @@ use crate::Open_and_Save::{
 };
 use crate::Settings::{ list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{TotkFileType, TotkZstd, COMPRESSION_LEVEL};
+use crate::Zstd::{is_sarc_root_path, TotkFileType, TotkZstd, COMPRESSION_LEVEL};
 use rfd::{FileDialog, MessageDialog};
 use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
@@ -144,14 +144,18 @@ impl<'a> TotkBitsApp<'a> {
     }
     //END RSTB
 
-    pub fn extract_opened_sarc(&self) -> Option<SendData> {
+    pub fn extract_folder_from_opened_sarc(&self, source_folder: String) -> Option<SendData> {
         let mut data = SendData::default();
+        let mut msg = "Extract SARC to...".to_string();
+        if !is_sarc_root_path(&source_folder) {
+            msg = format!("Extract SARC folder: \"{}\" to...", &source_folder);
+        }
         let dest_folder = FileDialog::new()
-            .set_title("Choose folder to extract to")
+            .set_title(&msg)
             .pick_folder();
         if let Some(dest_folder) = dest_folder {
             if let Some(pack) = &self.pack {
-                match pack.extract_all_to_folder(&dest_folder) {
+                match pack.extract_folder(source_folder, &dest_folder) {
                     Ok(m) => {
                         data.status_text = m;
                     }

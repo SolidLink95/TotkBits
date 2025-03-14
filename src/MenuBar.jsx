@@ -1,11 +1,10 @@
 import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
+import { addFilesFromDirRecursivelyToRoot, extractRootFolderClick, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
 import { ImageButton } from "./Buttons";
-import { addFilesFromDirRecursivelyToRoot, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
 import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
 import { useEditorContext } from './StateManager';
-import { set } from 'lodash';
 
 function MenuBarDisplay() {
   // const [backupPaths, setBackupPaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
@@ -95,15 +94,7 @@ function MenuBarDisplay() {
   const handleExtractOpenedSarc = async (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
-    try {
-      const content = await invoke('extract_opened_sarc');
-      console.log(content);
-      if (content !== null && content.status_text !== undefined) {
-        setStatusText(content.status_text);
-      }
-    } catch (error) {
-      console.error('Failed to extract sarc: ', error);
-    }
+    extractRootFolderClick(setStatusText);
   }
 
   const handleCompareFileInternalWithVanila = async (event) => {

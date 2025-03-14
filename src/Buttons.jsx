@@ -225,7 +225,7 @@ const ButtonsDisplay = () => {
       <div >
         {filters.map((filter) => (
           <label style={{ paddingLeft: '5px' }}><input
-            type="checkbox"
+            type="radio"
             checked={filter.var}
             onChange={(e) => handleFilterChange(setPathsFilters, filter.key, e.target.checked)}
           />

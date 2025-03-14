@@ -1,4 +1,4 @@
-#![allow(non_snake_case,non_camel_case_types)]
+#![allow(non_snake_case, non_camel_case_types)]
 use flate2::read::ZlibDecoder;
 use roead;
 use roead::sarc::{Sarc, SarcWriter};
@@ -11,10 +11,9 @@ use std::sync::Arc;
 
 //mod Zstd;
 
-
 use crate::Settings::{makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
+use crate::Zstd::{is_sarc, is_sarc_root_path, sha256, TotkFileType, TotkZstd};
 
 // use super::SarcEntriesData::get_sarc_entries_data;
 
@@ -27,7 +26,6 @@ pub fn get_sarc_entries_data() -> io::Result<HashMap<String, String>> {
     decoder.read_to_string(&mut json_str)?;
     let res: HashMap<String, String> = serde_json::from_str(&json_str)?;
     Ok(res)
-
 }
 
 pub struct PackComparer<'a> {
@@ -68,29 +66,84 @@ impl<'a> PackComparer<'a> {
         Some(pack)
     }
 
-    pub fn extract_all_to_folder<P: AsRef<Path>>(&self, dest_path: P) -> io::Result<String> {
+    pub fn extract_folder<P: AsRef<Path>>(
+        &self,
+        source_folder: String,
+        dest_path: P,
+    ) -> io::Result<String> {
+        // if is_sarc_root_path(&source_folder) {
+        //     return self.extract_all_to_folder(dest_path);
+        // }
+        let is_sarc_root = is_sarc_root_path(&source_folder);
+        let mut prefix = source_folder.clone();
+        if !prefix.ends_with('/') {
+            prefix.push('/');
+        }
+        let mut chars_to_skip = 0;
+        let source_folder_parent = Pathlib::new(&source_folder).parent;
+        if !is_sarc_root && !source_folder_parent.is_empty() {
+            chars_to_skip = source_folder_parent.len() + 1; //skip parent folders with this if nested  folder is selected
+        }
         let mut p = PathBuf::from(dest_path.as_ref());
         if let Some(pack) = &self.opened {
             let mut i: i32 = 0;
-            let name = pack.path.stem.as_str();
-            p.push(name);
+            if is_sarc_root {
+                let name = pack.path.stem.as_str();
+                p.push(name);
+            }
             fs::create_dir_all(&p)?;
             for file in pack.sarc.files() {
                 if let Some(file_name) = file.name() {
-                    let mut file_path = p.clone();
-                    file_path.push(file_name);
-                    makedirs(&file_path)?;
-                    fs::write(&file_path, file.data)?;
-                    i+=1;
+                    if is_sarc_root || file_name.starts_with(&prefix) {
+                        let mut file_path = p.clone();
+                        if chars_to_skip > 0 { //safely skip parent folders
+                            file_path.push(file_name[chars_to_skip..].to_string());
+                        } else {
+                            file_path.push(file_name);
+                        }
+                        makedirs(&file_path)?;
+                        fs::write(&file_path, file.data)?;
+                        i += 1;
+                    }
                 }
             }
-
-            return Ok(format!("Extracted {} files to {}", i, p.display()));
+            if is_sarc_root {
+                return Ok(format!("Extracted {} files to {}", i, p.display()));
+            } else {
+                return Ok(format!("Extracted {} files from {}", i, &source_folder));
+            }
         }
 
-
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "No opened pack"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "No opened pack",
+        ));
     }
+    // pub fn extract_all_to_folder<P: AsRef<Path>>(&self, dest_path: P) -> io::Result<String> {
+    //     let mut p = PathBuf::from(dest_path.as_ref());
+    //     if let Some(pack) = &self.opened {
+    //         let mut i: i32 = 0;
+    //         let name = pack.path.stem.as_str();
+    //         p.push(name);
+    //         fs::create_dir_all(&p)?;
+    //         for file in pack.sarc.files() {
+    //             if let Some(file_name) = file.name() {
+    //                 let mut file_path = p.clone();
+    //                 file_path.push(file_name);
+    //                 makedirs(&file_path)?;
+    //                 fs::write(&file_path, file.data)?;
+    //                 i += 1;
+    //             }
+    //         }
+
+    //         return Ok(format!("Extracted {} files to {}", i, p.display()));
+    //     }
+
+    //     return Err(io::Error::new(
+    //         io::ErrorKind::InvalidInput,
+    //         "No opened pack",
+    //     ));
+    // }
 
     pub fn get_sarc_paths(&self) -> SarcPaths {
         let mut paths = SarcPaths::default();
@@ -130,7 +183,8 @@ impl<'a> PackComparer<'a> {
         println!("Comparing");
         if let Some(opened) = &self.opened {
             let mut is_compared = false;
-            if let Some(vanila) = &mut self.vanila { //unreachable unless mals
+            if let Some(vanila) = &mut self.vanila {
+                //unreachable unless mals
                 println!("Comparing vanila actor");
                 let mut added: HashMap<String, String> = HashMap::default();
                 let mut modded: HashMap<String, String> = HashMap::default();
@@ -152,7 +206,7 @@ impl<'a> PackComparer<'a> {
                 self.modded = modded;
                 is_compared = self.added.len() != opened.hashes.keys().len();
                 // println!("Added {:?}\nModded {:?}", self.added.keys(), self.modded.keys());
-            } 
+            }
             if !is_compared {
                 //custom actor
                 println!("Comparing custom actor");
@@ -189,14 +243,15 @@ impl<'a> PackComparer<'a> {
             let mut prob_mals_path = PathBuf::from(romfs);
             prob_mals_path.push(format!("Mals/{}.Product.{}.sarc.zs", &path.stem, version));
             if prob_mals_path.exists() {
-                if let Ok(pack) = PackFile::new(prob_mals_path.to_string_lossy().to_string(), zstd.clone()) {
+                if let Ok(pack) =
+                    PackFile::new(prob_mals_path.to_string_lossy().to_string(), zstd.clone())
+                {
                     println!("Got the mals! Version: {}", version);
                     return Some(pack);
-                }   
+                }
             }
         }
-        
-        
+
         // let path = zstd.clone().totk_config.clone().get_mals_path(&path.name);
         // if let Some(path) = &path {
         //     match PackFile::new(path.to_string_lossy().to_string(), zstd.clone()) {
@@ -261,7 +316,8 @@ pub struct PackFile<'a> {
 impl<'a> PackFile<'_> {
     pub fn default(zstd: Arc<TotkZstd<'a>>) -> io::Result<PackFile<'a>> {
         let mut writer = SarcWriter::new(roead::Endian::Little);
-        let sarc = Sarc::new(writer.to_binary().clone()).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let sarc = Sarc::new(writer.to_binary().clone())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         Ok(PackFile {
             path: Pathlib::default(),
             totk_config: zstd.totk_config.clone(),
@@ -290,7 +346,6 @@ impl<'a> PackFile<'_> {
         pack.endian = pack.sarc.endian();
         pack.path = Pathlib::new(path.as_ref());
         Ok(pack)
-
     }
 
     pub fn rename(&mut self, old_name: &str, new_name: &str) -> io::Result<()> {
@@ -355,7 +410,6 @@ impl<'a> PackFile<'_> {
                 return Ok(data.to_vec());
             }
         }
-        
     }
 
     pub fn save(&mut self, dest_file: String) -> io::Result<()> {
@@ -370,7 +424,7 @@ impl<'a> PackFile<'_> {
         file_handle.write_all(&data)?;
         Ok(())
     }
-    pub fn sarc_file_to_bytes<P: AsRef<Path>>(&mut self, path: P) ->io::Result<()> {
+    pub fn sarc_file_to_bytes<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
         let mut f_handle: fs::File = fs::File::open(&path)?;
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;
@@ -381,15 +435,22 @@ impl<'a> PackFile<'_> {
             }
             if is_sarc(&buffer) {
                 // self.data = buffer;
-                self.sarc = Sarc::new(buffer).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+                self.sarc = Sarc::new(buffer)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                 return Ok(());
             }
         }
-        if path.as_ref().to_string_lossy().to_lowercase().ends_with(".zs") {
+        if path
+            .as_ref()
+            .to_string_lossy()
+            .to_lowercase()
+            .ends_with(".zs")
+        {
             if let Ok(dec_data) = self.zstd.decompress_pack(&buffer) {
                 if is_sarc(&dec_data) {
                     // self.data = dec_data;
-                    self.sarc = Sarc::new(dec_data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+                    self.sarc = Sarc::new(dec_data)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                     self.file_type = TotkFileType::Sarc;
                     return Ok(());
                 }
@@ -397,7 +458,8 @@ impl<'a> PackFile<'_> {
             if let Ok(dec_data) = self.zstd.decompress_zs(&buffer) {
                 if is_sarc(&dec_data) {
                     // self.data = dec_data;
-                    self.sarc = Sarc::new(dec_data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+                    self.sarc = Sarc::new(dec_data)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                     self.file_type = TotkFileType::MalsSarc;
                     return Ok(());
                 }
@@ -405,10 +467,11 @@ impl<'a> PackFile<'_> {
         }
         if is_sarc(&buffer) {
             // self.data = buffer;
-            self.sarc = Sarc::new(buffer).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+            self.sarc =
+                Sarc::new(buffer).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
             return Ok(());
         }
-        
+
         Err(io::Error::new(
             io::ErrorKind::Other,
             "Invalid data, not a sarc",
@@ -468,9 +531,6 @@ impl<'a> PackFile<'_> {
     //         "Invalid data, not a sarc",
     //     ));
     // }
-
-
-    
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

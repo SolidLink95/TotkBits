@@ -1,5 +1,6 @@
 use std::env;
 use std::error::Error;
+use std::f64::consts::E;
 use std::fs;
 use std::io;
 use std::io::{BufWriter, Read, Write};
@@ -179,9 +180,15 @@ pub fn read_string_from_file(path: &str) -> io::Result<String> {
 
 
 pub fn makedirs(path: &PathBuf) -> std::io::Result<()> {
+    //Create parent directories if they don't exist
     let par = path.parent();
     if let Some(par) = par {
-        fs::create_dir_all(par)?;
+        if par.is_file() {
+            return Err(io::Error::new(io::ErrorKind::Other, format!("Parent is a file: {:?}, cannot create directory", par)));
+        }
+        if !par.exists() {
+            fs::create_dir_all(par)?;
+        }
     }
     Ok(())
 }
