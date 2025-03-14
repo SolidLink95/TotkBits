@@ -216,21 +216,25 @@ const ButtonsDisplay = () => {
     useEffect(() => {
       // console.log("Checkbox state updated:", pathsFilters);
     }, [pathsFilters]);
+    const isAddedShown = paths.added_paths.length > 0;
+    const isModdedShown = paths.modded_paths.length > 0;
+    const isAllShown = isAddedShown || isModdedShown;
+    if (!isAllShown) return null;
     const filters = [
-      { key: "showAll", label: "All", var: pathsFilters.showAll },
-      { key: "showAdded", label: "Added", var: pathsFilters.showAdded },
-      { key: "showModded", label: "Modded", var: pathsFilters.showModded }
+      { key: "showAll", label: "All", var: pathsFilters.showAll, isShown: isAllShown },
+      { key: "showAdded", label: "Added", var: pathsFilters.showAdded, isShown: isAddedShown  },
+      { key: "showModded", label: "Modded", var: pathsFilters.showModded, isShown: isModdedShown  }
     ];
     return (
       <div >
         {filters.map((filter) => (
-          <label style={{ paddingLeft: '5px' }}><input
+          filter.isShown ? <label style={{ paddingLeft: '5px' }}><input
             type="radio"
             checked={filter.var}
             onChange={(e) => handleFilterChange(setPathsFilters, filter.key, e.target.checked)}
           />
             {filter.label}
-          </label>
+          </label> : null
         ))
         }
 
