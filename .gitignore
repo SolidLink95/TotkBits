@@ -33,6 +33,7 @@ dist-ssr
 /res/*
 /tmp/
 /ext_projects/updater/target
+ext_projects/bphcl/__pycache__
 /src-tauri/updater.exe
 /src-tauri/DotNetWrapper.exe
 
