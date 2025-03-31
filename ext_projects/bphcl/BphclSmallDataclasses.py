@@ -1,9 +1,30 @@
-from dataclasses import dataclass
-import io
+from dataclasses import dataclass, is_dataclass, fields
 import struct
-
 from Stream import ReadStream
+from typing import Any
 
+def dataclass_to_clean_dict(obj):
+    if not is_dataclass(obj):
+        return obj  # base case for recursion (non-dataclass)
+
+    result = {}
+    for f in fields(obj):
+        if f.name.startswith('_'):
+            continue
+
+        value = getattr(obj, f.name)
+
+        if value is None:
+            continue
+
+        if is_dataclass(value):
+            value = dataclass_to_clean_dict(value)
+            if not value:  # skip empty nested dataclasses
+                continue
+
+        result[f.name] = value
+
+    return result
 
 @dataclass
 class Size():
@@ -13,7 +34,7 @@ class Size():
     
     @staticmethod
     def from_reader(stream: ReadStream) -> "Size":
-        data = stream.read(4)
+        data = stream._read_exact(4)
         if len(data) != 4:
             raise ValueError(f"End of file, expected 4 bytes, got {len(data)} bytes")
         is_chunk = data[0] >> 6
@@ -33,7 +54,7 @@ class ResTagfileSectionHeader():
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResTagfileSectionHeader":
         size = Size.from_reader(stream)
-        signature = stream.read(4)
+        signature = stream._read_exact(4)
         if len(signature) != 4:
             raise ValueError(f"End of file, expected 4 bytes, got {len(signature)} bytes")
         return ResTagfileSectionHeader(size=size, signature=signature)
@@ -41,12 +62,13 @@ class ResTagfileSectionHeader():
 @staticmethod
 def from_reader(stream: ReadStream) -> "ResTagfileSectionHeader":
     size = Size.from_reader(stream)
-    signature = stream.read(4)
+    signature = stream._read_exact(4)
     return ResTagfileSectionHeader(size=size, signature=signature)
 
 @dataclass
 class VarUInt():
-    byte0: int #u8
+    val: str # representation of the value in hex string format, for json
+    _byte0: int #u8
     _bytes: bytes = None
     _size: int = None
     _value: int = None
@@ -54,12 +76,22 @@ class VarUInt():
     def __repr__(self):
         return f"VarUInt({self._value})"
     
+    def __len__(self):
+        return len(self.val) // 2
+    
+    
+    @staticmethod
+    def from_binary(data:bytes|bytearray) -> "VarUInt":
+        stream = ReadStream(data)
+        return VarUInt.from_reader(stream)
+    
     @staticmethod
     def from_reader(stream: ReadStream, endian="big") -> "VarUInt":
-        byte0 = stream.read(1)[0]
+        _offset = stream.tell()
+        _byte0 = stream._read_exact(1)[0]
         _bytes, _size, _value, x  = None, None, None, None
-        if byte0 & 0x80 != 0:
-            x = byte0 >> 3
+        if _byte0 & 0x80 != 0:
+            x = _byte0 >> 3
             if 0x10 <= x <= 0x17:
                 _size = 1
             elif 0x18 <= x <= 0x1B:
@@ -73,16 +105,18 @@ class VarUInt():
             elif x == 0x1F:
                 _size = 13
         if _size is not None:
-            _bytes = stream.read(_size)
-            if len(_bytes) != _size:
-                raise ValueError(f"End of file, expected {_size} bytes, got {len(_bytes)} bytes")
+            _bytes = stream._read_exact(_size)
         if x is not None and _bytes is not None:
-            tmp = bytearray([byte0 & 0x7F])
+            tmp = bytearray([_byte0 & 0x7F])
             tmp.extend(_bytes)
             _value = int.from_bytes(tmp, byteorder=endian)
         else:
-            _value = byte0
-        return VarUInt(byte0=byte0, _bytes=_bytes, _size=_size, _value=_value)
+            _value = _byte0
+        _offset2 = stream.tell()
+        stream.seek(_offset)
+        val = stream._read_exact(_offset2 - _offset).hex().upper()
+        stream.seek(_offset2)
+        return VarUInt(_byte0=_byte0, _bytes=_bytes, _size=_size, _value=_value, val=val)
 
 @dataclass 
 class ResTypeTemplate():
@@ -105,7 +139,7 @@ class ResTypeHash():
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResTypeHash":
         type_index = VarUInt.from_reader(stream)
-        hash = struct.unpack("<I", stream.read(4))[0]
+        hash = struct.unpack("<I", stream._read_exact(4))[0]
         return ResTypeHash(type_index=type_index, hash=hash)
     
     
@@ -119,7 +153,7 @@ class ResItem:
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResItem":
         flags = stream.read_u32()
-        type_index = stream.read_u32()
+        type_index = flags & 0xFFFFFF
         data_offset = stream.read_u32()
         count = stream.read_u32()
         return ResItem(flags=flags, type_index=type_index, data_offset=data_offset, count=count)

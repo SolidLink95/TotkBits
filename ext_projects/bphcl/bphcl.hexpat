@@ -195,35 +195,35 @@ fn find_section(u128 start, u128 end, auto ... bytes) {
 using VarUInt;
 
 fn read_varuint(VarUInt i) {
-    if (i.byte0 & 0x80 == 0) {
-        return i.byte0;
+    if (i._byte0 & 0x80 == 0) {
+        return i._byte0;
     }
-    match (i.byte0 >> 3) {
+    match (i._byte0 >> 3) {
         (0x10 ... 0x17):
-            return ((i.byte0 << 8) | i.bytes[0]) & 0x3FFF;
+            return ((i._byte0 << 8) | i.bytes[0]) & 0x3FFF;
         (0x18 ... 0x1B):
             return (
-                (i.byte0 << 16) |
+                (i._byte0 << 16) |
                 (i.bytes[0] << 8) |
                 i.bytes[1]
             ) & 0x1FFFFF;
         (0x1C):
             return (
-               ( i.byte0 << 24 ) |
+               ( i._byte0 << 24 ) |
                ( i.bytes[0] << 16 ) |
                ( i.bytes[1] << 8 ) |
                i.bytes[2]
             ) & 0x7FFFFFF;
         (0x1D):
             return (
-                ( i.byte0 << 32 ) |
+                ( i._byte0 << 32 ) |
                 ( i.bytes[0] << 24 ) |
                 ( i.bytes[1] << 16 ) |
                 ( i.bytes[2] << 8 ) |
                 i.bytes[3]
             )  & 0x7FFFFFFFFFFFFFF;
         (0x1E):
-            return ( ( i.byte0 << 56 ) |
+            return ( ( i._byte0 << 56 ) |
                 ( i.bytes[0] << 48 ) |
                 ( i.bytes[1] << 40 ) |
                 ( i.bytes[2] << 32 ) |
@@ -233,9 +233,9 @@ fn read_varuint(VarUInt i) {
                 i.bytes[6]
             ) & 0x7FFFFFFFFFFFFFF;
         (0x1F):
-            return ( i.byte0 & 7 ) == 0
+            return ( i._byte0 & 7 ) == 0
                 ? (
-                  ( i.byte0 << 40 ) |
+                  ( i._byte0 << 40 ) |
                   ( i.bytes[0] << 32 ) |
                   ( i.bytes[1] << 24 ) |
                   ( i.bytes[2] << 16 ) |
@@ -243,7 +243,7 @@ fn read_varuint(VarUInt i) {
                   i.bytes[4]
                 ) & 0xFFFFFFFFFF
                 :
-                  ( i.byte0 & 7 ) == 1
+                  ( i._byte0 & 7 ) == 1
                   ? (
                      i.bytes[0] << 56 ) |
                      ( i.bytes[1] << 48 ) |
@@ -262,9 +262,9 @@ fn format_varuint(VarUInt i) {
 };
 
 struct VarUInt {
-    u8 byte0;
-    if (byte0 & 0x80 != 0) {
-        match (byte0 >> 3) {
+    u8 _byte0;
+    if (_byte0 & 0x80 != 0) {
+        match (_byte0 >> 3) {
             (0x10 ... 0x17) : u8 bytes[1];
             (0x18 ... 0x1B) : u8 bytes[2];
             (0x1C) : u8 bytes[3];
