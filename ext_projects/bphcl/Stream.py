@@ -40,6 +40,9 @@ class ReadStream(io.BytesIO):
 
     def read_u32(self):
         return self._read_and_unpack("I", 4)[0]
+    
+    def read_u16(self):
+        return self._read_and_unpack("H", 2)[0]
 
     def read_string_w_size(self, exp_size: int) -> str:
         data = self._read_exact(exp_size)

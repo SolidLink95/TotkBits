@@ -94,26 +94,23 @@ class ResIndexSection(ResTagfileSectionHeader):
         # _offset = stream.tell() - len(hdr)
         match hdr.signature:
             case b"ITEM":
-                res.items = []
-                while stream.tell() - _offset <= res.size.size - 1:
-                    res.items.append(ResItem.from_reader(stream))
+                assert res.size.size > 0 and res.size.size % 12 == 0, f"Invalid size for ITEM: {res.size.size}"
+                item_count = res.size.size // 12
+                res.items = [ResItem.from_reader(stream) for _ in range(item_count)]
             case b"PTCH":
                 res.internal_patches = []
-                while stream.tell() < aamp_pos and stream.tell() - _offset - 8 < hdr.size.size - 1:
-                    if len(res.internal_patches) >=59:
-                        pass
-                    poss_null  = stream.read_u32()
+                while True:
+                    type_index = stream.read_u32()
                     stream.seek(-4, io.SEEK_CUR)
-                    if poss_null == 0:
+                    if type_index == 0:
                         break
                     res.internal_patches.append(ResPatch.from_reader(stream))
-                    x1 = hex(stream.tell() - _offset)
-                    x12 = hex(res.size.size - 1)
                 if stream.tell() < aamp_pos:
                     res.terminator = stream.read_u32()
-                res.external_patches = []
-                while stream.tell() - _offset <= res.size.size - 1:
-                    res.external_patches.append(ResPatch.from_reader(stream))
+                if stream.tell() < aamp_pos:
+                    res.external_patches = []
+                    while stream.tell() < aamp_pos:
+                        res.external_patches.append(ResPatch.from_reader(stream))
             case _:
                 raise ValueError(f"Invalid ResIndexSection signature: {hdr.signature}")
         return res

@@ -145,15 +145,15 @@ class ResTypeHash():
     
 @dataclass
 class ResItem:
-    flags: int # u32
-    type_index: int # u32
+    flags: int # u16
+    type_index: int # u16
     data_offset: int # u32
     count: int # u32
     
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResItem":
-        flags = stream.read_u32()
-        type_index = flags & 0xFFFFFF
+        flags = stream.read_u16()
+        type_index = stream.read_u16()
         data_offset = stream.read_u32()
         count = stream.read_u32()
         return ResItem(flags=flags, type_index=type_index, data_offset=data_offset, count=count)
