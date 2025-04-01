@@ -84,11 +84,12 @@ class ResIndexSection(ResTagfileSectionHeader):
     internal_patches: list[ResPatch] = None
     terminator: int = None #u32
     external_patches: list[ResPatch] = None
+    padding: bytes = None
     
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResIndexSection":
         _offset = stream.tell()
-        aamp_pos = stream.find_next_occ(b"AAMP")
+        aamp_pos = stream.find_next_occ(b"AAMP") # assuming this is the last tagfile part before aamp part
         hdr = ResTagfileSectionHeader.from_reader(stream)
         res = ResIndexSection(size=hdr.size, signature=hdr.signature)
         # _offset = stream.tell() - len(hdr)
@@ -100,6 +101,8 @@ class ResIndexSection(ResTagfileSectionHeader):
             case b"PTCH":
                 res.internal_patches = []
                 while True:
+                    if stream.tell() >= aamp_pos:
+                        raise ValueError(f"Invalid ResIndexSection: PTCH, internal patches not terminated by 0! Entered AAMP section at {stream.tell():08X}")
                     type_index = stream.read_u32()
                     stream.seek(-4, io.SEEK_CUR)
                     if type_index == 0:
@@ -111,6 +114,8 @@ class ResIndexSection(ResTagfileSectionHeader):
                     res.external_patches = []
                     while stream.tell() < aamp_pos:
                         res.external_patches.append(ResPatch.from_reader(stream))
+                if stream.tell() < aamp_pos:
+                    res.padding = stream._read_exact(aamp_pos - stream.tell()) #probably not needed
             case _:
                 raise ValueError(f"Invalid ResIndexSection signature: {hdr.signature}")
         return res
@@ -121,6 +126,8 @@ class ResIndexSection(ResTagfileSectionHeader):
 @dataclass
 class ResSection(ResTagfileSectionHeader):
     _type: ResSectionType
+    size: Size
+    signature: str
     #SDKV
     version: str = None
     #DATA
@@ -136,7 +143,7 @@ class ResSection(ResTagfileSectionHeader):
         size = Size.from_reader(stream)
         signature = stream._read_exact(4)
         _type = ResSectionType(signature)
-        res = ResSection(size=size, signature=signature, _type=_type)
+        res = ResSection(_type=_type, size=size, signature=signature.decode(stream.encoding))
         _offset = stream.tell() - 8
         match _type:
             case ResSectionType.SDKV:
@@ -405,13 +412,13 @@ class ResTagFile(ResTagfileSectionHeader):
             _offset = stream.tell()
             res_section = ResSection.from_reader(stream)
             match res_section.signature:
-                case b"SDKV":
+                case "SDKV":
                     res.sdkv_section = res_section
-                case b"DATA":
+                case "DATA":
                     res.data_section = res_section
-                case b"TYPE":
+                case "TYPE":
                     res.type_section = res_section
-                case b"INDX":
+                case "INDX":
                     res.indx_section = res_section
                 case _:
                     pass # error handling already done
@@ -422,10 +429,8 @@ class ResTagFile(ResTagfileSectionHeader):
 
     def update_strings(self):
         tst1_section: ResTypeSection = next((s for s in self.type_section.sections if ResTypeSection.signature_to_enum(s.signature)==ResTypeSectionSignature.TST1), None)
-        if tst1_section is None:
+        if tst1_section is None or tst1_section.strings is None:
             raise ValueError("TST1 section not found")
-        if tst1_section.strings is None:
-            raise ValueError("TST1 section strings are None")
         for i, section in enumerate(self.type_section.sections):
             if not isinstance(section, ResTypeSection):
                 raise ValueError(f"Section {i} inside TYPE is not a ResTypeSection")
