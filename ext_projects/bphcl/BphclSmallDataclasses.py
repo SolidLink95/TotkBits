@@ -1,7 +1,11 @@
 from dataclasses import dataclass, is_dataclass, fields
+import io
 import struct
-from Stream import ReadStream
-from typing import Any
+from Havok import T, Ptr
+from Stream import ReadStream, WriteStream
+from typing import Any, List, Optional, Type
+
+from util import _hex
 
 def dataclass_to_clean_dict(obj):
     if not is_dataclass(obj):
@@ -35,13 +39,20 @@ class Size():
     @staticmethod
     def from_reader(stream: ReadStream) -> "Size":
         data = stream._read_exact(4)
-        if len(data) != 4:
-            raise ValueError(f"End of file, expected 4 bytes, got {len(data)} bytes")
         is_chunk = data[0] >> 6
         size = int.from_bytes(data[0:4], byteorder=Size._endian)
         size &= 0x3FFFFFFF
         return Size(is_chunk=is_chunk, size=size)
 
+    def to_binary(self) -> bytes:
+        if not (0 <= self.is_chunk < 4):
+            raise ValueError("is_chunk must be a 2-bit value (0–3)")
+        if not (0 <= self.size < (1 << 30)):
+            raise ValueError("size must be a 30-bit value")
+
+        value = (self.is_chunk << 30) | self.size
+        return value.to_bytes(4, byteorder=self._endian)
+        
 
 @dataclass
 class ResTagfileSectionHeader():
@@ -152,6 +163,10 @@ class ResItem:
     
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResItem":
+        # hexpat way
+        # flags = stream.read_u32()
+        # type_index = flags & 0xffffff
+        # Starlight way
         flags = stream.read_u16()
         type_index = stream.read_u16()
         data_offset = stream.read_u32()
@@ -165,6 +180,13 @@ class ResPatch:
     count: int # u32
     offsets: list[int] # list[u32]
     
+    def __len__(self):
+        return 8 + len(self.offsets) * 4
+    
+    @staticmethod
+    def minimal_size():
+        return 8 #
+    
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResPatch":
         type_index = stream.read_u32()
@@ -172,3 +194,347 @@ class ResPatch:
         offsets = [stream.read_u32() for _ in range(count)]
         return ResPatch(type_index=type_index, count=count, offsets=offsets)
     
+
+#CLOTH
+
+@dataclass
+class hkObjectBase:
+    _vft_reserve: int #u64
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> 'hkObjectBase':
+        """Reads an hkObjectBase from the stream."""
+        _vft_reserve = stream.read_u64()
+        return hkObjectBase(_vft_reserve)
+    
+
+@dataclass
+class hkReferencedObject(hkObjectBase):
+    m_sizeAndFlags: int #u64
+    m_refCount: int #u64
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> 'hkReferencedObject':
+        """Reads an hkReferencedObject from the stream."""
+        stream.align_to(8)
+        par = super().from_reader(stream)
+        m_sizeAndFlags = stream.read_u64()
+        m_refCount = stream.read_u64()
+        return hkReferencedObject(par._vft_reserve, m_sizeAndFlags, m_refCount)
+
+
+@dataclass
+class hkVector4f:
+    m_x: float
+    m_y: float
+    m_z: float
+    m_w: float
+    
+    def __repr__(self):
+        return f"hkVector4f({self.m_x}, {self.m_y}, {self.m_z}, {self.m_w})"
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hkVector4f":
+        m_x = stream.read_float()
+        m_y = stream.read_float()
+        m_z = stream.read_float()
+        m_w = stream.read_float()
+        return hkVector4f(m_x, m_y, m_z, m_w)
+    
+    def to_binary(self) -> bytes:
+        return struct.pack("<ffff", self.m_x, self.m_y, self.m_z, self.m_w)
+    
+    def write(self, stream: WriteStream):
+        """Writes the vector to the stream."""
+        stream.write(self.to_binary())
+
+
+@dataclass
+class UIntBase:
+    val: int
+    _size: int = 4  # default, override in subclasses
+    _sign: str = ""
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({_hex(self.val)})"
+    
+    @classmethod
+    def from_reader(cls, stream: ReadStream) -> "UIntBase":
+        val = stream._read_and_unpack(cls._sign, cls._size)[0]
+        return cls(val=val)
+    
+    def to_binary(self) -> bytes:
+        return struct.pack(self._sign, self.val)
+    
+    def write(self, stream: WriteStream):
+        """Writes the integer to the stream."""
+        stream.write(self.to_binary())
+
+
+@dataclass
+class u32(UIntBase):
+    _size: int = 4
+    _sign: str = "I"
+
+
+@dataclass
+class u16(UIntBase):
+    _size: int = 2
+    _sign: str = "H"
+
+
+@dataclass
+class u8(UIntBase):
+    _size: int = 1
+    _sign: str = "B"
+    
+    
+@dataclass
+class BOOL:
+    val: bool
+
+    def __repr__(self):
+        v = "true" if self.val else "false"
+        return f"{self.__class__.__name__}({v})"
+    
+    @classmethod
+    def from_reader(cls, stream: ReadStream) -> "BOOL":
+        val = stream.read_bool()
+        return cls(val=bool(val))
+    
+    
+@dataclass
+class FLOAT:
+    val: float
+    
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.val})"
+
+    @classmethod
+    def from_reader(cls, stream: ReadStream) -> "FLOAT":
+        val = stream.read_float()
+        return cls(val=val)
+
+
+
+@dataclass
+class s16(UIntBase):
+    _size: int = 2
+    _sign: str = "h"
+
+@dataclass
+class s32(UIntBase):
+    _size: int = 4
+    _sign: str = "i"
+
+@dataclass
+class s64(UIntBase):
+    _size: int = 8
+    _sign: str = "q"
+
+
+@dataclass
+class hkMatrix4f:
+    m_col0: hkVector4f
+    m_col1: hkVector4f
+    m_col2: hkVector4f
+    m_col3: hkVector4f
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hkMatrix4f":
+        stream.align_to(0x10)
+        m_col0 = hkVector4f.from_reader(stream)
+        m_col1 = hkVector4f.from_reader(stream)
+        m_col2 = hkVector4f.from_reader(stream)
+        m_col3 = hkVector4f.from_reader(stream)
+        return hkMatrix4f(m_col0, m_col1, m_col2, m_col3)
+
+
+@dataclass
+class hkQuaternionf:
+    m_vec: hkVector4f
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hkQuaternionf":
+        stream.align_to(0x10)
+        m_vec = hkVector4f.from_reader(stream)
+        return hkQuaternionf(m_vec)
+
+
+@dataclass
+class hkRotationf:
+    m_col0: hkVector4f
+    m_col1: hkVector4f
+    m_col2: hkVector4f
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hkRotationf":
+        stream.align_to(0x10)
+        m_col0 = hkVector4f.from_reader(stream)
+        m_col1 = hkVector4f.from_reader(stream)
+        m_col2 = hkVector4f.from_reader(stream)
+        return hkRotationf(m_col0, m_col1, m_col2)
+
+
+@dataclass
+class hkTransform:
+    m_rotation: hkRotationf
+    m_translation: hkVector4f
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hkTransform":
+        m_rotation = hkRotationf.from_reader(stream)
+        m_translation = hkVector4f.from_reader(stream)
+        return hkTransform(m_rotation, m_translation)
+
+
+@dataclass
+class hkQsTransformf:
+    m_translation: hkVector4f
+    m_rotation: hkQuaternionf
+    m_scale: hkVector4f
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hkQsTransformf":
+        stream.align_to(0x10)
+        m_translation = hkVector4f.from_reader(stream)
+        m_rotation = hkQuaternionf.from_reader(stream)
+        m_scale = hkVector4f.from_reader(stream)
+        return hkQsTransformf(m_translation, m_rotation, m_scale)
+
+
+@dataclass
+class hclShape(hkReferencedObject):
+    m_type: int # s32
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hclShape":
+        par = super().from_reader(stream)
+        m_type = stream.read_s32()
+        return hclShape(par._vft_reserve, par.m_sizeAndFlags, par.m_refCount, m_type)
+
+
+@dataclass
+class hclAction(hkReferencedObject):
+    m_active: bool
+    m_registeredWithWorldStepping: bool
+    
+    @staticmethod   
+    def from_reader(stream: ReadStream) -> "hclAction":
+        par = super().from_reader(stream)
+        m_active = stream.read_bool()
+        m_registeredWithWorldStepping = stream.read_bool()
+        return hclAction(par._vft_reserve, par.m_sizeAndFlags, par.m_refCount, m_active, m_registeredWithWorldStepping)
+
+
+@dataclass
+class hclSimClothData__CollidablePinchingData:
+    m_pinchDetectionEnabled: bool
+    m_pinchDetectionPriority: int # u8
+    m_pinchDetectionRadius: float
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hclSimClothData__CollidablePinchingData":
+        stream.align_to(0x4)
+        m_pinchDetectionEnabled = stream.read_bool()
+        m_pinchDetectionPriority = stream.read_u8()
+        stream.align_to(0x4)
+        m_pinchDetectionRadius = stream.read_float()
+        return hclSimClothData__CollidablePinchingData(m_pinchDetectionEnabled, m_pinchDetectionPriority, m_pinchDetectionRadius)
+    
+
+@dataclass
+class hclVirtualCollisionPointsData__Block:
+    m_safeDisplacementRadius: float
+    m_startingVCPIndex: int # u16
+    m_numVCPs: int # u8
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hclVirtualCollisionPointsData__Block":
+        stream.align_to(0x4)
+        m_safeDisplacementRadius = stream.read_float()
+        m_startingVCPIndex = stream.read_u16()
+        m_numVCPs = stream.read_u8()
+        return hclVirtualCollisionPointsData__Block(m_safeDisplacementRadius, m_startingVCPIndex, m_numVCPs)
+
+
+@dataclass
+class hclVirtualCollisionPointsData__BarycentricDictionaryEntry:
+    m_startingBarycentricIndex: int # u16
+    m_numBarycentrics: int # u8
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hclVirtualCollisionPointsData__BarycentricDictionaryEntry":
+        stream.align_to(0x2)
+        m_startingBarycentricIndex = stream.read_u16()
+        m_numBarycentrics = stream.read_u8()
+        return hclVirtualCollisionPointsData__BarycentricDictionaryEntry(m_startingBarycentricIndex, m_numBarycentrics)
+
+
+@dataclass
+class hclVirtualCollisionPointsData__TriangleFanSection:
+    m_oppositeRealParticleIndices: List[int] # list[u16] len=2
+    m_barycentricDictionaryIndex: int # u16
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hclVirtualCollisionPointsData__TriangleFanSection":
+        stream.align_to(0x2)
+        m_oppositeRealParticleIndices = [stream.read_u16() for _ in range(2)]
+        m_barycentricDictionaryIndex = stream.read_u16()
+        return hclVirtualCollisionPointsData__TriangleFanSection(m_oppositeRealParticleIndices, m_barycentricDictionaryIndex)
+
+
+@dataclass
+class hclVirtualCollisionPointsData__TriangleFan:
+    m_realParticleIndex: int # u16
+    m_vcpStartIndex: int # u16
+    m_numTriangles: int # u8
+    
+    @staticmethod
+    def from_reader(stream: ReadStream) -> "hclVirtualCollisionPointsData__TriangleFan":
+        stream.align_to(0x2)
+        m_realParticleIndex = stream.read_u16()
+        m_vcpStartIndex = stream.read_u16()
+        m_numTriangles = stream.read_u8()
+        return hclVirtualCollisionPointsData__TriangleFan(m_realParticleIndex, m_vcpStartIndex, m_numTriangles)
+
+
+@dataclass
+class hclVirtualCollisionPointsData__TriangleFanLandscape:
+    m_realParticleIndex: int #u16
+    m_triangleStartIndex: int #u16
+    m_vcpStartIndex: int #u16
+    
+
+
+@dataclass
+class hkRefPtr:
+    _m_data_type: Optional[Type] # Type of the element in the list
+    _offset: int #u64
+    m_ptr: Ptr
+    m_data: Optional[Type] = None
+    
+    @staticmethod
+    def from_reader(stream: ReadStream, _m_data_type: Type[T]) -> 'hkRefPtr':
+        """Reads a reference pointer from the stream."""
+        _offset = stream.tell()
+        stream.align_to(8)
+        m_ptr = Ptr.from_reader(stream)
+        _new_offset = _offset + m_ptr.value
+        cur_offset = stream.tell()
+        stream.seek(_new_offset, io.SEEK_SET)
+        m_data = _m_data_type.from_reader(stream) 
+        stream.seek(cur_offset, io.SEEK_SET)
+        return hkRefPtr(_m_data_type=_m_data_type, _offset=_offset, m_ptr=m_ptr, m_data=m_data)
+    #TODO: check if i have to return to cur_offse
+    
+    def to_binary(self) -> bytes:
+        """Converts the reference pointer to a binary representation."""
+        return self.m_ptr.to_binary()
+    
+    def write(self, stream: WriteStream):
+        """Writes the reference pointer to the stream."""
+        stream.write(self.to_binary())
+
+    def __repr__(self):
+        return f"hkRefPtr({self._m_data_type.__name__}, 0x{self.m_ptr.value:08X}, 0x{self._offset:08X})"

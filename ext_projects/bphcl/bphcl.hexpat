@@ -35,7 +35,7 @@ ResPhive file @ 0x00;
 enum ResParamType : u8 {
     Bool = 0,
     F32,
-    Int,
+    hkInt,
     Vec2,
     Vec3,
     Vec4,
@@ -111,7 +111,7 @@ struct ResParameter {
     match (flags.type) {
         (ResParamType::Bool) : { bool value @ addressof(this) + flags.offset * 4; }
         (ResParamType::F32) : { float value @ addressof(this) + flags.offset * 4; }
-        (ResParamType::Int) : { s32 value @ addressof(this) + flags.offset * 4; }
+        (ResParamType::hkInt) : { s32 value @ addressof(this) + flags.offset * 4; }
         (ResParamType::Vec2) : { Vector2f value @ addressof(this) + flags.offset * 4; }
         (ResParamType::Vec3) : { Vector3f value @ addressof(this) + flags.offset * 4; }
         (ResParamType::Vec4) : { Vector4f value @ addressof(this) + flags.offset * 4; }
@@ -593,7 +593,7 @@ struct hkRefPtr<T> {
     T m_data @ _offset + m_ptr;
 };
 
-struct Int {
+struct hkInt {
     s32 value;
 
     u64 offset = addressof(this);
@@ -603,7 +603,7 @@ struct hkArray<T> {
     std::mem::AlignTo<0x8>;
     u64 _offset = $;
     Ptr offset;
-    Int m_size;
+    hkInt m_size;
     s32 m_capacityAndFlags;
 
     T m_data[m_size] @ _offset + offset;

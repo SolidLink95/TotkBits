@@ -38,5 +38,6 @@ ext_projects/bphcl/__pycache__
 /src-tauri/DotNetWrapper.exe
 
 /ext_projects/DotNetWrapper/*
+/ext_projects/bphcl/tmp/*
 
 /__pycache__

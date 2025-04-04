@@ -4,14 +4,40 @@ import os
 import struct
 from BphclEnums import ResFileType, ResSectionType, ResTypeSectionSignature
 from BphclSmallDataclasses import *
-from Stream import ReadStream
+from Experimental import hclClothContainer, hkMemoryResourceContainer, hkaAnimationContainer
+from Havok import hkRootLevelContainer
+from Stream import ReadStream, WriteStream
 import oead
+
+from util import _hex
+
 
 class Bphcl():
     def __init__(self):
         self.file:ResPhive = None
         self.tag_file:ResTagFile = None
         self.cloth_section = None
+    
+    def validate(self):
+        if self.file is None:
+            raise ValueError("ResPhive section not found or not read yet")
+        if self.tag_file is None:
+            raise ValueError("TAG0 section not found or not read yet")
+        if self.cloth_section is None:
+            raise ValueError("Cloth section not found or not read yet")
+        self.file.validate()
+        self.tag_file.validate()
+    
+    @staticmethod
+    def from_file(file_path: str) -> "Bphcl":
+        with open(file_path, "rb") as f:
+            data = f.read()
+        return Bphcl.from_binary(data)
+    
+    @staticmethod
+    def from_binary(data: bytes) -> "Bphcl":
+        stream = ReadStream(data)
+        return Bphcl.from_reader(stream)
     
     @staticmethod
     def from_reader(stream: ReadStream) -> "Bphcl":
@@ -95,14 +121,16 @@ class ResIndexSection(ResTagfileSectionHeader):
         # _offset = stream.tell() - len(hdr)
         match hdr.signature:
             case b"ITEM":
-                assert res.size.size > 0 and res.size.size % 12 == 0, f"Invalid size for ITEM: {res.size.size}"
-                item_count = res.size.size // 12
+                _size = res.size.size - 8
+                assert _size > 0 and _size % 12 == 0, f"Invalid size for ITEM: {res.size.size}"
+                item_count = _size // 12
                 res.items = [ResItem.from_reader(stream) for _ in range(item_count)]
             case b"PTCH":
                 res.internal_patches = []
                 while True:
                     if stream.tell() >= aamp_pos:
-                        raise ValueError(f"Invalid ResIndexSection: PTCH, internal patches not terminated by 0! Entered AAMP section at {stream.tell():08X}")
+                        break
+                        # raise ValueError(f"Invalid ResIndexSection: PTCH, internal patches not terminated by 0! Entered AAMP section at {stream.tell():08X}")
                     type_index = stream.read_u32()
                     stream.seek(-4, io.SEEK_CUR)
                     if type_index == 0:
@@ -111,9 +139,10 @@ class ResIndexSection(ResTagfileSectionHeader):
                 if stream.tell() < aamp_pos:
                     res.terminator = stream.read_u32()
                 if stream.tell() < aamp_pos:
-                    res.external_patches = []
-                    while stream.tell() < aamp_pos:
-                        res.external_patches.append(ResPatch.from_reader(stream))
+                    if aamp_pos - stream.tell() > ResPatch.minimal_size():
+                        res.external_patches = []
+                        while stream.tell() < aamp_pos:
+                            res.external_patches.append(ResPatch.from_reader(stream))
                 if stream.tell() < aamp_pos:
                     res.padding = stream._read_exact(aamp_pos - stream.tell()) #probably not needed
             case _:
@@ -132,6 +161,9 @@ class ResSection(ResTagfileSectionHeader):
     version: str = None
     #DATA
     data: bytes = None
+    data_offset: int = None # u32
+    data_fixed: bytes = None
+    # root_container: hkRootLevelContainer = None
     #TYPE
     sections: list = None # ResTypeSection
     #INDX
@@ -148,9 +180,15 @@ class ResSection(ResTagfileSectionHeader):
         match _type:
             case ResSectionType.SDKV:
                 res.version = stream.read_string_w_size(size.size - 8) #
-                assert(res.version == '20220100'), f"Invalid version for SDKV: {res.version}, expected '20220100'"
             case ResSectionType.DATA:
+                res.data_offset = stream.tell()
+                # current_pos = stream.tell()
+                # stream.data_offset = current_pos
                 res.data = stream._read_exact(size.size - 8)
+                # new_pos = stream.tell()
+                # stream.seek(current_pos, io.SEEK_SET)
+                # res.root_container = hkRootLevelContainer.from_reader(stream)
+                # stream.seek(new_pos, io.SEEK_SET)
             case ResSectionType.TYPE:
                 res.sections = []
                 while stream.tell() - _offset <= size.size - 1:
@@ -160,14 +198,15 @@ class ResSection(ResTagfileSectionHeader):
                 while stream.tell() - _offset <= size.size - 1:
                     res.sections.append(ResIndexSection.from_reader(stream))
             case ResSectionType.TCRF:
-                raise ValueError(f"Invalid ResSectionType: TCRF, not supported")
+                raise ValueError(f"Unsupported ResSectionType: TCRF")
             case ResSectionType.TCID:
-                raise ValueError(f"Invalid ResSectionType: TCID, not supported")
+                raise ValueError(f"Unsupported ResSectionType: TCID")
             case _:
                 raise ValueError(f"Invalid ResSectionType: {_type}")
         return res
     
     def update_strings(self):
+        
         if self._type == ResSectionType.TYPE or self.sections is not None:
             for section in self.sections:
                 if isinstance(section, ResTypeSection):
@@ -226,6 +265,10 @@ class ResTypeBodyDeclaration():
     reserve: int = None
     name: str = "" # to be filled in later
     
+    def __repr__(self):
+        _n = f"UNKNOWN" if not self.name else f"{self.name}"
+        return f"ResTypeBodyDeclaration({_n})"
+    
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResTypeBodyDeclaration":
         name_index = VarUInt.from_reader(stream)
@@ -258,6 +301,10 @@ class ResTypeBody:
     format: list[ResTypeBodyInterface] = None
     attr_index: VarUInt = None
     attr: str = None
+    
+    # def __repr__(self):
+    #     n = "UNKNOWN" if self.
+    #     return f"ResTypeBody()"
     
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResTypeBody":
@@ -398,7 +445,54 @@ class ResTagFile(ResTagfileSectionHeader):
     data_section: ResSection = None
     type_section: ResSection = None
     indx_section: ResSection = None
+    root_container: hkRootLevelContainer = None
+    #Cloth sections
+    cloth_container: hclClothContainer = None
+    mem_resource_container: hkMemoryResourceContainer = None
+    animation_container: hkaAnimationContainer = None
+    #helper fields
+    type_strings: list[str] = None
+    field_strings: list[str] = None
     
+    def validate(self):
+        if self.data_section is None:
+            raise ValueError("DATA section not found")
+        if self.type_section is None:
+            raise ValueError("TYPE section not found")
+        if self.indx_section is None:
+            raise ValueError("INDX section not found")
+        if self.sdkv_section.version is not None:
+            assert(self.sdkv_section.version == '20220100'), f"Invalid version for SDKV: {self.sdkv_section.version}, expected '20220100'"
+        
+        
+    
+    def read_havok(self):
+        # current_pos = stream.tell()
+        # stream.seek(0, io.SEEK_SET)
+        # data_offset = stream.find_next_occ(b"DATA")
+        # if data_offset == -1:
+        #     raise ValueError("DATA section not found, very odd")
+        # stream._read_exact(4) # skip signature
+        # stream.seek(data_offset, io.SEEK_SET)
+        with open("DATA.bin", "wb") as f:
+            f.write(self.data_section.data_fixed)
+        stream = ReadStream(self.data_section.data_fixed)
+        self.root_container = hkRootLevelContainer.from_reader(stream)
+        stream.seek(self.root_container.cloth_offset, io.SEEK_SET)
+        self.cloth_container = hclClothContainer.from_reader(stream)
+        stream.seek(self.root_container.resource_offset, io.SEEK_SET)
+        self.mem_resource_container = hkMemoryResourceContainer.from_reader(stream)
+        stream.seek(self.root_container.animation_offset, io.SEEK_SET)
+        self.animation_container = hkaAnimationContainer.from_reader(stream)
+        return
+        
+        
+    def update_fields(self):
+        self.validate()
+        self.get_helper_strings()
+        self.update_strings()
+        self.handle_relocations()
+        self.read_havok()
 
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResTagFile":
@@ -425,26 +519,123 @@ class ResTagFile(ResTagfileSectionHeader):
             if res.data_section is not None and res.type_section is not None and res.indx_section is not None:
                 if stream.tell() - main_offset <= size.size - 1:
                     raise ValueError(f"Invalid ResTagFile structure: DATA, TYPE and INDX sections found but not all of data has been read")
+        res.update_fields()
         return res
 
+    # Getters
+    def get_type_section(self, section_type: ResTypeSectionSignature|bytes) -> tuple[int, ResTypeSection]:
+        for i, section in enumerate(self.type_section.sections):
+            if isinstance(section, ResTypeSection):
+                if isinstance(section_type, ResTypeSectionSignature):
+                    _check = ResTypeSection.signature_to_enum(section.signature) == section_type
+                else:
+                    _check = section.signature == section_type
+                if _check:
+                    return (i, section)
+        raise ValueError(f"Section {section_type} not found in TYPE section")
+    
+    def get_tst1_section(self):
+        return self.get_type_section(b"TST1")
+    
+    def get_fst1_section(self):
+        return self.get_type_section(b"FST1")
+        
+    def get_helper_strings(self):
+        _, tst1_section = self.get_tst1_section()
+        self.type_strings = tst1_section.strings
+        _, fst1_section = self.get_fst1_section()
+        self.field_strings = fst1_section.strings
+    
+    def get_indx_section_by_signature(self, signature: bytes) -> tuple[int, ResIndexSection]:
+        for i, section in enumerate(self.indx_section.sections):
+            if isinstance(section, ResIndexSection) and section.signature == signature:
+                return (i, section)
+        raise ValueError(f"Subsection {signature} not found in TYPE section")
+    
+    def get_item_section(self):
+        return self.get_indx_section_by_signature(b"ITEM")
+
+    def get_ptch_section(self):
+        return self.get_indx_section_by_signature(b"PTCH")
+    
     def update_strings(self):
-        tst1_section: ResTypeSection = next((s for s in self.type_section.sections if ResTypeSection.signature_to_enum(s.signature)==ResTypeSectionSignature.TST1), None)
-        if tst1_section is None or tst1_section.strings is None:
-            raise ValueError("TST1 section not found")
+        # tst1_section: ResTypeSection = next((s for s in self.type_section.sections if ResTypeSection.signature_to_enum(s.signature)==ResTypeSectionSignature.TST1), None)
+        _, tst1_section = self.get_tst1_section()
         for i, section in enumerate(self.type_section.sections):
             if not isinstance(section, ResTypeSection):
                 raise ValueError(f"Section {i} inside TYPE is not a ResTypeSection")
             self.type_section.sections[i].update_string_names(tst1_section)
+    
+
         
+    
+    def handle_relocations(self):
+        try:
+            ptch_section_index, ptch_section = self.get_ptch_section()
+        except ValueError:
+            return # exit gracefully if no PTCH section is found
+        type_section_index = self.type_section
+        type_name_index, type_name_section = self.get_type_section(b"TNA1")
+        index_section_index = index_section = self.indx_section
+        item_section_index, item_section = self.get_item_section()
+        _data_offset = self.data_section.data_offset
+        data_stream_reader = ReadStream(self.data_section.data)
+        data_stream_writer = WriteStream(self.data_section.data)
+        data_stream_reader.seek(0, io.SEEK_SET)
+        data_stream_writer.seek(0, io.SEEK_SET)
+        MISSING = {}
+        def inplace_fixup(offset: int, type_index: int): #u32, u32
+            data_stream_reader.seek(offset, io.SEEK_SET)
+            index = data_stream_reader.read_u32()
+            size, _name = None, None
+            if type_index > 0:
+                _name = type_name_section.types[type_index-1].name
+                if not _name:
+                    raise ValueError(f"Update strings fields for type_name_section: {repr(_name)}")
+                if _name.startswith(("hkArray",)): # too very specific, but matches hexpat logic
+                    data_stream_writer.seek(offset + 8, io.SEEK_SET)
+                    data_stream_writer.write_s32(item_section.items[index].count)
+            # too very specific again, but matches hexpat logic
+            _item = item_section.items[index]
+            addr = _item.data_offset - offset # u32 as u64
+            data_stream_reader.seek(offset, io.SEEK_SET)
+            if addr < 0:
+                raise ValueError(f"Invalid address: {addr}, expected positive value for {_name} at {_hex(offset)}")
+                # return
+                # return # TODO: handle this case
+            data_stream_writer.seek(offset, io.SEEK_SET)
+            data_stream_writer.write_u64(addr)
+            # ptr = addr
+            #// std::print(std::format("Patching {:#08x} at {:#08x}", ptr, offset));
+        
+        int_patches_count = len(ptch_section.internal_patches)
+        for i in range(int_patches_count):
+            # offs_count = len(ptch_section.internal_patches[i].offsets)
+            offs_count = ptch_section.internal_patches[i].count
+            _type_index = ptch_section.internal_patches[i].type_index
+            for j in range(offs_count):
+                _offset = ptch_section.internal_patches[i].offsets[j]
+                inplace_fixup(_offset, _type_index)
+        data_stream_writer.seek(0, io.SEEK_SET)
+        self.data_section.data_fixed = data_stream_writer.read()
+        """// handle relocations
+            if (ptch_section_index != -1) {
+                for (u32 i = 0, i < std::core::member_count(tagfile.sections[index_section_index].sections[ptch_section_index].internal_patches), i = i + 1) {
+                    for (u32 j = 0, j < std::core::member_count(tagfile.sections[index_section_index].sections[ptch_section_index].internal_patches[i].offsets), j = j + 1) {
+                        inplace_fixup(tagfile.sections[index_section_index].sections[ptch_section_index].internal_patches[i].offsets[j],
+                                        tagfile.sections[index_section_index].sections[ptch_section_index].internal_patches[i].type_index);
+                    }
+                }
+        }"""
         
         
         
 
 if __name__ == "__main__":
     os.system("cls")
-    with open("Armor_225_Head.bphcl", "rb") as f:
-        bphcl = Bphcl().from_reader(ReadStream(f.read()))
-        print(bphcl.file)
-        print(bphcl.tag_file)
-        print(oead.aamp.ParameterIO.to_text(bphcl.cloth_section))
+    # with open("Armor_225_Head.bphcl", "rb") as f:
+    bphcl = Bphcl().from_file("Armor_999_Head.bphcl")
+    print(bphcl.file)
+    print(bphcl.tag_file)
+    print(oead.aamp.ParameterIO.to_text(bphcl.cloth_section))
     pass
