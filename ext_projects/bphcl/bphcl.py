@@ -13,7 +13,7 @@ from Stream import ReadStream, WriteStream
 import oead
 import yaml
 import json
-
+from aamp_totk_hashes import AAMP_TOTK_HASHES
 from util import DataConverter, _hex
 
 
@@ -22,7 +22,7 @@ class Bphcl():
         self.file:ResPhive = None
         self.tag_file:ResTagFile = None
         self.cloth_section = None
-        self.aamp_hashes = DataConverter.get_aamp_hashed_dict("totk_strings.txt")
+        self.aamp_hashes = AAMP_TOTK_HASHES
     
     # def remove_even_more_entries
     
