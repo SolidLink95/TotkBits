@@ -1,6 +1,9 @@
-from typing import List, Optional, Type, TypeVar
+import io
+from typing import List, Optional, Type, TypeVar, get_origin
 from Stream import ReadStream, WriteStream
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
+
+from util import _hex
 
 T = TypeVar('T')  # Generic type variable for element type
 
@@ -31,7 +34,7 @@ class hkInt: #Int
 
 @dataclass
 class Ptr:
-    value:int #u64
+    value:int #u64 if > 0 else s64
     offset:int #u64 stream.tell()
     
     def __repr__(self):
@@ -40,8 +43,8 @@ class Ptr:
     @staticmethod
     def from_reader(stream: ReadStream) -> 'Ptr':
         """Reads a pointer from the stream."""
-        value = stream.read_u64()
         offset = stream.tell() #- stream.data_offset
+        value = stream.read_64bit_int()
         return Ptr(value, offset)
     
     def to_binary(self) -> bytes:
@@ -63,8 +66,8 @@ class hkRefVariant:
     @staticmethod
     def from_reader(stream: ReadStream) -> 'hkRefVariant':
         """Reads a reference variant from the stream."""
-        _offset = stream.tell()
         stream.align_to(8)  # std::mem::AlignTo<0x8>
+        _offset = stream.tell()
         m_ptr = Ptr.from_reader(stream)
         current_pos = stream.tell()
         
@@ -133,7 +136,9 @@ class hkRootLevelContainer__NamedVariant:
         m_variant = hkRefVariant.from_reader(stream)
         return hkRootLevelContainer__NamedVariant(m_name, m_className, m_variant)    
     
-    
+class hkArrayList(List):
+    pass
+
 @dataclass
 class hkArray:
     _offset: int #u64
@@ -142,39 +147,69 @@ class hkArray:
     m_capacityAndFlags: int #s32
     
     _m_data_type: Optional[Type] = None
-    m_data: List = field(default_factory=list)
+    _sec_element_type: Optional[Type] = None
+    m_data: hkArrayList = field(default_factory=list)
+    left_padding_size: int = 0
     
     def __repr__(self):
         return f"<hkArray offset=0x{self.offset.value:04X} size={self.m_size.value} capacity={self.m_capacityAndFlags}>"
     
     @staticmethod
-    def from_reader(stream: 'ReadStream', element_type: Type[T], sec_element_type: Type[T]=None) -> 'hkArray':
-        """Reads an hkArray<T> from the stream."""
+    def get_default_array(stream: ReadStream,element_type: Type[T], _sec_element_type: Type[T]=None):
         stream.align_to(8)  # std::mem::AlignTo<0x8>
-
         _offset = stream.tell()
         offset = Ptr.from_reader(stream)
         m_size = hkInt.from_reader(stream)
         m_capacityAndFlags = stream.read_s32()
+        return hkArray(_offset, offset, m_size, m_capacityAndFlags, _m_data_type=element_type,_sec_element_type=_sec_element_type)
+        
+    
+    @staticmethod
+    def from_reader(stream: 'ReadStream', element_type: Type[T], _sec_element_type: Type[T]=None) -> 'hkArray':
+        """Reads an hkArray<T> from the stream."""
+        # stream.align_to(8)  # std::mem::AlignTo<0x8>
+        array = hkArray.get_default_array(stream, element_type, _sec_element_type)
+        current_pos = stream.tell()
+        new_offset = array.offset.offset + array.offset.value
+        # if new_offset < current_pos:
+        #     print(f"Warning: new_offset {_hex(new_offset)} < current_pos {_hex(current_pos)}.")
+        if new_offset > current_pos:
+            array.left_padding_size = new_offset - current_pos
+        stream.seek(new_offset)
 
-        array = hkArray(_offset, offset, m_size, m_capacityAndFlags, _m_data_type=element_type)
-
-        # Save current position and jump to where m_data starts
-        # current_pos = stream.tell()
-        # stream.seek(_offset + offset)
-
-        # Parse array elements
-        for _ in range(m_size.value):
-            if sec_element_type is None:
+        i = 0
+        while i < array.m_size.value:
+            i += 1
+            if _sec_element_type is None:
                 item = element_type.from_reader(stream)
             else:
-                item = element_type.from_reader(stream, sec_element_type)
+                item = element_type.from_reader(stream, _sec_element_type)
             array.m_data.append(item)
-
-        # Restore position
-        # stream.seek(current_pos)
-
+        stream.seek(current_pos)
         return array
+    
+    
+    # def from_reader_self(self, stream: 'ReadStream'):
+    #     """Reads an hkArray<T> from the stream."""
+    #     if self.m_size.value == 0:
+    #         return # empty array
+    #     if self.m_data:
+    #         raise ValueError(f"Array already populated for {self._m_data_type} ({self._sec_element_type}). Use from_reader_self() instead.")
+    #     new_offset = self.offset.offset  + self.offset.value
+    #     cur_offset = stream.tell()
+    #     if new_offset > cur_offset:
+    #         self.left_padding_size = new_offset - cur_offset
+    #     stream.seek(new_offset)
+    #     i = 0
+    #     while i < self.m_size.value:
+    #         i += 1
+    #         if self._sec_element_type is None:
+    #             item = self._m_data_type.from_reader(stream)
+    #         else:
+    #             item = self._m_data_type.from_reader(stream, self._sec_element_type)
+    #         self.m_data.append(item)
+    #     return
+        # return array
 
     def to_binary(self) -> bytes:
         """Converts the array to a binary representation."""
@@ -189,6 +224,7 @@ class hkArray:
     def write(self, stream: WriteStream):
         """Writes the array to the stream."""
         stream.write(self.to_binary())
+        
     
 @dataclass
 class hkRootLevelContainer:
@@ -204,7 +240,7 @@ class hkRootLevelContainer:
         m_namedVariants = hkArray.from_reader(stream, hkRootLevelContainer__NamedVariant)
         
         for hkVar in m_namedVariants.m_data:
-            addr = hkVar.m_variant._offset + hkVar.m_variant.m_ptr.value
+            addr = hkVar.m_variant._offset + hkVar.m_variant.m_ptr.value + stream.data_offset
             match hkVar.m_className._str:
                 case "hclClothContainer":
                     cloth_offset = addr

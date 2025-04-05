@@ -1,15 +1,20 @@
 from dataclasses import dataclass
+import hashlib
 import io
 import os
+from pathlib import Path
 import struct
+import sys
 from BphclEnums import ResFileType, ResSectionType, ResTypeSectionSignature
 from BphclSmallDataclasses import *
 from Experimental import hclClothContainer, hkMemoryResourceContainer, hkaAnimationContainer
 from Havok import hkRootLevelContainer
 from Stream import ReadStream, WriteStream
 import oead
+import yaml
+import json
 
-from util import _hex
+from util import DataConverter, _hex
 
 
 class Bphcl():
@@ -17,6 +22,52 @@ class Bphcl():
         self.file:ResPhive = None
         self.tag_file:ResTagFile = None
         self.cloth_section = None
+        self.aamp_hashes = DataConverter.get_aamp_hashed_dict("totk_strings.txt")
+    
+    # def remove_even_more_entries
+    
+    def cloth_section_to_dict(self) -> dict:
+        """Very dirty approach, will fix later"""
+        yaml_str = oead.aamp.ParameterIO.to_text(self.cloth_section)
+        bad_tags = ["!io", "!list", "!obj"]
+        for tag in bad_tags:
+            yaml_str = yaml_str.replace(tag, "")
+        for crc_hash, name in self.aamp_hashes.items():
+            yaml_str = yaml_str.replace(crc_hash, name)
+        yaml_dict = yaml.safe_load(yaml_str)
+        return yaml_dict
+    
+    def to_dict(self) -> dict:
+        self.validate()
+        header = DataConverter.dataclass_to_dict(self.file)
+        tag_file = DataConverter.dataclass_to_dict(self.tag_file)
+        cloth_section = self.cloth_section_to_dict()
+        result = {
+            "header": header,
+            "tag_file": tag_file,
+            "cloth_section": cloth_section,
+        }
+        return result
+    
+    def to_yaml(self) -> str:
+        data = self.to_dict()
+        yaml_str = yaml.dump(data, default_flow_style=False, sort_keys=False)
+        return yaml_str
+    
+    def to_json(self) -> str:
+        data = self.to_dict()
+        json_str = json.dumps(data, indent=4, default=str)
+        return json_str
+    
+    def to_json_file(self, file_path: str) -> None:
+        data = self.to_dict()
+        with open(file_path, "w") as f:
+            json.dump(data, f, indent=4, default=str)
+    
+    def to_yaml_file(self, file_path: str) -> None:
+        data = self.to_dict()
+        with open(file_path, "w") as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
     
     def validate(self):
         if self.file is None:
@@ -231,10 +282,10 @@ class ResNamedType():
         index = VarUInt.from_reader(stream)
         template_count = VarUInt.from_reader(stream)
         templates = None
-        if template_count._value:
-            templates = []
-            for _ in range(template_count._value):
-                templates.append(ResTypeTemplate.from_reader(stream))
+        # if template_count._value:
+        templates = []
+        for _ in range(template_count._value):
+            templates.append(ResTypeTemplate.from_reader(stream))
         return ResNamedType(index=index, template_count=template_count, templates=templates)
         
     def update_string_names(self, res_type_section):
@@ -394,6 +445,7 @@ class ResTypeSection():
         match _type:
             case ResTypeSectionSignature.TPTR:
                 res.pad = stream._read_exact(size.size - 8)
+                res.pad = len(res.pad)
             case ResTypeSectionSignature.TST1:
                 res.strings = []
                 while stream.tell() - _offset <= size.size - 1:
@@ -466,7 +518,9 @@ class ResTagFile(ResTagfileSectionHeader):
         
         
     
-    def read_havok(self):
+    def read_havok(self, stream: ReadStream):
+        reader = ReadStream(self.data_section.data_fixed) #if stream is None else stream
+        writer = WriteStream(self.data_section.data_fixed) #if stream is None else stream
         # current_pos = stream.tell()
         # stream.seek(0, io.SEEK_SET)
         # data_offset = stream.find_next_occ(b"DATA")
@@ -474,25 +528,26 @@ class ResTagFile(ResTagfileSectionHeader):
         #     raise ValueError("DATA section not found, very odd")
         # stream._read_exact(4) # skip signature
         # stream.seek(data_offset, io.SEEK_SET)
-        with open("DATA.bin", "wb") as f:
-            f.write(self.data_section.data_fixed)
-        stream = ReadStream(self.data_section.data_fixed)
-        self.root_container = hkRootLevelContainer.from_reader(stream)
-        stream.seek(self.root_container.cloth_offset, io.SEEK_SET)
-        self.cloth_container = hclClothContainer.from_reader(stream)
-        stream.seek(self.root_container.resource_offset, io.SEEK_SET)
-        self.mem_resource_container = hkMemoryResourceContainer.from_reader(stream)
-        stream.seek(self.root_container.animation_offset, io.SEEK_SET)
-        self.animation_container = hkaAnimationContainer.from_reader(stream)
+        # with open("DATA.bin", "wb") as f:
+        #     f.write(self.data_section.data_fixed)
+        reader.data_offset = self.data_section.data_offset
+        stream = ReadStream(self.data_section.data_fixed) #if stream is None else stream
+        self.root_container = hkRootLevelContainer.from_reader(reader)
+        reader.seek(self.root_container.cloth_offset - self.data_section.data_offset, io.SEEK_SET)
+        self.cloth_container = hclClothContainer.from_reader(reader)
+        reader.seek(self.root_container.resource_offset- self.data_section.data_offset, io.SEEK_SET)
+        self.mem_resource_container = hkMemoryResourceContainer.from_reader(reader, is_root=True)
+        reader.seek(self.root_container.animation_offset- self.data_section.data_offset, io.SEEK_SET)
+        self.animation_container = hkaAnimationContainer.from_reader(reader)
         return
         
         
-    def update_fields(self):
+    def update_fields(self, stream: ReadStream):
         self.validate()
         self.get_helper_strings()
         self.update_strings()
         self.handle_relocations()
-        self.read_havok()
+        self.read_havok(stream)
 
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResTagFile":
@@ -519,7 +574,7 @@ class ResTagFile(ResTagfileSectionHeader):
             if res.data_section is not None and res.type_section is not None and res.indx_section is not None:
                 if stream.tell() - main_offset <= size.size - 1:
                     raise ValueError(f"Invalid ResTagFile structure: DATA, TYPE and INDX sections found but not all of data has been read")
-        res.update_fields()
+        res.update_fields(stream)
         return res
 
     # Getters
@@ -570,10 +625,10 @@ class ResTagFile(ResTagfileSectionHeader):
         
     
     def handle_relocations(self):
-        try:
-            ptch_section_index, ptch_section = self.get_ptch_section()
-        except ValueError:
-            return # exit gracefully if no PTCH section is found
+        # try:
+        ptch_section_index, ptch_section = self.get_ptch_section()
+        # except ValueError:
+        #     return # exit gracefully if no PTCH section is found
         type_section_index = self.type_section
         type_name_index, type_name_section = self.get_type_section(b"TNA1")
         index_section_index = index_section = self.indx_section
@@ -583,30 +638,44 @@ class ResTagFile(ResTagfileSectionHeader):
         data_stream_writer = WriteStream(self.data_section.data)
         data_stream_reader.seek(0, io.SEEK_SET)
         data_stream_writer.seek(0, io.SEEK_SET)
-        MISSING = {}
+        # MISSING = {}
+        # writer= WriteStream()
+        # special_patches = ['T*']
         def inplace_fixup(offset: int, type_index: int): #u32, u32
+            global MISSING, _log
             data_stream_reader.seek(offset, io.SEEK_SET)
             index = data_stream_reader.read_u32()
-            size, _name = None, None
-            if type_index > 0:
-                _name = type_name_section.types[type_index-1].name
+            size, _name, _type_index = None, None, int(type_index)
+            if index >= len(item_section.items):
+                data_stream_writer.seek(offset)
+                data_stream_writer.write_u64(0)
+                return
+            
+            if _type_index > 0:
+                _named_type = type_name_section.types[_type_index-1]
+                _name = _named_type.name
+                _item = item_section.items[index]
                 if not _name:
                     raise ValueError(f"Update strings fields for type_name_section: {repr(_name)}")
                 if _name.startswith(("hkArray",)): # too very specific, but matches hexpat logic
+                    assert _named_type.index._byte0 == 1, f"Invalid type name: {_name}"
                     data_stream_writer.seek(offset + 8, io.SEEK_SET)
-                    data_stream_writer.write_s32(item_section.items[index].count)
+                    data_stream_writer.write_s32(_item.count)
+                # if _named_type.index._byte0 == 8:
+                #     assert _name in ("T*", "hkStringPtr"), f"Invalid type name: {_name}"
+                #     data_stream_writer.seek(offset + 16, io.SEEK_SET)
+                #     data_stream_writer.write_s32(_item.count)
+                    #
+            if _named_type.index._byte0 in (12, 16):
+                pass
             # too very specific again, but matches hexpat logic
             _item = item_section.items[index]
             addr = _item.data_offset - offset # u32 as u64
-            data_stream_reader.seek(offset, io.SEEK_SET)
-            if addr < 0:
-                raise ValueError(f"Invalid address: {addr}, expected positive value for {_name} at {_hex(offset)}")
-                # return
-                # return # TODO: handle this case
             data_stream_writer.seek(offset, io.SEEK_SET)
-            data_stream_writer.write_u64(addr)
-            # ptr = addr
-            #// std::print(std::format("Patching {:#08x} at {:#08x}", ptr, offset));
+            data_stream_reader.seek(offset, io.SEEK_SET)
+            ptr = data_stream_reader.read_u64()
+            # addr = addr & 0xFFFFFFFFFFFFFFFF if addr < 0 else addr
+            data_stream_writer.write_64bit_int(addr)
         
         int_patches_count = len(ptch_section.internal_patches)
         for i in range(int_patches_count):
@@ -618,15 +687,6 @@ class ResTagFile(ResTagfileSectionHeader):
                 inplace_fixup(_offset, _type_index)
         data_stream_writer.seek(0, io.SEEK_SET)
         self.data_section.data_fixed = data_stream_writer.read()
-        """// handle relocations
-            if (ptch_section_index != -1) {
-                for (u32 i = 0, i < std::core::member_count(tagfile.sections[index_section_index].sections[ptch_section_index].internal_patches), i = i + 1) {
-                    for (u32 j = 0, j < std::core::member_count(tagfile.sections[index_section_index].sections[ptch_section_index].internal_patches[i].offsets), j = j + 1) {
-                        inplace_fixup(tagfile.sections[index_section_index].sections[ptch_section_index].internal_patches[i].offsets[j],
-                                        tagfile.sections[index_section_index].sections[ptch_section_index].internal_patches[i].type_index);
-                    }
-                }
-        }"""
         
         
         
@@ -635,7 +695,6 @@ if __name__ == "__main__":
     os.system("cls")
     # with open("Armor_225_Head.bphcl", "rb") as f:
     bphcl = Bphcl().from_file("Armor_999_Head.bphcl")
-    print(bphcl.file)
-    print(bphcl.tag_file)
-    print(oead.aamp.ParameterIO.to_text(bphcl.cloth_section))
+    bphcl.to_yaml_file("Armor_999_Head.yaml")
+    bphcl.to_json_file("Armor_999_Head.json")
     pass

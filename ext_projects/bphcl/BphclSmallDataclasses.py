@@ -180,6 +180,11 @@ class ResPatch:
     count: int # u32
     offsets: list[int] # list[u32]
     
+    def __repr__(self):
+        c = 4
+        o = f"{str(self.offsets[:c])[:-1]}...]" if self.count >= c else f"{str(self.offsets[:c])}"
+        return f"ResPatch(type_index={self.type_index}, count={self.count}, offsets={o})"
+    
     def __len__(self):
         return 8 + len(self.offsets) * 4
     
@@ -514,13 +519,17 @@ class hkRefPtr:
     m_ptr: Ptr
     m_data: Optional[Type] = None
     
+    def __repr__(self):
+        # if self._m_data_type == hkStringPtr:
+        return f"hkRefPtr({(self.m_data)})"
+    
     @staticmethod
     def from_reader(stream: ReadStream, _m_data_type: Type[T]) -> 'hkRefPtr':
         """Reads a reference pointer from the stream."""
         _offset = stream.tell()
         stream.align_to(8)
         m_ptr = Ptr.from_reader(stream)
-        _new_offset = _offset + m_ptr.value
+        _new_offset = _offset + m_ptr.value #+ stream.data_offset
         cur_offset = stream.tell()
         stream.seek(_new_offset, io.SEEK_SET)
         m_data = _m_data_type.from_reader(stream) 

@@ -295,4 +295,4 @@ if __name__== "__main__":
     file = "bphcl.hexpat"
     hexpat = HexpatParser(file)
     hexpat.parse()
-    hexpat.save_to_file("Experimental.py")
+    hexpat.save_to_file("ExperimentalEX.py")

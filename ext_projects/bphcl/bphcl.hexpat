@@ -35,7 +35,7 @@ ResPhive file @ 0x00;
 enum ResParamType : u8 {
     Bool = 0,
     F32,
-    hkInt,
+    Int,
     Vec2,
     Vec3,
     Vec4,
@@ -111,7 +111,7 @@ struct ResParameter {
     match (flags.type) {
         (ResParamType::Bool) : { bool value @ addressof(this) + flags.offset * 4; }
         (ResParamType::F32) : { float value @ addressof(this) + flags.offset * 4; }
-        (ResParamType::hkInt) : { s32 value @ addressof(this) + flags.offset * 4; }
+        (ResParamType::Int) : { s32 value @ addressof(this) + flags.offset * 4; }
         (ResParamType::Vec2) : { Vector2f value @ addressof(this) + flags.offset * 4; }
         (ResParamType::Vec3) : { Vector3f value @ addressof(this) + flags.offset * 4; }
         (ResParamType::Vec4) : { Vector4f value @ addressof(this) + flags.offset * 4; }
@@ -176,13 +176,7 @@ ResParameterArchive cloth_param @ file.param_offset;
 
 // tagfile stuff
 
-fn section_from_slice(str name, u128 start, u128 size) {
-    std::mem::Section section = std::mem::create_section(name);
-    u8 data[size] @ start;
-    std::mem::set_section_size(section, size);
-    std::mem::copy_value_to_section(data, section, 0x0);
-    return section;
-};
+
 
 struct String {
     char string[];
@@ -195,35 +189,35 @@ fn find_section(u128 start, u128 end, auto ... bytes) {
 using VarUInt;
 
 fn read_varuint(VarUInt i) {
-    if (i._byte0 & 0x80 == 0) {
-        return i._byte0;
+    if (i.byte0 & 0x80 == 0) {
+        return i.byte0;
     }
-    match (i._byte0 >> 3) {
+    match (i.byte0 >> 3) {
         (0x10 ... 0x17):
-            return ((i._byte0 << 8) | i.bytes[0]) & 0x3FFF;
+            return ((i.byte0 << 8) | i.bytes[0]) & 0x3FFF;
         (0x18 ... 0x1B):
             return (
-                (i._byte0 << 16) |
+                (i.byte0 << 16) |
                 (i.bytes[0] << 8) |
                 i.bytes[1]
             ) & 0x1FFFFF;
         (0x1C):
             return (
-               ( i._byte0 << 24 ) |
+               ( i.byte0 << 24 ) |
                ( i.bytes[0] << 16 ) |
                ( i.bytes[1] << 8 ) |
                i.bytes[2]
             ) & 0x7FFFFFF;
         (0x1D):
             return (
-                ( i._byte0 << 32 ) |
+                ( i.byte0 << 32 ) |
                 ( i.bytes[0] << 24 ) |
                 ( i.bytes[1] << 16 ) |
                 ( i.bytes[2] << 8 ) |
                 i.bytes[3]
             )  & 0x7FFFFFFFFFFFFFF;
         (0x1E):
-            return ( ( i._byte0 << 56 ) |
+            return ( ( i.byte0 << 56 ) |
                 ( i.bytes[0] << 48 ) |
                 ( i.bytes[1] << 40 ) |
                 ( i.bytes[2] << 32 ) |
@@ -233,9 +227,9 @@ fn read_varuint(VarUInt i) {
                 i.bytes[6]
             ) & 0x7FFFFFFFFFFFFFF;
         (0x1F):
-            return ( i._byte0 & 7 ) == 0
+            return ( i.byte0 & 7 ) == 0
                 ? (
-                  ( i._byte0 << 40 ) |
+                  ( i.byte0 << 40 ) |
                   ( i.bytes[0] << 32 ) |
                   ( i.bytes[1] << 24 ) |
                   ( i.bytes[2] << 16 ) |
@@ -243,7 +237,7 @@ fn read_varuint(VarUInt i) {
                   i.bytes[4]
                 ) & 0xFFFFFFFFFF
                 :
-                  ( i._byte0 & 7 ) == 1
+                  ( i.byte0 & 7 ) == 1
                   ? (
                      i.bytes[0] << 56 ) |
                      ( i.bytes[1] << 48 ) |
@@ -262,9 +256,9 @@ fn format_varuint(VarUInt i) {
 };
 
 struct VarUInt {
-    u8 _byte0;
-    if (_byte0 & 0x80 != 0) {
-        match (_byte0 >> 3) {
+    u8 byte0;
+    if (byte0 & 0x80 != 0) {
+        match (byte0 >> 3) {
             (0x10 ... 0x17) : u8 bytes[1];
             (0x18 ... 0x1B) : u8 bytes[2];
             (0x1C) : u8 bytes[3];
@@ -522,7 +516,18 @@ fn get_type_name(auto index) {
     return tagfile.sections[type_section_index].sections[type_name_index].types[index - 1].name;
 };
 
-std::mem::Section data = section_from_slice("Data", tagfile.data_offset, tagfile.data_size);
+fn section_from_slice(str name, u128 start, u128 size) {
+
+    return section;
+};
+
+u8 _data[tagfile.data_size] @  tagfile.data_offset;
+
+std::mem::Section data = std::mem::create_section("Data");
+std::mem::set_section_size(data,  tagfile.data_size);
+std::mem::copy_value_to_section(_data, data, 0x0);
+
+//std::mem::Section data = section_from_slice("Data", tagfile.data_offset, tagfile.data_size);
 
 const str array = "hkArray";
 
@@ -535,10 +540,32 @@ fn inplace_fixup(u32 offset, u32 type_index) {
             size = tagfile.sections[index_section_index].sections[item_section_index].items[index].count;
         }
     }
-    const u64 addr = tagfile.sections[index_section_index].sections[item_section_index].items[index].data_offset - offset;
-    u64 ptr @ offset in data;
-    ptr = addr;
-    // std::print(std::format("Patching {:#08x} at {:#08x}", ptr, offset));
+    const u64 _dataoffset = tagfile.sections[index_section_index].sections[item_section_index].items[index].data_offset;
+    if (_dataoffset > offset) {
+        u64 ptr @ offset in data;
+        const u64 new_addr = _dataoffset - offset;
+        ptr = new_addr;
+    } else {
+        s64 ptr @ offset in data;
+        const s64 new_addr = _dataoffset - offset;
+        std::print(std::format("Handling negative ptr {:#08x}  {:#08x}, name {}", new_addr, ptr, get_type_name(type_index)));
+        ptr = new_addr;
+    }
+
+
+
+
+    //const u64 addr = tagfile.sections[index_section_index].sections[item_section_index].items[index].data_offset - offset;
+    //u64 ptr @ offset in data;
+    //u64 correct_addr = 0;
+    //if (addr > 0x7FFFFFFFFFFFFFFF) {
+    //    correct_addr = 0xFFFFFFFFFFFFFFFF - addr;
+//        std::print(std::format("Handling negative ptr {:#08x}  {:#08x}, name {}", addr, correct_addr, get_type_name(type_index)));
+  //  } else {
+    //    correct_addr = addr;
+    //}
+    //ptr = correct_addr;
+    //std::print(std::format("Patching {:#08x} at {:#08x}, name {}", ptr, offset, get_type_name(type_index)));
 };
 
 fn read_ptr(auto t) {
@@ -593,7 +620,7 @@ struct hkRefPtr<T> {
     T m_data @ _offset + m_ptr;
 };
 
-struct hkInt {
+struct Int {
     s32 value;
 
     u64 offset = addressof(this);
@@ -603,7 +630,7 @@ struct hkArray<T> {
     std::mem::AlignTo<0x8>;
     u64 _offset = $;
     Ptr offset;
-    hkInt m_size;
+    Int m_size;
     s32 m_capacityAndFlags;
 
     T m_data[m_size] @ _offset + offset;
@@ -660,6 +687,7 @@ for (u32 i = 0, i < root_container.m_namedVariants.m_size, i = i + 1) {
     }
 }
 
+std::print(std::format("cloth_offset {:#08x} resource_offset: {:#08x}, animation_offset {:#08x}", cloth_offset, resource_offset, animation_offset));
 struct hkObjectBase {
     u64 _vft_reserve;
 };

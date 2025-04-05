@@ -13,7 +13,15 @@ class ReadStream(io.BytesIO):
         self.encoding = "utf-8"
         
     def __repr__(self):
-        return f"<ReadStream position={_hex(self.tell())}>"
+        try:
+            next_8_bytes = self._read_exact(8)
+            self.seek(-8, io.SEEK_CUR)  # Move back to the original position
+            _hex_bytes = " ".join([_hex(b)[2:].ljust(2, "0") for b in next_8_bytes])
+            # res =  f"<ReadStream pos={_hex(self.tell())} next={_hex_bytes}>"
+            res =  f"<ReadStream abspos={_hex(self.tell()+0x50)} pos={_hex(self.tell())} next={_hex_bytes}>"
+            return res
+        except:
+            return f"<ReadStream pos={_hex(self.tell())}>"
     
     def __str__(self):
         return f"<ReadStream position=0x{self.tell():08X}>"
@@ -58,8 +66,18 @@ class ReadStream(io.BytesIO):
     def read_s32(self):
         return self._read_and_unpack("i", 4)[0]
     
+    def read_s64(self):
+        return self._read_and_unpack("q", 8)[0]
+    
     def read_u64(self):
         return self._read_and_unpack("Q", 8)[0]
+    
+    def read_64bit_int(self):
+        result = self.read_u64()
+        if result > 0x7FFFFFFFFFFFFFFF:
+            self.seek(-8, io.SEEK_CUR)
+            result = self.read_s64()
+        return result
     
     def read_u16(self):
         return self._read_and_unpack("H", 2)[0]
@@ -91,6 +109,15 @@ class ReadStream(io.BytesIO):
                 raise ValueError(f"String exceeds max length ({self.max_str_size} bytes)")
             result.append(byte[0])
         return result.decode(self.encoding)
+    
+    @classmethod
+    def from_writer(cls, writer: 'WriteStream'):
+        current_pos = writer.tell()
+        writer.seek(0, io.SEEK_END)
+        reader = cls(writer.getvalue())
+        reader.seek(0, io.SEEK_END)
+        writer.seek(current_pos, io.SEEK_SET)  # Restore the original position of the writer
+        return reader
 
 
 class WriteStream(io.BytesIO):
@@ -99,7 +126,16 @@ class WriteStream(io.BytesIO):
         self.endian = "little"
         self.sign = "<" if self.endian == "little" else ">"
         self.encoding = "utf-8"
-        
+    
+    @classmethod
+    def from_reader(cls, reader:ReadStream):
+        current_pos = reader.tell()
+        reader.seek(0, io.SEEK_END)
+        writer = cls(reader.getvalue())
+        writer.seek(0, io.SEEK_END)  # Move to the end of the stream
+        reader.seek(current_pos)  # Restore the original position of the reader
+        return writer
+    
     def __repr__(self):
         return f"<WriteStream position=0x{self.tell():08X}>"
     
@@ -143,6 +179,13 @@ class WriteStream(io.BytesIO):
 
     def write_s64(self, val: int):
         self._pack_and_write("q", val)
+        
+    def write_64bit_int(self, val: int):
+        """Write a 64-bit integer, signed if negative."""
+        if val > 0x7FFFFFFFFFFFFFFF:
+            self.write_u64(val)
+        else:
+            self.write_s64(val)
 
     def write_u128(self, val1: int, val2: int):
         """Write 128 bits as two 64-bit unsigned ints."""
