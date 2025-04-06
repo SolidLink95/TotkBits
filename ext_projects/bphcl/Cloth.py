@@ -1,7 +1,7 @@
 import io
 from typing import List, Optional, Type, TypeVar
 from BphclSmallDataclasses import  BOOL, FLOAT, hkRefPtr, u16, u32, u8, hclAction, hclShape, hclSimClothData__CollidablePinchingData, hclVirtualCollisionPointsData__Block, hkMatrix4f, hkTransform, hkVector4f
-from Havok import T, Ptr, hkArray, hkStringPtr
+from Havok import T,  hkArray, hkStringPtr
 from Stream import ReadStream
 from dataclasses import dataclass, field
 from Experimental import hkReferencedObject, hclVirtualCollisionPointsData__BarycentricDictionaryEntry

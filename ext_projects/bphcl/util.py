@@ -4,10 +4,19 @@ import json
 from pathlib import Path
 import zlib
 import re
+import base64
 
 class DataConverter:
-    MAX_STR_LEN = 10000  # Maximum allowed string length for hex/utf8 decoded data
+    MAX_STR_LEN = 90000000  # Maximum allowed string length for hex/utf8 decoded data
 
+    @staticmethod
+    def _compress_if_data(key, value):
+        if key == "data":
+            _val = value if isinstance(value, bytes) else bytes.fromhex(value)
+            compressed = b"ZLIB!" + zlib.compress(_val)
+            return  base64.b64encode(compressed).decode('ascii') 
+        return value
+    
     @staticmethod
     def get_aamp_hashed_dict(path):
         text = Path(path).read_bytes()
@@ -28,11 +37,8 @@ class DataConverter:
     def convert(obj):
         if isinstance(obj, dict):
             return {
-                DataConverter.convert_key(k): v
-                for k, v in (
-                    (k, DataConverter.convert(v)) for k, v in obj.items()
-                )
-                # if v is not None and k != "offset" and (not str(k).startswith("_") or k == "_str") and not DataConverter._is_large_string(v)
+                DataConverter.convert_key(k): DataConverter._compress_if_data(k, DataConverter.convert(v))
+                for k, v in obj.items()
                 if v is not None and (not str(k).startswith("_") or k == "_str") and not DataConverter._is_large_string(v)
             }
         elif isinstance(obj, list):

@@ -17,7 +17,7 @@ class ReadStream(io.BytesIO):
             next_8_bytes = self._read_exact(8)
             self.seek(-8, io.SEEK_CUR)  # Move back to the original position
             _hex_bytes = " ".join([_hex(b)[2:].ljust(2, "0") for b in next_8_bytes])
-            # res =  f"<ReadStream pos={_hex(self.tell())} next={_hex_bytes}>"
+            # 0x50 is DATA offset
             res =  f"<ReadStream abspos={_hex(self.tell()+0x50)} pos={_hex(self.tell())} next={_hex_bytes}>"
             return res
         except:

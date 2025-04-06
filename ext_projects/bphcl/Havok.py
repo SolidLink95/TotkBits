@@ -149,7 +149,6 @@ class hkArray:
     _m_data_type: Optional[Type] = None
     _sec_element_type: Optional[Type] = None
     m_data: hkArrayList = field(default_factory=list)
-    left_padding_size: int = 0
     
     def __repr__(self):
         return f"<hkArray offset=0x{self.offset.value:04X} size={self.m_size.value} capacity={self.m_capacityAndFlags}>"
@@ -171,10 +170,6 @@ class hkArray:
         array = hkArray.get_default_array(stream, element_type, _sec_element_type)
         current_pos = stream.tell()
         new_offset = array.offset.offset + array.offset.value
-        # if new_offset < current_pos:
-        #     print(f"Warning: new_offset {_hex(new_offset)} < current_pos {_hex(current_pos)}.")
-        if new_offset > current_pos:
-            array.left_padding_size = new_offset - current_pos
         stream.seek(new_offset)
 
         i = 0
@@ -188,29 +183,6 @@ class hkArray:
         stream.seek(current_pos)
         return array
     
-    
-    # def from_reader_self(self, stream: 'ReadStream'):
-    #     """Reads an hkArray<T> from the stream."""
-    #     if self.m_size.value == 0:
-    #         return # empty array
-    #     if self.m_data:
-    #         raise ValueError(f"Array already populated for {self._m_data_type} ({self._sec_element_type}). Use from_reader_self() instead.")
-    #     new_offset = self.offset.offset  + self.offset.value
-    #     cur_offset = stream.tell()
-    #     if new_offset > cur_offset:
-    #         self.left_padding_size = new_offset - cur_offset
-    #     stream.seek(new_offset)
-    #     i = 0
-    #     while i < self.m_size.value:
-    #         i += 1
-    #         if self._sec_element_type is None:
-    #             item = self._m_data_type.from_reader(stream)
-    #         else:
-    #             item = self._m_data_type.from_reader(stream, self._sec_element_type)
-    #         self.m_data.append(item)
-    #     return
-        # return array
-
     def to_binary(self) -> bytes:
         """Converts the array to a binary representation."""
         writer = WriteStream()
@@ -240,6 +212,7 @@ class hkRootLevelContainer:
         m_namedVariants = hkArray.from_reader(stream, hkRootLevelContainer__NamedVariant)
         
         for hkVar in m_namedVariants.m_data:
+            assert(isinstance(hkVar, hkRootLevelContainer__NamedVariant))
             addr = hkVar.m_variant._offset + hkVar.m_variant.m_ptr.value + stream.data_offset
             match hkVar.m_className._str:
                 case "hclClothContainer":
