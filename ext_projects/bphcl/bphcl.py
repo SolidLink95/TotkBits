@@ -26,6 +26,9 @@ class Bphcl():
     
     # def remove_even_more_entries
     
+    def cloth_section_to_binary(self) -> bytes:
+        return oead.aamp.ParameterIO.to_binary(self.cloth_section)
+    
     def cloth_section_to_dict(self) -> dict:
         """Very dirty approach, will fix later"""
         yaml_str = oead.aamp.ParameterIO.to_text(self.cloth_section)
@@ -68,6 +71,12 @@ class Bphcl():
         data = self.to_dict()
         with open(file_path, "w") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+    
+    def to_binary(self) -> bytes:
+        result = self.file.to_binary()
+        result += self.tag_file.to_binary()
+        result += self.cloth_section_to_binary()
+        return result
     
     def validate(self):
         if self.file is None:
@@ -118,6 +127,7 @@ class ResPhive():
     param_size: int
     file_end_size: int
     _size = 36
+    _unpack_code = "<6sBBHBBIIIIII"
     
     def validate(self):
         assert self.magic == b'Phive\x00', f"Invalid magic: {self.magic}, expected b'Phive\\x00'"
@@ -130,7 +140,7 @@ class ResPhive():
         if len(data) != ResPhive._size:
             raise ValueError(f"End of file, expected {ResPhive._size} bytes, got {len(data)} bytes")
         
-        unpacked = struct.unpack("<6sBBHBBIIIIII", data)
+        unpacked = struct.unpack(ResPhive._unpack_code, data)
         res =  ResPhive(
             magic=unpacked[0],
             reserve0=unpacked[1],
@@ -148,6 +158,25 @@ class ResPhive():
         res.validate()
         stream.seek(res.tagfile_offset, io.SEEK_SET)
         return res
+    
+    def to_binary(self) -> bytes:
+        writer = WriteStream()
+        writer.write(self.magic)
+        writer.write_u8(self.reserve0)
+        writer.write_u8(self.reserve1)
+        writer.write_u16(self.byte_order_mark)
+        writer.write_u8(self.file_type.value)
+        writer.write_u8(self.max_section_capacity)
+        writer.write_u32(self.tagfile_offset)
+        writer.write_u32(self.param_offset)
+        writer.write_u32(self.file_end_offset)
+        writer.write_u32(self.tagfile_size)
+        writer.write_u32(self.param_size)
+        writer.write_u32(self.file_end_size)
+        writer.write((self.tagfile_offset-self._size) * b"\x00")
+        result = writer.getvalue()
+        tmp = result.hex().upper()
+        return result
         
     
 
@@ -157,11 +186,29 @@ class ResPhive():
     
 @dataclass
 class ResIndexSection(ResTagfileSectionHeader):
-    items: list[ResItem] = None
-    internal_patches: list[ResPatch] = None
+    items: List[ResItem] = None
+    internal_patches: List[ResPatch] = None
     terminator: int = None #u32
-    external_patches: list[ResPatch] = None
+    external_patches: List[ResPatch] = None
     padding: bytes = None
+    
+    def to_binary(self) -> bytes:
+        result = self.size.to_binary()
+        result += self.signature
+        if self.items:
+            for item in self.items:
+                result += item.to_binary()
+        if self.internal_patches is not None:
+            for patch in self.internal_patches:
+                result += patch.to_binary()
+        if self.terminator is not None:
+            result += struct.pack("<I", self.terminator)
+        if self.external_patches is not None:
+            for patch in self.external_patches:
+                result += patch.to_binary()
+        if self.padding is not None:
+            result += self.padding
+        return result
     
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResIndexSection":
@@ -216,17 +263,41 @@ class ResSection(ResTagfileSectionHeader):
     data_fixed: bytes = None
     # root_container: hkRootLevelContainer = None
     #TYPE
-    sections: list = None # ResTypeSection
+    sections: List["ResTypeSection"] = None 
     #INDX
-    index: list = None # ResIndexSection
+    index: List[ResIndexSection] = None # ResIndexSection
     #TCRF and TCID invalid
+    _encoding: str = None
 
+    def to_binary(self) -> bytes:
+        result = self.size.to_binary()
+        result += self.signature.encode(self._encoding if self._encoding else "utf-8")
+        match self._type:
+            case ResSectionType.SDKV:
+                if self.version is not None:
+                    result += self.version.encode()
+            case ResSectionType.DATA:
+                if self.data is not None:
+                    result += self.data
+            case ResSectionType.TYPE:
+                if self.sections is not None:
+                    for section in self.sections:
+                        result += section.to_binary()
+            case ResSectionType.INDX:
+                if self.sections is not None:
+                    for section in self.sections:
+                        result += section.to_binary()
+            case _:
+                raise ValueError(f"Invalid ResSectionType: {self._type}")
+        return result
+    
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResSection":
+        _encoding = stream.encoding
         size = Size.from_reader(stream)
         signature = stream._read_exact(4)
         _type = ResSectionType(signature)
-        res = ResSection(_type=_type, size=size, signature=signature.decode(stream.encoding))
+        res = ResSection(_type=_type, size=size, signature=signature.decode(stream.encoding),_encoding=_encoding)
         _offset = stream.tell() - 8
         match _type:
             case ResSectionType.SDKV:
@@ -274,9 +345,17 @@ class ResSection(ResTagfileSectionHeader):
 class ResNamedType():
     index: VarUInt
     template_count: VarUInt
-    templates: list[ResTypeTemplate] = None
+    templates: List[ResTypeTemplate] = None
     name: str = "" # to be filled in later
 
+    def to_binary(self) -> bytes:
+        result = self.index.to_binary()
+        result += self.template_count.to_binary()
+        if self.templates is not None:
+            for template in self.templates:
+                result += template.to_binary()
+        return result
+    
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResNamedType":
         index = VarUInt.from_reader(stream)
@@ -300,6 +379,11 @@ class ResTypeBodyInterface():
     type_index: VarUInt
     flags: VarUInt
     
+    def to_binary(self) -> bytes:
+        result = self.type_index.to_binary()
+        result += self.flags.to_binary()
+        return result
+    
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResTypeBodyInterface":
         type_index = VarUInt.from_reader(stream)
@@ -315,6 +399,15 @@ class ResTypeBodyDeclaration():
     type_index: VarUInt 
     reserve: int = None
     name: str = "" # to be filled in later
+    
+    def to_binary(self) -> bytes:
+        result = self.name_index.to_binary()
+        result += self.flags.to_binary()
+        if self.reserve is not None:
+            result += bytes([self.reserve])
+        result += self.offset.to_binary()
+        result += self.type_index.to_binary()
+        return result
     
     def __repr__(self):
         _n = f"UNKNOWN" if not self.name else f"{self.name}"
@@ -347,11 +440,43 @@ class ResTypeBody:
     alignment: VarUInt = None
     unknown_flags: VarUInt = None
     decl_count: VarUInt = None
-    declarations: list[ResTypeBodyDeclaration] = None
+    declarations: List[ResTypeBodyDeclaration] = None
     interface_count: VarUInt = None
-    format: list[ResTypeBodyInterface] = None
+    interfaces: List[ResTypeBodyInterface] = None
     attr_index: VarUInt = None
     attr: str = None
+    
+    def to_binary(self):
+        result = self.type_index.to_binary()
+        if self.parent_type_index is not None:
+            result += self.parent_type_index.to_binary()
+        if self.flags is not None:
+            result += self.flags.to_binary()
+        if self.format is not None:
+            result += self.format.to_binary()
+        if self.subtype_index is not None:
+            result += self.subtype_index.to_binary()
+        if self.version is not None:
+            result += self.version.to_binary()
+        if self.size is not None:
+            result += self.size.to_binary()
+        if self.alignment is not None:
+            result += self.alignment.to_binary()
+        if self.unknown_flags is not None:
+            result += self.unknown_flags.to_binary()
+        if self.decl_count is not None:
+            result += self.decl_count.to_binary()
+            if self.declarations is not None:
+                for decl in self.declarations:
+                    result += decl.to_binary()
+        if self.interface_count is not None:
+            result += self.interface_count.to_binary()
+            if self.interfaces is not None:
+                for _int in self.interfaces:
+                    result += _int.to_binary()
+        if self.attr_index is not None:
+            result += self.attr_index.to_binary()
+        return result
     
     # def __repr__(self):
     #     n = "UNKNOWN" if self.
@@ -411,17 +536,53 @@ class ResTypeSection():
     #TPTR | TPAD
     pad: bytes = None
     # (b"TST1" , b"FST1" , b"AST1" , b"TSTR" , b"FSTR" , b"ASTR")
-    strings: list[str] = None
+    strings: List[str] = None
     #"TNA1" | "TNAM"
     type_count: VarUInt = None
-    types: list[ResNamedType] = None
+    types: List[ResNamedType] = None
     #"TBDY" | "TBOD"
-    type_bodies = None
+    type_bodies: List["ResTypeBody"] = None
     #THSH
     hash_count: VarUInt = None
-    hashes: list[ResTypeHash] = None
+    hashes: List[ResTypeHash] = None
     #("TSHA" | "TPRO" | "TPHS" | "TSEQ") and other unsupported types
     padding: str = None
+    
+    def to_binary(self):
+        result = self.size.to_binary()
+        result += self.signature
+        match ResTypeSection.signature_to_enum(self.signature):
+            case ResTypeSectionSignature.TPTR:
+                if isinstance(self.pad, bytes):
+                    result += self.pad
+                elif isinstance(self.pad, int):
+                    result += (self.pad * b"\x00")
+                else:
+                    raise ValueError(f"Invalid pad type: {type(self.pad)}")
+            case ResTypeSectionSignature.TST1:
+                for string in self.strings:
+                    result += string.encode() + b"\x00"
+                # if self.signature == b"TST1":
+                #     result += b"\xFF\xFF\xFF" # terminator for TST1
+            case ResTypeSectionSignature.TNA1:
+                result += self.type_count.to_binary()
+                for type in self.types:
+                    result += type.to_binary()
+            case ResTypeSectionSignature.TBDY:
+                if self.type_bodies:
+                    for type_body in self.type_bodies:
+                        result += type_body.to_binary()
+            case ResTypeSectionSignature.THSH:
+                result += self.hash_count.to_binary()
+                for hash in self.hashes:
+                    result += hash.to_binary()
+            case ResTypeSectionSignature.UNSUPPORTED:
+                raise ValueError(f"Unsupported ResTypeSection signature: {self.signature}")
+            case _:
+                raise ValueError(f"Invalid ResTypeSection signature: {self.signature}")
+        if self.padding is not None:
+            result += bytes.fromhex(self.padding)
+        return result
     
     @staticmethod
     def signature_to_enum(signature: bytes) -> ResSectionType:
@@ -503,8 +664,8 @@ class ResTagFile(ResTagfileSectionHeader):
     mem_resource_container: hkMemoryResourceContainer = None
     animation_container: hkaAnimationContainer = None
     #helper fields
-    type_strings: list[str] = None
-    field_strings: list[str] = None
+    type_strings: List[str] = None
+    field_strings: List[str] = None
     
     def validate(self):
         if self.data_section is None:
@@ -516,7 +677,14 @@ class ResTagFile(ResTagfileSectionHeader):
         if self.sdkv_section.version is not None:
             assert(self.sdkv_section.version == '20220100'), f"Invalid version for SDKV: {self.sdkv_section.version}, expected '20220100'"
         
-        
+    def to_binary(self) -> bytes:
+        result = self.size.to_binary()
+        result += self.signature
+        result += self.sdkv_section.to_binary()
+        result += self.data_section.to_binary()
+        result += self.type_section.to_binary()
+        result += self.indx_section.to_binary()
+        return result
     
     def read_havok(self, stream: ReadStream):
         reader = ReadStream(self.data_section.data_fixed) #if stream is None else stream
@@ -693,8 +861,9 @@ class ResTagFile(ResTagfileSectionHeader):
 
 if __name__ == "__main__":
     os.system("cls")
-    # with open("Armor_225_Head.bphcl", "rb") as f:
     bphcl = Bphcl().from_file("Armor_999_Head.bphcl")
+    new_file = Path("Armor_999_Head_new.bphcl")
     bphcl.to_yaml_file("Armor_999_Head.yaml")
-    bphcl.to_json_file("Armor_999_Head.json")
-    pass
+    new_file.write_bytes(bphcl.to_binary())
+    sys.exit()
+    # bphcl.to_json_file("Armor_999_Head.json")

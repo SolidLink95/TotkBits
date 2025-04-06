@@ -2,7 +2,7 @@ import io
 from Stream import ReadStream, WriteStream
 from dataclasses import dataclass, field
 from BphclEnums import *
-from BphclSmallDataclasses import BOOL, hkRefPtr, hclVirtualCollisionPointsData__BarycentricDictionaryEntry, s16, s32, u8, u16, hclVirtualCollisionPointsData__TriangleFanSection, u32, ResItem, ResPatch, Size, VarUInt, ResTypeTemplate, ResTypeHash
+from BphclSmallDataclasses import BOOL, FLOAT, hkRefPtr, hclVirtualCollisionPointsData__BarycentricDictionaryEntry, s16, s32, u8, u16, hclVirtualCollisionPointsData__TriangleFanSection, u32, ResItem, ResPatch, Size, VarUInt, ResTypeTemplate, ResTypeHash
 from Havok import hkArray,hkStringPtr,hkRefVariant
 from util import _hex
 
@@ -970,7 +970,7 @@ class hclVirtualCollisionPointsData:
         m_numVCPoints = stream.read_u16()
         m_landscapeParticlesBlockIndex = hkArray.from_reader(stream, u16)
         m_numLandscapeVCPoints = stream.read_u16()
-        m_edgeBarycentricsDictionary = hkArray.from_reader(stream, float)
+        m_edgeBarycentricsDictionary = hkArray.from_reader(stream, FLOAT)
         m_edgeDictionaryEntries = hkArray.from_reader(stream, hclVirtualCollisionPointsData__BarycentricDictionaryEntry)
         m_triangleBarycentricsDictionary = hkArray.from_reader(stream, hclVirtualCollisionPointsData__BarycentricPair)
         m_triangleDictionaryEntries = hkArray.from_reader(stream, hclVirtualCollisionPointsData__BarycentricDictionaryEntry)

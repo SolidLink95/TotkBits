@@ -1,19 +1,22 @@
 from dataclasses import asdict
 from enum import Enum
+import json
 from pathlib import Path
 import zlib
+import re
 
 class DataConverter:
     MAX_STR_LEN = 10000  # Maximum allowed string length for hex/utf8 decoded data
 
     @staticmethod
     def get_aamp_hashed_dict(path):
-        text = Path(path).read_bytes().decode('utf-8', errors='ignore')
+        text = Path(path).read_bytes()
         lines = [l for l in text.splitlines() if l.strip()]
         result = {}
         for line in lines:
             crc_value = str(crc32_decimal(line))
-            result[crc_value] = line
+            entry = DataConverter.decode_bytes(line)
+            result[crc_value] = entry
         return result
 
     @staticmethod
@@ -29,6 +32,7 @@ class DataConverter:
                 for k, v in (
                     (k, DataConverter.convert(v)) for k, v in obj.items()
                 )
+                # if v is not None and k != "offset" and (not str(k).startswith("_") or k == "_str") and not DataConverter._is_large_string(v)
                 if v is not None and (not str(k).startswith("_") or k == "_str") and not DataConverter._is_large_string(v)
             }
         elif isinstance(obj, list):
@@ -67,6 +71,7 @@ class DataConverter:
                 for k, v in (
                     (k, DataConverter.reverse_convert(v)) for k, v in obj.items()
                 )
+                # if v is not None and k != "offset" and (not str(k).startswith("_") or k == "_str") and not DataConverter._is_large_string(v)
                 if v is not None and (not str(k).startswith("_") or k == "_str") and not DataConverter._is_large_string(v)
             }
         elif isinstance(obj, list):
@@ -113,7 +118,8 @@ def is_int_based_class(cls) -> bool:
 
 
 def crc32_decimal(s: str) -> int:
-    return zlib.crc32(s.encode('utf-8')) & 0xFFFFFFFF  # Ensure unsigned
+    x = s.encode('utf-8') if isinstance(s, str) else s
+    return zlib.crc32(x) & 0xFFFFFFFF  # Ensure unsigned
 
 
 def extract_utf8_strings(s):
@@ -172,29 +178,9 @@ def fix_hkarrays(s):
 
 # Example usage
 if __name__ == "__main__":
-  s = """        m_blocks = hkArray.from_reader(stream, hclVirtualCollisionPointsData__Block)
-        m_numVCPoints = stream.read_u16()
-        m_landscapeParticlesBlockIndex = hkArray.from_reader(stream, u16)
-        m_numLandscapeVCPoints = stream.read_u16()
-        m_edgeBarycentricsDictionary = hkArray.from_reader(stream, float)
-        m_edgeDictionaryEntries = hkArray.from_reader(stream, hclVirtualCollisionPointsData__BarycentricDictionaryEntry)
-        m_triangleBarycentricsDictionary = hkArray.from_reader(stream, hclVirtualCollisionPointsData__BarycentricPair)
-        m_triangleDictionaryEntries = hkArray.from_reader(stream, hclVirtualCollisionPointsData__BarycentricDictionaryEntry)
-        m_edges = hkArray.from_reader(stream, hclVirtualCollisionPointsData__EdgeFanSection)
-        m_edgeFans = hkArray.from_reader(stream, hclVirtualCollisionPointsData__EdgeFan)
-        m_triangles = hkArray.from_reader(stream, hclVirtualCollisionPointsData__TriangleFanSection)
-        m_triangleFans = hkArray.from_reader(stream, hclVirtualCollisionPointsData__TriangleFan)
-        m_edgesLandscape = hkArray.from_reader(stream, hclVirtualCollisionPointsData__EdgeFanSection)
-        m_edgeFansLandscape = hkArray.from_reader(stream, hclVirtualCollisionPointsData__EdgeFanLandscape)
-        m_trianglesLandscape = hkArray.from_reader(stream, hclVirtualCollisionPointsData__TriangleFanSection)
-        m_triangleFansLandscape = hkArray.from_reader(stream, hclVirtualCollisionPointsData__TriangleFanLandscape)
-        m_edgeFanIndices = hkArray.from_reader(stream, u16)
-        m_triangleFanIndices = hkArray.from_reader(stream, u16)
-        m_edgeFanIndicesLandscape = hkArray.from_reader(stream, u16)
-        m_triangleFanIndicesLandscape = hkArray.from_reader(stream, u16)"""
   print("\n" * 20)
-  print(fix_hkarrays(s))
-  
+  _dict = DataConverter.get_aamp_hashed_dict("totk_botw_all_strings.txt")
+  Path("tmp/tmp.json").write_text(json.dumps(_dict, indent=4))
   
     # Example string containing hex and decimal numbers
   input_strings = """""".splitlines()

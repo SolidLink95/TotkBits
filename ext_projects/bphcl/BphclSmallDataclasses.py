@@ -90,6 +90,8 @@ class VarUInt():
     def __len__(self):
         return len(self.val) // 2
     
+    def to_binary(self) -> bytes:
+        return bytes.fromhex(self.val)
     
     @staticmethod
     def from_binary(data:bytes|bytearray) -> "VarUInt":
@@ -135,6 +137,9 @@ class ResTypeTemplate():
     value: VarUInt
     name: str = "" # to be filled in later
 
+    def to_binary(self) -> bytes:
+        return self.index.to_binary() + self.value.to_binary()
+    
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResTypeTemplate":
         index = VarUInt.from_reader(stream)
@@ -146,6 +151,12 @@ class ResTypeTemplate():
 class ResTypeHash():
     type_index: VarUInt
     hash: int # u32
+    
+    def to_binary(self) -> bytes:
+        writer = WriteStream()
+        writer.write(self.type_index.to_binary())
+        writer.write_u32(self.hash)
+        return writer.getvalue()
     
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResTypeHash":
@@ -160,6 +171,14 @@ class ResItem:
     type_index: int # u16
     data_offset: int # u32
     count: int # u32
+    
+    def to_binary(self) -> bytes:
+        writer = WriteStream()
+        writer.write_u16(self.flags)
+        writer.write_u16(self.type_index)
+        writer.write_u32(self.data_offset)
+        writer.write_u32(self.count)
+        return writer.getvalue()
     
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResItem":
@@ -179,6 +198,14 @@ class ResPatch:
     type_index: int # u32
     count: int # u32
     offsets: list[int] # list[u32]
+    
+    def to_binary(self) -> bytes:
+        writer = WriteStream()
+        writer.write_u32(self.type_index)
+        writer.write_u32(self.count)
+        for offset in self.offsets:
+            writer.write_u32(offset)
+        return writer.getvalue()
     
     def __repr__(self):
         c = 4

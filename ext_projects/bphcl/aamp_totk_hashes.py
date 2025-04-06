@@ -1,6 +1,4 @@
-
-
-AAMP_TOTK_HASHES = {
+AAMP_TOTK_HASHES =  {
     "2738615135": "!--",
     "4243590121": "!ActorInfo",
     "906638845": "!ShapeInfo",

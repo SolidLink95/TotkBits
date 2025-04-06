@@ -39,5 +39,6 @@ ext_projects/bphcl/__pycache__
 
 /ext_projects/DotNetWrapper/*
 /ext_projects/bphcl/tmp/*
+/ext_projects/bphcl/main*
 
 /__pycache__
