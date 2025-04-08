@@ -1,7 +1,7 @@
 import io
 import struct
 
-from util import _hex
+from util import _hex, hexInt
 
 
 class ReadStream(io.BytesIO):
@@ -11,17 +11,46 @@ class ReadStream(io.BytesIO):
         self.sign = "<" if self.endian == "little" else ">"
         self.max_str_size = 256
         self.encoding = "utf-8"
+        self.data_offset = None # Placeholder for data offset
+    
+    def tell(self):
+        return hexInt(super().tell())
+    
+    def get_data_size(self) -> int:
+        current_pos = self.tell()
+        self.seek_end()
+        size = self.tell()
+        self.seek(current_pos, io.SEEK_SET)  # Restore the original position
+        return size
+    
+    def seek_end(self):
+        """Seek to the end of the stream."""
+        self.seek(0, io.SEEK_END)
         
+    def seek_start(self):
+        """Seek to the end of the stream."""
+        self.seek(0, io.SEEK_SET)
+    
+    def peek(self, size: int) -> bytes:
+        """Peek at the next `size` bytes without advancing the stream position."""
+        current_pos = self.tell()
+        data = self.read(size)
+        self.seek(current_pos)
+        return data
+    
     def __repr__(self):
+        # cname = self.__class__.__name__
+        # return f"<{cname} position={self.tell()}>"
+        cname = self.__class__.__name__
+        # data_left = hexInt(self.get_data_size() - self.tell())
         try:
-            next_8_bytes = self._read_exact(8)
-            self.seek(-8, io.SEEK_CUR)  # Move back to the original position
+            next_8_bytes = self.peek(8) # Move back to the original position
             _hex_bytes = " ".join([_hex(b)[2:].ljust(2, "0") for b in next_8_bytes])
             # 0x50 is DATA offset
-            res =  f"<ReadStream abspos={_hex(self.tell()+0x50)} pos={_hex(self.tell())} next={_hex_bytes}>"
+            res =  f"<{cname} abspos={_hex(self.tell()+0x50)} pos={_hex(self.tell())} next={_hex_bytes} >"
             return res
         except:
-            return f"<ReadStream pos={_hex(self.tell())}>"
+            return f"<{cname} pos={_hex(self.tell())} >"
     
     def __str__(self):
         return f"<ReadStream position=0x{self.tell():08X}>"
@@ -120,7 +149,7 @@ class ReadStream(io.BytesIO):
         return reader
 
 
-class WriteStream(io.BytesIO):
+class WriteStream(ReadStream):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.endian = "little"
@@ -136,11 +165,11 @@ class WriteStream(io.BytesIO):
         reader.seek(current_pos)  # Restore the original position of the reader
         return writer
     
-    def __repr__(self):
-        return f"<WriteStream position=0x{self.tell():08X}>"
+    # def __repr__(self):
+    #     return f"<WriteStream position=0x{self.tell():08X}>"
     
-    def __str__(self):
-        return f"<WriteStream position=0x{self.tell():08X}>"
+    # def __str__(self):
+    #     return f"<WriteStream position=0x{self.tell():08X}>"
     
     def align_to(self, alignment: int = 8, pad_byte: bytes = b'\x00'):
         """Pad the stream to the next multiple of `alignment`."""
@@ -152,6 +181,11 @@ class WriteStream(io.BytesIO):
     def _pack_and_write(self, fmt: str, *values):
         packed = struct.pack(self.sign + fmt, *values)
         self.write(packed)
+
+    def write_list_of_strings(self, _list: list[str]):
+        """Write null-terminated strings"""
+        for _s in _list:
+            self.write(_s.encode(self.encoding) + b'\x00')
 
     def write_float(self, val: float):
         self._pack_and_write("f", val)
@@ -221,3 +255,14 @@ class WriteStream(io.BytesIO):
             raise ValueError(f"String too long to fit in {total_size} bytes")
         self.write(data)
         self.write(b'\x00' * (total_size - len(data)))
+
+    def _writer_align_to(self, alignment: int = 8):
+        """Align the stream's position to the next multiple of `alignment`."""
+        current_pos = self.tell()
+        if current_pos == 0:
+            return
+        size = self.get_data_size()
+        pad_size = size % alignment
+        if pad_size > 0:
+            self.write(b'\x00' * pad_size)
+        

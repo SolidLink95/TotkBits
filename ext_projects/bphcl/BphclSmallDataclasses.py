@@ -1,11 +1,11 @@
-from dataclasses import dataclass, is_dataclass, fields
+from dataclasses import dataclass, field, is_dataclass, fields
 import io
 import struct
 from Havok import T, Ptr
 from Stream import ReadStream, WriteStream
 from typing import Any, List, Optional, Type
 
-from util import _hex
+from util import _hex, hexInt
 
 
 @dataclass
@@ -243,7 +243,8 @@ class hkReferencedObject(hkObjectBase):
         return hkReferencedObject(**vars(base), m_sizeAndFlags=m_sizeAndFlags, m_refCount=m_refCount)
 
     def to_binary(self) -> bytes:
-        stream = WriteStream(super().to_binary())
+        stream = WriteStream()
+        stream.write(hkObjectBase.to_binary(self))
         stream.write_u64(self.m_sizeAndFlags)
         stream.write_u64(self.m_refCount)
         return stream.getvalue()
@@ -256,11 +257,13 @@ class hkReferencedObject(hkObjectBase):
 class hclShape(hkReferencedObject):
     m_type: int # s32
     
-    @staticmethod
-    def from_reader(stream: ReadStream) -> "hclShape":
-        par = super().from_reader(stream)
+    @classmethod
+    def from_reader(cls, stream: ReadStream) -> "hclShape":
+        # _offset = stream.tell()
+        base = super().from_reader(stream)
+        # _data_read = stream.tell() - _offset
         m_type = stream.read_s32()
-        return hclShape(par._vft_reserve, par.m_sizeAndFlags, par.m_refCount, m_type)
+        return cls(**vars(base), m_type=m_type)
     
     def to_binary(self):
         writer = WriteStream(super().to_binary())
@@ -305,25 +308,38 @@ class hclVirtualCollisionPointsData__TriangleFanSection:
 class hkRefPtr:
     _m_data_type: Optional[Type] # Type of the element in the list
     _offset: int #u64
-    m_ptr: Ptr
+    m_ptr: Ptr #u64
     m_data: Optional[Type] = None
+    
+    _offsets_range: list[tuple[hexInt, hexInt]] = field(default_factory=list)
     
     def __repr__(self):
         # if self._m_data_type == hkStringPtr:
-        return f"hkRefPtr({(self.m_data)})"
+        m_name = getattr(self.m_data, "m_name", None)
+        if m_name is not None:
+            _str = getattr(m_name, "_str", None)
+            if _str is not None:
+                return f"hkRefPtr({repr(_str)})"
+        return f"hkRefPtr({repr(self.m_data)})"
+            
     
     @staticmethod
     def from_reader(stream: ReadStream, _m_data_type: Type[T]) -> 'hkRefPtr':
         """Reads a reference pointer from the stream."""
+        _offsets_range = []
         _offset = stream.tell()
         stream.align_to(8)
         m_ptr = Ptr.from_reader(stream)
-        _new_offset = _offset + m_ptr.value #+ stream.data_offset
+        _offsets_range.extend(m_ptr._offsets_range)
+        _new_offset = hexInt(_offset + m_ptr.value) #+ stream.data_offset
         cur_offset = stream.tell()
         stream.seek(_new_offset, io.SEEK_SET)
         m_data = _m_data_type.from_reader(stream) 
+        _offsets_range.append((hexInt(cur_offset), hexInt(stream.tell())))
         stream.seek(cur_offset, io.SEEK_SET)
-        return hkRefPtr(_m_data_type=_m_data_type, _offset=_offset, m_ptr=m_ptr, m_data=m_data)
+        
+        _offsets_range.insert(0, (_offset, stream.tell()))
+        return hkRefPtr(_m_data_type=_m_data_type, _offset=_offset, m_ptr=m_ptr, m_data=m_data, _offsets_range=_offsets_range)
     
     def to_binary(self) -> bytes:
         """Converts the reference pointer to a binary representation."""

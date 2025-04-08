@@ -1,107 +1,173 @@
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, fields, is_dataclass, field
 from enum import Enum
 import json
 from pathlib import Path
 import zlib
 import re
 import base64
+from typing import Any, List
 
 class DataConverter:
-    MAX_STR_LEN = 90000000  # Maximum allowed string length for hex/utf8 decoded data
+    def __init__(self):
+        self.MAX_STR_LEN = 90000000  # Maximum allowed string length for hex/utf8 decoded data
 
-    @staticmethod
-    def _compress_if_data(key, value):
+
+    def compare_dataclasses(self,a, b, path="root"):
+        if type(a) != type(b):
+            raise ValueError(f"Type mismatch at {path}: {type(a).__name__} != {type(b).__name__}")
+
+        if not is_dataclass(a):
+            if a != b:
+                raise ValueError(f"Value mismatch at {path}: {a!r} != {b!r}")
+            return
+
+        for field in fields(a):
+            val_a = getattr(a, field.name)
+            val_b = getattr(b, field.name)
+            new_path = f"{path}.{field.name}"
+
+            # Recursively compare
+            try:
+                if is_dataclass(val_a):
+                    self.compare_dataclasses(val_a, val_b, new_path)
+                elif isinstance(val_a, list) and isinstance(val_b, list):
+                    if len(val_a) != len(val_b):
+                        raise ValueError(f"List length mismatch at {new_path}: {len(val_a)} != {len(val_b)}")
+                    for i, (item_a, item_b) in enumerate(zip(val_a, val_b)):
+                        self.compare_dataclasses(item_a, item_b, f"{new_path}[{i}]")
+                else:
+                    if val_a != val_b:
+                        raise ValueError(f"Mismatch at {new_path}: {val_a!r} != {val_b!r}")
+            except ValueError as e:
+                print(f"Mismatch in dataclass '{type(a).__name__}' at {new_path}")
+                print(a)
+                raise
+
+    
+    def test_check_translation(self, obj):
+        if isinstance(obj, dict):
+            new_obj = {}
+            for key, value in obj.items():
+                if key == "m_translation" and isinstance(value, dict):
+                    for _entry in ["m_x", "m_y", "m_z", "m_w"]:
+                        if _entry not in value:
+                            raise ValueError(f"Missing key '{_entry}' in m_translation dictionary")
+                else:
+                    new_obj[key] = self.test_check_translation(value)
+            return new_obj
+
+        elif isinstance(obj, list):
+            return [self.test_check_translation(item) for item in obj]
+
+        else:
+            return obj  # return as-is if not dict or list
+    def convert_offsets_to_hex(self, obj):
+        """Recursively convert offsets in a dictionary or list to hex format."""
+        if isinstance(obj, dict):
+            new_obj = {}
+            for key, value in obj.items():
+                if key == "offset" and isinstance(value, int):
+                    new_obj[key] = _hex(value)
+                else:
+                    new_obj[key] = self.convert_offsets_to_hex(value)
+            return new_obj
+
+        elif isinstance(obj, list):
+            return [self.convert_offsets_to_hex(item) for item in obj]
+
+        else:
+            return obj  # return as-is if not dict or list
+    
+    def handle_value(self, key, value):
         if key == "data":
             _val = value if isinstance(value, bytes) else bytes.fromhex(value)
             compressed = b"ZLIB!" + zlib.compress(_val)
-            return  base64.b64encode(compressed).decode('ascii') 
+            return base64.b64encode(compressed).decode('ascii') 
+        if key in ("signature", "magic") and isinstance(value, bytes):
+            return value.decode()
         return value
-    
-    @staticmethod
-    def get_aamp_hashed_dict(path):
+
+    def get_aamp_hashed_dict(self, path):
         text = Path(path).read_bytes()
         lines = [l for l in text.splitlines() if l.strip()]
         result = {}
         for line in lines:
             crc_value = str(crc32_decimal(line))
-            entry = DataConverter.decode_bytes(line)
+            entry = self.decode_bytes(line)
             result[crc_value] = entry
         return result
 
-    @staticmethod
-    def dataclass_to_dict(dataclass_instance):
+    def dataclass_to_dict(self, dataclass_instance):
         obj = asdict(dataclass_instance)
-        return DataConverter.convert(obj)
+        return self.convert(obj)
+    
+    def dict_to_dataclass(self, _dict):
+        # obj = asdict(dataclass_instance)
+        return self.reverse_convert(_dict)
 
-    @staticmethod
-    def convert(obj):
+    def convert(self, obj):
         if isinstance(obj, dict):
             return {
-                DataConverter.convert_key(k): DataConverter._compress_if_data(k, DataConverter.convert(v))
+                self.convert_key(k): self.handle_value(k, self.convert(v))
                 for k, v in obj.items()
-                if v is not None and (not str(k).startswith("_") or k == "_str") and not DataConverter._is_large_string(v)
+                if v is not None and (not str(k).startswith("_") or k == "_str") and not self._is_large_string(v)
             }
         elif isinstance(obj, list):
-            return [DataConverter.convert(v) for v in obj if v is not None and not DataConverter._is_large_string(v)]
+            return [self.convert(v) for v in obj if v is not None and not self._is_large_string(v)]
         elif isinstance(obj, tuple):
-            return tuple(DataConverter.convert(v) for v in obj if v is not None and not DataConverter._is_large_string(v))
-        elif isinstance(obj, (bytes, bytearray)):
-            return DataConverter.decode_bytes(obj)
+            return tuple(self.convert(v) for v in obj if v is not None and not self._is_large_string(v))
+        # elif isinstance(obj, (bytes, bytearray)):
+        #     return self.decode_bytes(obj)
         elif isinstance(obj, Enum):
             return obj.name
         else:
             return obj
 
-    @staticmethod
-    def convert_key(k):
-        if isinstance(k, (bytes, bytearray)):
-            return DataConverter.decode_bytes(k)
-        elif isinstance(k, Enum):
+    def convert_key(self, k):
+        # if isinstance(k, (bytes, bytearray)):
+        #     return self.decode_bytes(k)
+        if isinstance(k, Enum):
             return k.name
         else:
             return k
 
-    @staticmethod
-    def decode_bytes(b):
+    def decode_bytes(self, b):
         try:
             s = b.decode('utf-8')
         except UnicodeDecodeError:
             s = b.hex().upper()
-        return None if len(s) > DataConverter.MAX_STR_LEN else s
+        return None if len(s) > self.MAX_STR_LEN else s
 
-    @staticmethod
-    def reverse_convert(obj):
+    def reverse_convert(self, obj):
         if isinstance(obj, dict):
             return {
-                DataConverter.reverse_convert_key(k): v
+                self.reverse_convert_key(k): v
                 for k, v in (
-                    (k, DataConverter.reverse_convert(v)) for k, v in obj.items()
+                    (k, self.reverse_convert(v)) for k, v in obj.items()
                 )
-                # if v is not None and k != "offset" and (not str(k).startswith("_") or k == "_str") and not DataConverter._is_large_string(v)
-                if v is not None and (not str(k).startswith("_") or k == "_str") and not DataConverter._is_large_string(v)
+                if v is not None and (not str(k).startswith("_") or k == "_str") and not self._is_large_string(v)
             }
         elif isinstance(obj, list):
-            return [DataConverter.reverse_convert(v) for v in obj if v is not None and not DataConverter._is_large_string(v)]
+            return [self.reverse_convert(v) for v in obj if v is not None and not self._is_large_string(v)]
         elif isinstance(obj, tuple):
-            return tuple(DataConverter.reverse_convert(v) for v in obj if v is not None and not DataConverter._is_large_string(v))
+            return tuple(self.reverse_convert(v) for v in obj if v is not None and not self._is_large_string(v))
         elif isinstance(obj, str):
-            return DataConverter.decode_string(obj)
+            return self.decode_string(obj)
         elif isinstance(obj, Enum):
             return obj.value
         else:
             return obj
 
-    @staticmethod
-    def reverse_convert_key(k):
+    def reverse_convert_key(self, k):
         if isinstance(k, str):
-            return DataConverter.decode_string(k)
+            # return self.decode_string(k)
+            return k
         elif isinstance(k, Enum):
             return k.value
         else:
             return k
 
-    @staticmethod
-    def decode_string(s):
+    def decode_string(self, s):
         try:
             return bytes.fromhex(s)
         except ValueError:
@@ -110,10 +176,8 @@ class DataConverter:
             except UnicodeEncodeError:
                 return s
 
-    @staticmethod
-    def _is_large_string(val):
-        return isinstance(val, str) and len(val) > DataConverter.MAX_STR_LEN
-
+    def _is_large_string(self, val):
+        return isinstance(val, str) and len(val) > self.MAX_STR_LEN
 
 
 def _hex(val):
@@ -182,15 +246,72 @@ def fix_hkarrays(s):
   return res
   
 
-# Example usage
-if __name__ == "__main__":
-  print("\n" * 20)
-  _dict = DataConverter.get_aamp_hashed_dict("totk_botw_all_strings.txt")
-  Path("tmp/tmp.json").write_text(json.dumps(_dict, indent=4))
+def find_nested_instances(obj: Any, objtype: Any) -> List[Any]:
+    results = []
+
+    if isinstance(obj, objtype):
+        results.append(obj)
+    elif is_dataclass(obj):
+        for f in fields(obj):
+            value = getattr(obj, f.name, None)
+            if value is not None:
+                results.extend(find_nested_instances(value, objtype))
+    elif isinstance(obj, list):
+        for item in obj:
+            results.extend(find_nested_instances(item, objtype))
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            results.extend(find_nested_instances(key, objtype))
+            results.extend(find_nested_instances(value, objtype))
+    
+    return results
+
+def is_offset_in_ranges_list(offset: int, ranges: list) -> bool:
+    # _ranges = [(int(start, 16), int(end, 16)) for start, end in ranges]
+    for start, end in ranges:
+        if start <= offset <= end:
+            return True
+    return False
+
+@dataclass
+class FilteredInternalPath:
+    index: int = -1
+    internalPatch: Any = None
+    offsets: list = field(default_factory=list)
+    
+    def __repr__(self):
+        return f"InternalPath(index={self.index}, type_index={self.internalPatch.type_index}, off_count={len(self.offsets)})"
+
+@dataclass
+class AssetsFromRange:
+    items: list = field(default_factory=list)
+    named_types: list = field(default_factory=list)
+    internal_patches: list = field(default_factory=list) # list[FilteredInternalPath]
+    
+    def __len__(self):
+        return len(self.items) + len(self.named_types) + len(self.internal_patches)
+    
+    def sort(self):
+        self.items.sort(key=lambda x: x[0])
+        self.named_types.sort(key=lambda x: x[0])
+        self.internal_patches.sort(key=lambda x: x.index)
+
+
+class hexInt(int):
+    def __repr__(self):
+        return _hex(self)
+
+    def __str__(self):
+        return _hex(self)
+# # Example usage
+# if __name__ == "__main__":
+#   print("\n" * 20)
+#   _dict = DataConverter().get_aamp_hashed_dict("totk_botw_all_strings.txt")
+#   Path("tmp/tmp.json").write_text(json.dumps(_dict, indent=4))
   
-    # Example string containing hex and decimal numbers
-  input_strings = """""".splitlines()
-  if input_strings:
-    for i, input_string in enumerate(input_strings):
-        res = extract_utf8_strings(input_string)
-        if res: print(i+1, res)  # Output: ['H', 'e', 'l', 'l', 'o', '!']
+#     # Example string containing hex and decimal numbers
+#   input_strings = """""".splitlines()
+#   if input_strings:
+#     for i, input_string in enumerate(input_strings):
+#         res = extract_utf8_strings(input_string)
+#         if res: print(i+1, res)  # Output: ['H', 'e', 'l', 'l', 'o', '!']

@@ -1,21 +1,14 @@
 from dataclasses import dataclass
-import hashlib
 import io
-import os
 from pathlib import Path
 import struct
-import sys
-import zlib
 from BphclEnums import ResFileType, ResSectionType, ResTypeSectionSignature
 from BphclSmallDataclasses import *
 from Experimental import hclClothContainer, hkMemoryResourceContainer, hkaAnimationContainer
 from Havok import hkRootLevelContainer
 from Stream import ReadStream, WriteStream
-import oead
-import yaml
-import json
 from aamp_totk_hashes import AAMP_TOTK_HASHES
-from util import DataConverter, _hex
+from util import  FilteredInternalPath, _hex,AssetsFromRange, is_offset_in_ranges_list
 
 """Main classes that require specific parsing"""
 
@@ -80,7 +73,7 @@ class ResPhive():
         writer.write_u32(self.param_size)
         writer.write_u32(self.file_end_size)
         pad_size = 16 - (writer.tell() % 16)
-        if pad_size > 0:
+        if pad_size > 0 and pad_size != 16:
             writer.write(pad_size * b"\x00")
         # writer.write((self.tagfile_offset-self._size) * b"\x00")
         result = writer.getvalue()
@@ -173,26 +166,40 @@ class ResSection(ResTagfileSectionHeader):
     _encoding: str = None
 
     def to_binary(self) -> bytes:
-        result = self.size.to_binary()
-        result += self.signature.encode(self._encoding if self._encoding else "utf-8")
+        writer = WriteStream()
+        # result = self.size.to_binary()
+        writer.write_u32(0) # size placeholder
+        writer.write(self.signature.encode(self._encoding if self._encoding else "utf-8"))
+        res_section_size = 0
         match self._type:
             case ResSectionType.SDKV:
                 if self.version is not None:
-                    result += self.version.encode()
+                    writer.write(self.version.encode())
             case ResSectionType.DATA:
                 if self.data is not None:
-                    result += self.data
+                    writer.write(self.data)
             case ResSectionType.TYPE:
                 if self.sections is not None:
                     for section in self.sections:
-                        result += section.to_binary()
+                        writer.write(section.to_binary())
             case ResSectionType.INDX:
                 if self.sections is not None:
                     for section in self.sections:
-                        result += section.to_binary()
+                        writer.write(section.to_binary())
+                res_section_size -= 8 # TODO: check why
+                        # if section.padding:
+                        #     _pad_len = len(section.padding)
+                        #     assert(_pad_len % 2 == 0)
+                        #     res_section_size -= _pad_len
             case _:
                 raise ValueError(f"Invalid ResSectionType: {self._type}")
-        return result
+        res_section_size += writer.tell()
+        new_size = Size(is_chunk=self.size.is_chunk, size=res_section_size)
+        writer.seek(0, io.SEEK_SET)
+        writer.write(new_size.to_binary())
+        writer.seek(res_section_size, io.SEEK_SET)
+        assert(self.size.size == res_section_size), f"Invalid size: {res_section_size}, expected {self.size.size} for {self.signature}"
+        return writer.getvalue()
     
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResSection":
@@ -344,36 +351,37 @@ class ResTypeBody:
     attr: str = None
     
     def to_binary(self):
-        result = self.type_index.to_binary()
+        writer = WriteStream()
+        writer.write(self.type_index.to_binary())
         if self.parent_type_index is not None:
-            result += self.parent_type_index.to_binary()
+            writer.write(self.parent_type_index.to_binary())
         if self.flags is not None:
-            result += self.flags.to_binary()
+            writer.write(self.flags.to_binary())
         if self.format is not None:
-            result += self.format.to_binary()
+            writer.write(self.format.to_binary())
         if self.subtype_index is not None:
-            result += self.subtype_index.to_binary()
+            writer.write(self.subtype_index.to_binary())
         if self.version is not None:
-            result += self.version.to_binary()
+            writer.write(self.version.to_binary())
         if self.size is not None:
-            result += self.size.to_binary()
+            writer.write(self.size.to_binary())
         if self.alignment is not None:
-            result += self.alignment.to_binary()
+            writer.write(self.alignment.to_binary())
         if self.unknown_flags is not None:
-            result += self.unknown_flags.to_binary()
+            writer.write(self.unknown_flags.to_binary())
         if self.decl_count is not None:
-            result += self.decl_count.to_binary()
+            writer.write(self.decl_count.to_binary())
             if self.declarations is not None:
                 for decl in self.declarations:
-                    result += decl.to_binary()
+                    writer.write(decl.to_binary())
         if self.interface_count is not None:
-            result += self.interface_count.to_binary()
+            writer.write(self.interface_count.to_binary())
             if self.interfaces is not None:
                 for _int in self.interfaces:
-                    result += _int.to_binary()
+                    writer.write(_int.to_binary())
         if self.attr_index is not None:
-            result += self.attr_index.to_binary()
-        return result
+            writer.write(self.attr_index.to_binary())
+        return writer.getvalue()
     
     # def __repr__(self):
     #     n = "UNKNOWN" if self.
@@ -446,40 +454,42 @@ class ResTypeSection():
     padding: str = None
     
     def to_binary(self):
-        result = self.size.to_binary()
-        result += self.signature
+        writer = WriteStream()
+        writer.write_u32(0) # size placeholder
+        writer.write(self.signature)
         match ResTypeSection.signature_to_enum(self.signature):
             case ResTypeSectionSignature.TPTR:
                 if isinstance(self.pad, bytes):
-                    result += self.pad
+                    writer.write(self.pad)
                 elif isinstance(self.pad, int):
-                    result += (self.pad * b"\x00")
+                    writer.write(self.pad * b"\x00")
                 else:
                     raise ValueError(f"Invalid pad type: {type(self.pad)}")
             case ResTypeSectionSignature.TST1:
-                for string in self.strings:
-                    result += string.encode() + b"\x00"
-                # if self.signature == b"TST1":
-                #     result += b"\xFF\xFF\xFF" # terminator for TST1
+                writer.write_list_of_strings(self.strings)
             case ResTypeSectionSignature.TNA1:
-                result += self.type_count.to_binary()
-                for type in self.types:
-                    result += type.to_binary()
+                writer.write(self.type_count.to_binary())
+                for _type in self.types:
+                    writer.write(_type.to_binary())
             case ResTypeSectionSignature.TBDY:
                 if self.type_bodies:
                     for type_body in self.type_bodies:
-                        result += type_body.to_binary()
+                        writer.write(type_body.to_binary())
             case ResTypeSectionSignature.THSH:
-                result += self.hash_count.to_binary()
+                writer.write(self.hash_count.to_binary())
                 for hash in self.hashes:
-                    result += hash.to_binary()
+                    writer.write(hash.to_binary())
             case ResTypeSectionSignature.UNSUPPORTED:
                 raise ValueError(f"Unsupported ResTypeSection signature: {self.signature}")
             case _:
                 raise ValueError(f"Invalid ResTypeSection signature: {self.signature}")
         if self.padding is not None:
-            result += bytes.fromhex(self.padding)
-        return result
+            writer.write(bytes.fromhex(self.padding))
+        new_buf_size = writer.tell()
+        writer.seek(0, io.SEEK_SET)
+        new_size = Size(is_chunk=self.size.is_chunk, size=new_buf_size)
+        writer.write(new_size.to_binary())
+        return writer.getvalue()
     
     @staticmethod
     def signature_to_enum(signature: bytes) -> ResSectionType:
@@ -548,242 +558,4 @@ class ResTypeSection():
             case _:
                 pass
         
-        
-@dataclass
-class ResTagFile(ResTagfileSectionHeader):
-    sdkv_section: ResSection = None
-    data_section: ResSection = None
-    type_section: ResSection = None
-    indx_section: ResSection = None
-    root_container: hkRootLevelContainer = None
-    #Cloth sections
-    cloth_container: hclClothContainer = None
-    mem_resource_container: hkMemoryResourceContainer = None
-    animation_container: hkaAnimationContainer = None
-    #helper fields
-    type_strings: List[str] = None
-    field_strings: List[str] = None
     
-    def validate(self):
-        if self.data_section is None:
-            raise ValueError("DATA section not found")
-        if self.type_section is None:
-            raise ValueError("TYPE section not found")
-        if self.indx_section is None:
-            raise ValueError("INDX section not found")
-        if self.sdkv_section.version is not None:
-            assert(self.sdkv_section.version == '20220100'), f"Invalid version for SDKV: {self.sdkv_section.version}, expected '20220100'"
-        
-    def to_binary(self) -> bytes:
-        result = self.size.to_binary()
-        result += self.signature
-        result += self.sdkv_section.to_binary()
-        result += self.data_section.to_binary()
-        result += self.type_section.to_binary()
-        result += self.indx_section.to_binary()
-        return result
-    
-    def read_havok(self, stream: ReadStream):
-        reader = ReadStream(self.data_section._data_fixed) #if stream is None else stream
-        writer = WriteStream(self.data_section._data_fixed) #if stream is None else stream
-        reader.data_offset = self.data_section.data_offset
-        stream = ReadStream(self.data_section._data_fixed) #if stream is None else stream
-        self.root_container = hkRootLevelContainer.from_reader(reader)
-        reader.seek(self.root_container.cloth_offset - self.data_section.data_offset, io.SEEK_SET)
-        self.cloth_container = hclClothContainer.from_reader(reader)
-        reader.seek(self.root_container.resource_offset- self.data_section.data_offset, io.SEEK_SET)
-        self.mem_resource_container = hkMemoryResourceContainer.from_reader(reader, is_root=True)
-        reader.seek(self.root_container.animation_offset- self.data_section.data_offset, io.SEEK_SET)
-        self.animation_container = hkaAnimationContainer.from_reader(reader)
-        return
-        
-    def update_fields(self, stream: ReadStream):
-        self.validate()
-        self.get_helper_strings()
-        self.update_strings()
-        self.handle_relocations()
-        self.read_havok(stream)
-
-    @staticmethod
-    def from_reader(stream: ReadStream) -> "ResTagFile":
-        size = Size.from_reader(stream)
-        signature = stream._read_exact(4)
-        if signature != b"TAG0":
-            raise ValueError(f"Invalid ResTagFile signature: {signature}, expected b'TAG0' at {stream.tell():08X}")
-        res = ResTagFile(size=size, signature=signature)
-        main_offset = stream.tell() - 8
-        while stream.tell() - main_offset <= size.size - 1:
-            _offset = stream.tell()
-            res_section = ResSection.from_reader(stream)
-            match res_section.signature:
-                case "SDKV":
-                    res.sdkv_section = res_section
-                case "DATA":
-                    res.data_section = res_section
-                case "TYPE":
-                    res.type_section = res_section
-                case "INDX":
-                    res.indx_section = res_section
-                case _:
-                    pass # error handling already done
-            if res.data_section is not None and res.type_section is not None and res.indx_section is not None:
-                if stream.tell() - main_offset <= size.size - 1:
-                    raise ValueError(f"Invalid ResTagFile structure: DATA, TYPE and INDX sections found but not all of data has been read")
-        res.update_fields(stream)
-        return res
-
-    # Getters
-    def get_type_section(self, section_type: ResTypeSectionSignature|bytes) -> tuple[int, ResTypeSection]:
-        for i, section in enumerate(self.type_section.sections):
-            if isinstance(section, ResTypeSection):
-                if isinstance(section_type, ResTypeSectionSignature):
-                    _check = ResTypeSection.signature_to_enum(section.signature) == section_type
-                else:
-                    _check = section.signature == section_type
-                if _check:
-                    return (i, section)
-        raise ValueError(f"Section {section_type} not found in TYPE section")
-    
-    def get_tst1_section(self):
-        return self.get_type_section(b"TST1")
-    
-    def get_fst1_section(self):
-        return self.get_type_section(b"FST1")
-        
-    def get_helper_strings(self):
-        _, tst1_section = self.get_tst1_section()
-        self.type_strings = tst1_section.strings
-        _, fst1_section = self.get_fst1_section()
-        self.field_strings = fst1_section.strings
-    
-    def get_indx_section_by_signature(self, signature: bytes) -> tuple[int, ResIndexSection]:
-        for i, section in enumerate(self.indx_section.sections):
-            if isinstance(section, ResIndexSection) and section.signature == signature:
-                return (i, section)
-        raise ValueError(f"Subsection {signature} not found in TYPE section")
-    
-    def get_item_section(self):
-        return self.get_indx_section_by_signature(b"ITEM")
-
-    def get_ptch_section(self):
-        return self.get_indx_section_by_signature(b"PTCH")
-    
-    def update_strings(self):
-        # tst1_section: ResTypeSection = next((s for s in self.type_section.sections if ResTypeSection.signature_to_enum(s.signature)==ResTypeSectionSignature.TST1), None)
-        _, tst1_section = self.get_tst1_section()
-        for i, section in enumerate(self.type_section.sections):
-            if not isinstance(section, ResTypeSection):
-                raise ValueError(f"Section {i} inside TYPE is not a ResTypeSection")
-            self.type_section.sections[i].update_string_names(tst1_section)
-    
-    def handle_relocations(self):
-        ptch_section_index, ptch_section = self.get_ptch_section()
-        type_name_index, type_name_section = self.get_type_section(b"TNA1")
-        item_section_index, item_section = self.get_item_section()
-        data_stream_reader = ReadStream(self.data_section.data)
-        data_stream_writer = WriteStream(self.data_section.data)
-        data_stream_writer.seek(0, io.SEEK_SET)
-        def inplace_fixup(offset: int, type_index: int): #u32, u32=
-            data_stream_reader.seek(offset, io.SEEK_SET)
-            index = data_stream_reader.read_u32()
-            _item = item_section.items[index]
-            
-            if type_index > 0:
-                _named_type = type_name_section.types[type_index-1]
-                _name = _named_type.name
-                if not _name:
-                    raise ValueError(f"Update strings fields for type_name_section: {repr(_name)}")
-                if _name.startswith(("hkArray",)):
-                    assert _named_type.index._byte0 == 1, f"Invalid type name: {_name}"
-                    data_stream_writer.seek(offset + 8, io.SEEK_SET)
-                    data_stream_writer.write_s32(_item.count)
-            addr = _item.data_offset - offset # u32 as u64
-            data_stream_writer.seek(offset, io.SEEK_SET)
-            data_stream_writer.write_64bit_int(addr) # ptr
-        
-        for i, internal_patch in enumerate(ptch_section.internal_patches):
-            for j, _offset in enumerate(internal_patch.offsets):
-                inplace_fixup(_offset, internal_patch.type_index)
-        data_stream_writer.seek(0, io.SEEK_SET)
-        self.data_section._data_fixed = data_stream_writer.read()
-        # self.revert_relocations()
-    
-    def revert_relocations(self):
-        #TODO: Fix it or just store a backup of original data
-        ptch_section_index, ptch_section = self.get_ptch_section()
-        type_name_index, type_name_section = self.get_type_section(b"TNA1")
-        item_section_index, item_section = self.get_item_section()
-
-        fixed_data = self.data_section._data_fixed
-        reader = ReadStream(fixed_data)
-        writer = WriteStream(bytearray(fixed_data))  # create mutable copy
-        writer.seek(0)
-
-        def undo_inplace_fixup(offset: int, type_index: int):
-            # Read patched pointer
-            reader.seek(offset)
-            relative_ptr = reader.read_64bit_int()
-            actual_data_offset = offset + relative_ptr
-
-            # Find item with matching data_offset
-            try:
-                index = next(i for i, item in enumerate(item_section.items)
-                            if item.data_offset == actual_data_offset)
-            except StopIteration:
-                raise ValueError(f"Could not recover index for offset {offset:08X}, pointer {relative_ptr} -> {actual_data_offset}")
-
-            # Write back original index
-            writer.seek(offset)
-            writer.write_u32(index)
-
-            # Optional: clear hkArray count
-            if type_index > 0:
-                named_type = type_name_section.types[type_index - 1]
-                if named_type.name and named_type.name.startswith("hkArray") and named_type.index._byte0 == 1:
-                    writer.seek(offset + 8)
-                    writer.write_u32(0)  # This value isn't reliable to recover, so we clear it
-
-        for patch in ptch_section.internal_patches:
-            for offset in patch.offsets:
-                undo_inplace_fixup(offset, patch.type_index)
-
-        writer.seek(0)
-        new_data = writer.read()
-        if new_data == self.data_section.data:
-            print("Recovered data")
-        else:
-            print("Failed to recover data")
-        sys,exit()
-    
-    
-    def revert_handle_relocations(self):
-        ptch_section_index, ptch_section = self.get_ptch_section()
-        type_name_index, type_name_section = self.get_type_section(b"TNA1")
-        item_section_index, item_section = self.get_item_section()
-        new_data = bytes(self.data_section._data_fixed)
-        data_stream_reader = ReadStream(new_data)
-        data_stream_writer = WriteStream(new_data)
-        data_stream_writer.seek(0, io.SEEK_SET)
-        
-        def revert_inplace_fixup(offset: int, type_index: int): #u32, u32=
-            data_stream_reader.seek(offset, io.SEEK_SET)
-            index = data_stream_reader.read_u32()
-            _item = item_section.items[index]
-            
-            if type_index > 0:
-                _named_type = type_name_section.types[type_index-1]
-                _name = _named_type.name
-                if not _name:
-                    raise ValueError(f"Update strings fields for type_name_section: {repr(_name)}")
-                if _name.startswith(("hkArray",)):
-                    assert _named_type.index._byte0 == 1, f"Invalid type name: {_name}"
-                    data_stream_writer.seek(offset + 8, io.SEEK_SET)
-                    data_stream_writer.write_s32(_item.count)
-            addr = _item.data_offset - offset # u32 as u64
-            data_stream_writer.seek(offset, io.SEEK_SET)
-            data_stream_writer.write_64bit_int(addr) # ptr
-        
-        for i, internal_patch in enumerate(ptch_section.internal_patches):
-            for j, _offset in enumerate(internal_patch.offsets):
-                revert_inplace_fixup(_offset, internal_patch.type_index)
-        

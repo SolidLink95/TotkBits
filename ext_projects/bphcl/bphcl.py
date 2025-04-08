@@ -15,7 +15,8 @@ import yaml
 import json
 from aamp_totk_hashes import AAMP_TOTK_HASHES
 from util import DataConverter, _hex
-from BphclMainDataclasses import ResPhive, ResTagFile
+from BphclMainDataclasses import ResPhive
+from BphclTagFile import ResTagFile
 
 class Bphcl():
     def __init__(self):
@@ -23,6 +24,8 @@ class Bphcl():
         self.tag_file:ResTagFile = None
         self.cloth_section = None
         self.aamp_hashes = AAMP_TOTK_HASHES
+        
+        self._converter = DataConverter()
     
     # def remove_even_more_entries
     
@@ -40,16 +43,26 @@ class Bphcl():
         yaml_dict = yaml.safe_load(yaml_str)
         return yaml_dict
     
+    def from_dict(self, _dict: dict) -> None:
+        """DOES NOT WORK for nested dataclasses"""
+        # TODO: implement from_dict for all dataclasses -_-
+        header = ResPhive(**self._converter.dict_to_dataclass( _dict["header"]))
+        tag_file = ResTagFile(**self._converter.dict_to_dataclass( _dict["tag_file"]))
+
+        self._converter.compare_dataclasses(self.file, header)
+        # print(tag_file == self.tag_file)
+    
     def to_dict(self) -> dict:
         self.validate()
-        header = DataConverter.dataclass_to_dict(self.file)
-        tag_file = DataConverter.dataclass_to_dict(self.tag_file)
+        header = self._converter.dataclass_to_dict(self.file)
+        tag_file = self._converter.dataclass_to_dict(self.tag_file)
         cloth_section = self.cloth_section_to_dict()
         result = {
             "header": header,
             "tag_file": tag_file,
             "cloth_section": cloth_section,
         }
+        # result = self._converter.convert_offsets_to_hex(result)
         return result
     
     def to_yaml(self) -> str:
@@ -73,10 +86,11 @@ class Bphcl():
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
     
     def to_binary(self) -> bytes:
-        result = self.file.to_binary()
-        result += self.tag_file.to_binary()
-        result += self.cloth_section_to_binary()
-        return result
+        stream = WriteStream()
+        stream.write(self.file.to_binary())
+        stream.write(self.tag_file.to_binary())
+        stream.write(self.cloth_section_to_binary())
+        return stream.getvalue()
     
     def validate(self):
         if self.file is None:
@@ -106,7 +120,7 @@ class Bphcl():
         bphcl.tag_file = ResTagFile.from_reader(stream)
         aamp_signature = stream._read_exact(4)
         if aamp_signature != b"AAMP":
-            raise ValueError(f"Invalid AAMP signature: {aamp_signature}, expected b'AAmp'")
+            raise ValueError(f"Invalid AAMP signature: {aamp_signature}, expected b'AAMP'")
         stream.seek(-4, io.SEEK_CUR)
         bphcl.cloth_section = oead.aamp.ParameterIO.from_binary(stream.read())
         bphcl.tag_file.update_strings()
