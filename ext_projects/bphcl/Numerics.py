@@ -2,11 +2,11 @@
 from dataclasses import dataclass
 import struct
 from Stream import ReadStream, WriteStream
-from util import _hex
+from util import BphclBaseObject, _hex
 
 
 @dataclass
-class UIntBase:
+class UIntBase(BphclBaseObject):
     val: int
     _size: int = 4  # default, override in subclasses
     _sign: str = ""
@@ -46,7 +46,7 @@ class u8(UIntBase):
     
     
 @dataclass
-class BOOL:
+class BOOL(BphclBaseObject):
     val: bool
 
     def __repr__(self):
@@ -60,7 +60,7 @@ class BOOL:
     
     
 @dataclass
-class FLOAT:
+class FLOAT(BphclBaseObject):
     val: float
     
     def __repr__(self):

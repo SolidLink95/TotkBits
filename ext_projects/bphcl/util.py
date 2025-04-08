@@ -7,6 +7,10 @@ import re
 import base64
 from typing import Any, List
 
+@dataclass
+class BphclBaseObject():
+    pass
+
 class DataConverter:
     def __init__(self):
         self.MAX_STR_LEN = 90000000  # Maximum allowed string length for hex/utf8 decoded data

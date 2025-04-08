@@ -14,7 +14,7 @@ from util import  FilteredInternalPath, _hex,AssetsFromRange, is_offset_in_range
 
 
 @dataclass
-class ResPhive():
+class ResPhive(BphclBaseObject):
     magic: bytes
     reserve0: int
     reserve1: int
@@ -246,7 +246,7 @@ class ResSection(ResTagfileSectionHeader):
     
     
 @dataclass 
-class ResNamedType():
+class ResNamedType(BphclBaseObject):
     index: VarUInt
     template_count: VarUInt
     templates: List[ResTypeTemplate] = None
@@ -279,7 +279,7 @@ class ResNamedType():
         
 
 @dataclass
-class ResTypeBodyInterface():
+class ResTypeBodyInterface(BphclBaseObject):
     type_index: VarUInt
     flags: VarUInt
     
@@ -296,7 +296,7 @@ class ResTypeBodyInterface():
 
 
 @dataclass
-class ResTypeBodyDeclaration():
+class ResTypeBodyDeclaration(BphclBaseObject):
     name_index: VarUInt
     flags: VarUInt 
     offset: VarUInt 
@@ -333,7 +333,7 @@ class ResTypeBodyDeclaration():
     
 
 @dataclass
-class ResTypeBody:
+class ResTypeBody(BphclBaseObject):
     type_index: VarUInt
     parent_type_index: VarUInt = None
     flags: VarUInt = None
@@ -435,7 +435,7 @@ class ResTypeBody:
 
 
 @dataclass
-class ResTypeSection():
+class ResTypeSection(BphclBaseObject):
     size: Size
     signature: bytes
     #TPTR | TPAD

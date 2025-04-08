@@ -5,11 +5,11 @@ from Havok import T, Ptr
 from Stream import ReadStream, WriteStream
 from typing import Any, List, Optional, Type
 
-from util import _hex, hexInt
+from util import BphclBaseObject, _hex, hexInt
 
 
 @dataclass
-class Size():
+class Size(BphclBaseObject):
     is_chunk: int       # 2-bit
     size: int           # 30-bit
     _endian: str = "big"
@@ -33,7 +33,7 @@ class Size():
         
 
 @dataclass
-class ResTagfileSectionHeader():
+class ResTagfileSectionHeader(BphclBaseObject):
     size: Size
     signature: bytes
 
@@ -58,7 +58,7 @@ def from_reader(stream: ReadStream) -> "ResTagfileSectionHeader":
     return ResTagfileSectionHeader(size=size, signature=signature)
 
 @dataclass
-class VarUInt():
+class VarUInt(BphclBaseObject):
     val: str # representation of the value in hex string format, for json
     _byte0: int #u8
     _bytes: bytes = None
@@ -113,7 +113,7 @@ class VarUInt():
         return VarUInt(_byte0=_byte0, _bytes=_bytes, _size=_size, _value=_value, val=val)
 
 @dataclass 
-class ResTypeTemplate():
+class ResTypeTemplate(BphclBaseObject):
     index: VarUInt
     value: VarUInt
     name: str = "" # to be filled in later
@@ -129,7 +129,7 @@ class ResTypeTemplate():
         
     
 @dataclass
-class ResTypeHash():
+class ResTypeHash(BphclBaseObject):
     type_index: VarUInt
     hash: int # u32
     
@@ -147,7 +147,7 @@ class ResTypeHash():
     
     
 @dataclass
-class ResItem:
+class ResItem(BphclBaseObject):
     flags: int # u16
     type_index: int # u16
     data_offset: int # u32
@@ -175,7 +175,7 @@ class ResItem:
 
 
 @dataclass
-class ResPatch:
+class ResPatch(BphclBaseObject):
     type_index: int # u32
     count: int # u32
     offsets: list[int] # list[u32]
@@ -212,7 +212,7 @@ class ResPatch:
 
 
 @dataclass
-class hkObjectBase:
+class hkObjectBase(BphclBaseObject):
     _vft_reserve: int # u64
 
     @classmethod
@@ -292,7 +292,7 @@ class hclAction(hkReferencedObject):
 
 
 @dataclass
-class hclVirtualCollisionPointsData__TriangleFanSection:
+class hclVirtualCollisionPointsData__TriangleFanSection(BphclBaseObject):
     m_oppositeRealParticleIndices: List[int] # list[u16] len=2
     m_barycentricDictionaryIndex: int # u16
     
@@ -305,7 +305,7 @@ class hclVirtualCollisionPointsData__TriangleFanSection:
   
 
 @dataclass
-class hkRefPtr:
+class hkRefPtr(BphclBaseObject):
     _m_data_type: Optional[Type] # Type of the element in the list
     _offset: int #u64
     m_ptr: Ptr #u64

@@ -4,13 +4,13 @@ import uuid
 from Stream import ReadStream, WriteStream
 from dataclasses import dataclass, field, fields, is_dataclass
 
-from util import _hex, hexInt
+from util import BphclBaseObject, _hex, hexInt
 
 T = TypeVar('T')  # Generic type variable for element type
 
 
 @dataclass
-class hkInt: #Int
+class hkInt(BphclBaseObject): #Int
     value: int #s32
     offset: int
     
@@ -34,7 +34,7 @@ class hkInt: #Int
 
 
 @dataclass
-class Ptr:
+class Ptr(BphclBaseObject):
     value:int #u64 if > 0 else s64
     offset:int #u64 stream.tell()
     
@@ -62,7 +62,7 @@ class Ptr:
         stream.write(self.to_binary())
 
 @dataclass
-class hkRefVariant:
+class hkRefVariant(BphclBaseObject):
     m_ptr: Ptr
     _offset: int 
     
@@ -81,7 +81,7 @@ class hkRefVariant:
 
 
 @dataclass
-class hkStringPtr: # size 8 bytes
+class hkStringPtr(BphclBaseObject): # size 8 bytes
     _offset: int #u64
     m_stringAndFlag: Ptr
     _str: str = ''
@@ -142,7 +142,7 @@ class hkStringPtr: # size 8 bytes
 ]
 """
 @dataclass
-class hkRootLevelContainer__NamedVariant:
+class hkRootLevelContainer__NamedVariant(BphclBaseObject):
     m_name: hkStringPtr    
     m_className: hkStringPtr    
     m_variant: hkRefVariant
@@ -166,7 +166,7 @@ class hkArrayList(List):
     pass
 
 @dataclass
-class hkArray:
+class hkArray(BphclBaseObject):
     _offset: int #u64
     offset: Ptr # 8 bytes
     m_size: hkInt # 4 bytes
@@ -282,7 +282,7 @@ class hkArray:
         writer.write(self.to_binary())
     
 @dataclass
-class hkRootLevelContainer:
+class hkRootLevelContainer(BphclBaseObject):
     m_namedVariants: hkArray = field(default_factory=list)
     cloth_offset: int = 0 # u128
     resource_offset: int = 0# u128

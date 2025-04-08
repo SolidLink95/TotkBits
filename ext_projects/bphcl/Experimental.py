@@ -4,12 +4,12 @@ from dataclasses import dataclass, field
 from BphclEnums import *
 from BphclSmallDataclasses import hkRefPtr,  hclVirtualCollisionPointsData__TriangleFanSection, hkReferencedObject 
 from Havok import hkArray,hkStringPtr,hkRefVariant
-from util import _hex, hexInt
+from util import _hex, hexInt, BphclBaseObject
 from Numerics import *
 
 
 @dataclass
-class hclSimClothData__OverridableSimulationInfo:
+class hclSimClothData__OverridableSimulationInfo(BphclBaseObject):
     m_gravity: "hkVector4f"
     m_globalDampingPerSecond: int # float
 
@@ -36,12 +36,7 @@ class hclSimClothData__OverridableSimulationInfo:
         stream.write_float(self.m_globalDampingPerSecond)
         stream.write(0xc * b"\x00")
         return
-
-
-
-
-
-
+    
     def to_stream(self, stream: WriteStream):
         stream._writer_align_to(0x10)
         stream.write_float(self.m_gravity)
@@ -50,7 +45,7 @@ class hclSimClothData__OverridableSimulationInfo:
         return
 
 @dataclass
-class hclSimClothData__OverridableSimulationInfo:
+class hclSimClothData__OverridableSimulationInfo(BphclBaseObject):
     m_gravity: "hkVector4f"
     m_globalDampingPerSecond: int # float
 
@@ -81,7 +76,7 @@ class hclSimClothData__OverridableSimulationInfo:
 
 
 @dataclass
-class Vector2f: # %SIMPLE%
+class Vector2f(BphclBaseObject): # %SIMPLE%
     x: int # float
     y: int # float
 
@@ -110,37 +105,7 @@ class Vector2f: # %SIMPLE%
 
 
 @dataclass
-class Vector2f: # %SIMPLE%
-    x: int # float
-    y: int # float
-
-    @classmethod
-    def from_reader(cls, stream: ReadStream) -> "Vector2f":
-        x = stream.read_float()
-        y = stream.read_float()
-        return Vector2f(x=x, y=y)
-
-    def to_binary(self) -> bytes:
-        stream = WriteStream(b"")
-        stream.write_float(self.x)
-        stream.write_float(self.y)
-        return stream.getvalue()
-
-    def write(self, stream: WriteStream):
-        stream.write(self.to_binary())
-
-
-
-    
-    
-    def to_stream(self, stream: WriteStream):
-        stream.write_float(self.x)
-        stream.write_float(self.y)
-        return
-
-
-@dataclass
-class Vector2f: # %SIMPLE%
+class Vector2f(BphclBaseObject): # %SIMPLE%
     x: int # float
     y: int # float
 
@@ -170,7 +135,37 @@ class Vector2f: # %SIMPLE%
 
 
 @dataclass
-class hclSimClothData__OverridableSimulationInfo:
+class Vector2f(BphclBaseObject): # %SIMPLE%
+    x: int # float
+    y: int # float
+
+    @classmethod
+    def from_reader(cls, stream: ReadStream) -> "Vector2f":
+        x = stream.read_float()
+        y = stream.read_float()
+        return Vector2f(x=x, y=y)
+
+    def to_binary(self) -> bytes:
+        stream = WriteStream(b"")
+        stream.write_float(self.x)
+        stream.write_float(self.y)
+        return stream.getvalue()
+
+    def write(self, stream: WriteStream):
+        stream.write(self.to_binary())
+
+
+
+    
+    
+    def to_stream(self, stream: WriteStream):
+        stream.write_float(self.x)
+        stream.write_float(self.y)
+        return
+
+
+@dataclass
+class hclSimClothData__OverridableSimulationInfo(BphclBaseObject):
     m_gravity: "hkVector4f"
     m_globalDampingPerSecond: int # float
 
@@ -202,7 +197,7 @@ class hclSimClothData__OverridableSimulationInfo:
 
 
 @dataclass
-class Quatf:
+class Quatf(BphclBaseObject):
     a: int # float
     b: int # float
     c: int # float
@@ -239,7 +234,7 @@ class Quatf:
 
 
 @dataclass
-class hkBitFieldStorage:
+class hkBitFieldStorage(BphclBaseObject):
     m_words: hkArray # hkArray[u32]
     m_numBits: int # s32
 
@@ -268,7 +263,7 @@ class hkBitFieldStorage:
 
 
 @dataclass
-class hkBitField:
+class hkBitField(BphclBaseObject):
     m_storage: hkBitFieldStorage
 
     @classmethod
@@ -293,7 +288,7 @@ class hkBitField:
 
 
 @dataclass
-class hkRootLevelContainer__NamedVariant:
+class hkRootLevelContainer__NamedVariant(BphclBaseObject):
     m_name: hkStringPtr
     m_className: hkStringPtr
     m_variant: hkRefVariant
@@ -328,7 +323,7 @@ class hkRootLevelContainer__NamedVariant:
 
 
 @dataclass
-class hkRootLevelContainer:
+class hkRootLevelContainer(BphclBaseObject):
     m_namedVariants: hkArray # hkArray[hkRootLevelContainer__NamedVariant]
 
     @classmethod
@@ -357,7 +352,7 @@ class hkRootLevelContainer:
 
 
 @dataclass
-class hkVector4f:
+class hkVector4f(BphclBaseObject):
     m_x: int # float
     m_y: int # float
     m_z: int # float
@@ -394,7 +389,7 @@ class hkVector4f:
 
 
 @dataclass
-class hkQuaternionf:
+class hkQuaternionf(BphclBaseObject):
     m_vec: hkVector4f
 
     @classmethod
@@ -421,7 +416,7 @@ class hkQuaternionf:
 
 
 @dataclass
-class hkRotationf:
+class hkRotationf(BphclBaseObject):
     m_col0: hkVector4f
     m_col1: hkVector4f
     m_col2: hkVector4f
@@ -454,7 +449,7 @@ class hkRotationf:
 
 
 @dataclass
-class hkMatrix4f:
+class hkMatrix4f(BphclBaseObject):
     m_col0: hkVector4f
     m_col1: hkVector4f
     m_col2: hkVector4f
@@ -493,7 +488,7 @@ class hkMatrix4f:
 
 
 @dataclass
-class hkTransform:
+class hkTransform(BphclBaseObject):
     m_rotation: hkRotationf
     m_translation: hkVector4f
 
@@ -518,7 +513,7 @@ class hkTransform:
 
 
 @dataclass
-class hkQsTransformf:
+class hkQsTransformf(BphclBaseObject):
     m_translation: hkVector4f
     m_rotation: hkQuaternionf
     m_scale: hkVector4f
@@ -578,7 +573,7 @@ class hclShape(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         stream.write_s32(self.m_type)
         return
 
@@ -642,7 +637,7 @@ class hclCollidable(hkReferencedObject):
     
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self._offsets_range.to_stream(stream)
         self._offset.to_stream(stream)
         self.m_transform.to_stream(stream)
@@ -719,7 +714,7 @@ class hclCollidable(hkReferencedObject):
     
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self._offsets_range.to_stream(stream)
         self._offset.to_stream(stream)
         self.m_transform.to_stream(stream)
@@ -737,7 +732,7 @@ class hclCollidable(hkReferencedObject):
 
 
 @dataclass
-class hclSimClothData__ParticleData:
+class hclSimClothData__ParticleData(BphclBaseObject):
     m_mass: int # float
     m_invMass: int # float
     m_radius: int # float
@@ -828,7 +823,7 @@ class hclConstraintSet(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_name.to_stream(stream)
         stream.write_u32(self.m_constraintId)
         stream.write_u32(self.m_type)
@@ -836,7 +831,7 @@ class hclConstraintSet(hkReferencedObject):
 
 
 @dataclass
-class hclSimClothData__CollidableTransformMap:
+class hclSimClothData__CollidableTransformMap(BphclBaseObject):
     m_transformSetIndex: int # u32
     m_transformIndices: hkArray # hkArray[u32]
     m_offsets: hkArray # hkArray[hkMatrix4f]
@@ -897,14 +892,14 @@ class hclAction(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         stream.write_bool(self.m_active)
         stream.write_bool(self.m_registeredWithWorldStepping)
         return
 
 
 @dataclass
-class hclSimClothData__TransferMotionData:
+class hclSimClothData__TransferMotionData(BphclBaseObject):
     m_transformSetIndex: int # u32
     m_transformIndex: int # u32
     m_transferTranslationMotion: bool
@@ -979,7 +974,7 @@ class hclSimClothData__TransferMotionData:
 
 
 @dataclass
-class hclSimClothData__LandscapeCollisionData:
+class hclSimClothData__LandscapeCollisionData(BphclBaseObject):
     m_landscapeRadius: int # float
     m_enableStuckParticleDetection: bool
     m_stuckParticlesStretchFactorSq: int # float
@@ -1034,7 +1029,7 @@ class hclSimClothData__LandscapeCollisionData:
 
 
 @dataclass
-class hclSimClothData__CollidablePinchingData:
+class hclSimClothData__CollidablePinchingData(BphclBaseObject):
     m_pinchDetectionEnabled: bool
     m_pinchDetectionPriority: int # u8
     m_pinchDetectionRadius: int # float
@@ -1071,7 +1066,7 @@ class hclSimClothData__CollidablePinchingData:
 
 
 @dataclass
-class hclVirtualCollisionPointsData__Block:
+class hclVirtualCollisionPointsData__Block(BphclBaseObject):
     m_safeDisplacementRadius: int # float
     m_startingVCPIndex: int # u16
     m_numVCPs: int # u8
@@ -1106,7 +1101,7 @@ class hclVirtualCollisionPointsData__Block:
 
 
 @dataclass
-class hclVirtualCollisionPointsData__BarycentricDictionaryEntry:
+class hclVirtualCollisionPointsData__BarycentricDictionaryEntry(BphclBaseObject):
     m_startingBarycentricIndex: int # u16
     m_numBarycentrics: int # u8
 
@@ -1137,7 +1132,7 @@ class hclVirtualCollisionPointsData__BarycentricDictionaryEntry:
 
 
 @dataclass
-class hclVirtualCollisionPointsData__TriangleFan:
+class hclVirtualCollisionPointsData__TriangleFan(BphclBaseObject):
     m_realParticleIndex: int # u16
     m_vcpStartIndex: int # u16
     m_numTriangles: int # u8
@@ -1172,7 +1167,7 @@ class hclVirtualCollisionPointsData__TriangleFan:
 
 
 @dataclass
-class hclVirtualCollisionPointsData__TriangleFanLandscape:
+class hclVirtualCollisionPointsData__TriangleFanLandscape(BphclBaseObject):
     m_realParticleIndex: int # u16
     m_triangleStartIndex: int # u16
     m_vcpStartIndex: int # u16
@@ -1211,7 +1206,7 @@ class hclVirtualCollisionPointsData__TriangleFanLandscape:
 
 
 @dataclass
-class hclVirtualCollisionPointsData__EdgeFanSection:
+class hclVirtualCollisionPointsData__EdgeFanSection(BphclBaseObject):
     m_oppositeRealParticleIndex: int # u16
     m_barycentricDictionaryIndex: int # u16
 
@@ -1242,7 +1237,7 @@ class hclVirtualCollisionPointsData__EdgeFanSection:
 
 
 @dataclass
-class hclVirtualCollisionPointsData__EdgeFan:
+class hclVirtualCollisionPointsData__EdgeFan(BphclBaseObject):
     m_realParticleIndex: int # u16
     m_edgeStartIndex: int # u16
     m_numEdges: int # u8
@@ -1277,7 +1272,7 @@ class hclVirtualCollisionPointsData__EdgeFan:
 
 
 @dataclass
-class hclVirtualCollisionPointsData__EdgeFanLandscape:
+class hclVirtualCollisionPointsData__EdgeFanLandscape(BphclBaseObject):
     m_realParticleIndex: int # u16
     m_edgeStartIndex: int # u16
     m_vcpStartIndex: int # u16
@@ -1316,7 +1311,7 @@ class hclVirtualCollisionPointsData__EdgeFanLandscape:
 
 
 @dataclass
-class hclVirtualCollisionPointsData__BarycentricPair:
+class hclVirtualCollisionPointsData__BarycentricPair(BphclBaseObject):
     m_u: int # float
     m_v: int # float
 
@@ -1347,7 +1342,7 @@ class hclVirtualCollisionPointsData__BarycentricPair:
 
 
 @dataclass
-class hclVirtualCollisionPointsData:
+class hclVirtualCollisionPointsData(BphclBaseObject):
     m_blocks: hkArray # hkArray[hclVirtualCollisionPointsData__Block]
     m_numVCPoints: int # u16
     m_landscapeParticlesBlockIndex: hkArray # hkArray[u16]
@@ -1563,7 +1558,7 @@ class hclSimClothData(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_name.to_stream(stream)
         self.m_simulationInfo.to_stream(stream)
         self.m_particleDatas.to_stream(stream)
@@ -1598,7 +1593,7 @@ class hclSimClothData(hkReferencedObject):
 
 
 @dataclass
-class hclBufferLayout__BufferElement:
+class hclBufferLayout__BufferElement(BphclBaseObject):
     m_vectorConversion: hclRuntimeConversionInfo__VectorConversion
     m_vectorSize: int # u8
     m_slotId: int # u8
@@ -1635,7 +1630,7 @@ class hclBufferLayout__BufferElement:
 
 
 @dataclass
-class hclBufferLayout__Slot:
+class hclBufferLayout__Slot(BphclBaseObject):
     m_flags: hclBufferLayout__SlotFlags
     m_stride: int # u8
 
@@ -1664,7 +1659,7 @@ class hclBufferLayout__Slot:
 
 
 @dataclass
-class hclBufferLayout:
+class hclBufferLayout(BphclBaseObject):
     m_elementsLayout: hclBufferLayout__BufferElement
     m_slots: hclBufferLayout__Slot
     m_numSlots: int # u8
@@ -1741,7 +1736,7 @@ class hclBufferDefinition(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_meshName.to_stream(stream)
         self.m_bufferName.to_stream(stream)
         stream.write_s32(self.m_type)
@@ -1781,7 +1776,7 @@ class hclTransformSetDefinition(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_name.to_stream(stream)
         stream.write_s32(self.m_type)
         stream.write_u32(self.m_numTransforms)
@@ -1789,7 +1784,7 @@ class hclTransformSetDefinition(hkReferencedObject):
 
 
 @dataclass
-class hclBufferUsage:
+class hclBufferUsage(BphclBaseObject):
     m_perComponentFlags: bytes # size: 4
     m_trianglesRead: bool
 
@@ -1818,7 +1813,7 @@ class hclBufferUsage:
 
 
 @dataclass
-class hclClothState__BufferAccess:
+class hclClothState__BufferAccess(BphclBaseObject):
     m_bufferIndex: int # u32
     m_bufferUsage: hclBufferUsage
     m_shadowBufferIndex: int # u32
@@ -1855,7 +1850,7 @@ class hclClothState__BufferAccess:
 
 
 @dataclass
-class hclTransformSetUsage__TransformTracker:
+class hclTransformSetUsage__TransformTracker(BphclBaseObject):
     m_read: hkBitField
     m_readBeforeWrite: hkBitField
     m_written: hkBitField
@@ -1888,7 +1883,7 @@ class hclTransformSetUsage__TransformTracker:
 
 
 @dataclass
-class hclTransformSetUsage:
+class hclTransformSetUsage(BphclBaseObject):
     m_perComponentFlags: bytes # size: 2
     m_perComponentTransformTrackers: hkArray # hkArray[hclTransformSetUsage__TransformTracker]
 
@@ -1919,7 +1914,7 @@ class hclTransformSetUsage:
 
 
 @dataclass
-class hclClothState__TransformSetAccess:
+class hclClothState__TransformSetAccess(BphclBaseObject):
     m_transformSetIndex: int # u32
     m_transformSetUsage: hclTransformSetUsage
 
@@ -1982,7 +1977,7 @@ class hclOperator(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_name.to_stream(stream)
         stream.write_u32(self.m_operatorID)
         stream.write_u32(self.m_type)
@@ -1992,7 +1987,7 @@ class hclOperator(hkReferencedObject):
 
 
 @dataclass
-class hclStateDependencyGraph__Branch:
+class hclStateDependencyGraph__Branch(BphclBaseObject):
     m_branchId: int # s32
     m_stateOperatorIndices: hkArray # hkArray[s32]
     m_parentBranches: hkArray # hkArray[s32]
@@ -2063,7 +2058,7 @@ class hclStateDependencyGraph(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_branches.to_stream(stream)
         self.m_rootBranchIds.to_stream(stream)
         self.m_children.to_stream(stream)
@@ -2110,7 +2105,7 @@ class hclClothState(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_name.to_stream(stream)
         self.m_operators.to_stream(stream)
         self.m_usedBuffers.to_stream(stream)
@@ -2121,7 +2116,7 @@ class hclClothState(hkReferencedObject):
 
 
 @dataclass
-class hclStateTransition__SimClothTransitionData:
+class hclStateTransition__SimClothTransitionData(BphclBaseObject):
     m_isSimulated: bool
     m_transitionConstraints: hkArray # hkArray[u32]
     m_transitionType: int # u32
@@ -2154,7 +2149,7 @@ class hclStateTransition__SimClothTransitionData:
 
 
 @dataclass
-class hclStateTransition__BlendOpTransitionData:
+class hclStateTransition__BlendOpTransitionData(BphclBaseObject):
     m_bufferASimCloths: hkArray # hkArray[s32]
     m_bufferBSimCloths: hkArray # hkArray[s32]
     m_transitionType: hclStateTransition__TransitionType
@@ -2197,7 +2192,7 @@ class hclStateTransition__BlendOpTransitionData:
 
 
 @dataclass
-class hclStateTransition__StateTransitionData:
+class hclStateTransition__StateTransitionData(BphclBaseObject):
     m_simClothTransitionData: hkArray # hkArray[hclStateTransition__SimClothTransitionData]
     m_blendOpTransitionData: hkArray # hkArray[hclStateTransition__BlendOpTransitionData]
     m_simulatedState: bool
@@ -2265,7 +2260,7 @@ class hclStateTransition(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_name.to_stream(stream)
         self.m_stateIds.to_stream(stream)
         self.m_stateTransitionData.to_stream(stream)
@@ -2331,7 +2326,7 @@ class hclClothData(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_name.to_stream(stream)
         self.m_simClothDatas.to_stream(stream)
         self.m_bufferDefinitions.to_stream(stream)
@@ -2375,14 +2370,14 @@ class hclClothContainer(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_collidables.to_stream(stream)
         self.m_clothDatas.to_stream(stream)
         return
 
 
 @dataclass
-class hkMemoryResourceHandle__ExternalLink:
+class hkMemoryResourceHandle__ExternalLink(BphclBaseObject):
     m_memberName: hkStringPtr
     m_externalId: hkStringPtr
 
@@ -2439,7 +2434,7 @@ class hkMemoryResourceHandle(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_variant.to_stream(stream)
         self.m_name.to_stream(stream)
         self.m_references.to_stream(stream)
@@ -2478,7 +2473,7 @@ class hkMemoryResourceContainer(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_name.to_stream(stream)
         self.m_parent.to_stream(stream)
         self.m_resourceHandles.to_stream(stream)
@@ -2487,7 +2482,7 @@ class hkMemoryResourceContainer(hkReferencedObject):
 
 
 @dataclass
-class hkaBone:
+class hkaBone(BphclBaseObject):
     m_name: hkStringPtr
     m_lockTranslation: bool
 
@@ -2535,12 +2530,12 @@ class hkLocalFrame(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         return
 
 
 @dataclass
-class hkaSkeleton__LocalFrameOnBone:
+class hkaSkeleton__LocalFrameOnBone(BphclBaseObject):
     m_localFrame: hkRefPtr # hkRefPtr[hkLocalFrame]
     m_boneIndex: int # u16
 
@@ -2569,7 +2564,7 @@ class hkaSkeleton__LocalFrameOnBone:
 
 
 @dataclass
-class hkaSkeleton__Partition:
+class hkaSkeleton__Partition(BphclBaseObject):
     m_name: hkStringPtr
     m_startBoneIndex: int # u16
     m_numBones: int # u16
@@ -2645,7 +2640,7 @@ class hkaSkeleton(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_name.to_stream(stream)
         self.m_parentIndices.to_stream(stream)
         self.m_bones.to_stream(stream)
@@ -2680,13 +2675,13 @@ class hkaAnimatedReferenceFrame(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         stream.write_u8(self.m_frameType)
         return
 
 
 @dataclass
-class hkaAnnotationTrack__Annotation:
+class hkaAnnotationTrack__Annotation(BphclBaseObject):
     m_time: int # float
     m_text: hkStringPtr
 
@@ -2715,7 +2710,7 @@ class hkaAnnotationTrack__Annotation:
 
 
 @dataclass
-class hkaAnnotationTrack:
+class hkaAnnotationTrack(BphclBaseObject):
     m_trackName: hkStringPtr
     m_annotations: hkArray # hkArray[hkaAnnotationTrack__Annotation]
 
@@ -2781,7 +2776,7 @@ class hkaAnimation(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         stream.write_u32(self.m_type)
         stream.write_float(self.m_duration)
         stream.write_s32(self.m_numberOfTransformTracks)
@@ -2829,7 +2824,7 @@ class hkaAnimationBinding(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_originalSkeletonName.to_stream(stream)
         self.m_animation.to_stream(stream)
         self.m_transformTrackToBoneIndices.to_stream(stream)
@@ -2874,7 +2869,7 @@ class hkaBoneAttachment(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_originalSkeletonName.to_stream(stream)
         self.m_boneFromAttachment.to_stream(stream)
         self.m_attachment.to_stream(stream)
@@ -2884,7 +2879,7 @@ class hkaBoneAttachment(hkReferencedObject):
 
 
 @dataclass
-class hkxVertexBuffer__VertexData:
+class hkxVertexBuffer__VertexData(BphclBaseObject):
     m_vectorData: hkArray # hkArray[u32]
     m_floatData: hkArray # hkArray[u32]
     m_uint32Data: hkArray # hkArray[u32]
@@ -2949,7 +2944,7 @@ class hkxVertexBuffer__VertexData:
 
 
 @dataclass
-class hkxVertexDescription__ElementDecl:
+class hkxVertexDescription__ElementDecl(BphclBaseObject):
     m_byteOffset: int # u32
     m_type: hkxVertexDescription__DataType
     m_usage: hkxVertexDescription__DataUsage
@@ -2996,7 +2991,7 @@ class hkxVertexDescription__ElementDecl:
 
 
 @dataclass
-class hkxVertexDescription:
+class hkxVertexDescription(BphclBaseObject):
     m_decls: hkArray # hkArray[hkxVertexDescription__ElementDecl]
 
     @classmethod
@@ -3046,7 +3041,7 @@ class hkxVertexBuffer(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_data.to_stream(stream)
         self.m_desc.to_stream(stream)
         return
@@ -3087,7 +3082,7 @@ class hkxIndexBuffer(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         stream.write_u8(self.m_indexType)
         self.m_indices16.to_stream(stream)
         self.m_indices32.to_stream(stream)
@@ -3097,7 +3092,7 @@ class hkxIndexBuffer(hkReferencedObject):
 
 
 @dataclass
-class hkxAttribute:
+class hkxAttribute(BphclBaseObject):
     m_name: hkStringPtr
     m_value: hkRefVariant
 
@@ -3126,7 +3121,7 @@ class hkxAttribute:
 
 
 @dataclass
-class hkxAttributeGroup:
+class hkxAttributeGroup(BphclBaseObject):
     m_name: hkStringPtr
     m_attributes: hkArray # hkArray[hkxAttribute]
 
@@ -3177,13 +3172,13 @@ class hkxAttributeHolder(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_attributeGroups.to_stream(stream)
         return
 
 
 @dataclass
-class hkxMaterial__TextureStage:
+class hkxMaterial__TextureStage(BphclBaseObject):
     m_texture: hkRefVariant
     m_usageHint: hkxMaterial__TextureType
     m_tcoordChannel: int # s32
@@ -3216,7 +3211,7 @@ class hkxMaterial__TextureStage:
 
 
 @dataclass
-class hkxMaterial__Property:
+class hkxMaterial__Property(BphclBaseObject):
     m_key: int # u32
     m_value: int # u32
 
@@ -3339,7 +3334,7 @@ class hkxMaterial(hkxAttributeHolder):
 
 
 @dataclass
-class hkxVertexAnimation__UsageMap:
+class hkxVertexAnimation__UsageMap(BphclBaseObject):
     m_use: hkxVertexDescription__DataUsage
     m_useIndexOrig: int # u8
     m_useIndexLocal: int # u8
@@ -3403,7 +3398,7 @@ class hkxVertexAnimation(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         stream.write_float(self.m_time)
         self.m_vertData.to_stream(stream)
         self.m_vertexIndexMap.to_stream(stream)
@@ -3412,7 +3407,7 @@ class hkxVertexAnimation(hkReferencedObject):
 
 
 @dataclass
-class hkMeshBoneIndexMapping:
+class hkMeshBoneIndexMapping(BphclBaseObject):
     m_mapping: hkArray # hkArray[u16]
 
     @classmethod
@@ -3437,7 +3432,7 @@ class hkMeshBoneIndexMapping:
 
 
 @dataclass
-class hkxMeshSection__InstanceInfo:
+class hkxMeshSection__InstanceInfo(BphclBaseObject):
     m_localTransform: hkMatrix4f
     m_vertexBase: int # u32
     m_verticesCount: int # u32
@@ -3527,7 +3522,7 @@ class hkxMeshSection(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_vertexBuffer.to_stream(stream)
         self.m_indexBuffers.to_stream(stream)
         self.m_material.to_stream(stream)
@@ -3599,14 +3594,14 @@ class hkxMesh(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_sections.to_stream(stream)
         self.m_userChannelInfos.to_stream(stream)
         return
 
 
 @dataclass
-class hkaMeshBinding__Mapping:
+class hkaMeshBinding__Mapping(BphclBaseObject):
     m_mapping: hkArray # hkArray[s16]
 
     @classmethod
@@ -3668,7 +3663,7 @@ class hkaMeshBinding(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_mesh.to_stream(stream)
         self.m_originalSkeletonName.to_stream(stream)
         self.m_name.to_stream(stream)
@@ -3713,7 +3708,7 @@ class hkaAnimationContainer(hkReferencedObject):
 
     
     def to_stream(self, stream: WriteStream):
-        hkReferencedObject.to_stream(stream)
+        hkReferencedObject.to_stream(self, stream)
         self.m_skeletons.to_stream(stream)
         self.m_animations.to_stream(stream)
         self.m_bindings.to_stream(stream)
