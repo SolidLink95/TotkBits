@@ -34,8 +34,17 @@ def restore_main_rs(cwd):
     data = data.replace("""#![windows_subsystem = "windows"]""", """// #![windows_subsystem = "windows"]""")
     main_rs.write_text(data)
 
+def get_dotnet_exe_path() -> str:
+    p = subprocess.run(["cmd","/c","where", "dotnet"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+    lines = p.stdout.splitlines()
+    lines = [e for e in lines if e and Path(e).exists()]
+    exe = [e for e in lines if "x86" not in e][0]
+    return exe
+
 def build_dotnet(cwd:Path):
     name = "DotNetWrapper"
+    dotnet_exe = get_dotnet_exe_path()
+    print(f"[+] Dotnet exe path: {dotnet_exe}")
     project_dir = cwd / f"ext_projects/{name}"
     publish_path = (project_dir / "publish" ).resolve()
     bin_path = (cwd / "src-tauri" / f"bin/cs").resolve()
@@ -50,13 +59,13 @@ def build_dotnet(cwd:Path):
         print(f"[+] Deleting old project")
         shutil.rmtree(project_dir)
     os.chdir(str(project_dir.parent))
-    run(["dotnet","new",  "console", "-n" , name])
+    run([dotnet_exe,"new",  "console", "-n" , name])
     os.chdir(str(project_dir))
     for package in packages:
-        subprocess.run(["dotnet", "add", "package", package], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        subprocess.run(["cmd", "/c", dotnet_exe, "add", "package", package], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     shutil.copyfile(cs_source_path, cs_dest_path)
     print(f"[+] Copied {cs_source_path} to {cs_dest_path}")
-    run(['dotnet', 'publish', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-o', 'publish'])
+    run([dotnet_exe, 'publish', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-o', 'publish'])
     if bin_path.exists():
         shutil.rmtree(bin_path)
     shutil.copytree(publish_path, bin_path)
