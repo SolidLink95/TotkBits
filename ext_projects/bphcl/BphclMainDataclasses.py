@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import io
 from pathlib import Path
 import struct
+import uuid
 from BphclEnums import ResFileType, ResSectionType, ResTypeSectionSignature
 from BphclSmallDataclasses import *
 from Experimental import hclClothContainer, hkMemoryResourceContainer, hkaAnimationContainer
@@ -252,6 +253,7 @@ class ResNamedType(BphclBaseObject):
     templates: List[ResTypeTemplate] = None
     name: str = "" # to be filled in later
 
+    _uuid: str = None
     def to_binary(self) -> bytes:
         result = self.index.to_binary()
         result += self.template_count.to_binary()
@@ -260,8 +262,13 @@ class ResNamedType(BphclBaseObject):
                 result += template.to_binary()
         return result
     
+    def __repr__(self):
+        _n = f"UNKNOWN" if not self.name else f"{self.name}"
+        return f"ResNamedType({_n} uuid: {self._uuid})"
+    
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResNamedType":
+        _uuid = str(uuid.uuid4())
         index = VarUInt.from_reader(stream)
         template_count = VarUInt.from_reader(stream)
         templates = None
@@ -269,7 +276,7 @@ class ResNamedType(BphclBaseObject):
         templates = []
         for _ in range(template_count._value):
             templates.append(ResTypeTemplate.from_reader(stream))
-        return ResNamedType(index=index, template_count=template_count, templates=templates)
+        return ResNamedType(index=index, template_count=template_count, templates=templates, _uuid=_uuid)
         
     def update_string_names(self, res_type_section: "ResTypeSection"):
         if self.templates is not None:

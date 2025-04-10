@@ -25,6 +25,10 @@ class UIntBase(BphclBaseObject):
     def write(self, stream: WriteStream):
         """Writes the integer to the stream."""
         stream.write(self.to_binary())
+        
+    def to_stream(self, stream: WriteStream):
+        """Writes the integer to the stream."""
+        stream.write(self.to_binary())
 
 
 @dataclass
@@ -56,7 +60,12 @@ class BOOL(BphclBaseObject):
     @classmethod
     def from_reader(cls, stream: ReadStream) -> "BOOL":
         val = stream.read_bool()
-        return cls(val=bool(val))
+        return cls(val=bool(val))    
+    
+    
+    def to_stream(self, stream: WriteStream):
+        """Writes the bool to the stream."""
+        stream.write_bool(self.val)
     
     
 @dataclass
@@ -69,7 +78,11 @@ class FLOAT(BphclBaseObject):
     @classmethod
     def from_reader(cls, stream: ReadStream) -> "FLOAT":
         val = stream.read_float()
-        return cls(val=val)
+        return cls(val=val)    
+    
+    def to_stream(self, stream: WriteStream):
+        """Writes the float to the stream."""
+        stream.write_float(self.val)
 
 
 @dataclass

@@ -15,7 +15,11 @@ class hkInt(BphclBaseObject): #Int
     offset: int
     
     def __repr__(self):
-        return f"hkInt({self.value}, offset=0x{self.offset:08X})"
+        return f"hkInt({self.value}, offset={_hex(self.offset)})"
+    
+    def to_stream(self, stream: WriteStream):
+        """Writes the integer to the stream."""
+        stream.write_s32(self.value)
     
     @staticmethod
     def from_reader(stream: ReadStream) -> 'hkInt':
@@ -41,7 +45,7 @@ class Ptr(BphclBaseObject):
     _offsets_range: list[tuple[hexInt, hexInt]] = field(default_factory=list)
     
     def __repr__(self):
-        return f"Ptr({_hex(self.value)}, offset={_hex(self.offset)})"
+        return f"Ptr(val={_hex(self.value)}, offset={_hex(self.offset)})"
     
     @staticmethod
     def from_reader(stream: ReadStream) -> 'Ptr':
@@ -60,11 +64,17 @@ class Ptr(BphclBaseObject):
     def write(self, stream: WriteStream):
         """Writes the pointer to the stream."""
         stream.write(self.to_binary())
+    
+    def to_stream(self, stream: WriteStream):
+        """Writes the pointer to the stream."""
+        stream.write_64bit_int(self.value)
 
 @dataclass
 class hkRefVariant(BphclBaseObject):
     m_ptr: Ptr
     _offset: int 
+    
+    _align_val: int = 8
     
     def __repr__(self):
         return f"hkRefVariant(0x{self.m_ptr.value:08X},0x{self.m_ptr.offset:08X})"
@@ -72,13 +82,23 @@ class hkRefVariant(BphclBaseObject):
     @staticmethod
     def from_reader(stream: ReadStream) -> 'hkRefVariant':
         """Reads a reference variant from the stream."""
-        stream.align_to(8)  # std::mem::AlignTo<0x8>
+        stream.align_to(hkRefVariant._align_val)  # std::mem::AlignTo<0x8>
         _offset = stream.tell()
         m_ptr = Ptr.from_reader(stream)
         current_pos = stream.tell()
         
         return hkRefVariant(m_ptr, _offset)
 
+    def to_stream(self, stream: WriteStream):
+        """Writes the reference variant to the stream."""
+        stream._writer_align_to(hkRefVariant._align_val)
+        self.m_ptr.to_stream(stream)
+        cur_position = stream.tell()
+        true_offset = hexInt(self.m_ptr.value + self.m_ptr.offset)
+        stream.seek(true_offset, io.SEEK_SET)
+        #nothing to write
+        stream.seek(cur_position, io.SEEK_SET)
+        
 
 @dataclass
 class hkStringPtr(BphclBaseObject): # size 8 bytes
@@ -87,9 +107,22 @@ class hkStringPtr(BphclBaseObject): # size 8 bytes
     _str: str = ''
     
     _offsets_range: list[tuple[hexInt, hexInt]] = field(default_factory=list)
+    _align_val: int = 8
     
     def __repr__(self):
         return f"hkStringPtr({repr(self._str)})"
+    
+    def to_stream(self, stream: WriteStream):
+        """Writes the string pointer to the stream."""
+        stream._writer_align_to(hkStringPtr._align_val)
+        self.m_stringAndFlag.to_stream(stream)
+        #experimental: write string, may be redundant or dangerous
+        # but assuming all offsets check out
+        cur_position = stream.tell()
+        true_offset = hexInt(self.m_stringAndFlag.value + self.m_stringAndFlag.offset)
+        stream.seek(true_offset, io.SEEK_SET)
+        stream.write_string(self._str)
+        stream.seek(cur_position, io.SEEK_SET)
     
     @staticmethod
     def get_hkStringPtr_values(instance) -> dict[str, "hkStringPtr"]:
@@ -110,7 +143,7 @@ class hkStringPtr(BphclBaseObject): # size 8 bytes
     def from_reader(stream: ReadStream) -> 'hkStringPtr':
         """Reads a string pointer from the stream."""
         _offsets_range = []
-        stream.align_to(8)
+        stream.align_to(hkStringPtr._align_val)
         _offset = stream.tell()
         m_stringAndFlag = Ptr.from_reader(stream)
         string_address = m_stringAndFlag.value + _offset #+ stream.data_offset
@@ -147,6 +180,15 @@ class hkRootLevelContainer__NamedVariant(BphclBaseObject):
     m_className: hkStringPtr    
     m_variant: hkRefVariant
     
+    _align_val: int = 8
+    
+    def to_stream(self, stream: WriteStream):
+        """Writes the named variant to the stream."""
+        stream._writer_align_to(hkRootLevelContainer__NamedVariant._align_val)
+        self.m_name.to_stream(stream)
+        self.m_className.to_stream(stream)
+        self.m_variant.to_stream(stream)
+    
     def __repr__(self):
         n = f"m_name={repr(self.m_name._str)}" if self.m_name._str else f"m_name={self.m_name.m_stringAndFlag.value:04X}"
         cn = f"m_className={repr(self.m_className._str)}" if self.m_className._str else f"m_className={self.m_className.m_stringAndFlag.value:04X}"
@@ -156,7 +198,7 @@ class hkRootLevelContainer__NamedVariant(BphclBaseObject):
     @staticmethod
     def from_reader(stream: ReadStream) -> 'hkRootLevelContainer__NamedVariant':
         """Reads a named variant from the stream."""
-        stream.align_to(8)
+        stream.align_to(hkRootLevelContainer__NamedVariant._align_val)
         m_name = hkStringPtr.from_reader(stream)
         m_className = hkStringPtr.from_reader(stream)
         m_variant = hkRefVariant.from_reader(stream)
@@ -179,7 +221,23 @@ class hkArray(BphclBaseObject):
     _uuid: str = str(uuid.uuid4())
     # offsets in stream where data is stored
     _offsets_range: list[tuple[int, int]] = field(default_factory=list)
+    _align_val: int = 8
     
+    def to_stream(self, stream: WriteStream):
+        """Writes the array to the stream."""
+        stream._writer_align_to(hkArray._align_val)
+        self.offset.to_stream(stream)
+        self.m_size.to_stream(stream)
+        stream.write_s32(self.m_capacityAndFlags)
+        # the items may lay somewhere else in the stream, so we need to write them separately
+        cur_position = stream.tell()
+        true_offset = hexInt(self.offset.value + self.offset.offset)
+        stream.seek(true_offset, io.SEEK_SET)
+        for item in self.m_data:
+            item.to_stream(stream)
+        stream.seek(cur_position, io.SEEK_SET)
+        
+        
     def __repr__(self):
         return f"<hkArray offset=0x{self.offset.value:04X} size={self.m_size.value} capacity={self.m_capacityAndFlags}>"
     
@@ -227,7 +285,7 @@ class hkArray(BphclBaseObject):
     
     @staticmethod
     def get_default_array(stream: ReadStream,element_type: Type[T], _sec_element_type: Type[T]=None):
-        stream.align_to(8)  # std::mem::AlignTo<0x8>
+        stream.align_to(hkArray._align_val)  # std::mem::AlignTo<0x8>
         _offset = stream.tell()
         offset = Ptr.from_reader(stream)
         m_size = hkInt.from_reader(stream)
@@ -266,9 +324,7 @@ class hkArray(BphclBaseObject):
         #     writer.write(item.to_binary())
         return writer.getvalue()
     
-    def to_stream(self, stream: WriteStream):
-        """Writes the array to the stream."""
-        stream.write(self.to_binary())
+        
         
     def write(self, stream: WriteStream):
         """Writes the array to the stream."""
@@ -288,10 +344,20 @@ class hkRootLevelContainer(BphclBaseObject):
     resource_offset: int = 0# u128
     animation_offset: int = 0# u128
     
+    _align_val: int = 8
+    
+    def to_stream(self, stream: WriteStream):
+        """Writes the root level container to the stream."""
+        stream._writer_align_to(hkRootLevelContainer._align_val)
+        self.m_namedVariants.to_stream(stream)
+        stream.seek_end()
+        stream._writer_align_to(hkRootLevelContainer._align_val)
+        return
+    
     @staticmethod  
     def from_reader(stream: ReadStream) -> 'hkRootLevelContainer':
         """Reads a root level container from the stream."""
-        stream.align_to(8)
+        stream.align_to(hkRootLevelContainer._align_val)
         m_namedVariants = hkArray.from_reader(stream, hkRootLevelContainer__NamedVariant)
         
         for hkVar in m_namedVariants.m_data:

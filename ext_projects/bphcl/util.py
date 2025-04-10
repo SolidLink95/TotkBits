@@ -8,6 +8,20 @@ import base64
 from typing import Any, List
 
 @dataclass
+class OffsetInfo():
+    """Contains inplace lookup/fixup parameters"""
+    offset: int
+    index:int
+    item: Any #ResItem
+    internal_patch_index: int #ResPatch
+    internal_patch: Any #ResPatch
+    named_type: Any = None #NamedType
+    addr: int = -1 #NamedType
+    abs_offset: int = -1 #NamedType
+    
+
+
+@dataclass
 class BphclBaseObject():
     pass
 
@@ -306,7 +320,7 @@ class hexInt(int):
         return _hex(self)
 
     def __str__(self):
-        return _hex(self)
+        return str(int(super().__str__(), 16))
 # # Example usage
 # if __name__ == "__main__":
 #   print("\n" * 20)

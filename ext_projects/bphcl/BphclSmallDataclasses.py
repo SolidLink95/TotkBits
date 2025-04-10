@@ -215,6 +215,9 @@ class ResPatch(BphclBaseObject):
 class hkObjectBase(BphclBaseObject):
     _vft_reserve: int # u64
 
+    def to_stream(self, stream: WriteStream):
+        stream.write_u64(self._vft_reserve)
+    
     @classmethod
     def from_reader(cls, stream: ReadStream) -> "hkObjectBase":
         _vft_reserve = stream.read_u64()
@@ -234,6 +237,11 @@ class hkReferencedObject(hkObjectBase):
     m_sizeAndFlags: int # u64
     m_refCount: int # u64
 
+    def to_stream(self, stream: WriteStream):
+        hkObjectBase.to_stream(self, stream)
+        stream.write_u64(self.m_sizeAndFlags)
+        stream.write_u64(self.m_refCount)
+    
     @classmethod
     def from_reader(cls, stream: ReadStream) -> "hkReferencedObject":
         stream.align_to(0x8)
@@ -322,6 +330,14 @@ class hkRefPtr(BphclBaseObject):
                 return f"hkRefPtr({repr(_str)})"
         return f"hkRefPtr({repr(self.m_data)})"
             
+    def to_stream(self, stream: WriteStream):
+        self.m_ptr.to_stream(stream)
+        cur_pos = stream.tell()
+        true_offset = hexInt(self.m_ptr.value + self.m_ptr.offset) # assuming calculated properly
+        stream.seek(true_offset, io.SEEK_SET)
+        self.m_data.to_stream(stream)
+        stream.seek(cur_pos, io.SEEK_SET)
+        
     
     @staticmethod
     def from_reader(stream: ReadStream, _m_data_type: Type[T]) -> 'hkRefPtr':
@@ -340,6 +356,8 @@ class hkRefPtr(BphclBaseObject):
         
         _offsets_range.insert(0, (_offset, stream.tell()))
         return hkRefPtr(_m_data_type=_m_data_type, _offset=_offset, m_ptr=m_ptr, m_data=m_data, _offsets_range=_offsets_range)
+    
+    
     
     def to_binary(self) -> bytes:
         """Converts the reference pointer to a binary representation."""

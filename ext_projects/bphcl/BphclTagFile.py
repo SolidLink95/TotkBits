@@ -8,9 +8,9 @@ from BphclSmallDataclasses import *
 from Experimental import hclClothContainer, hclCollidable, hkMemoryResourceContainer, hkaAnimationContainer
 from Havok import hkRootLevelContainer, hkStringPtr
 from Stream import ReadStream, WriteStream
-from util import  FilteredInternalPath, _hex,AssetsFromRange, find_nested_instances, is_offset_in_ranges_list
+from util import  FilteredInternalPath, OffsetInfo, _hex,AssetsFromRange, find_nested_instances, is_offset_in_ranges_list
 
-
+DATA_START_OFFSET = 0x50
     
 @dataclass
 class ResTagFile(ResTagfileSectionHeader):
@@ -26,6 +26,8 @@ class ResTagFile(ResTagfileSectionHeader):
     #helper fields
     _type_strings: List[str] = None
     _field_strings: List[str] = None
+    _indexes = {}
+    _data_fixed: bytes = None
     
     def validate(self):
         if self.data_section is None:
@@ -146,11 +148,19 @@ class ResTagFile(ResTagfileSectionHeader):
         data_stream_reader = ReadStream(self.data_section.data)
         data_stream_writer = WriteStream(self.data_section.data)
         data_stream_writer.seek(0, io.SEEK_SET)
+        internal_patch_index = -1
         def inplace_fixup(offset: int, internal_patch: int): #u32, u32=
+            # tmp = hexInt(offset + 0x50)
+            
             type_index = internal_patch.type_index
             data_stream_reader.seek(offset, io.SEEK_SET)
+            index_tmp = data_stream_reader.read_u64()
+            data_stream_reader.seek(offset, io.SEEK_SET)
             index = data_stream_reader.read_u32()
+            assert(index == index_tmp, f"Invalid index: {index} != {index_tmp}")
+            # self._indexes[str(int(offset))] = index
             _item = item_section.items[index]
+            _named_type = None
             
             if type_index > 0:
                 _named_type = type_name_section.types[type_index-1]
@@ -160,19 +170,43 @@ class ResTagFile(ResTagfileSectionHeader):
                 if _name.startswith(("hkArray",)):
                     # assert _named_type.index._byte0 == 1, f"Invalid type name: {_name}"
                     data_stream_writer.seek(offset + 8, io.SEEK_SET)
+                    tmp1 = data_stream_writer.read_s32()
+                    assert(tmp1 == 0) # always true
+                    data_stream_writer.seek(offset + 8, io.SEEK_SET)
                     data_stream_writer.write_s32(_item.count)
             addr = _item.data_offset - offset # u32 as u64
             data_stream_writer.seek(offset, io.SEEK_SET)
             data_stream_writer.write_64bit_int(addr) # ptr
+            addr &= 0xFFFFFFFFFFFFFFFF 
+            offset_info = OffsetInfo(offset, index_tmp, _item, internal_patch_index, internal_patch, _named_type, addr, hexInt(offset + DATA_START_OFFSET))
+            self._indexes[str(int(offset))] = offset_info
         
         for i, internal_patch in enumerate(ptch_section.internal_patches):
+            internal_patch_index = i
             for j, _offset in enumerate(internal_patch.offsets):
-                inplace_fixup(_offset, internal_patch)
+                inplace_fixup(hexInt(_offset), internal_patch)
                 # inplace_fixup(_offset, internal_patch.type_index)
         data_stream_writer.seek(0, io.SEEK_SET)
         self.data_section._data_fixed = data_stream_writer.read()
         # self.revert_relocations()        
-        
+    
+    def revert_relocations(self) -> bytes:
+        """Revert relocations to original values"""
+        ptch_section_index, ptch_section = self.get_ptch_section()
+        stream = WriteStream(self.data_section._data_fixed)
+        for str_offset, info in self._indexes.items():
+            stream.seek(info.offset)
+            stream.write_64bit_int(info.index)
+            if info.named_type is not None and info.named_type.name.startswith("hkArray"):
+                stream.seek(info.offset + 8)
+                stream.write_u64(0)
+        stream.seek_start()
+        new_data = stream.read()
+        return new_data
+    
+    
+    
+    
     def get_assets_from_offsets_ranges(self, offsets: list[tuple[int, int]]):
         ptch_section_index, ptch_section = self.get_ptch_section()
         type_name_index, type_name_section = self.get_type_section(b"TNA1")

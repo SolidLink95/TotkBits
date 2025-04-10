@@ -43,11 +43,23 @@ class ReadStream(io.BytesIO):
         # return f"<{cname} position={self.tell()}>"
         cname = self.__class__.__name__
         # data_left = hexInt(self.get_data_size() - self.tell())
+        is_def = False
+        cur_pos = self.tell()
+        prev_8_bytes = b""
         try:
-            next_8_bytes = self.peek(8) # Move back to the original position
-            _hex_bytes = " ".join([_hex(b)[2:].ljust(2, "0") for b in next_8_bytes])
+            self.seek(-8, io.SEEK_CUR) # Move back to the original position
+            prev_8_bytes = self.read(8).hex().upper() # Move back to the original position
+            self.seek(cur_pos, io.SEEK_SET) # Move back to the original position
+        except:
+            pass
+        try:
+            cur_pos = self.tell()
+            next_8_bytes = self.read(8).hex().upper() # Move back to the original position
+            self.seek(cur_pos, io.SEEK_SET) # Move back to the original position
+            _hex_bytes = ' '.join(next_8_bytes[i:i+2] for i in range(0, len(next_8_bytes), 2))
+            _hex_bytes_prev = ' '.join(prev_8_bytes[i:i+2] for i in range(0, len(prev_8_bytes), 2))
             # 0x50 is DATA offset
-            res =  f"<{cname} abspos={_hex(self.tell()+0x50)} pos={_hex(self.tell())} next={_hex_bytes} >"
+            res =  f"<{cname} abspos={_hex(self.tell()+0x50)} pos={_hex(self.tell())} next={_hex_bytes} prev={_hex_bytes_prev} >"
             return res
         except:
             return f"<{cname} pos={_hex(self.tell())} >"
@@ -261,8 +273,10 @@ class WriteStream(ReadStream):
         current_pos = self.tell()
         if current_pos == 0:
             return
-        size = self.get_data_size()
-        pad_size = size % alignment
-        if pad_size > 0:
-            self.write(b'\x00' * pad_size)
-        
+        # size = self.get_data_size()
+        pad_size = alignment - (current_pos % alignment)
+        if pad_size > 0 and pad_size < alignment:
+            self.write_padding(pad_size)
+    
+    def write_padding(self, size: int):
+        self.write(b'\x00' * size)
