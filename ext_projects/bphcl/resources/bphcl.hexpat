@@ -548,7 +548,7 @@ fn inplace_fixup(u32 offset, u32 type_index) {
     } else {
         s64 ptr @ offset in data;
         const s64 new_addr = _dataoffset - offset;
-        std::print(std::format("Handling negative ptr {:#08x}  {:#08x}, name {}", new_addr, ptr, get_type_name(type_index)));
+        //std::print(std::format("Handling negative ptr {:#08x}  {:#08x}, name {}", new_addr, ptr, get_type_name(type_index)));
         ptr = new_addr;
     }
 

@@ -52,6 +52,9 @@ class Ptr(BphclBaseObject):
         """Reads a pointer from the stream."""
         offset = stream.tell() #- stream.data_offset
         value = stream.read_64bit_int()
+        # if [Ptr(val=0x57D0, offset=0x3F8)]
+        # if (offset + value) in list(range(0x7c40, 0x91c1 + 1)) and value >=0:
+        #     pass
         _offsets_range = [(hexInt(offset), hexInt(stream.tell()))]
         return Ptr(value, offset, _offsets_range)
     
@@ -223,6 +226,31 @@ class hkArray(BphclBaseObject):
     _offsets_range: list[tuple[int, int]] = field(default_factory=list)
     _align_val: int = 8
     
+    def move_items(self, new_offset:int, tag):
+        if str(type(self.m_data[0])) == "<class 'hkRefPtr'>":
+            raise ValueError(f"Cannot move items in a list for type {type(self.m_data[0])}")
+        root_offset = int(self.offset.offset)
+        true_offset = self.offset.value + self.offset.offset
+        self.offset.value = new_offset - self.offset.offset # assuming list is moved forward
+        for i, item in enumerate(self.m_data):
+            true_offset = item.m_ptr.value + item.m_ptr.offset
+            item.m_ptr.value = true_offset - new_offset # assuming list is moved forward
+            item.m_ptr.offset = new_offset # assuming list is moved forward
+            self.m_data[i] = item
+            assert(item.m_ptr.value + item.m_ptr.offset) == true_offset, f"Item {i} offset mismatch: {item.m_ptr.value + item.m_ptr.offset} != {ind}"
+            new_offset += 8
+        # Adjusting tag
+        ptch_section_index, ptch_section = tag.get_ptch_section()
+        type_name_index, type_name_section = tag.get_type_section(b"TNA1")
+        item_section_index, item_section = tag.get_item_section()
+        str_offset = str(root_offset)
+        index = tag._indexes[str_offset].index
+        final_offset = self.offset.value + root_offset
+        tag.indx_section.sections[item_section_index].items[index].data_offset = final_offset
+        tag._indexes[str_offset].item.data_offset = final_offset
+        # tag.indx_section.sections[item_section_index].sections[index].data_offset = self.offset.value
+        return
+    
     def to_stream(self, stream: WriteStream):
         """Writes the array to the stream."""
         stream._writer_align_to(hkArray._align_val)
@@ -287,6 +315,8 @@ class hkArray(BphclBaseObject):
     def get_default_array(stream: ReadStream,element_type: Type[T], _sec_element_type: Type[T]=None):
         stream.align_to(hkArray._align_val)  # std::mem::AlignTo<0x8>
         _offset = stream.tell()
+        if _offset == 248:
+            pass
         offset = Ptr.from_reader(stream)
         m_size = hkInt.from_reader(stream)
         m_capacityAndFlags = stream.read_s32()

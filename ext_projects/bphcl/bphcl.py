@@ -87,10 +87,39 @@ class Bphcl():
     
     def to_binary(self) -> bytes:
         stream = WriteStream()
-        stream.write(self.file.to_binary())
-        stream.write(self.tag_file.to_binary())
-        stream.write(self.cloth_section_to_binary())
-        return stream.getvalue()
+        # stream.write(self.file.to_binary())
+        header_data = self.file.to_binary()
+        header_data_size = len(header_data)
+        tagfile_data = self.tag_file.to_binary()
+        cloth_section_data = self.cloth_section_to_binary()
+        tagfile_data_size = len(tagfile_data)
+        cloth_section_data_size = len(cloth_section_data)
+        # stream.write(self.tag_file.to_binary())
+        # stream.write(self.cloth_section_to_binary())
+        stream.seek_start()
+        self.file.param_offset = header_data_size + tagfile_data_size
+        assert(self.file.param_offset > 0)
+        self.file.file_end_offset = tagfile_data_size + cloth_section_data_size + header_data_size
+        self.file.tagfile_size = tagfile_data_size
+        
+        #Writing
+        stream.write(header_data)
+        stream.write(tagfile_data)
+        stream.write(cloth_section_data)
+        
+        stream.seek_start()
+        self.file.param_offset = stream.find_next_occ(b"AAMP")
+        stream.seek_end()
+        self.file.file_end_offset = int(stream.tell())
+        stream.seek_start()
+        stream.write(self.file.to_binary()) 
+        
+        stream.seek_start()
+        return stream.read()
+    
+    def save_to_file(self, file_path: str) -> None:
+        with open(file_path, "wb") as f:
+            f.write(self.to_binary())
     
     def validate(self):
         if self.file is None:

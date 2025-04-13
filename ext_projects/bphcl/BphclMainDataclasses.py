@@ -3,7 +3,7 @@ import io
 from pathlib import Path
 import struct
 import uuid
-from BphclEnums import ResFileType, ResSectionType, ResTypeSectionSignature
+from BphclEnums import ResFileType, ResSectionType, ResTypeSectionSignature, get_endian, BphclEndian
 from BphclSmallDataclasses import *
 from Experimental import hclClothContainer, hkMemoryResourceContainer, hkaAnimationContainer
 from Havok import hkRootLevelContainer
@@ -19,7 +19,7 @@ class ResPhive(BphclBaseObject):
     magic: bytes
     reserve0: int
     reserve1: int
-    byte_order_mark: int
+    byte_order_mark: BphclEndian
     file_type: ResFileType
     max_section_capacity: int
     tagfile_offset: int
@@ -31,29 +31,33 @@ class ResPhive(BphclBaseObject):
     _size = 36
     
     def validate(self):
+        if self.byte_order_mark == BphclEndian.INVALID:
+            raise ValueError(f"Invalid byte order mark, expected 0xFFFE or 0xFEFF, got {_hex(self.byte_order_mark.value)}")
+        if self.byte_order_mark == BphclEndian.BIG:
+            raise ValueError(f"Big endian not supported")
         assert self.magic == b'Phive\x00', f"Invalid magic: {self.magic}, expected b'Phive\\x00'"
         assert self.file_type == ResFileType.Cloth, f"Invalid file type: {self.file_type}, expected ResFileType.Cloth"
         
     @staticmethod
     def from_reader(stream: ReadStream) -> "ResPhive":
-        data = stream._read_exact(ResPhive._size)
-        if len(data) != ResPhive._size:
-            raise ValueError(f"End of file, expected {ResPhive._size} bytes, got {len(data)} bytes")
+        # data = stream._read_exact(ResPhive._size)
+        # if len(data) != ResPhive._size:
+        #     raise ValueError(f"End of file, expected {ResPhive._size} bytes, got {len(data)} bytes")
         
-        unpacked = struct.unpack("<6sBBHBBIIIIII", data)
+        # unpacked = struct.unpack("<6sBBHBBIIIIII", data)
         res =  ResPhive(
-            magic=unpacked[0],
-            reserve0=unpacked[1],
-            reserve1=unpacked[2],
-            byte_order_mark=unpacked[3],
-            file_type=ResFileType(unpacked[4]),
-            max_section_capacity=unpacked[5],
-            tagfile_offset=unpacked[6],
-            param_offset=unpacked[7],
-            file_end_offset=unpacked[8],
-            tagfile_size=unpacked[9],
-            param_size=unpacked[10],
-            file_end_size=unpacked[11],
+            magic=stream._read_exact(6),
+            reserve0=stream.read_u8(),
+            reserve1=stream.read_u8(),
+            byte_order_mark=get_endian(stream._read_exact(2)),
+            file_type=ResFileType(stream.read_u8()),
+            max_section_capacity=stream.read_u8(),
+            tagfile_offset=stream.read_u32(),
+            param_offset=stream.read_u32(),
+            file_end_offset=stream.read_u32(),
+            tagfile_size=stream.read_u32(),
+            param_size=stream.read_u32(),
+            file_end_size=stream.read_u32(),
         )
         res.validate()
         stream.seek(res.tagfile_offset, io.SEEK_SET)
@@ -64,7 +68,7 @@ class ResPhive(BphclBaseObject):
         writer.write(self.magic)
         writer.write_u8(self.reserve0)
         writer.write_u8(self.reserve1)
-        writer.write_u16(self.byte_order_mark)
+        writer.write(self.byte_order_mark.value)
         writer.write_u8(self.file_type.value)
         writer.write_u8(self.max_section_capacity)
         writer.write_u32(self.tagfile_offset)
@@ -74,11 +78,11 @@ class ResPhive(BphclBaseObject):
         writer.write_u32(self.param_size)
         writer.write_u32(self.file_end_size)
         pad_size = 16 - (writer.tell() % 16)
-        if pad_size > 0 and pad_size != 16:
-            writer.write(pad_size * b"\x00")
+        if pad_size > 0 and pad_size < 16:
+            writer.write_padding(pad_size)
         # writer.write((self.tagfile_offset-self._size) * b"\x00")
         result = writer.getvalue()
-        tmp = result.hex().upper()
+        # tmp = result.hex().upper()
         return result
         
 
@@ -90,22 +94,26 @@ class ResIndexSection(ResTagfileSectionHeader):
     external_patches: List[ResPatch] = None
     padding: bytes = None
     
-    def to_binary(self) -> bytes:
-        result = super().to_binary()
+    def to_stream(self, writer: WriteStream) -> bytes:
+        ResTagfileSectionHeader.to_stream(self, writer)
         if self.items:
             for item in self.items:
-                result += item.to_binary()
+                writer.write(item.to_binary())
         if self.internal_patches is not None:
             for patch in self.internal_patches:
-                result += patch.to_binary()
+                writer.write(patch.to_binary())
         if self.terminator is not None:
-            result += struct.pack("<I", self.terminator)
+            writer.write_u32(self.terminator)
         if self.external_patches is not None:
             for patch in self.external_patches:
-                result += patch.to_binary()
+                writer.write(patch.to_binary())
         if self.padding is not None:
-            result += self.padding
-        return result
+            writer.write(self.padding)
+    
+    def to_binary(self) -> bytes:
+        writer = WriteStream()
+        self.to_stream(writer)
+        return writer.getvalue()
     
     @classmethod
     def from_reader(cls, stream: ReadStream) -> "ResIndexSection":
@@ -166,6 +174,47 @@ class ResSection(ResTagfileSectionHeader):
     #TCRF and TCID invalid
     _encoding: str = None
 
+    def to_stream(self, writer: WriteStream) -> bytes:
+        # writer = WriteStream()
+        # result = self.size.to_binary()
+        cur_pos = writer.tell()
+        writer.write_u32(0) # size placeholder
+        writer.write(self.signature.encode(self._encoding if self._encoding else "utf-8"))
+        res_section_size = 0
+        match self._type:
+            case ResSectionType.SDKV:
+                if self.version is not None:
+                    writer.write(self.version.encode())
+            case ResSectionType.DATA:
+                if self.data is not None:
+                    writer.write(self.data)
+            case ResSectionType.TYPE:
+                if self.sections is not None:
+                    for section in self.sections:
+                        section.to_stream(writer)
+            case ResSectionType.INDX:
+                if self.sections is not None:
+                    for section in self.sections:
+                        section.to_stream(writer)
+                        # if section.padding or section.terminator is not:
+                        #     res_section_size -= len(section.padding)
+                        # writer.write(section.to_binary())
+                res_section_size -= 8 # TODO: check why
+                        # if section.padding:
+                        #     _pad_len = len(section.padding)
+                        #     assert(_pad_len % 2 == 0)
+                        #     res_section_size -= _pad_len
+            case _:
+                raise ValueError(f"Invalid ResSectionType: {self._type}")
+        offset = writer.tell()
+        res_section_size += offset - cur_pos 
+        new_size = Size(is_chunk=self.size.is_chunk, size=res_section_size)
+        writer.seek(cur_pos, io.SEEK_SET)
+        writer.write(new_size.to_binary())
+        writer.seek(offset, io.SEEK_SET)
+        # assert(self.size.size == res_section_size), f"Invalid size: {res_section_size}, expected {self.size.size} for {self.signature}"
+        # return writer.getvalue()
+
     def to_binary(self) -> bytes:
         writer = WriteStream()
         # result = self.size.to_binary()
@@ -187,7 +236,7 @@ class ResSection(ResTagfileSectionHeader):
                 if self.sections is not None:
                     for section in self.sections:
                         writer.write(section.to_binary())
-                res_section_size -= 8 # TODO: check why
+                # res_section_size -= 8 # TODO: check why
                         # if section.padding:
                         #     _pad_len = len(section.padding)
                         #     assert(_pad_len % 2 == 0)
@@ -199,7 +248,7 @@ class ResSection(ResTagfileSectionHeader):
         writer.seek(0, io.SEEK_SET)
         writer.write(new_size.to_binary())
         writer.seek(res_section_size, io.SEEK_SET)
-        assert(self.size.size == res_section_size), f"Invalid size: {res_section_size}, expected {self.size.size} for {self.signature}"
+        # assert(self.size.size == res_section_size), f"Invalid size: {res_section_size}, expected {self.size.size} for {self.signature}"
         return writer.getvalue()
     
     @staticmethod
@@ -255,12 +304,13 @@ class ResNamedType(BphclBaseObject):
 
     _uuid: str = None
     def to_binary(self) -> bytes:
-        result = self.index.to_binary()
-        result += self.template_count.to_binary()
+        writer = WriteStream()
+        writer.write(self.index.to_binary())
+        writer.write(self.template_count.to_binary())
         if self.templates is not None:
             for template in self.templates:
-                result += template.to_binary()
-        return result
+                writer.write(template.to_binary())
+        return writer.getvalue()
     
     def __repr__(self):
         _n = f"UNKNOWN" if not self.name else f"{self.name}"
@@ -460,8 +510,8 @@ class ResTypeSection(BphclBaseObject):
     #("TSHA" | "TPRO" | "TPHS" | "TSEQ") and other unsupported types
     padding: str = None
     
-    def to_binary(self):
-        writer = WriteStream()
+    def to_stream(self, writer: WriteStream) -> bytes:
+        cur_pos = writer.tell()
         writer.write_u32(0) # size placeholder
         writer.write(self.signature)
         match ResTypeSection.signature_to_enum(self.signature):
@@ -492,10 +542,16 @@ class ResTypeSection(BphclBaseObject):
                 raise ValueError(f"Invalid ResTypeSection signature: {self.signature}")
         if self.padding is not None:
             writer.write(bytes.fromhex(self.padding))
-        new_buf_size = writer.tell()
-        writer.seek(0, io.SEEK_SET)
+        offset = writer.tell()
+        new_buf_size = writer.tell() - cur_pos
+        writer.seek(cur_pos, io.SEEK_SET)
         new_size = Size(is_chunk=self.size.is_chunk, size=new_buf_size)
         writer.write(new_size.to_binary())
+        writer.seek(offset, io.SEEK_SET)
+    
+    def to_binary(self):
+        writer = WriteStream()
+        self.to_stream(writer)
         return writer.getvalue()
     
     @staticmethod

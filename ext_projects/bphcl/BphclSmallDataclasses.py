@@ -40,6 +40,10 @@ class ResTagfileSectionHeader(BphclBaseObject):
     def __len__(self):
         return 8
     
+    def to_stream(self, stream: WriteStream):
+        stream.write(self.size.to_binary())
+        stream.write(self.signature)
+    
     @classmethod
     def from_reader(cls, stream: ReadStream) -> "ResTagfileSectionHeader":
         size = Size.from_reader(stream)
@@ -334,6 +338,8 @@ class hkRefPtr(BphclBaseObject):
         self.m_ptr.to_stream(stream)
         cur_pos = stream.tell()
         true_offset = hexInt(self.m_ptr.value + self.m_ptr.offset) # assuming calculated properly
+        if  true_offset in list(range(0x7c40, 0x91c1 + 1)) and self.m_ptr.value >=0:
+            pass
         stream.seek(true_offset, io.SEEK_SET)
         self.m_data.to_stream(stream)
         stream.seek(cur_pos, io.SEEK_SET)
@@ -346,6 +352,8 @@ class hkRefPtr(BphclBaseObject):
         _offset = stream.tell()
         stream.align_to(8)
         m_ptr = Ptr.from_reader(stream)
+        if  (_offset + m_ptr.value) in list(range(0x7c40, 0x91c1 + 1)) and m_ptr.value >=0:
+            pass
         _offsets_range.extend(m_ptr._offsets_range)
         _new_offset = hexInt(_offset + m_ptr.value) #+ stream.data_offset
         cur_offset = stream.tell()

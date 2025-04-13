@@ -12,6 +12,7 @@ class ReadStream(io.BytesIO):
         self.max_str_size = 256
         self.encoding = "utf-8"
         self.data_offset = None # Placeholder for data offset
+        self._tmp = (0x7bf0, 0x7c00)
     
     def tell(self):
         return hexInt(super().tell())
@@ -46,6 +47,7 @@ class ReadStream(io.BytesIO):
         is_def = False
         cur_pos = self.tell()
         prev_8_bytes = b""
+        size = hexInt(self.get_data_size())
         try:
             self.seek(-8, io.SEEK_CUR) # Move back to the original position
             prev_8_bytes = self.read(8).hex().upper() # Move back to the original position
@@ -59,7 +61,7 @@ class ReadStream(io.BytesIO):
             _hex_bytes = ' '.join(next_8_bytes[i:i+2] for i in range(0, len(next_8_bytes), 2))
             _hex_bytes_prev = ' '.join(prev_8_bytes[i:i+2] for i in range(0, len(prev_8_bytes), 2))
             # 0x50 is DATA offset
-            res =  f"<{cname} abspos={_hex(self.tell()+0x50)} pos={_hex(self.tell())} next={_hex_bytes} prev={_hex_bytes_prev} >"
+            res =  f"<{cname} abspos={_hex(self.tell()+0x50)} pos={_hex(self.tell())} next={_hex_bytes} prev={_hex_bytes_prev} size={size} >"
             return res
         except:
             return f"<{cname} pos={_hex(self.tell())} >"
@@ -159,6 +161,23 @@ class ReadStream(io.BytesIO):
         reader.seek(0, io.SEEK_END)
         writer.seek(current_pos, io.SEEK_SET)  # Restore the original position of the writer
         return reader
+    
+    def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
+        # try:         
+        new_pos = super().seek(offset, whence)
+        # except ValueError as e:
+        #     pass
+        #     return
+        if self._tmp[0] <= new_pos <= self._tmp[1]:
+        # if 0xC0 <= new_pos <= 0xD0:
+            pass
+        return new_pos
+    
+    def read(self, size: int = -1) -> bytes:
+        current_pos = super().tell()
+        if self._tmp[0] <= current_pos <= self._tmp[1]:
+            pass
+        return super().read(size)
 
 
 class WriteStream(ReadStream):
@@ -167,6 +186,17 @@ class WriteStream(ReadStream):
         self.endian = "little"
         self.sign = "<" if self.endian == "little" else ">"
         self.encoding = "utf-8"
+    
+    
+    def write(self, b: bytes) -> int:
+        start_pos = self.tell()
+        end_pos = start_pos + len(b)
+
+        # Trigger if the write overlaps the range 0xC0–0xD0
+        if (start_pos <= self._tmp[0] and end_pos > self._tmp[1]):
+            pass
+
+        return super().write(b)
     
     @classmethod
     def from_reader(cls, reader:ReadStream):

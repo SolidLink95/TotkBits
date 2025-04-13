@@ -29,6 +29,34 @@ class ResTagFile(ResTagfileSectionHeader):
     _indexes = {}
     _data_fixed: bytes = None
     
+    
+    def update_data_binary(self):
+        # stream = WriteStream((self.data_section.size.size - 8) * b"\x00")
+        # stream = WriteStream()
+        # stream = WriteStream(self.data_section.data)
+        stream = WriteStream(self.data_section._data_fixed)
+        self.root_container.to_stream(stream)
+        stream.seek(self.root_container.cloth_offset, 0)
+        self.cloth_container.to_stream(stream)
+        stream.seek(self.root_container.resource_offset, 0)
+        self.mem_resource_container.to_stream(stream)
+        stream.seek(self.root_container.animation_offset, 0)
+        self.animation_container.to_stream(stream)
+        new_data = stream.getvalue()
+        Path("tmp/DATA_new.bin").write_bytes(new_data)
+        new_size = Size(1, len(new_data))
+        # new_section_data = new_size.to_binary() + b"DATA" + new_data
+        self.data_section._data_fixed = new_data
+        new_section_data = self.revert_relocations()
+        print(new_section_data == self.data_section.data)
+        s1, s2 = len(new_section_data), len(self.data_section.data)
+        print(s1, s2)
+        size = s1 if s1 < s2 else s2
+        # print([hexInt(i+0x50) for i in range(size) if new_section_data[i] != self.data_section.data[i]])
+        # print([hexInt(new_section_data[i]) for i in range(size) if new_section_data[i] != self.data_section.data[i]])
+        Path("tmp/DATA.bin").write_bytes(new_section_data)
+        self.data_section.data = new_section_data
+    
     def validate(self):
         if self.data_section is None:
             raise ValueError("DATA section not found")
@@ -40,13 +68,21 @@ class ResTagFile(ResTagfileSectionHeader):
             assert(self.sdkv_section.version == '20220100'), f"Invalid version for SDKV: {self.sdkv_section.version}, expected '20220100'"
         
     def to_binary(self) -> bytes:
-        result = self.size.to_binary()
-        result += self.signature
-        result += self.sdkv_section.to_binary()
-        result += self.data_section.to_binary()
-        result += self.type_section.to_binary()
-        result += self.indx_section.to_binary()
-        return result
+        stream = WriteStream()
+        # result = self.size.to_binary()
+        stream.write_padding(4) # size
+        stream.write(self.signature)
+        self.sdkv_section.to_stream(stream)
+        self.data_section.to_stream(stream)
+        self.type_section.to_stream(stream)
+        self.indx_section.to_stream(stream)
+        stream.seek_end()
+        new_size = stream.tell() - 8
+        _size = Size(is_chunk=self.size.is_chunk, size=new_size)
+        stream.seek_start()
+        stream.write(_size.to_binary())
+        stream.seek_start()
+        return stream.getvalue()
     
     def read_havok(self, stream: ReadStream):
         reader = ReadStream(self.data_section._data_fixed) #if stream is None else stream
@@ -97,6 +133,7 @@ class ResTagFile(ResTagfileSectionHeader):
         res.update_fields(stream)
         return res
 
+    
     # Getters
     def get_type_section(self, section_type: ResTypeSectionSignature|bytes) -> tuple[int, ResTypeSection]:
         for i, section in enumerate(self.type_section.sections):
@@ -151,13 +188,15 @@ class ResTagFile(ResTagfileSectionHeader):
         internal_patch_index = -1
         def inplace_fixup(offset: int, internal_patch: int): #u32, u32=
             # tmp = hexInt(offset + 0x50)
+            if offset == 248:
+                pass
             
             type_index = internal_patch.type_index
             data_stream_reader.seek(offset, io.SEEK_SET)
-            index_tmp = data_stream_reader.read_u64()
-            data_stream_reader.seek(offset, io.SEEK_SET)
+            # index_tmp = data_stream_reader.read_u64()
+            # data_stream_reader.seek(offset, io.SEEK_SET)
             index = data_stream_reader.read_u32()
-            assert(index == index_tmp, f"Invalid index: {index} != {index_tmp}")
+            # assert(index == index_tmp, f"Invalid index: {index} != {index_tmp}")
             # self._indexes[str(int(offset))] = index
             _item = item_section.items[index]
             _named_type = None
@@ -178,7 +217,7 @@ class ResTagFile(ResTagfileSectionHeader):
             data_stream_writer.seek(offset, io.SEEK_SET)
             data_stream_writer.write_64bit_int(addr) # ptr
             addr &= 0xFFFFFFFFFFFFFFFF 
-            offset_info = OffsetInfo(offset, index_tmp, _item, internal_patch_index, internal_patch, _named_type, addr, hexInt(offset + DATA_START_OFFSET))
+            offset_info = OffsetInfo(offset, index, _item, internal_patch_index, internal_patch, _named_type, addr, hexInt(offset + DATA_START_OFFSET))
             self._indexes[str(int(offset))] = offset_info
         
         for i, internal_patch in enumerate(ptch_section.internal_patches):
@@ -195,6 +234,8 @@ class ResTagFile(ResTagfileSectionHeader):
         ptch_section_index, ptch_section = self.get_ptch_section()
         stream = WriteStream(self.data_section._data_fixed)
         for str_offset, info in self._indexes.items():
+            if str_offset == "248":
+                pass
             stream.seek(info.offset)
             stream.write_64bit_int(info.index)
             if info.named_type is not None and info.named_type.name.startswith("hkArray"):
@@ -207,7 +248,7 @@ class ResTagFile(ResTagfileSectionHeader):
     
     
     
-    def get_assets_from_offsets_ranges(self, offsets: list[tuple[int, int]]):
+    def test_get_assets_from_offsets_ranges(self, offsets: list[tuple[int, int]]):
         ptch_section_index, ptch_section = self.get_ptch_section()
         type_name_index, type_name_section = self.get_type_section(b"TNA1")
         item_section_index, item_section = self.get_item_section()
@@ -243,7 +284,7 @@ class ResTagFile(ResTagfileSectionHeader):
         return assets
 
     
-    def add_collidable(self, collidables: List[hclCollidable], other_bphcl: "ResTagFile"):
+    def test_add_collidable(self, collidables: List[hclCollidable], other_bphcl: "ResTagFile"):
         """test for collidables"""
         collidable = collidables[0]
         m_collidables = self.cloth_container.m_collidables

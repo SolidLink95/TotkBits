@@ -206,3 +206,17 @@ class hkxMaterial__Transparency(Enum):
 #             return entry
 #     raise ValueError(f"Unknown signature: {signature}")
 
+
+class BphclEndian(Enum):
+    LITTLE = b"\xFF\xFE"
+    BIG = b"\xFE\xFF"
+    INVALID = b"\xFF\xFF"
+
+def get_endian(val: bytes) -> BphclEndian:
+    match val:
+        case b"\xFF\xFE":
+            return BphclEndian.LITTLE
+        case b"\xFE\xFF":
+            return BphclEndian.BIG
+        case _:
+            return BphclEndian.INVALID

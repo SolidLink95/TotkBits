@@ -1,0 +1,2639 @@
+{
+    "hclSimClothData__OverridableSimulationInfo": {
+        "name": "hclSimClothData__OverridableSimulationInfo",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_gravity",
+                "type": ""
+            },
+            {
+                "name": "m_globalDampingPerSecond",
+                "type": "int # float"
+            },
+            {
+                "name": "_pad_size",
+                "type": "int"
+            },
+            {
+                "name": "_align_val",
+                "type": "int"
+            }
+        ]
+    },
+    "Quatf": {
+        "name": "Quatf",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "a",
+                "type": "int # float"
+            },
+            {
+                "name": "b",
+                "type": "int # float"
+            },
+            {
+                "name": "c",
+                "type": "int # float"
+            },
+            {
+                "name": "d",
+                "type": "int # float"
+            }
+        ]
+    },
+    "hkBitFieldStorage": {
+        "name": "hkBitFieldStorage",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_words",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_numBits",
+                "type": "int # s32"
+            }
+        ]
+    },
+    "hkBitField": {
+        "name": "hkBitField",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_storage",
+                "type": "hkBitFieldStorage"
+            }
+        ]
+    },
+    "hkRootLevelContainer__NamedVariant": {
+        "name": "hkRootLevelContainer__NamedVariant",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_className",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_variant",
+                "type": "hkRefVariant"
+            },
+            {
+                "name": "_align_val",
+                "type": "int"
+            }
+        ]
+    },
+    "hkRootLevelContainer": {
+        "name": "hkRootLevelContainer",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_namedVariants",
+                "type": "hkArray"
+            },
+            {
+                "name": "cloth_offset",
+                "type": "int"
+            },
+            {
+                "name": "resource_offset",
+                "type": "int"
+            },
+            {
+                "name": "animation_offset",
+                "type": "int"
+            },
+            {
+                "name": "_align_val",
+                "type": "int"
+            }
+        ]
+    },
+    "hkVector4f": {
+        "name": "hkVector4f",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_x",
+                "type": "int # float"
+            },
+            {
+                "name": "m_y",
+                "type": "int # float"
+            },
+            {
+                "name": "m_z",
+                "type": "int # float"
+            },
+            {
+                "name": "m_w",
+                "type": "int # float"
+            }
+        ]
+    },
+    "hkQuaternionf": {
+        "name": "hkQuaternionf",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_vec",
+                "type": "hkVector4f"
+            }
+        ]
+    },
+    "hkRotationf": {
+        "name": "hkRotationf",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_col0",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_col1",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_col2",
+                "type": "hkVector4f"
+            }
+        ]
+    },
+    "hkMatrix4f": {
+        "name": "hkMatrix4f",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_col0",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_col1",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_col2",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_col3",
+                "type": "hkVector4f"
+            }
+        ]
+    },
+    "hkTransform": {
+        "name": "hkTransform",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_rotation",
+                "type": "hkRotationf"
+            },
+            {
+                "name": "m_translation",
+                "type": "hkVector4f"
+            }
+        ]
+    },
+    "hkQsTransformf": {
+        "name": "hkQsTransformf",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_translation",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_rotation",
+                "type": "hkQuaternionf"
+            },
+            {
+                "name": "m_scale",
+                "type": "hkVector4f"
+            }
+        ]
+    },
+    "hclShape": {
+        "name": "hclShape",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_type",
+                "type": "int # s32"
+            }
+        ]
+    },
+    "hclCollidable": {
+        "name": "hclCollidable",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_transform",
+                "type": "hkTransform"
+            },
+            {
+                "name": "m_linearVelocity",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_angularVelocity",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_userData",
+                "type": "int # u64"
+            },
+            {
+                "name": "m_shape",
+                "type": "hkRefPtr # hkRefPtr[hclShape]"
+            },
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_pinchDetectionRadius",
+                "type": "int # float"
+            },
+            {
+                "name": "m_pinchDetectionPriority",
+                "type": "int # u8"
+            },
+            {
+                "name": "m_pinchDetectionEnabled",
+                "type": "bool"
+            },
+            {
+                "name": "m_virtualCollisionPointCollisionEnabled",
+                "type": "bool"
+            },
+            {
+                "name": "m_enabled",
+                "type": "bool"
+            },
+            {
+                "name": "_offsets_range",
+                "type": "list[tuple[hexInt"
+            },
+            {
+                "name": "_offset",
+                "type": "int"
+            }
+        ]
+    },
+    "hclSimClothData__ParticleData": {
+        "name": "hclSimClothData__ParticleData",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_mass",
+                "type": "int # float"
+            },
+            {
+                "name": "m_invMass",
+                "type": "int # float"
+            },
+            {
+                "name": "m_radius",
+                "type": "int # float"
+            },
+            {
+                "name": "m_friction",
+                "type": "int # float"
+            }
+        ]
+    },
+    "hclSimClothPose": {
+        "name": "hclSimClothPose",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_positions",
+                "type": "hkArray # hkArray[hkVector4f]"
+            }
+        ]
+    },
+    "hclConstraintSet": {
+        "name": "hclConstraintSet",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_constraintId",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_type",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "hclSimClothData__CollidableTransformMap": {
+        "name": "hclSimClothData__CollidableTransformMap",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_transformSetIndex",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_transformIndices",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_offsets",
+                "type": "hkArray # hkArray[hkMatrix4f]"
+            }
+        ]
+    },
+    "hclAction": {
+        "name": "hclAction",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_active",
+                "type": "bool"
+            },
+            {
+                "name": "m_registeredWithWorldStepping",
+                "type": "bool"
+            }
+        ]
+    },
+    "hclSimClothData__TransferMotionData": {
+        "name": "hclSimClothData__TransferMotionData",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_transformSetIndex",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_transformIndex",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_transferTranslationMotion",
+                "type": "bool"
+            },
+            {
+                "name": "m_minTranslationSpeed",
+                "type": "int # float"
+            },
+            {
+                "name": "m_maxTranslationSpeed",
+                "type": "int # float"
+            },
+            {
+                "name": "m_minTranslationBlend",
+                "type": "int # float"
+            },
+            {
+                "name": "m_maxTranslationBlend",
+                "type": "int # float"
+            },
+            {
+                "name": "m_transferRotationMotion",
+                "type": "bool"
+            },
+            {
+                "name": "m_minRotationSpeed",
+                "type": "int # float"
+            },
+            {
+                "name": "m_maxRotationSpeed",
+                "type": "int # float"
+            },
+            {
+                "name": "m_minRotationBlend",
+                "type": "int # float"
+            },
+            {
+                "name": "m_maxRotationBlend",
+                "type": "int # float"
+            }
+        ]
+    },
+    "hclSimClothData__LandscapeCollisionData": {
+        "name": "hclSimClothData__LandscapeCollisionData",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_landscapeRadius",
+                "type": "int # float"
+            },
+            {
+                "name": "m_enableStuckParticleDetection",
+                "type": "bool"
+            },
+            {
+                "name": "m_stuckParticlesStretchFactorSq",
+                "type": "int # float"
+            },
+            {
+                "name": "m_pinchDetectionEnabled",
+                "type": "bool"
+            },
+            {
+                "name": "m_pinchDetectionPriority",
+                "type": "int # u8"
+            },
+            {
+                "name": "m_pinchDetectionRadius",
+                "type": "int # float"
+            },
+            {
+                "name": "m_collisionTolerance",
+                "type": "int # float"
+            }
+        ]
+    },
+    "hclSimClothData__CollidablePinchingData": {
+        "name": "hclSimClothData__CollidablePinchingData",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_pinchDetectionEnabled",
+                "type": "bool"
+            },
+            {
+                "name": "m_pinchDetectionPriority",
+                "type": "int # u8"
+            },
+            {
+                "name": "m_pinchDetectionRadius",
+                "type": "int # float"
+            },
+            {
+                "name": "_align_val",
+                "type": "int"
+            }
+        ]
+    },
+    "hclVirtualCollisionPointsData__Block": {
+        "name": "hclVirtualCollisionPointsData__Block",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_safeDisplacementRadius",
+                "type": "int # float"
+            },
+            {
+                "name": "m_startingVCPIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_numVCPs",
+                "type": "int # u8"
+            }
+        ]
+    },
+    "hclVirtualCollisionPointsData__BarycentricDictionaryEntry": {
+        "name": "hclVirtualCollisionPointsData__BarycentricDictionaryEntry",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_startingBarycentricIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_numBarycentrics",
+                "type": "int # u8"
+            }
+        ]
+    },
+    "hclVirtualCollisionPointsData__TriangleFan": {
+        "name": "hclVirtualCollisionPointsData__TriangleFan",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_realParticleIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_vcpStartIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_numTriangles",
+                "type": "int # u8"
+            }
+        ]
+    },
+    "hclVirtualCollisionPointsData__TriangleFanLandscape": {
+        "name": "hclVirtualCollisionPointsData__TriangleFanLandscape",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_realParticleIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_triangleStartIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_vcpStartIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_numTriangles",
+                "type": "int # u8"
+            }
+        ]
+    },
+    "hclVirtualCollisionPointsData__EdgeFanSection": {
+        "name": "hclVirtualCollisionPointsData__EdgeFanSection",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_oppositeRealParticleIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_barycentricDictionaryIndex",
+                "type": "int # u16"
+            }
+        ]
+    },
+    "hclVirtualCollisionPointsData__EdgeFan": {
+        "name": "hclVirtualCollisionPointsData__EdgeFan",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_realParticleIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_edgeStartIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_numEdges",
+                "type": "int # u8"
+            }
+        ]
+    },
+    "hclVirtualCollisionPointsData__EdgeFanLandscape": {
+        "name": "hclVirtualCollisionPointsData__EdgeFanLandscape",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_realParticleIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_edgeStartIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_vcpStartIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_numEdges",
+                "type": "int # u8"
+            }
+        ]
+    },
+    "hclVirtualCollisionPointsData__BarycentricPair": {
+        "name": "hclVirtualCollisionPointsData__BarycentricPair",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_u",
+                "type": "int # float"
+            },
+            {
+                "name": "m_v",
+                "type": "int # float"
+            }
+        ]
+    },
+    "hclVirtualCollisionPointsData": {
+        "name": "hclVirtualCollisionPointsData",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_blocks",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__Block]"
+            },
+            {
+                "name": "m_numVCPoints",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_landscapeParticlesBlockIndex",
+                "type": "hkArray # hkArray[u16]"
+            },
+            {
+                "name": "m_numLandscapeVCPoints",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_edgeBarycentricsDictionary",
+                "type": "hkArray # hkArray[float]"
+            },
+            {
+                "name": "m_edgeDictionaryEntries",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__BarycentricDictionaryEntry]"
+            },
+            {
+                "name": "m_triangleBarycentricsDictionary",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__BarycentricPair]"
+            },
+            {
+                "name": "m_triangleDictionaryEntries",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__BarycentricDictionaryEntry]"
+            },
+            {
+                "name": "m_edges",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__EdgeFanSection]"
+            },
+            {
+                "name": "m_edgeFans",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__EdgeFan]"
+            },
+            {
+                "name": "m_triangles",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__TriangleFanSection]"
+            },
+            {
+                "name": "m_triangleFans",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__TriangleFan]"
+            },
+            {
+                "name": "m_edgesLandscape",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__EdgeFanSection]"
+            },
+            {
+                "name": "m_edgeFansLandscape",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__EdgeFanLandscape]"
+            },
+            {
+                "name": "m_trianglesLandscape",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__TriangleFanSection]"
+            },
+            {
+                "name": "m_triangleFansLandscape",
+                "type": "hkArray # hkArray[hclVirtualCollisionPointsData__TriangleFanLandscape]"
+            },
+            {
+                "name": "m_edgeFanIndices",
+                "type": "hkArray # hkArray[u16]"
+            },
+            {
+                "name": "m_triangleFanIndices",
+                "type": "hkArray # hkArray[u16]"
+            },
+            {
+                "name": "m_edgeFanIndicesLandscape",
+                "type": "hkArray # hkArray[u16]"
+            },
+            {
+                "name": "m_triangleFanIndicesLandscape",
+                "type": "hkArray # hkArray[u16]"
+            }
+        ]
+    },
+    "hclSimClothData": {
+        "name": "hclSimClothData",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_simulationInfo",
+                "type": "hclSimClothData__OverridableSimulationInfo"
+            },
+            {
+                "name": "m_particleDatas",
+                "type": "hkArray # hkArray[hclSimClothData__ParticleData]"
+            },
+            {
+                "name": "m_fixedParticles",
+                "type": "hkArray # hkArray[u16]"
+            },
+            {
+                "name": "m_doNormals",
+                "type": "bool"
+            },
+            {
+                "name": "m_simOpIds",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_simClothPoses",
+                "type": "hkArray # hkArray[hkRefPtr[hclSimClothPose]]"
+            },
+            {
+                "name": "m_staticConstraintSets",
+                "type": "hkArray # hkArray[hkRefPtr[hclConstraintSet]]"
+            },
+            {
+                "name": "m_antiPinchConstraintSets",
+                "type": "hkArray # hkArray[hkRefPtr[hclConstraintSet]]"
+            },
+            {
+                "name": "m_collidableTransformMap",
+                "type": "hclSimClothData__CollidableTransformMap"
+            },
+            {
+                "name": "m_perInstanceCollidables",
+                "type": "hkArray # hkArray[hkRefPtr[hclCollidable]]"
+            },
+            {
+                "name": "m_maxParticleRadius",
+                "type": "int # float"
+            },
+            {
+                "name": "m_staticCollisionMasks",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_actions",
+                "type": "hkArray # hkArray[hkRefPtr[hclAction]]"
+            },
+            {
+                "name": "m_totalMass",
+                "type": "int # float"
+            },
+            {
+                "name": "m_transferMotionData",
+                "type": "hclSimClothData__TransferMotionData"
+            },
+            {
+                "name": "m_transferMotionEnabled",
+                "type": "bool"
+            },
+            {
+                "name": "m_landscapeCollisionEnabled",
+                "type": "bool"
+            },
+            {
+                "name": "m_landscapeCollisionData",
+                "type": "hclSimClothData__LandscapeCollisionData"
+            },
+            {
+                "name": "m_numLandscapeCollidableParticles",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_triangleIndices",
+                "type": "hkArray # hkArray[u16]"
+            },
+            {
+                "name": "m_triangleFlips",
+                "type": "hkArray # hkArray[u8]"
+            },
+            {
+                "name": "m_pinchDetectionEnabled",
+                "type": "bool"
+            },
+            {
+                "name": "m_perParticlePinchDetectionEnabledFlags",
+                "type": "hkArray # hkArray[BOOL]"
+            },
+            {
+                "name": "m_collidablePinchingDatas",
+                "type": "hkArray # hkArray[hclSimClothData__CollidablePinchingData]"
+            },
+            {
+                "name": "m_minPinchedParticleIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_maxPinchedParticleIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_maxCollisionPairs",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_virtualCollisionPointsData",
+                "type": "hclVirtualCollisionPointsData"
+            }
+        ]
+    },
+    "hclBufferLayout__BufferElement": {
+        "name": "hclBufferLayout__BufferElement",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_vectorConversion",
+                "type": "hclRuntimeConversionInfo__VectorConversion"
+            },
+            {
+                "name": "m_vectorSize",
+                "type": "int # u8"
+            },
+            {
+                "name": "m_slotId",
+                "type": "int # u8"
+            },
+            {
+                "name": "m_slotStart",
+                "type": "int # u8"
+            }
+        ]
+    },
+    "hclBufferLayout__Slot": {
+        "name": "hclBufferLayout__Slot",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_flags",
+                "type": "hclBufferLayout__SlotFlags"
+            },
+            {
+                "name": "m_stride",
+                "type": "int # u8"
+            }
+        ]
+    },
+    "hclBufferLayout": {
+        "name": "hclBufferLayout",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_elementsLayout",
+                "type": "list[hclBufferLayout__BufferElement]"
+            },
+            {
+                "name": "m_slots",
+                "type": "list[hclBufferLayout__Slot]"
+            },
+            {
+                "name": "m_numSlots",
+                "type": "int # u8"
+            },
+            {
+                "name": "m_triangleFormat",
+                "type": "hclBufferLayout__TriangleFormat"
+            },
+            {
+                "name": "_mslots_size",
+                "type": "int"
+            }
+        ]
+    },
+    "hclBufferDefinition": {
+        "name": "hclBufferDefinition",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_meshName",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_bufferName",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_type",
+                "type": "int # s32"
+            },
+            {
+                "name": "m_subType",
+                "type": "int # s32"
+            },
+            {
+                "name": "m_numVertices",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_numTriangles",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_bufferLayout",
+                "type": "hclBufferLayout"
+            },
+            {
+                "name": "try",
+                "type": "return f"
+            }
+        ]
+    },
+    "hclTransformSetDefinition": {
+        "name": "hclTransformSetDefinition",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_type",
+                "type": "int # s32"
+            },
+            {
+                "name": "m_numTransforms",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "hclBufferUsage": {
+        "name": "hclBufferUsage",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_perComponentFlags",
+                "type": "bytes # size"
+            },
+            {
+                "name": "m_trianglesRead",
+                "type": "bool"
+            }
+        ]
+    },
+    "hclClothState__BufferAccess": {
+        "name": "hclClothState__BufferAccess",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_bufferIndex",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_bufferUsage",
+                "type": "hclBufferUsage"
+            },
+            {
+                "name": "m_shadowBufferIndex",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "hclTransformSetUsage__TransformTracker": {
+        "name": "hclTransformSetUsage__TransformTracker",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_read",
+                "type": "hkBitField"
+            },
+            {
+                "name": "m_readBeforeWrite",
+                "type": "hkBitField"
+            },
+            {
+                "name": "m_written",
+                "type": "hkBitField"
+            }
+        ]
+    },
+    "hclTransformSetUsage": {
+        "name": "hclTransformSetUsage",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_perComponentFlags",
+                "type": "bytes # size"
+            },
+            {
+                "name": "m_perComponentTransformTrackers",
+                "type": "hkArray # hkArray[hclTransformSetUsage__TransformTracker]"
+            }
+        ]
+    },
+    "hclClothState__TransformSetAccess": {
+        "name": "hclClothState__TransformSetAccess",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_transformSetIndex",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_transformSetUsage",
+                "type": "hclTransformSetUsage"
+            }
+        ]
+    },
+    "hclOperator": {
+        "name": "hclOperator",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_operatorID",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_type",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_usedBuffers",
+                "type": "hkArray # hkArray[hclClothState__BufferAccess]"
+            },
+            {
+                "name": "m_usedTransformSets",
+                "type": "hkArray # hkArray[hclClothState__TransformSetAccess]"
+            }
+        ]
+    },
+    "hclStateDependencyGraph__Branch": {
+        "name": "hclStateDependencyGraph__Branch",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_branchId",
+                "type": "int # s32"
+            },
+            {
+                "name": "m_stateOperatorIndices",
+                "type": "hkArray # hkArray[s32]"
+            },
+            {
+                "name": "m_parentBranches",
+                "type": "hkArray # hkArray[s32]"
+            },
+            {
+                "name": "m_childBranches",
+                "type": "hkArray # hkArray[s32]"
+            }
+        ]
+    },
+    "hclStateDependencyGraph": {
+        "name": "hclStateDependencyGraph",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_branches",
+                "type": "hkArray # hkArray[hclStateDependencyGraph__Branch]"
+            },
+            {
+                "name": "m_rootBranchIds",
+                "type": "hkArray # hkArray[s32]"
+            },
+            {
+                "name": "m_children",
+                "type": "hkArray # hkArray[hkArray[s32]]"
+            },
+            {
+                "name": "m_parents",
+                "type": "hkArray # hkArray[hkArray[s32]]"
+            },
+            {
+                "name": "m_multiThreadable",
+                "type": "bool"
+            }
+        ]
+    },
+    "hclClothState": {
+        "name": "hclClothState",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_operators",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_usedBuffers",
+                "type": "hkArray # hkArray[hclClothState__BufferAccess]"
+            },
+            {
+                "name": "m_usedTransformSets",
+                "type": "hkArray # hkArray[hclClothState__TransformSetAccess]"
+            },
+            {
+                "name": "m_usedSimCloths",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_dependencyGraph",
+                "type": "hkRefPtr # hkRefPtr[hclStateDependencyGraph]"
+            }
+        ]
+    },
+    "hclStateTransition__SimClothTransitionData": {
+        "name": "hclStateTransition__SimClothTransitionData",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_isSimulated",
+                "type": "bool"
+            },
+            {
+                "name": "m_transitionConstraints",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_transitionType",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "hclStateTransition__BlendOpTransitionData": {
+        "name": "hclStateTransition__BlendOpTransitionData",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_bufferASimCloths",
+                "type": "hkArray # hkArray[s32]"
+            },
+            {
+                "name": "m_bufferBSimCloths",
+                "type": "hkArray # hkArray[s32]"
+            },
+            {
+                "name": "m_transitionType",
+                "type": "hclStateTransition__TransitionType"
+            },
+            {
+                "name": "m_blendWeightType",
+                "type": "hclBlendSomeVerticesOperator__BlendWeightType"
+            },
+            {
+                "name": "m_blendOperatorId",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "hclStateTransition__StateTransitionData": {
+        "name": "hclStateTransition__StateTransitionData",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_simClothTransitionData",
+                "type": "hkArray # hkArray[hclStateTransition__SimClothTransitionData]"
+            },
+            {
+                "name": "m_blendOpTransitionData",
+                "type": "hkArray # hkArray[hclStateTransition__BlendOpTransitionData]"
+            },
+            {
+                "name": "m_simulatedState",
+                "type": "bool"
+            },
+            {
+                "name": "m_emptyState",
+                "type": "bool"
+            }
+        ]
+    },
+    "hclStateTransition": {
+        "name": "hclStateTransition",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_stateIds",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_stateTransitionData",
+                "type": "hkArray # hkArray[hclStateTransition__StateTransitionData]"
+            },
+            {
+                "name": "m_simClothTransitionConstraints",
+                "type": "hkArray # hkArray[hkArray[u32]]"
+            }
+        ]
+    },
+    "hclClothData": {
+        "name": "hclClothData",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_simClothDatas",
+                "type": "hkArray # hkArray[hkRefPtr[hclSimClothData]]"
+            },
+            {
+                "name": "m_bufferDefinitions",
+                "type": "hkArray # hkArray[hkRefPtr[hclBufferDefinition]]"
+            },
+            {
+                "name": "m_transformSetDefinitions",
+                "type": "hkArray # hkArray[hkRefPtr[hclTransformSetDefinition]]"
+            },
+            {
+                "name": "m_operators",
+                "type": "hkArray # hkArray[hkRefPtr[hclOperator]]"
+            },
+            {
+                "name": "m_clothStateDatas",
+                "type": "hkArray # hkArray[hkRefPtr[hclClothState]]"
+            },
+            {
+                "name": "m_stateTransitions",
+                "type": "hkArray # hkArray[hkRefPtr[hclStateTransition]]"
+            },
+            {
+                "name": "m_actions",
+                "type": "hkArray # hkArray[hkRefPtr[hclAction]]"
+            },
+            {
+                "name": "m_generatedAtRuntime",
+                "type": "bool"
+            },
+            {
+                "name": "m_targetPlatform",
+                "type": "hclClothData__Platform"
+            }
+        ]
+    },
+    "hclClothContainer": {
+        "name": "hclClothContainer",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_collidables",
+                "type": "hkArray # hkArray[hkRefPtr[hclCollidable]]"
+            },
+            {
+                "name": "m_clothDatas",
+                "type": "hkArray # hkArray[hkRefPtr[hclClothData]]"
+            }
+        ]
+    },
+    "hkMemoryResourceHandle__ExternalLink": {
+        "name": "hkMemoryResourceHandle__ExternalLink",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_memberName",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_externalId",
+                "type": "hkStringPtr"
+            }
+        ]
+    },
+    "hkMemoryResourceHandle": {
+        "name": "hkMemoryResourceHandle",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_variant",
+                "type": "hkRefVariant"
+            },
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_references",
+                "type": "hkArray # hkArray[hkMemoryResourceHandle__ExternalLink]"
+            }
+        ]
+    },
+    "hkMemoryResourceContainer": {
+        "name": "hkMemoryResourceContainer",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_parent",
+                "type": "hkRefPtr"
+            },
+            {
+                "name": "m_resourceHandles",
+                "type": "hkArray"
+            },
+            {
+                "name": "m_children",
+                "type": "hkArray"
+            }
+        ]
+    },
+    "hkaBone": {
+        "name": "hkaBone",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_lockTranslation",
+                "type": "bool"
+            }
+        ]
+    },
+    "hkLocalFrame": {
+        "name": "hkLocalFrame",
+        "base": "hkReferencedObject",
+        "fields": []
+    },
+    "hkaSkeleton__LocalFrameOnBone": {
+        "name": "hkaSkeleton__LocalFrameOnBone",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_localFrame",
+                "type": "hkRefPtr # hkRefPtr[hkLocalFrame]"
+            },
+            {
+                "name": "m_boneIndex",
+                "type": "int # u16"
+            }
+        ]
+    },
+    "hkaSkeleton__Partition": {
+        "name": "hkaSkeleton__Partition",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_startBoneIndex",
+                "type": "int # u16"
+            },
+            {
+                "name": "m_numBones",
+                "type": "int # u16"
+            }
+        ]
+    },
+    "hkaSkeleton": {
+        "name": "hkaSkeleton",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_parentIndices",
+                "type": "hkArray # hkArray[u16]"
+            },
+            {
+                "name": "m_bones",
+                "type": "hkArray # hkArray[hkaBone]"
+            },
+            {
+                "name": "m_referencePose",
+                "type": "hkArray # hkArray[hkQsTransformf]"
+            },
+            {
+                "name": "m_referenceFloats",
+                "type": "hkArray # hkArray[float]"
+            },
+            {
+                "name": "m_floatSlots",
+                "type": "hkArray # hkArray[hkStringPtr]"
+            },
+            {
+                "name": "m_localFrames",
+                "type": "hkArray # hkArray[hkaSkeleton__LocalFrameOnBone]"
+            },
+            {
+                "name": "m_partitions",
+                "type": "hkArray # hkArray[hkaSkeleton__Partition]"
+            }
+        ]
+    },
+    "hkaAnimatedReferenceFrame": {
+        "name": "hkaAnimatedReferenceFrame",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_frameType",
+                "type": "hkaAnimatedReferenceFrame__hkaReferenceFrameTypeEnum"
+            }
+        ]
+    },
+    "hkaAnnotationTrack__Annotation": {
+        "name": "hkaAnnotationTrack__Annotation",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_time",
+                "type": "int # float"
+            },
+            {
+                "name": "m_text",
+                "type": "hkStringPtr"
+            }
+        ]
+    },
+    "hkaAnnotationTrack": {
+        "name": "hkaAnnotationTrack",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_trackName",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_annotations",
+                "type": "hkArray # hkArray[hkaAnnotationTrack__Annotation]"
+            }
+        ]
+    },
+    "hkaAnimation": {
+        "name": "hkaAnimation",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_type",
+                "type": "hkaAnimation__AnimationType"
+            },
+            {
+                "name": "m_duration",
+                "type": "int # float"
+            },
+            {
+                "name": "m_numberOfTransformTracks",
+                "type": "int # s32"
+            },
+            {
+                "name": "m_numberOfFloatTracks",
+                "type": "int # s32"
+            },
+            {
+                "name": "m_extractedMotion",
+                "type": "hkRefPtr # hkRefPtr[hkaAnimatedReferenceFrame]"
+            },
+            {
+                "name": "m_annotationTracks",
+                "type": "hkArray # hkArray[hkaAnnotationTrack]"
+            }
+        ]
+    },
+    "hkaAnimationBinding": {
+        "name": "hkaAnimationBinding",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_originalSkeletonName",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_animation",
+                "type": "hkRefPtr # hkRefPtr[hkaAnimation]"
+            },
+            {
+                "name": "m_transformTrackToBoneIndices",
+                "type": "hkArray # hkArray[s16]"
+            },
+            {
+                "name": "m_floatTrackToFloatSlotIndices",
+                "type": "hkArray # hkArray[s16]"
+            },
+            {
+                "name": "m_partitionIndices",
+                "type": "hkArray # hkArray[s16]"
+            },
+            {
+                "name": "m_blendHint",
+                "type": "hkaAnimationBinding__BlendHint"
+            }
+        ]
+    },
+    "hkaBoneAttachment": {
+        "name": "hkaBoneAttachment",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_originalSkeletonName",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_boneFromAttachment",
+                "type": "hkMatrix4f"
+            },
+            {
+                "name": "m_attachment",
+                "type": "hkRefVariant"
+            },
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_boneIndex",
+                "type": "int # u16"
+            }
+        ]
+    },
+    "hkxVertexBuffer__VertexData": {
+        "name": "hkxVertexBuffer__VertexData",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_vectorData",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_floatData",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_uint32Data",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_uint16Data",
+                "type": "hkArray # hkArray[u16]"
+            },
+            {
+                "name": "m_uint8Data",
+                "type": "hkArray # hkArray[u8]"
+            },
+            {
+                "name": "m_numVerts",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_vectorStride",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_floatStride",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_uint32Stride",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_uint16Stride",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_uint8Stride",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "hkxVertexDescription__ElementDecl": {
+        "name": "hkxVertexDescription__ElementDecl",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_byteOffset",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_type",
+                "type": "hkxVertexDescription__DataType"
+            },
+            {
+                "name": "m_usage",
+                "type": "hkxVertexDescription__DataUsage"
+            },
+            {
+                "name": "m_byteStride",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_numElements",
+                "type": "int # u8"
+            },
+            {
+                "name": "m_channelID",
+                "type": "hkStringPtr"
+            }
+        ]
+    },
+    "hkxVertexDescription": {
+        "name": "hkxVertexDescription",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_decls",
+                "type": "hkArray # hkArray[hkxVertexDescription__ElementDecl]"
+            }
+        ]
+    },
+    "hkxVertexBuffer": {
+        "name": "hkxVertexBuffer",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_data",
+                "type": "hkxVertexBuffer__VertexData"
+            },
+            {
+                "name": "m_desc",
+                "type": "hkxVertexDescription"
+            }
+        ]
+    },
+    "hkxIndexBuffer": {
+        "name": "hkxIndexBuffer",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_indexType",
+                "type": "hkxIndexBuffer__IndexType"
+            },
+            {
+                "name": "m_indices16",
+                "type": "hkArray # hkArray[u16]"
+            },
+            {
+                "name": "m_indices32",
+                "type": "hkArray # hkArray[u32]"
+            },
+            {
+                "name": "m_vertexBaseOffset",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_length",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "hkxAttribute": {
+        "name": "hkxAttribute",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_value",
+                "type": "hkRefVariant"
+            }
+        ]
+    },
+    "hkxAttributeGroup": {
+        "name": "hkxAttributeGroup",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_attributes",
+                "type": "hkArray # hkArray[hkxAttribute]"
+            }
+        ]
+    },
+    "hkxAttributeHolder": {
+        "name": "hkxAttributeHolder",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_attributeGroups",
+                "type": "hkArray # hkArray[hkxAttributeGroup]"
+            }
+        ]
+    },
+    "hkxMaterial__TextureStage": {
+        "name": "hkxMaterial__TextureStage",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_texture",
+                "type": "hkRefVariant"
+            },
+            {
+                "name": "m_usageHint",
+                "type": "hkxMaterial__TextureType"
+            },
+            {
+                "name": "m_tcoordChannel",
+                "type": "int # s32"
+            }
+        ]
+    },
+    "hkxMaterial__Property": {
+        "name": "hkxMaterial__Property",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_key",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_value",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "hkxMaterial": {
+        "name": "hkxMaterial",
+        "base": "hkxAttributeHolder",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_stages",
+                "type": "hkArray # hkArray[hkxMaterial__TextureStage]"
+            },
+            {
+                "name": "m_diffuseColor",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_ambientColor",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_specularColor",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_emissiveColor",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_subMaterials",
+                "type": "hkArray # hkArray[hkRefPtr[hkxMaterial]]"
+            },
+            {
+                "name": "m_extraData",
+                "type": "hkRefVariant"
+            },
+            {
+                "name": "m_uvMapScale",
+                "type": "int # float"
+            },
+            {
+                "name": "m_uvMapOffset",
+                "type": "int # float"
+            },
+            {
+                "name": "m_uvMapRotation",
+                "type": "int # float"
+            },
+            {
+                "name": "m_uvMapAlgorithm",
+                "type": "hkxMaterial__UVMappingAlgorithm"
+            },
+            {
+                "name": "m_specularMultiplier",
+                "type": "int # float"
+            },
+            {
+                "name": "m_specularExponent",
+                "type": "int # float"
+            },
+            {
+                "name": "m_transparency",
+                "type": "hkxMaterial__Transparency"
+            },
+            {
+                "name": "m_userData",
+                "type": "int # u64"
+            },
+            {
+                "name": "m_properties",
+                "type": "hkArray # hkArray[hkxMaterial__Property]"
+            }
+        ]
+    },
+    "hkxVertexAnimation__UsageMap": {
+        "name": "hkxVertexAnimation__UsageMap",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_use",
+                "type": "hkxVertexDescription__DataUsage"
+            },
+            {
+                "name": "m_useIndexOrig",
+                "type": "int # u8"
+            },
+            {
+                "name": "m_useIndexLocal",
+                "type": "int # u8"
+            }
+        ]
+    },
+    "hkxVertexAnimation": {
+        "name": "hkxVertexAnimation",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_time",
+                "type": "int # float"
+            },
+            {
+                "name": "m_vertData",
+                "type": "hkxVertexBuffer"
+            },
+            {
+                "name": "m_vertexIndexMap",
+                "type": "hkArray # hkArray[s32]"
+            },
+            {
+                "name": "m_componentMap",
+                "type": "hkArray # hkArray[hkxVertexAnimation__UsageMap]"
+            }
+        ]
+    },
+    "hkMeshBoneIndexMapping": {
+        "name": "hkMeshBoneIndexMapping",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_mapping",
+                "type": "hkArray # hkArray[u16]"
+            }
+        ]
+    },
+    "hkxMeshSection__InstanceInfo": {
+        "name": "hkxMeshSection__InstanceInfo",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_localTransform",
+                "type": "hkMatrix4f"
+            },
+            {
+                "name": "m_vertexBase",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_verticesCount",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_indexOffset",
+                "type": "int # u32"
+            },
+            {
+                "name": "m_indicesCount",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "hkxMeshSection": {
+        "name": "hkxMeshSection",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_vertexBuffer",
+                "type": "hkRefPtr # hkRefPtr[hkxVertexBuffer]"
+            },
+            {
+                "name": "m_indexBuffers",
+                "type": "hkArray # hkArray[hkRefPtr[hkxIndexBuffer]]"
+            },
+            {
+                "name": "m_material",
+                "type": "hkRefPtr # hkRefPtr[hkxMaterial]"
+            },
+            {
+                "name": "m_userChannels",
+                "type": "hkArray # hkArray[hkRefVariant]"
+            },
+            {
+                "name": "m_vertexAnimations",
+                "type": "hkArray # hkArray[hkRefPtr[hkxVertexAnimation]]"
+            },
+            {
+                "name": "m_linearKeyFrameHints",
+                "type": "hkArray # hkArray[float]"
+            },
+            {
+                "name": "m_boneMatrixMap",
+                "type": "hkArray # hkArray[hkMeshBoneIndexMapping]"
+            },
+            {
+                "name": "m_instances",
+                "type": "hkArray # hkArray[hkxMeshSection__InstanceInfo]"
+            },
+            {
+                "name": "m_originalBoundingBoxMin",
+                "type": "hkVector4f"
+            },
+            {
+                "name": "m_originalBoundingBoxMax",
+                "type": "hkVector4f"
+            }
+        ]
+    },
+    "hkxMesh__UserChannelInfo": {
+        "name": "hkxMesh__UserChannelInfo",
+        "base": "hkxAttributeHolder",
+        "fields": [
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_className",
+                "type": "hkStringPtr"
+            }
+        ]
+    },
+    "hkxMesh": {
+        "name": "hkxMesh",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_sections",
+                "type": "hkArray # hkArray[hkRefPtr[hkxMeshSection]]"
+            },
+            {
+                "name": "m_userChannelInfos",
+                "type": "hkArray # hkArray[hkRefPtr[hkxMesh__UserChannelInfo]]"
+            }
+        ]
+    },
+    "hkaMeshBinding__Mapping": {
+        "name": "hkaMeshBinding__Mapping",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_mapping",
+                "type": "hkArray # hkArray[s16]"
+            }
+        ]
+    },
+    "hkaMeshBinding": {
+        "name": "hkaMeshBinding",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_mesh",
+                "type": "hkRefPtr # hkRefPtr[hkxMesh]"
+            },
+            {
+                "name": "m_originalSkeletonName",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_name",
+                "type": "hkStringPtr"
+            },
+            {
+                "name": "m_skeleton",
+                "type": "hkRefPtr # hkRefPtr[hkaSkeleton]"
+            },
+            {
+                "name": "m_mappings",
+                "type": "hkArray # hkArray[hkaMeshBinding__Mapping]"
+            },
+            {
+                "name": "m_boneFromSkinMeshTransforms",
+                "type": "hkArray # hkArray[hkTransform]"
+            }
+        ]
+    },
+    "hkaAnimationContainer": {
+        "name": "hkaAnimationContainer",
+        "base": "hkReferencedObject",
+        "fields": [
+            {
+                "name": "m_skeletons",
+                "type": "hkArray # hkArray[hkRefPtr[hkaSkeleton]]"
+            },
+            {
+                "name": "m_animations",
+                "type": "hkArray # hkArray[hkRefPtr[hkaAnimation]]"
+            },
+            {
+                "name": "m_bindings",
+                "type": "hkArray # hkArray[hkRefPtr[hkaAnimationBinding]]"
+            },
+            {
+                "name": "m_attachments",
+                "type": "hkArray # hkArray[hkRefPtr[hkaBoneAttachment]]"
+            },
+            {
+                "name": "m_skins",
+                "type": "hkArray # hkArray[hkRefPtr[hkaMeshBinding]]"
+            }
+        ]
+    },
+    "ResPhive": {
+        "name": "ResPhive",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "magic",
+                "type": "bytes"
+            },
+            {
+                "name": "reserve0",
+                "type": "int"
+            },
+            {
+                "name": "reserve1",
+                "type": "int"
+            },
+            {
+                "name": "byte_order_mark",
+                "type": "BphclEndian"
+            },
+            {
+                "name": "file_type",
+                "type": "ResFileType"
+            },
+            {
+                "name": "max_section_capacity",
+                "type": "int"
+            },
+            {
+                "name": "tagfile_offset",
+                "type": "int"
+            },
+            {
+                "name": "param_offset",
+                "type": "int"
+            },
+            {
+                "name": "file_end_offset",
+                "type": "int"
+            },
+            {
+                "name": "tagfile_size",
+                "type": "int"
+            },
+            {
+                "name": "param_size",
+                "type": "int"
+            },
+            {
+                "name": "file_end_size",
+                "type": "int"
+            }
+        ]
+    },
+    "ResIndexSection": {
+        "name": "ResIndexSection",
+        "base": "ResTagfileSectionHeader",
+        "fields": [
+            {
+                "name": "items",
+                "type": "List[ResItem]"
+            },
+            {
+                "name": "internal_patches",
+                "type": "List[ResPatch]"
+            },
+            {
+                "name": "terminator",
+                "type": "int"
+            },
+            {
+                "name": "external_patches",
+                "type": "List[ResPatch]"
+            },
+            {
+                "name": "padding",
+                "type": "bytes"
+            }
+        ]
+    },
+    "ResSection": {
+        "name": "ResSection",
+        "base": "ResTagfileSectionHeader",
+        "fields": [
+            {
+                "name": "_type",
+                "type": "ResSectionType"
+            },
+            {
+                "name": "size",
+                "type": "Size"
+            },
+            {
+                "name": "signature",
+                "type": "str"
+            },
+            {
+                "name": "version",
+                "type": "str"
+            },
+            {
+                "name": "data",
+                "type": "bytes"
+            },
+            {
+                "name": "data_offset",
+                "type": "int"
+            },
+            {
+                "name": "data_fixed",
+                "type": "bytes"
+            },
+            {
+                "name": "sections",
+                "type": "List["
+            },
+            {
+                "name": "index",
+                "type": "List[ResIndexSection]"
+            },
+            {
+                "name": "_encoding",
+                "type": "str"
+            }
+        ]
+    },
+    "ResNamedType": {
+        "name": "ResNamedType",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "index",
+                "type": "VarUInt"
+            },
+            {
+                "name": "template_count",
+                "type": "VarUInt"
+            },
+            {
+                "name": "templates",
+                "type": "List[ResTypeTemplate]"
+            },
+            {
+                "name": "name",
+                "type": "str"
+            },
+            {
+                "name": "_uuid",
+                "type": "str"
+            }
+        ]
+    },
+    "ResTypeBodyInterface": {
+        "name": "ResTypeBodyInterface",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "type_index",
+                "type": "VarUInt"
+            },
+            {
+                "name": "flags",
+                "type": "VarUInt"
+            }
+        ]
+    },
+    "ResTypeBodyDeclaration": {
+        "name": "ResTypeBodyDeclaration",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "name_index",
+                "type": "VarUInt"
+            },
+            {
+                "name": "flags",
+                "type": "VarUInt"
+            },
+            {
+                "name": "offset",
+                "type": "VarUInt"
+            },
+            {
+                "name": "type_index",
+                "type": "VarUInt"
+            },
+            {
+                "name": "reserve",
+                "type": "int"
+            },
+            {
+                "name": "name",
+                "type": "str"
+            }
+        ]
+    },
+    "ResTypeBody": {
+        "name": "ResTypeBody",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "type_index",
+                "type": "VarUInt"
+            },
+            {
+                "name": "parent_type_index",
+                "type": "VarUInt"
+            },
+            {
+                "name": "flags",
+                "type": "VarUInt"
+            },
+            {
+                "name": "format",
+                "type": "VarUInt"
+            },
+            {
+                "name": "subtype_index",
+                "type": "VarUInt"
+            },
+            {
+                "name": "version",
+                "type": "VarUInt"
+            },
+            {
+                "name": "size",
+                "type": "VarUInt"
+            },
+            {
+                "name": "alignment",
+                "type": "VarUInt"
+            },
+            {
+                "name": "unknown_flags",
+                "type": "VarUInt"
+            },
+            {
+                "name": "decl_count",
+                "type": "VarUInt"
+            },
+            {
+                "name": "declarations",
+                "type": "List[ResTypeBodyDeclaration]"
+            },
+            {
+                "name": "interface_count",
+                "type": "VarUInt"
+            },
+            {
+                "name": "interfaces",
+                "type": "List[ResTypeBodyInterface]"
+            },
+            {
+                "name": "attr_index",
+                "type": "VarUInt"
+            },
+            {
+                "name": "attr",
+                "type": "str"
+            }
+        ]
+    },
+    "ResTypeSection": {
+        "name": "ResTypeSection",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "size",
+                "type": "Size"
+            },
+            {
+                "name": "signature",
+                "type": "bytes"
+            },
+            {
+                "name": "pad",
+                "type": "bytes"
+            },
+            {
+                "name": "strings",
+                "type": "List[str]"
+            },
+            {
+                "name": "type_count",
+                "type": "VarUInt"
+            },
+            {
+                "name": "types",
+                "type": "List[ResNamedType]"
+            },
+            {
+                "name": "type_bodies",
+                "type": "List["
+            },
+            {
+                "name": "hash_count",
+                "type": "VarUInt"
+            },
+            {
+                "name": "hashes",
+                "type": "List[ResTypeHash]"
+            },
+            {
+                "name": "padding",
+                "type": "str"
+            },
+            {
+                "name": "else",
+                "type": "raise ValueError"
+            }
+        ]
+    },
+    "Size": {
+        "name": "Size",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "is_chunk",
+                "type": "int       # 2"
+            },
+            {
+                "name": "size",
+                "type": "int           # 30"
+            },
+            {
+                "name": "_endian",
+                "type": "str"
+            }
+        ]
+    },
+    "ResTagfileSectionHeader": {
+        "name": "ResTagfileSectionHeader",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "size",
+                "type": "Size"
+            },
+            {
+                "name": "signature",
+                "type": "bytes"
+            }
+        ]
+    },
+    "VarUInt": {
+        "name": "VarUInt",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "val",
+                "type": "str # representation of the value in hex string format"
+            },
+            {
+                "name": "_byte0",
+                "type": "int #u8"
+            },
+            {
+                "name": "_bytes",
+                "type": "bytes"
+            },
+            {
+                "name": "_size",
+                "type": "int"
+            },
+            {
+                "name": "_value",
+                "type": "int"
+            },
+            {
+                "name": "else",
+                "type": "_value"
+            }
+        ]
+    },
+    "ResTypeTemplate": {
+        "name": "ResTypeTemplate",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "index",
+                "type": "VarUInt"
+            },
+            {
+                "name": "value",
+                "type": "VarUInt"
+            },
+            {
+                "name": "name",
+                "type": "str"
+            }
+        ]
+    },
+    "ResTypeHash": {
+        "name": "ResTypeHash",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "type_index",
+                "type": "VarUInt"
+            },
+            {
+                "name": "hash",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "ResItem": {
+        "name": "ResItem",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "flags",
+                "type": "int # u16"
+            },
+            {
+                "name": "type_index",
+                "type": "int # u16"
+            },
+            {
+                "name": "data_offset",
+                "type": "int # u32"
+            },
+            {
+                "name": "count",
+                "type": "int # u32"
+            }
+        ]
+    },
+    "ResPatch": {
+        "name": "ResPatch",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "type_index",
+                "type": "int # u32"
+            },
+            {
+                "name": "count",
+                "type": "int # u32"
+            },
+            {
+                "name": "offsets",
+                "type": "list[int] # list[u32]"
+            }
+        ]
+    },
+    "hkObjectBase": {
+        "name": "hkObjectBase",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "_vft_reserve",
+                "type": "int # u64"
+            }
+        ]
+    },
+    "hkReferencedObject": {
+        "name": "hkReferencedObject",
+        "base": "hkObjectBase",
+        "fields": [
+            {
+                "name": "m_sizeAndFlags",
+                "type": "int # u64"
+            },
+            {
+                "name": "m_refCount",
+                "type": "int # u64"
+            }
+        ]
+    },
+    "hclVirtualCollisionPointsData__TriangleFanSection": {
+        "name": "hclVirtualCollisionPointsData__TriangleFanSection",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_oppositeRealParticleIndices",
+                "type": "List[int] # list[u16] len"
+            },
+            {
+                "name": "m_barycentricDictionaryIndex",
+                "type": "int # u16"
+            }
+        ]
+    },
+    "hkRefPtr": {
+        "name": "hkRefPtr",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "_m_data_type",
+                "type": "Optional[Type] # Type of the element in the list"
+            },
+            {
+                "name": "_offset",
+                "type": "int #u64"
+            },
+            {
+                "name": "m_ptr",
+                "type": "Ptr #u64"
+            },
+            {
+                "name": "m_data",
+                "type": "Optional[Type]"
+            },
+            {
+                "name": "_offsets_range",
+                "type": "list[tuple[hexInt"
+            }
+        ]
+    },
+    "Ptr": {
+        "name": "Ptr",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "value",
+                "type": "int #u64 if > 0 else s64"
+            },
+            {
+                "name": "offset",
+                "type": "int #u64 stream.tell"
+            },
+            {
+                "name": "_offsets_range",
+                "type": "list[tuple[hexInt"
+            }
+        ]
+    },
+    "hkRefVariant": {
+        "name": "hkRefVariant",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "m_ptr",
+                "type": "Ptr"
+            },
+            {
+                "name": "_offset",
+                "type": "int"
+            },
+            {
+                "name": "_align_val",
+                "type": "int"
+            }
+        ]
+    },
+    "hkArray": {
+        "name": "hkArray",
+        "base": "BphclBaseObject",
+        "fields": [
+            {
+                "name": "_offset",
+                "type": "int #u64"
+            },
+            {
+                "name": "offset",
+                "type": "Ptr # 8 bytes"
+            },
+            {
+                "name": "m_size",
+                "type": "hkInt # 4 bytes"
+            },
+            {
+                "name": "m_capacityAndFlags",
+                "type": "int #s32"
+            },
+            {
+                "name": "_m_data_type",
+                "type": "Optional[Type]"
+            },
+            {
+                "name": "_sec_element_type",
+                "type": "Optional[Type]"
+            },
+            {
+                "name": "m_data",
+                "type": "hkArrayList"
+            },
+            {
+                "name": "_uuid",
+                "type": "str"
+            },
+            {
+                "name": "_offsets_range",
+                "type": "list[tuple[int"
+            },
+            {
+                "name": "_align_val",
+                "type": "int"
+            },
+            {
+                "name": "else",
+                "type": "item"
+            },
+            {
+                "name": "else",
+                "type": "item"
+            }
+        ]
+    }
+}

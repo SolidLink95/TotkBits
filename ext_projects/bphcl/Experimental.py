@@ -1728,7 +1728,7 @@ class hclBufferUsage(BphclBaseObject):
         stream.write(self.to_binary())
 
     def to_stream(self, stream: WriteStream):
-        self.m_perComponentFlags.to_stream(stream)
+        stream.write(self.m_perComponentFlags)
         stream.write_bool(self.m_trianglesRead)
         return
 
@@ -1820,7 +1820,8 @@ class hclTransformSetUsage(BphclBaseObject):
 
     def to_stream(self, stream: WriteStream):
         stream._writer_align_to(0x8)
-        self.m_perComponentFlags.to_stream(stream)
+        # self.m_perComponentFlags.to_stream(stream)
+        stream.write(self.m_perComponentFlags)
         self.m_perComponentTransformTrackers.to_stream(stream)
         return
 
@@ -1936,7 +1937,7 @@ class hclStateDependencyGraph(hkReferencedObject):
 
     @classmethod
     def from_reader(cls, stream: ReadStream) -> "hclStateDependencyGraph":
-        base = super().from_reader(stream)
+        base = hkReferencedObject.from_reader(stream)
         m_branches = hkArray.from_reader(stream, hclStateDependencyGraph__Branch)
         m_rootBranchIds = hkArray.from_reader(stream, s32)
         m_children = hkArray.from_reader(stream, hkArray, s32)
@@ -2330,6 +2331,9 @@ class hkMemoryResourceContainer(hkReferencedObject):
         m_children = hkArray.from_reader(stream, hkRefPtr, hkMemoryResourceContainer) if is_root else None
         return hkMemoryResourceContainer(**vars(base), m_name=m_name, m_parent=m_parent, m_resourceHandles=m_resourceHandles, m_children=m_children)
 
+    def is_root(self) -> bool:
+        return self.m_parent is None and self.m_resourceHandles is not None and self.m_children is not None
+    
     def to_binary(self) -> bytes:
         stream = WriteStream()
         stream.write(hkReferencedObject.to_binary(self))
@@ -2345,9 +2349,10 @@ class hkMemoryResourceContainer(hkReferencedObject):
     def to_stream(self, stream: WriteStream):
         hkReferencedObject.to_stream(self, stream)
         self.m_name.to_stream(stream)
-        self.m_parent.to_stream(stream)
-        self.m_resourceHandles.to_stream(stream)
-        self.m_children.to_stream(stream)
+        if self.is_root():
+            self.m_parent.to_stream(stream)
+            self.m_resourceHandles.to_stream(stream)
+            self.m_children.to_stream(stream)
         return
 
 
