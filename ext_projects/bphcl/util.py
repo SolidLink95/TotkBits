@@ -16,8 +16,8 @@ class OffsetInfo():
     internal_patch_index: int #ResPatch
     internal_patch: Any #ResPatch
     named_type: Any = None #NamedType
-    addr: int = -1 #NamedType
-    abs_offset: int = -1 #NamedType
+    addr: int = -1 #
+    abs_offset: int = -1 #
     
 
 
@@ -265,23 +265,26 @@ def fix_hkarrays(s):
   
 
 def find_nested_instances(obj: Any, objtype: Any) -> List[Any]:
+    if obj is None:
+        return []
     results = []
 
     if isinstance(obj, objtype):
         results.append(obj)
-    elif is_dataclass(obj):
+
+    # Don't use elif — we may need to check both objtype and recurse
+    if is_dataclass(obj):
         for f in fields(obj):
             value = getattr(obj, f.name, None)
-            if value is not None:
-                results.extend(find_nested_instances(value, objtype))
-    elif isinstance(obj, list):
+            results.extend(find_nested_instances(value, objtype))
+    elif isinstance(obj, (list, tuple, set)):
         for item in obj:
             results.extend(find_nested_instances(item, objtype))
     elif isinstance(obj, dict):
         for key, value in obj.items():
             results.extend(find_nested_instances(key, objtype))
             results.extend(find_nested_instances(value, objtype))
-    
+
     return results
 
 def is_offset_in_ranges_list(offset: int, ranges: list) -> bool:

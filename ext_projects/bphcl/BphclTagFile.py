@@ -5,6 +5,7 @@ from pathlib import Path
 from BphclEnums import ResTypeSectionSignature
 from BphclMainDataclasses import ResIndexSection, ResSection, ResTypeSection
 from BphclSmallDataclasses import *
+from DerivedClasses import DERIVED_CLASSES
 from Experimental import hclClothContainer, hclCollidable, hkMemoryResourceContainer, hkaAnimationContainer
 from Havok import hkRootLevelContainer, hkStringPtr
 from Stream import ReadStream, WriteStream
@@ -186,40 +187,73 @@ class ResTagFile(ResTagfileSectionHeader):
         data_stream_writer = WriteStream(self.data_section.data)
         data_stream_writer.seek(0, io.SEEK_SET)
         internal_patch_index = -1
+        _temp = {}
+        _temp1 = []
         def inplace_fixup(offset: int, internal_patch: int): #u32, u32=
-            # tmp = hexInt(offset + 0x50)
-            if offset == 248:
-                pass
-            
             type_index = internal_patch.type_index
             data_stream_reader.seek(offset, io.SEEK_SET)
-            # index_tmp = data_stream_reader.read_u64()
-            # data_stream_reader.seek(offset, io.SEEK_SET)
             index = data_stream_reader.read_u32()
-            # assert(index == index_tmp, f"Invalid index: {index} != {index_tmp}")
-            # self._indexes[str(int(offset))] = index
+            if any([i> index for i in _temp1]):
+                pass
+            _temp1.append(index)
+            if index == 0x00:
+                pass
             _item = item_section.items[index]
-            _named_type = None
-            
-            if type_index > 0:
-                _named_type = type_name_section.types[type_index-1]
-                _name = _named_type.name
-                if not _name:
-                    raise ValueError(f"Update strings fields for type_name_section: {repr(_name)}")
-                if _name.startswith(("hkArray",)):
-                    # assert _named_type.index._byte0 == 1, f"Invalid type name: {_name}"
-                    data_stream_writer.seek(offset + 8, io.SEEK_SET)
-                    tmp1 = data_stream_writer.read_s32()
-                    assert(tmp1 == 0) # always true
-                    data_stream_writer.seek(offset + 8, io.SEEK_SET)
-                    data_stream_writer.write_s32(_item.count)
+            assert(type_index > 0)
+            _named_type = type_name_section.types[type_index-1]
+            _name = _named_type.name
+            cls_name = _name.replace(":", "_")
+
+            if not _name:
+                raise ValueError(f"Update strings fields for type_name_section: {repr(_name)}")
+            if _name.startswith(("hkArray",)):
+                # assert _named_type.index._byte0 == 1, f"Invalid type name: {_name}"
+                data_stream_writer.seek(offset + 8, io.SEEK_SET)
+                data_stream_writer.write_s32(_item.count)
             addr = _item.data_offset - offset # u32 as u64
             data_stream_writer.seek(offset, io.SEEK_SET)
             data_stream_writer.write_64bit_int(addr) # ptr
             addr &= 0xFFFFFFFFFFFFFFFF 
             offset_info = OffsetInfo(offset, index, _item, internal_patch_index, internal_patch, _named_type, addr, hexInt(offset + DATA_START_OFFSET))
             self._indexes[str(int(offset))] = offset_info
-        
+            # if type_index == 9 and _name != "hkRefVariant":
+            # if _name in _temp and _temp[_name] != type_index:
+            #     pass
+            # if _name not in _temp:
+            #     _temp[_name] = []
+            # if type_index not in _temp[_name]:
+            #     _temp[_name].append(type_index)
+            if type_index == 123:
+                pass
+            # if _name == "hkArray" and _named_type.index._byte0 == 1:
+            if _name == "T*": # and _named_type.index._byte0 == 1:
+                if len(_named_type.templates) > 0:
+                    for t in _named_type.templates:
+                        if "allocator" not in t.name.lower():
+                            ind = t.value._value
+                            if t.name[0] == 't':
+                                ind -= 1
+                            _ntype1 = type_name_section.types[ind]
+                            subtype_name = _ntype1.name.replace(":", "_")
+                            if subtype_name == "T*":
+                                subtype_name = "hkRefPtr"
+                                sec_sub = type_name_section.types[ind+1].name.replace(":", "_")
+                            else:
+                                sec_sub = ""
+                                if len(_ntype1.templates) > 0:
+                                    for t1 in _ntype1.templates:
+                                        if t1.name.lower().startswith("ttype"):
+                                            ind1 = t1.value._value
+                                            _ntype2 = type_name_section.types[ind1-1]
+                                            sec_sub = _ntype2.name.replace(":", "_")
+                            
+                            if str(type_index) not in _temp:
+                                if 'tStorage' in subtype_name:
+                                    pass
+                                _temp[str(type_index)] = [subtype_name, sec_sub]
+                                pass
+
+                
         for i, internal_patch in enumerate(ptch_section.internal_patches):
             internal_patch_index = i
             for j, _offset in enumerate(internal_patch.offsets):
@@ -227,6 +261,8 @@ class ResTagFile(ResTagfileSectionHeader):
                 # inplace_fixup(_offset, internal_patch.type_index)
         data_stream_writer.seek(0, io.SEEK_SET)
         self.data_section._data_fixed = data_stream_writer.read()
+        print(_temp)
+        return
         # self.revert_relocations()        
     
     def revert_relocations(self) -> bytes:
@@ -234,7 +270,9 @@ class ResTagFile(ResTagfileSectionHeader):
         ptch_section_index, ptch_section = self.get_ptch_section()
         stream = WriteStream(self.data_section._data_fixed)
         for str_offset, info in self._indexes.items():
-            if str_offset == "248":
+            if str_offset == "164992":
+                pass
+            if info.index == 0x22b0: #  8880
                 pass
             stream.seek(info.offset)
             stream.write_64bit_int(info.index)

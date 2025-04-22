@@ -1,10 +1,11 @@
+import copy
 import io
 from typing import Any, List, Optional, Type, TypeVar, get_origin, get_type_hints
 import uuid
 from Stream import ReadStream, WriteStream
 from dataclasses import dataclass, field, fields, is_dataclass
 
-from util import BphclBaseObject, _hex, hexInt
+from util import BphclBaseObject, OffsetInfo, _hex, hexInt
 
 T = TypeVar('T')  # Generic type variable for element type
 
@@ -226,30 +227,63 @@ class hkArray(BphclBaseObject):
     _offsets_range: list[tuple[int, int]] = field(default_factory=list)
     _align_val: int = 8
     
-    def move_items(self, new_offset:int, tag):
-        if str(type(self.m_data[0])) == "<class 'hkRefPtr'>":
-            raise ValueError(f"Cannot move items in a list for type {type(self.m_data[0])}")
-        root_offset = int(self.offset.offset)
-        true_offset = self.offset.value + self.offset.offset
-        self.offset.value = new_offset - self.offset.offset # assuming list is moved forward
-        for i, item in enumerate(self.m_data):
-            true_offset = item.m_ptr.value + item.m_ptr.offset
-            item.m_ptr.value = true_offset - new_offset # assuming list is moved forward
-            item.m_ptr.offset = new_offset # assuming list is moved forward
-            self.m_data[i] = item
-            assert(item.m_ptr.value + item.m_ptr.offset) == true_offset, f"Item {i} offset mismatch: {item.m_ptr.value + item.m_ptr.offset} != {ind}"
-            new_offset += 8
-        # Adjusting tag
-        ptch_section_index, ptch_section = tag.get_ptch_section()
-        type_name_index, type_name_section = tag.get_type_section(b"TNA1")
-        item_section_index, item_section = tag.get_item_section()
-        str_offset = str(root_offset)
-        index = tag._indexes[str_offset].index
-        final_offset = self.offset.value + root_offset
-        tag.indx_section.sections[item_section_index].items[index].data_offset = final_offset
-        tag._indexes[str_offset].item.data_offset = final_offset
-        # tag.indx_section.sections[item_section_index].sections[index].data_offset = self.offset.value
-        return
+    # def update_item_offsets(self, tag, str_offset, str_offset_old, ptr, true_offset):
+    #     """Moved items require updating ITEM and PTCH patches and sections"""
+    #     ptch_section_index, ptch_section = tag.get_ptch_section()
+    #     item_section_index, item_section = tag.get_item_section()
+    #     backup: OffsetInfo = copy.deepcopy(tag._indexes[str_offset_old])
+    #     int_offset = int(str_offset)
+    #     int_offset_old = int(str_offset_old)
+    #     del tag._indexes[str_offset_old]
+    #     #item: TBD
+    #     index = backup.index
+    #     # final_offset = ptr.value + ptr.offset
+    #     # final_offset = true_offset + int_offset
+    #     final_offset = true_offset
+    #     tag.indx_section.sections[item_section_index].items[index].data_offset = final_offset
+    #     backup.item.data_offset = final_offset
+    #     #internal_patch
+    #     assert(int_offset_old in backup.internal_patch.offsets)
+    #     backup.internal_patch.offsets.remove(int_offset_old)
+    #     backup.internal_patch.offsets.append(int_offset)
+    #     backup.internal_patch.offsets.sort()
+    #     i = backup.internal_patch_index
+    #     tag.indx_section.sections[ptch_section_index].internal_patches[i] = backup.internal_patch
+    #     # assign to _indexes
+    #     backup.offset = int_offset
+    #     tag._indexes[str_offset] = backup
+        
+        
+    
+    # def move_items(self, new_offset:int, tag):
+    #     if str(type(self.m_data[0])) == "<class 'hkRefPtr'>":
+    #         raise ValueError(f"Cannot move items in a list for type {type(self.m_data[0])}")
+    #     root_offset = int(self.offset.offset)
+    #     true_offset = self.offset.value + self.offset.offset
+    #     self.offset.value = new_offset - self.offset.offset # assuming list is moved forward
+    #     for i, item in enumerate(self.m_data):
+    #         str_offset_old = str(item.m_ptr.offset)
+    #         true_offset = item.m_ptr.value + item.m_ptr.offset
+    #         item.m_ptr.value = true_offset - new_offset # assuming list is moved forward
+    #         item.m_ptr.offset = new_offset # assuming list is moved forward
+    #         if  new_offset in tag._indexes:
+    #             self.update_item_offsets(tag, str(new_offset), str_offset_old, item.m_ptr, true_offset)
+    #         self.m_data[i] = item
+    #         assert(item.m_ptr.value + item.m_ptr.offset) == true_offset, f"Item {i} offset mismatch: {item.m_ptr.value + item.m_ptr.offset} != {ind}"
+    #         new_offset += 8
+    #     # Adjusting tag
+    #     # ptch_section_index, ptch_section = tag.get_ptch_section()
+    #     # type_name_index, type_name_section = tag.get_type_section(b"TNA1")
+    #     item_section_index, item_section = tag.get_item_section()
+    #     str_offset = str(root_offset)
+    #     #item
+    #     index = tag._indexes[str_offset].index
+    #     final_offset = self.offset.value + root_offset
+    #     tag.indx_section.sections[item_section_index].items[index].data_offset = final_offset
+    #     tag._indexes[str_offset].item.data_offset = final_offset
+    #     #internal_patch: TBD
+    #     # tag.indx_section.sections[item_section_index].sections[index].data_offset = self.offset.value
+    #     return
     
     def to_stream(self, stream: WriteStream):
         """Writes the array to the stream."""
@@ -267,30 +301,13 @@ class hkArray(BphclBaseObject):
         
         
     def __repr__(self):
-        return f"<hkArray offset=0x{self.offset.value:04X} size={self.m_size.value} capacity={self.m_capacityAndFlags}>"
-    
-    def _append(self, item: T):
-        if self._m_data_type is not None and not isinstance(item, self._m_data_type):
-            raise TypeError(f"Expected {self._m_data_type}, got {type(item)}")
-        self.m_data.append(item)
-        self.m_size.value += 1
-    
-    @staticmethod
-    def get_string_name_from_instance(_item: T) -> List[str]:
-        return hkArray.get_string_names_from_instance(_item)[0]
-        
-    @staticmethod
-    def get_string_names_from_instance(_item: T) -> List[str]:
-        if  not isinstance(_item, hkStringPtr): # assuming hkRefPtr
-            item = _item.m_data
-        else:
-            item = _item
-        names = hkStringPtr.get_hkStringPtr_values(item)
-        if "m_name" in names:
-            return [names["m_name"]._str]
-        elif len(names.keys()) > 0:
-            return [name._str for name in names.values() if isinstance(name, hkStringPtr)]
-        raise ValueError(f"Item {item} of type {type(item)} does not have a valid \"m_name\" field or any hkStringPtr fields")
+        # return f"<hkArray offset=0x{self.offset.value:04X} size={self.m_size.value} capacity={self.m_capacityAndFlags}>"
+        t1,t2 = None, None
+        t1 = self._m_data_type.__name__ if self._m_data_type is not None else None
+        t2 = self._sec_element_type.__name__ if self._sec_element_type is not None else None
+        t = t2 if t2 else t1
+        t3 = f" ({t1})" if t2 else ""
+        return f"<hkArray type={t}{t3} size={self.m_size.value} at {_hex(self.offset.value)} >"
     
     def _contains(self, item: T) -> bool:
         return self._get_item_index(item) != -1
@@ -315,8 +332,6 @@ class hkArray(BphclBaseObject):
     def get_default_array(stream: ReadStream,element_type: Type[T], _sec_element_type: Type[T]=None):
         stream.align_to(hkArray._align_val)  # std::mem::AlignTo<0x8>
         _offset = stream.tell()
-        if _offset == 248:
-            pass
         offset = Ptr.from_reader(stream)
         m_size = hkInt.from_reader(stream)
         m_capacityAndFlags = stream.read_s32()

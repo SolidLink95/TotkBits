@@ -289,10 +289,30 @@ class ResSection(ResTagfileSectionHeader):
     
     def update_strings(self):
         
-        if self._type == ResSectionType.TYPE or self.sections is not None:
+        if self._type == ResSectionType.TYPE and self.sections is not None:
+            tst1_section = None
+            for section in self.sections:
+                if section.signature == b"TST1":
+                    tst1_section = section
+                    break
+            assert tst1_section is not None, f"Invalid ResSection: TST1 section not found"
             for section in self.sections:
                 if isinstance(section, ResTypeSection):
-                    section.update_string_names(section)
+                    # match ResTypeSection.signature_to_enum(section.signature):
+                    #     case ResTypeSectionSignature.TNA1:
+                    #         if self.types:
+                    #             for i, type in enumerate(self.types):
+                    #                 self.types[i].update_string_names(tst1_section)
+                    #     case ResTypeSectionSignature.TBDY:
+                    #         if self.type_bodies:
+                    #             for i, type_body in enumerate(self.type_bodies):
+                    #                 self.type_bodies[i].update_string_names(res_type_section)
+                    #     case _:
+                    #         pass
+                        
+                    # if section.signature == b"TNA1":
+                    #     section.update_string_names(tst1_section)
+                    section.update_string_names(tst1_section)
     
     
 @dataclass 
@@ -331,8 +351,8 @@ class ResNamedType(BphclBaseObject):
     def update_string_names(self, res_type_section: "ResTypeSection"):
         if self.templates is not None:
             for i, template in enumerate(self.templates):
-                self.templates[i].name = res_type_section.strings[template.index._byte0]
-        self.name = res_type_section.strings[self.index._byte0]
+                self.templates[i].name = res_type_section.strings[template.index._value]
+        self.name = res_type_section.strings[self.index._value]
         
 
 @dataclass
@@ -487,7 +507,7 @@ class ResTypeBody(BphclBaseObject):
             for i, decl in enumerate(self.declarations):
                 self.declarations[i].update_string_name(res_type_section)
         if self.attr_index is not None:
-            self.attr = res_type_section.strings[self.attr_index._byte0]
+            self.attr = res_type_section.strings[self.attr_index._value]
         
 
 

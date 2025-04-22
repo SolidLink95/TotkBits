@@ -63,7 +63,8 @@ def from_reader(stream: ReadStream) -> "ResTagfileSectionHeader":
 
 @dataclass
 class VarUInt(BphclBaseObject):
-    val: str # representation of the value in hex string format, for json
+    val: int # representation of the value in hex string format, for json
+    hexval:str
     _byte0: int #u8
     _bytes: bytes = None
     _size: int = None
@@ -73,7 +74,7 @@ class VarUInt(BphclBaseObject):
         return f"VarUInt({self._value})"
     
     def __len__(self):
-        return len(self.val) // 2
+        return len(self.hexval) // 2
     
     def to_binary(self) -> bytes:
         return bytes.fromhex(self.val)
@@ -112,9 +113,10 @@ class VarUInt(BphclBaseObject):
             _value = _byte0
         _offset2 = stream.tell()
         stream.seek(_offset)
-        val = stream._read_exact(_offset2 - _offset).hex().upper()
+        hexval = stream._read_exact(_offset2 - _offset).hex().upper()
+        val = int.from_bytes(_bytes, endian) if _bytes else _byte0
         stream.seek(_offset2)
-        return VarUInt(_byte0=_byte0, _bytes=_bytes, _size=_size, _value=_value, val=val)
+        return VarUInt(_byte0=_byte0, _bytes=_bytes, _size=_size, _value=_value, val=val, hexval=hexval)
 
 @dataclass 
 class ResTypeTemplate(BphclBaseObject):
@@ -161,7 +163,7 @@ class ResItem(BphclBaseObject):
         writer = WriteStream()
         writer.write_u16(self.flags)
         writer.write_u16(self.type_index)
-        writer.write_u32(self.data_offset)
+        writer.write_32bit_int(self.data_offset)
         writer.write_u32(self.count)
         return writer.getvalue()
     
@@ -173,7 +175,7 @@ class ResItem(BphclBaseObject):
         # Starlight way
         flags = stream.read_u16()
         type_index = stream.read_u16()
-        data_offset = stream.read_u32()
+        data_offset = stream.read_32bit_int()
         count = stream.read_u32()
         return ResItem(flags=flags, type_index=type_index, data_offset=data_offset, count=count)
 
@@ -183,6 +185,18 @@ class ResPatch(BphclBaseObject):
     type_index: int # u32
     count: int # u32
     offsets: list[int] # list[u32]
+    
+    def __eq__(self, value):
+        if not isinstance(value, ResPatch):
+            return False
+        if self.type_index != value.type_index or self.count != value.count:
+            return False
+        s1, s2 = len(self.offsets), len(value.offsets)
+        if s1 != s2:
+            return False
+        if any([x != y for x, y in zip(self.offsets, value.offsets)]):
+            return False
+        return True
     
     def to_binary(self) -> bytes:
         writer = WriteStream()

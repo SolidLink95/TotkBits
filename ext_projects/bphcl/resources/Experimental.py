@@ -1640,7 +1640,7 @@ class hclClothData(hkReferencedObject):
 
     @classmethod
     def from_reader(cls, stream: ReadStream) -> "hclClothData":
-        base = super().from_reader(stream)
+        base = hkReferencedObject.from_reader(stream)
         m_name = hkStringPtr.from_reader(stream)
         m_simClothDatas = hkArray.from_reader(stream, hkRefPtr, hclSimClothData)
         m_bufferDefinitions = hkArray.from_reader(stream, hkRefPtr, hclBufferDefinition)

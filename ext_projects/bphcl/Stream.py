@@ -81,7 +81,8 @@ class ReadStream(io.BytesIO):
     def _read_exact(self, size: int) -> bytes:
         data = self.read(size)
         if len(data) != size:
-            raise EOFError(f"Expected {size} bytes, got {len(data)} bytes")
+            pass
+            # raise EOFError(f"Expected {size} bytes, got {len(data)} bytes")
         return data
 
     def find_next_occ(self, data: bytes) -> int:
@@ -92,8 +93,14 @@ class ReadStream(io.BytesIO):
 
     def _read_and_unpack(self, fmt: str, size: int):
         data = self._read_exact(size)
-        return struct.unpack(self.sign + fmt, data)
+        try:
+            return struct.unpack(self.sign + fmt, data)
+        except:
+            return [None]
 
+    def read_f32(self) -> float:
+        self.read_float()
+        
     def read_float(self) -> float:
         return self._read_and_unpack("f", 4)[0]
 
@@ -103,6 +110,13 @@ class ReadStream(io.BytesIO):
     def read_u128(self):
         return self._read_and_unpack("QQ", 16)
 
+    def read_32bit_int(self):
+        result = self.read_u32()
+        if result > 0x7FFFFFFF:
+            self.seek(-4, io.SEEK_CUR)
+            result = self.read_s32()
+        return result
+    
     def read_u32(self):
         return self._read_and_unpack("I", 4)[0]
     
@@ -243,6 +257,12 @@ class WriteStream(ReadStream):
 
     def write_s16(self, val: int):
         self._pack_and_write("h", val)
+
+    def write_32bit_int(self, val: int):
+        if val < 0:
+            self.write_s32(val)
+        else:
+            self.write_u32(val)
 
     def write_u32(self, val: int):
         self._pack_and_write("I", val)
