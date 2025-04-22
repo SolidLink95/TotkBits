@@ -75,8 +75,8 @@ def repo_init():
             raise Exception("[-] Failed to update git submodule")
     files_to_copy = {
         "src-tauri/misc/baev.py": f"{bin_path}/asb/baev.py",
-        # "src-tauri/misc/asb.py": f"{bin_path}/asb/asb.py",
-        # "src-tauri/misc/ptcl.py": f"{bin_path}/ptcl/ptcl.py",
+        "src-tauri/misc/asb.py": f"{bin_path}/asb/asb.py",
+        "src-tauri/misc/ptcl.py": f"{bin_path}/ptcl/ptcl.py",
     }
     for file1, file2 in files_to_copy.items():
         shutil.copyfile(file1, file2)
