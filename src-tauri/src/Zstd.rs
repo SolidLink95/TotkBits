@@ -547,6 +547,10 @@ pub fn is_ainb(data: &[u8]) -> bool {
 pub fn is_asb(data: &[u8]) -> bool {
     data.starts_with(b"ASB ")
 }
+#[inline]
+pub fn is_baev(data: &[u8]) -> bool {
+    data.starts_with(b"BAEV")
+}
 
 #[inline]
 pub fn is_evfl(data: &[u8]) -> bool {
@@ -564,9 +568,39 @@ pub fn is_gamedatalist<P: AsRef<Path>>(path: P) -> bool {
     // path.ends_with("GameDataList.Product.110.byml.zs")
 }
 #[inline]
-pub fn is_tagproduct<P: AsRef<Path>>(path: P) -> bool {
+pub fn is_tagproduct_path<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("tag.product")
     // path.ends_with("GameDataList.Product.110.byml.zs")
+}
+#[inline]
+pub fn is_rstb_path<P: AsRef<Path>>(path: P) -> bool {
+    path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("resourcesizetable.product")
+}
+#[inline]
+pub fn is_ainb_path<P: AsRef<Path>>(path: P) -> bool {
+    path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".ainb")
+}
+#[inline]
+pub fn is_asb_path<P: AsRef<Path>>(path: P) -> bool {
+    path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".asb")
+}
+#[inline]
+pub fn is_byml_path<P: AsRef<Path>>(path: P) -> bool {
+    let tmp = path.as_ref().to_string_lossy().to_ascii_lowercase();
+    tmp.ends_with(".byml")
+        || tmp.ends_with(".byml.zs")
+        || tmp.ends_with(".bgyml.zs")
+        || tmp.ends_with(".bgyml")
+}
+#[inline]
+pub fn is_msbt_path<P: AsRef<Path>>(path: P) -> bool {
+    path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".msbt")
+        || path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".msyt")
+}
+#[inline]
+pub fn is_evfl_path<P: AsRef<Path>>(path: P) -> bool {
+    path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".bfevfl.zs")
+        || path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".bfevfl")
 }
 #[inline]
 pub fn is_sarc_root_path(path: &str) -> bool {
@@ -591,7 +625,7 @@ pub fn sha256(data: Vec<u8>) -> String {
 }
 
 #[inline]
-pub fn is_esetb<P: AsRef<Path>>(path: P) -> bool {
+pub fn is_esetb_path<P: AsRef<Path>>(path: P) -> bool {
     let tmp = path.as_ref().to_string_lossy().to_ascii_lowercase();
     tmp.ends_with(".esetb.byml") || tmp.ends_with(".esetb.byml.zs")
 }

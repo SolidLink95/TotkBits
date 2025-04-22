@@ -13,6 +13,9 @@ tauri-build = { version = "1", features = [] }
 [dependencies]
 # zstud-sys = {git = "https://github.com/SolidLink95/zstud-sys-rs"}
 #BymlText
+
+fltk = "1.5.7"
+
 ryml = "0.3.2"
 miow = "0.6.0"
 

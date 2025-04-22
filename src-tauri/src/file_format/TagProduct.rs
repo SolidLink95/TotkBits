@@ -44,7 +44,7 @@ pub struct TagProduct<'a> {
 }
 
 impl<'a> TagProduct<'a> {
-    pub fn new<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
+    pub fn new<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         if let Some(byml) = BymlFile::new(path.as_ref(), zstd.clone()) {
             let mut tag_product = TagProduct {
                 byml: byml,
@@ -75,7 +75,8 @@ impl<'a> TagProduct<'a> {
     #[allow(dead_code)]
     pub fn save(&mut self, path: String, text: &str) -> io::Result<()> {
         //let mut f_handle = OpenOptions::new().write(true).open(&path)?;
-        let mut data: Vec<u8> = Self::to_binary(text).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let mut data: Vec<u8> =
+            Self::to_binary(text).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
         if path.to_ascii_lowercase().ends_with(".zs") {
             data = self
@@ -98,15 +99,39 @@ impl<'a> TagProduct<'a> {
         let json_data: TagJsonData = serde_json::from_str(text)?;
         let cached_tag_list = &json_data.TagList;
         //PathList
+
+        let mut path_vec: Vec<(String, Vec<String>)> = json_data.PathList.clone().into_iter().collect();
         let sorted_map: BTreeMap<String, Vec<String>> = json_data.PathList.into_iter().collect();
-        for (path, _plist) in &sorted_map {
-            if path.contains("|") {
-                for slice in path.split("|") {
+
+        // Custom sort based on the pipe-delimited value first
+        path_vec.clone().sort_by(|a, b| {
+            let extract = |s: &str| {
+                s.split('|')
+                    .nth(1) // get the string between the first pair of '|'
+                    .map(|part| part.to_string())
+                    .unwrap_or_else(|| s.to_string())
+            };
+            extract(&a.0).cmp(&extract(&b.0)).then_with(|| a.0.cmp(&b.0)) // fallback to full key
+        });
+
+        // Then push entries
+        for (path, _plist) in &path_vec {
+            if path.contains('|') {
+                for slice in path.split('|') {
                     let entry = roead::byml::Byml::String(slice.into());
                     path_list.push(entry);
                 }
             }
         }
+
+        // for (path, _plist) in &sorted_map {
+        //     if path.contains("|") {
+        //         for slice in path.split("|") {
+        //             let entry = roead::byml::Byml::String(slice.into());
+        //             path_list.push(entry);
+        //         }
+        //     }
+        // }
         //Bittable
         let mut bit_table_bits = Vec::new();
 

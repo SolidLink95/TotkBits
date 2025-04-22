@@ -74,8 +74,9 @@ def repo_init():
         if p.returncode != 0:
             raise Exception("[-] Failed to update git submodule")
     files_to_copy = {
-        "src-tauri/misc/asb.py": f"{bin_path}/asb/asb.py",
-        "src-tauri/misc/ptcl.py": f"{bin_path}/ptcl/ptcl.py",
+        "src-tauri/misc/baev.py": f"{bin_path}/asb/baev.py",
+        # "src-tauri/misc/asb.py": f"{bin_path}/asb/asb.py",
+        # "src-tauri/misc/ptcl.py": f"{bin_path}/ptcl/ptcl.py",
     }
     for file1, file2 in files_to_copy.items():
         shutil.copyfile(file1, file2)
@@ -122,6 +123,8 @@ def repo_init():
         raise Exception("[-] Failed to install winpython dependencies")
     print(f"[+] Copying compressed json files")
     
+    site_packages = Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages")
+    
     for file in (cwd_path / "src-tauri/misc").glob("*.bin"):
         destfile = cwd_path / "src-tauri/bin" / file.name
         if not destfile.exists():
@@ -161,6 +164,19 @@ def repo_init():
     if tmp_path.exists():
         shutil.rmtree(str(tmp_path))
     
+    dirs_to_copy = {
+        # "src-tauri/bin/ainb/ainb": site_packages / "ainb",
+        # "src-tauri/bin/asb": site_packages / "asb",
+        # "src-tauri/bin/ptcl": site_packages / "ptcl",
+    }
+    for src_dir, dest_dir in dirs_to_copy.items():
+        src_dir_path = Path(src_dir)
+        dest_dir_path = Path(dest_dir)
+        if not dest_dir_path.exists():
+            shutil.copytree(src_dir_path, dest_dir_path)
+            print(f"[+] Copied {src_dir} -> {dest_dir}")
+        else:
+            print(f"[+] Directory already exists: {dest_dir}")
     
     print("\n[+] Totkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file")
         

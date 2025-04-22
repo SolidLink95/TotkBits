@@ -39,6 +39,7 @@ use updater::TotkbitsVersion::TotkbitsVersion;
 
 
 fn main() -> io::Result<()> {
+
     main_initialization()?;
     // test_case()?;
     // return Ok(());

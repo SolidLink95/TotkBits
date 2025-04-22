@@ -1,7 +1,7 @@
 use crate::{
     file_format::{
-        Ainb_py::Ainb_py, Asb_py::Asb_py, BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile}, Esetb::Esetb, Evfl_cs::{self, Evfl}, Msbt::str_endian_to_roead, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct, Wrapper::PythonWrapper, SMO::SmoSaveFile::SmoSaveFile
-    }, Comparer::DiffComparer, Settings::Pathlib, TotkApp::InternalFile, Zstd::{is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, is_tagproduct, TotkFileType, TotkZstd}
+        Ainb_py::Ainb_py, Asb_py::{Asb_py, ASB_SEPARATOR}, BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile}, Esetb::Esetb, Evfl_cs::{self, Evfl}, Msbt::str_endian_to_roead, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct, Wrapper::PythonWrapper, SMO::SmoSaveFile::SmoSaveFile
+    }, Comparer::DiffComparer, Settings::Pathlib, TotkApp::InternalFile, Zstd::{is_aamp, is_ainb, is_ainb_path, is_asb_path, is_byml, is_byml_path, is_esetb_path, is_evfl_path, is_gamedatalist, is_msbt_path, is_msyt, is_rstb_path, is_tagproduct_path, TotkFileType, TotkZstd}
 };
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use rfd::{FileDialog, MessageDialog};
@@ -47,7 +47,7 @@ pub fn open_esetb<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(Opened
     let path_ref = path.as_ref();
     let mut data = SendData::default();
     print!("Is {:?} a esetb? ", &path_ref);
-    if is_esetb(&path) {
+    if is_esetb_path(&path) {
         opened_file.esetb = Esetb::from_file(path_ref, zstd.clone()).ok();
         if let Some(esetb) = &opened_file.esetb {
             println!(" yes!");
@@ -101,7 +101,7 @@ pub fn open_tag<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFi
     let path_ref = path.as_ref();
     let pathlib_var = Pathlib::new(path_ref);
     print!("Is {} a tag? ", &pathlib_var.full_path);
-    if is_tagproduct(path_ref)
+    if is_tagproduct_path(path_ref)
     {
         opened_file.tag = TagProduct::new(path_ref, zstd.clone());
         if let Some(tag) = &mut opened_file.tag {
@@ -324,7 +324,7 @@ pub fn get_string_from_data<P: AsRef<Path>>(
         return None;
     }
     let path = filepath.as_ref().to_string_lossy().into_owned();
-    if is_esetb(&filepath) {
+    if is_esetb_path(&filepath) {
         if let Ok(esetb) = Esetb::from_binary(&data, zstd.clone()) {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
@@ -337,7 +337,7 @@ pub fn get_string_from_data<P: AsRef<Path>>(
 
 
 
-    if let Ok(asb) = Asb_py::from_binary(&data, zstd.clone()) {
+    if let Ok(asb) = Asb_py::from_binary(&data, zstd.clone(), filepath.as_ref()) {
         if let Ok(text) = asb.binary_to_text() {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
@@ -492,11 +492,39 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::ASB => {
+            //asb is never an internal file, so i can just save baev here
             let asb = Asb_py::new(zstd.clone());
             if let Ok(some_data) = asb.text_to_binary(text) {
                 rawdata = some_data;
+                let p = Pathlib::new(file_path);
+                let name = &p.stem;
+                let rawdata_clone = rawdata.clone(); // Clone rawdata to avoid borrowing issues
+                let parts: Vec<&[u8]> = if let Some(pos) = rawdata_clone.windows(ASB_SEPARATOR.len()).position(|window| window == ASB_SEPARATOR) {
+                    vec![&rawdata_clone[..pos], &rawdata_clone[pos + ASB_SEPARATOR.len()..]]
+                } else {
+                    vec![&rawdata_clone[..], &[]]
+                };
+
+                rawdata = parts.get(0).copied().unwrap_or(&[]).to_vec(); //asb data
+                let mut baev_data = parts.get(1).copied().unwrap_or(&[]).to_vec();
+                
+
                 if is_zs {
                     rawdata = zstd.compress_zs(&rawdata).ok()?;
+                }
+                //save baev
+                if !baev_data.is_empty() {
+                    let baev_path = Path::new(&p.parent).join(format!("{}.root.baev.zs", name));
+                    baev_data = zstd.compress_zs(&baev_data).ok()?;
+                    if let Ok(mut file) = File::create(&baev_path) {
+                        if let Err(e) = file.write_all(&baev_data) {
+                            println!("Error writing baev data: {}", e);
+                        } else {
+                            println!("Baev data saved successfully to {}", baev_path.display());
+                        }
+                    } else {
+                        println!("Error creating baev file");
+                    }
                 }
             }
         }
@@ -783,9 +811,49 @@ impl SendData {
 }
 
 
+pub fn file_from_disk_to_senddata_determine_ext<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+    //Instead of checking each file type, we check the extension and call the appropriate function
+    let file_name = path.as_ref();//.to_string_lossy().to_string().replace("\\", "/");
+    let mut p = path.as_ref().to_string_lossy().to_string().to_lowercase();
+    if p.ends_with(".zs") {
+        p = p[0..p.len()-3].to_string();
+    }
+    let path = Pathlib::new(&p);
+    if is_tagproduct_path(&file_name) {
+        return open_tag(&file_name, zstd.clone());
+    }
+    if is_esetb_path(&file_name) {
+        return open_esetb(&file_name, zstd.clone());
+    }
+    if is_ainb_path(&p) {
+        return open_ainb(&file_name, zstd.clone());
+    }
+    if is_rstb_path(&p) {
+        return open_restbl(&file_name, zstd.clone());
+    }
+    if is_asb_path(&p) {
+        return open_asb(&file_name, zstd.clone());
+    }
+    if is_asb_path(&p) {
+        return open_asb(&file_name, zstd.clone());
+    }
+    if is_byml_path(&p) {
+        return open_byml(&file_name, zstd.clone());
+    }
+    if is_msbt_path(&p) {
+        return open_msbt(&file_name);
+    }
+    if is_evfl_path(&p) {
+        return Evfl::open_file(&file_name, zstd.clone());
+    }
+    
+    None // if fails, proceed to regular file open
+}
 pub fn file_from_disk_to_senddata<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
     let file_name = path.as_ref();//.to_string_lossy().to_string().replace("\\", "/");
-    let res = open_tag(&file_name, zstd.clone())
+    // let res = open_tag(&file_name, zstd.clone())
+    let res = file_from_disk_to_senddata_determine_ext(&file_name, zstd.clone())
+                .or_else(|| open_tag(&file_name, zstd.clone()))
                 .or_else(|| open_esetb(&file_name, zstd.clone()))
                 .or_else(|| open_restbl(&file_name, zstd.clone()))
                 .or_else(|| open_asb(&file_name, zstd.clone()))

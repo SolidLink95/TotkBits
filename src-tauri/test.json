@@ -1,0 +1,287 @@
+[
+    {
+        "Hash": "0x2d05e37a",
+        "Unknown": 24,
+        "Event": {
+            "HasToSyncRiderAnm": {
+                "Hold Array": [
+                    {
+                        "Parameters": [],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0x8d633fc9",
+        "Unknown": 78,
+        "Event": {
+            "AwarenessScale": {
+                "Hold Array": [
+                    {
+                        "Parameters": [
+                            -1.0
+                        ],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0xf0412617",
+        "Unknown": 78,
+        "Event": {
+            "Break": {
+                "Trigger Array": [
+                    {
+                        "Parameters": [],
+                        "Start Frame": 60.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0x083f0187",
+        "Unknown": 100,
+        "Event": {
+            "AtCollision": {
+                "Hold Array": [
+                    {
+                        "Parameters": [
+                            0,
+                            0
+                        ],
+                        "Start Frame": 0.0,
+                        "End Frame": 50.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0xaa913d53",
+        "Unknown": 24,
+        "Event": {
+            "NoChangeAS": {
+                "Hold Array": [
+                    {
+                        "Parameters": [],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0x62a5fd24",
+        "Unknown": 18,
+        "Event": {
+            "Sync": {
+                "Hold Array": [
+                    {
+                        "Parameters": [
+                            1
+                        ],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0x849bae6e",
+        "Unknown": 18,
+        "Event": {
+            "Sync": {
+                "Hold Array": [
+                    {
+                        "Parameters": [
+                            1
+                        ],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0xf8453480",
+        "Unknown": 90,
+        "Event": {
+            "Sync": {
+                "Hold Array": [
+                    {
+                        "Parameters": [
+                            1
+                        ],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0xb9ffb368",
+        "Unknown": 80,
+        "Event": {
+            "Sync": {
+                "Hold Array": [
+                    {
+                        "Parameters": [
+                            1
+                        ],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0xce4240af",
+        "Unknown": 75,
+        "Event": {
+            "NoSeFloorContact": {
+                "Hold Array": [
+                    {
+                        "Parameters": [],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            },
+            "Sync": {
+                "Hold Array": [
+                    {
+                        "Parameters": [
+                            1
+                        ],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0x65ca909d",
+        "Unknown": 85,
+        "Event": {
+            "LimitLookIK": {
+                "Hold Array": [
+                    {
+                        "Parameters": [
+                            0,
+                            ""
+                        ],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0x6d917c36",
+        "Unknown": 16,
+        "Event": {
+            "AtCollision": {
+                "Hold Array": [
+                    {
+                        "Parameters": [
+                            0,
+                            0
+                        ],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0x7c27d300",
+        "Unknown": 16,
+        "Event": {
+            "AtCollision": {
+                "Hold Array": [
+                    {
+                        "Parameters": [
+                            0,
+                            0
+                        ],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0xd0872d91",
+        "Unknown": 94,
+        "Event": {
+            "CrossFade": {
+                "Trigger Array": [
+                    {
+                        "Parameters": [],
+                        "Start Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0x159d4b1e",
+        "Unknown": 45,
+        "Event": {
+            "ObjThrow": {
+                "Trigger Array": [
+                    {
+                        "Parameters": [],
+                        "Start Frame": 5.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0x1a3b8eb2",
+        "Unknown": 18,
+        "Event": {
+            "NoChangeAS": {
+                "Hold Array": [
+                    {
+                        "Parameters": [],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "Hash": "0xbce1d92d",
+        "Unknown": 18,
+        "Event": {
+            "NoChangeAS": {
+                "Hold Array": [
+                    {
+                        "Parameters": [],
+                        "Start Frame": 0.0,
+                        "End Frame": -1.0
+                    }
+                ]
+            }
+        }
+    }
+]

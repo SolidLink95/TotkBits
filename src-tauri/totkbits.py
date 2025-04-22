@@ -5,7 +5,8 @@ import tempfile
 from typing import Dict
 import oead
 import evfl
-CWD = os.getcwd()
+CWD = os.path.dirname(os.path.abspath(__file__))
+os.chdir(CWD) # Set the current working directory to the script's directory
 sys.path.append(os.path.join(CWD, "bin/ainb/ainb"))
 sys.path.append(os.path.join(CWD, "bin/asb"))
 sys.path.append(os.path.join(CWD, "bin/ptcl"))
@@ -16,7 +17,7 @@ try:
 except ImportError as e:
     sys.stdout.buffer.write(b"Error Import: 16 " + str(e).encode("utf-8"))
 try:
-    from bin.asb.asb import ASB, asb_from_zs
+    from bin.asb.asb import ASB
 except ImportError as e:
     sys.stdout.buffer.write(b"Error Import: 20 " + str(e).encode("utf-8"))
 try:
@@ -78,12 +79,24 @@ def evfl_binary_to_text() -> str: # Converts input PTCL file to JSON
 
 def asb_binary_to_text(): # Converts input ASB file to JSON
     try:
+        separator = b"%ASB_SEPARATOR%"
+        
         data = sys.stdin.buffer.read()
+        if separator not in data:
+            sys.stdout.buffer.write(b"Error: %ASB_SEPARATOR% not found in input data")
+            return
         if not data.startswith(b"ASB"):
             sys.stdout.buffer.write(b"Error: invalid ASB magic")     
             return   
-        asb = ASB(data, from_json=False)
-        text = yaml.dump(asb.output_dict, sort_keys=False, allow_unicode=True, indent=4, encoding='utf-8')
+        asb_data, baev_data = data.split(separator)
+        file = ASB.from_binary(asb_data)
+        if baev_data:
+            file.import_baev(baev_data)
+        _dict = file.asdict()
+        
+        # asb = ASB(data, from_json=False)
+        # text = yaml.dump(_dict, sort_keys=False, allow_unicode=True, indent=4, encoding='utf-8')
+        text = json.dumps(_dict, indent=4, ensure_ascii=False).encode("utf-8")
         # text = yaml.dump(asb.output_dict, sort_keys=False, allow_unicode=True, indent=4, encoding='utf-8')
         sys.stdout.buffer.write(text.encode("utf-8") if isinstance(text, str) else text)
     except Exception as e:
@@ -91,16 +104,18 @@ def asb_binary_to_text(): # Converts input ASB file to JSON
 
 def asb_text_to_binary(encoding="utf-8"): # Converts input JSON file to ASB
     try:
+        separator = b"%ASB_SEPARATOR%"
         # sys.stdout.buffer.write(b"Executing command: asb_text_to_binary in function body\n")
         data = sys.stdin.buffer.read()
-        # json_data = json.loads(data.decode(encoding))
-        json_data = yaml.safe_load(data.decode(encoding))
+        json_data = json.loads(data.decode(encoding))
+        # json_data = yaml.safe_load(data.decode(encoding))
         
-        asb = ASB(json_data, from_json=True)
-        
-        cursor = io.BytesIO(bytearray())
-        asb.ToBytes(cursor)
-        sys.stdout.buffer.write(cursor.getvalue())
+        asb = ASB.from_dict(json_data)
+        asb_data, baev_data = asb.to_binary_stream()
+        result = asb_data + separator + baev_data
+        # cursor = io.BytesIO(bytearray())
+        # asb.ToBytes(cursor)
+        sys.stdout.buffer.write(result)
     except Exception as e:
         sys.stdout.buffer.write(b"Error: " + str(e).encode(encoding))
     
