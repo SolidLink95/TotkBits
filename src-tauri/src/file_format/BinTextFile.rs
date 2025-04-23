@@ -519,18 +519,6 @@ fn print_type_of<T>(_: &T) {
     println!("{}", type_name::<T>());
 }
 
-pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
-    let file = fs::File::create(path)?;
-    let mut writer = BufWriter::new(file);
-
-    writer.write_all(content.as_bytes())?;
-
-    // The buffer is automatically flushed when writer goes out of scope,
-    // but you can manually flush it if needed.
-    writer.flush()?;
-
-    Ok(())
-}
 
 #[allow(dead_code)]
 pub fn read_string_from_file(path: &str) -> io::Result<String> {

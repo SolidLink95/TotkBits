@@ -1,5 +1,5 @@
 use std::{fs::OpenOptions, io::{self, Write}, path::Path, sync::Arc};
-use roead::byml::{self, Byml};
+use roead::byml::Byml;
 use crate::{file_format::BinTextFile::{BymlFile, FileData}, Zstd::{is_byml, TotkFileType, TotkZstd}};
 
 
@@ -77,7 +77,7 @@ impl<'a> SmoSaveFile<'a> {
     }
     pub fn from_string(text: &str,zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
         let mut byml_file = BymlFile::from_text(&text, zstd.clone())?;
-        let mut pio_map = byml_file.pio.as_mut_map().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let pio_map = byml_file.pio.as_mut_map().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         if !pio_map.contains_key("_Header")  {
             return Err(io::Error::new(io::ErrorKind::Other, "SMO save file does not contain Header key"));
         }

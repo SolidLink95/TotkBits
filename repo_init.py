@@ -57,7 +57,46 @@ def download_file(url, local_path):
             bar.update(len(chunk))
     return local_path
     
+def copy_files(bin_path):
+    files_to_copy = {
+        "src-tauri/misc/baev.py": f"{bin_path}/asb/baev.py",
+        "src-tauri/misc/asb.py": f"{bin_path}/asb/asb.py",
+        "src-tauri/misc/ptcl.py": f"{bin_path}/ptcl/ptcl.py",
+    }
+    for file1, file2 in files_to_copy.items():
+        shutil.copyfile(file1, file2)
+        print(f"[+] Copied {file1} -> {file2}")
     
+def remove_files():
+    files_to_remove = [
+            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib/t64-arm.exe",
+            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib/w64-arm.exe",
+            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools/cli-arm64.exe",
+            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools/gui-arm64.exe",
+            "src-tauri/bin/asb/asb_as_json.7z",
+            "src-tauri/bin/winpython/Jupyter Lab.exe",
+            "src-tauri/bin/winpython/Jupyter Notebook.exe",
+            "src-tauri/bin/winpython/Pyzo.exe",
+            "src-tauri/bin/winpython/Qt Assistant.exe",
+            "src-tauri/bin/winpython/Qt Linguist.exe",
+            "src-tauri/bin/winpython/Qt Designer.exe",
+            "src-tauri/bin/winpython/Spyder reset.exe",
+            "src-tauri/bin/winpython/Spyder.exe",
+            "src-tauri/bin/winpython/WinPython Terminal.exe",
+            "src-tauri/bin/winpython/WinPython Powershell Prompt.exe",
+            "src-tauri/bin/winpython/WinPython Interpreter.exe",
+            "src-tauri/bin/winpython/WinPython Control Panel.exe",
+            "src-tauri/bin/winpython/VS Code.exe",
+            "src-tauri/bin/winpython/WinPython Command Prompt.exe",
+            "src-tauri/bin/ainb/ainb_as_json_v1.9.7z"
+            ]
+    files_to_remove = [Path(f) for f in files_to_remove]
+    files_to_remove += list(Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib").glob("*.exe"))
+    files_to_remove += list(Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools").glob("*.exe"))
+    
+    for file in files_to_remove:
+        remove_file(file.resolve())
+
 def repo_init():
     cwd = os.getcwd()
     cwd_path = Path(cwd)
@@ -73,15 +112,7 @@ def repo_init():
         p = subprocess.run(["git", "submodule", "update", "--init", "--recursive"])
         if p.returncode != 0:
             raise Exception("[-] Failed to update git submodule")
-    files_to_copy = {
-        "src-tauri/misc/baev.py": f"{bin_path}/asb/baev.py",
-        "src-tauri/misc/asb.py": f"{bin_path}/asb/asb.py",
-        "src-tauri/misc/ptcl.py": f"{bin_path}/ptcl/ptcl.py",
-    }
-    for file1, file2 in files_to_copy.items():
-        shutil.copyfile(file1, file2)
-        print(f"[+] Copied {file1} -> {file2}")
-    
+    copy_files(bin_path)
     tmp_path = Path("tmp")
     winpython_installer_exe = tmp_path / "winpython.exe"
     if not winpython_installer_exe.exists():
@@ -131,34 +162,7 @@ def repo_init():
             print(f"Copying: {file.name}")
             shutil.copyfile(file, destfile)
     print(f"[+] Removing unused exe files")
-    files_to_remove = [
-            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib/t64-arm.exe",
-            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib/w64-arm.exe",
-            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools/cli-arm64.exe",
-            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools/gui-arm64.exe",
-            "src-tauri/bin/asb/asb_as_json.7z",
-            "src-tauri/bin/winpython/Jupyter Lab.exe",
-            "src-tauri/bin/winpython/Jupyter Notebook.exe",
-            "src-tauri/bin/winpython/Pyzo.exe",
-            "src-tauri/bin/winpython/Qt Assistant.exe",
-            "src-tauri/bin/winpython/Qt Linguist.exe",
-            "src-tauri/bin/winpython/Qt Designer.exe",
-            "src-tauri/bin/winpython/Spyder reset.exe",
-            "src-tauri/bin/winpython/Spyder.exe",
-            "src-tauri/bin/winpython/WinPython Terminal.exe",
-            "src-tauri/bin/winpython/WinPython Powershell Prompt.exe",
-            "src-tauri/bin/winpython/WinPython Interpreter.exe",
-            "src-tauri/bin/winpython/WinPython Control Panel.exe",
-            "src-tauri/bin/winpython/VS Code.exe",
-            "src-tauri/bin/winpython/WinPython Command Prompt.exe",
-            "src-tauri/bin/ainb/ainb_as_json_v1.9.7z"
-            ]
-    files_to_remove = [Path(f) for f in files_to_remove]
-    files_to_remove += list(Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib").glob("*.exe"))
-    files_to_remove += list(Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools").glob("*.exe"))
-    
-    for file in files_to_remove:
-        remove_file(file.resolve())
+    remove_files()
     
     remove_file(winpython_installer_exe)
     if tmp_path.exists():

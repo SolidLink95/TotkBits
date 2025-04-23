@@ -1,20 +1,15 @@
 #![allow(non_snake_case, non_camel_case_types)]
-use super::BinTextFile::write_string_to_file;
 use crate::Settings::{Pathlib, NO_WINDOW_FLAG};
 use crate::Zstd::{is_asb, is_baev, TotkZstd};
-use fltk::prelude::{GroupExt, WidgetBase, WidgetExt};
-use fltk::{app, button::Button, dialog::alert, frame::Frame, window::Window};
 use rfd::{FileDialog, MessageDialog};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::Arc;
 use std::{
     io::{self, Read, Write},
     os::windows::process::CommandExt,
     process::{Command, Stdio},
 };
-use std::cell::RefCell;
 
 pub const ASB_SEPARATOR: &[u8; 15] =  b"%ASB_SEPARATOR%";
 
@@ -57,10 +52,10 @@ impl<'a> Asb_py<'a> {
         Ok(baev_path)
     }
     pub fn get_baev_data_from_romfs(zstd: Arc<TotkZstd<'a>>, name: String) -> io::Result<Vec<u8>> {
-        let mut data = Vec::new();
+        // let mut data = Vec::new();
         let baev_path = Self::get_baev_path_from_romfs(zstd.clone(), name.clone())?;
         println!("BAEV path: {:?} {}", &baev_path, baev_path.exists());
-        data = fs::read(baev_path)?;
+        let data = fs::read(baev_path)?;
         let new_data = if !is_baev(&data) {
             zstd.decompress_zs(&data)?
         } else {

@@ -1,6 +1,6 @@
 #![allow(non_snake_case,non_camel_case_types)]
-use std::{fs, io, path::Path, result, sync::Arc};
-use roead::byml::{self, Byml};
+use std::{io, path::Path, sync::Arc};
+use roead::byml::Byml;
 use crate::{Settings::Pathlib, Zstd::{TotkFileType, TotkZstd}};
 use super::{BinTextFile::{BymlFile, FileData}, Wrapper::PythonWrapper};
 
@@ -36,10 +36,10 @@ impl<'a> Esetb<'a> {
     }
 
     pub fn process_ptcl_binary(pio: &mut Byml) -> io::Result<Vec<u8>> {
-        let endian = roead::Endian::Little;
+        // let endian = roead::Endian::Little;
         let mut result: Vec<u8> = Vec::new();
         let py_wrap = PythonWrapper::default();
-        let mut pio_map = pio.as_mut_map().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let pio_map = pio.as_mut_map().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         if !pio_map.contains_key(PTCL_BIN_KEY)  {
             return Err(io::Error::new(io::ErrorKind::Other, "BYML file does not contain PtclBin key"));
         }

@@ -1,11 +1,6 @@
 use std::io::{self, Write};
-// use std::io::Read;
 use std::os::windows::process::CommandExt;
-use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-
-use updater::Updater::get_cwd_dir;
-
 use crate::Settings::NO_WINDOW_FLAG;
 
 pub struct ExeWrapper {

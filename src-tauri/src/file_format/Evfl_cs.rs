@@ -1,6 +1,6 @@
 use std::{io::{self, Read}, path::Path, sync::Arc};
 
-use crate::{Open_and_Save::SendData, Settings::Pathlib, Zstd::{is_evfl, is_little_endian, TotkFileType, TotkZstd}};
+use crate::{Open_and_Save::SendData, Settings::Pathlib, Zstd::{is_evfl, TotkFileType, TotkZstd}};
 
 use super::{BinTextFile::OpenedFile, Wrapper::ExeWrapper};
 
@@ -27,7 +27,6 @@ impl<'a> Evfl<'a> {
         } else {
             data.to_vec()
         };
-        // println!("Data is evfl: {} LE: {}", is_evfl(&new_data), is_little_endian(&new_data));
         if !is_evfl(&new_data) {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
