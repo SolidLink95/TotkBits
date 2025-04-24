@@ -39,28 +39,6 @@ const RstbTree = ({ onNodeSelect, sarcPaths, setStatusText, activeTab }) => {
     );
   }
 
-  // const data = [
-  //   { path: "gallery", val: "150" },
-  //   { path: "fantasy", val: "205" },
-  //   { path: "dolphin", val: "260" },
-  //   { path: "library", val: "315" },
-  //   { path: "mystery", val: "370" },
-  //   { path: "journey", val: "425" },
-  //   { path: "kingdom", val: "480" },
-  //   { path: "quantum", val: "535" },
-  //   { path: "zealous", val: "590" },
-  //   { path: "victory", val: "645" },
-  //   { path: "utility", val: "700" },
-  //   { path: "voyager", val: "755" },
-  //   { path: "uncover", val: "810" },
-  //   { path: "trilogy", val: "865" },
-  //   { path: "soprano", val: "920" },
-  //   { path: "reality", val: "975" },
-  //   { path: "quality", val: "230" },
-  //   { path: "pursuit", val: "285" },
-  //   { path: "organic", val: "340" },
-  //   { path: "nectar", val: "395" },
-  // ];
 
   const handleNodeSelect = (node) => {
     setSelectedNode(node.path);
