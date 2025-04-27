@@ -446,7 +446,7 @@ button {
 }
 
 .config-label {
-  text-align: right; /* Align labels to the right */
+  text-align: left; /* Align labels to the right */
   font-weight: bold;
   white-space: nowrap;
   padding-right: 10px; /* Space between label and input */

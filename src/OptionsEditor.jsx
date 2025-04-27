@@ -18,6 +18,15 @@ function OptionsEditor() {
         isModalOpen,
     } = useEditorContext();
 
+    const updateRomfsPath = async () => {
+        console.log(config);
+        const path = await invoke("open_dir_dialog");
+        if (path === "" || path === null || path === undefined) {
+            return;
+        }
+        setConfig((prev) => ({ ...prev, ["romfs"]: path }));
+    }
+
     const onClose = () => {
         setIsOptionsOpen(false);
         setIsModalOpen(!isModalOpen);
@@ -77,61 +86,69 @@ function OptionsEditor() {
         "Text editor theme": ["light", "dark", "vs-dark"],
         // "font size": [12, 14, 16, 18, 20],
         "rotation in degrees": [0, 90, 180, 270],
-        "Byml inline container max count": [1,2,3,4,5,6,7,8,9,10],
+        "Byml inline container max count": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     };
 
     return (
         <div className="modal-overlay">
-        <div className="modal-content">
-            <h2>Options</h2>
-            <div className="options-grid">
-                {Object.entries(config).map(([key, value]) => (
-                    <React.Fragment key={key}>
-                        {/* Left Column: Key */}
-                        <div className="config-label">
-                            <label>{key}</label>
-                        </div>
-    
-                        {/* Right Column: Value */}
-                        <div className="config-value">
-                            {typeof value === "boolean" ? (
-                                <input
-                                    type="checkbox"
-                                    checked={value}
-                                    onChange={(e) => handleChange(key, e.target.checked)}
-                                />
-                            ) : dropdownOptions[key] ? (
-                                <select
-                                    value={value}
-                                    onChange={(e) => handleChange(key, e.target.value)}
-                                >
-                                    {dropdownOptions[key].map((option) => (
-                                        <option key={option} value={option}>
-                                            {option}
-                                        </option>
-                                    ))}
-                                </select>
-                            ) : (
-                                <input
-                                    type={typeof value === "number" ? "number" : "text"}
-                                    value={value}
-                                    onChange={(e) => handleChange(key, e.target.value)}
-                                />
-                            )}
-                        </div>
-                    </React.Fragment>
-                ))}
-            </div>
-            <div className="options-modal-footer">
-                <button onClick={handleSave}>Save</button>
-                <button onClick={onClose}>Cancel</button>
+            <div className="modal-content">
+                <h2>Options</h2>
+                <div className="options-grid">
+                    <div></div> <div
+                        style={{ textAlign: "right" }}><button
+                            className="modal-footer-button"
+                            onClick={updateRomfsPath}
+                            title="Select romfs path"
+                        >
+                            Select romfs path
+                        </button></div>
+                    {Object.entries(config).map(([key, value]) => (
+                        <React.Fragment key={key}>
+                            {/* Left Column: Key */}
+                            <div className="config-label">
+                                <label>{key}</label>
+                            </div>
+
+                            {/* Right Column: Value */}
+                            <div className="config-value">
+                                {typeof value === "boolean" ? (
+                                    <input
+                                        type="checkbox"
+                                        checked={value}
+                                        onChange={(e) => handleChange(key, e.target.checked)}
+                                    />
+                                ) : dropdownOptions[key] ? (
+                                    <select
+                                        value={value}
+                                        onChange={(e) => handleChange(key, e.target.value)}
+                                    >
+                                        {dropdownOptions[key].map((option) => (
+                                            <option key={option} value={option}>
+                                                {option}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <input
+                                        type={typeof value === "number" ? "number" : "text"}
+                                        value={value}
+                                        onChange={(e) => handleChange(key, e.target.value)}
+                                    />
+                                )}
+                            </div>
+                        </React.Fragment>
+                    ))}
+                </div>
+                <div className="options-modal-footer">
+                    <button onClick={handleSave}>Save</button>
+                    <button onClick={onClose}>Cancel</button>
+                </div>
             </div>
         </div>
-    </div>
-    
+
 
     );
-    
+
 }
 
 export default OptionsEditor;

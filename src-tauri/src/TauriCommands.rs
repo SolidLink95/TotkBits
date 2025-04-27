@@ -443,13 +443,16 @@ pub fn update_toml_config(app_handle: tauri::AppHandle, newConfig: HashMap<Strin
     if let Ok(_) = new_config_var.save() {
         is_saved_str = " saved";
     }
+    let available_str = "ZSTD available, options ".to_string() + is_saved_str;
+    let unavailable_str = "ZSTD unavailable, options ".to_string() + is_saved_str;
     match TotkZstd::new(Arc::new(new_config_var), COMPRESSION_LEVEL) {
         Ok(new_zstd) => {
             app.zstd = Arc::new(new_zstd);
-            send_data.status_text = "ZSTD available, options ".to_string() + is_saved_str;
+            let st = if app.zstd.clone().totk_config.is_valid() {available_str} else {unavailable_str};
+            send_data.status_text = st;
         } // Safely return the result if present
         Err(_) => {
-            send_data.status_text = "ZSTD unavailable, options ".to_string()+ is_saved_str;
+            send_data.status_text = unavailable_str;
         } // Return None if no result
     }
     return Some(send_data);
