@@ -223,37 +223,23 @@ const CompareFiles = () => {
 
   useEffect(() => {
     if (monaco && diffEditorRef.current) {
-      const diffEditor = diffEditorRef.current;
-
-      // Ensure the models are initialized
-      if (diffEditor.getModel()) {
-        const navigator = monaco.editor.createDiffNavigator(diffEditor, {
-          followsCaret: true, // Automatically navigate to differences
-          ignoreCharChanges: true, // Ignore character-level changes
-        });
-        diffNavigatorRef.current = navigator;
-
-        const subscription = diffEditor.onDidUpdateDiff(() => {
-          const diffNavigator = navigator._editor._diffNavigator;
-          const newTotalDiffs = diffNavigator.ranges.length;
-          setTotalDiffs(newTotalDiffs);
-          setCurrentDiffIndex(0); // Reset to the first diff
-          diffEditor.getModifiedEditor().revealLine(1);
-          diffEditor.getOriginalEditor().revealLine(1);
-        });
-
-        // if (totalDiffs === 0 && navigator._editor._diffNavigator.ranges.length > 0) {
-        //   setTotalDiffs(navigator._editor._diffNavigator.ranges.length);
-        // }
-        return () => {
-          // Cleanup subscription when component unmounts
-          subscription.dispose();
-        };
-        // console.log(navigator);
-        // console.log(navigator._editor._diffNavigator.ranges.length);
-      }
+      const navigator = monaco.editor.createDiffNavigator(diffEditorRef.current, {
+        followsCaret: true,
+        ignoreCharChanges: true,
+      });
+      diffNavigatorRef.current = navigator;
+  
+      const subscription = diffEditorRef.current.onDidUpdateDiff(() => {
+        const ranges = navigator._diffNavigator?.ranges || [];
+        setTotalDiffs(ranges.length);
+        setCurrentDiffIndex(0);
+        diffEditorRef.current.getModifiedEditor().revealLine(1);
+        diffEditorRef.current.getOriginalEditor().revealLine(1);
+      });
+  
+      return () => subscription.dispose();
     }
-  }, [monaco, diffEditorRef.current]);
+  }, [monaco]);
 
   const handleNextDiff = () => {
     console.log(currentDiffIndex, totalDiffs);
@@ -320,8 +306,8 @@ const CompareFiles = () => {
             readOnly: true,
             renderSideBySide: true,
           }}
-          onMount={(editor) => {
-            diffEditorRef.current = editor;
+          onMount={(editor, monacoInstance) => {
+            diffEditorRef.current = editor; // store the real DiffEditor instance
           }}
         />
       </div>

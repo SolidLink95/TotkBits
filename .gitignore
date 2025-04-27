@@ -9,6 +9,8 @@ lerna-debug.log*
 
 node_modules/*
 res/asdf/*
+res/*
+tmp/*
 /bin/*
 # /bin/ainb/
 dist
@@ -43,3 +45,4 @@ ext_projects/bphcl/__pycache__
 
 /__pycache__
 **__init__.py
+package-lock.json
