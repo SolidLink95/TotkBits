@@ -10,6 +10,20 @@ except ImportError:
     print("Install tqdm first using command: pip install tqdm")
     sys.exit(1)
 
+def download_dlls():
+    dlls = {
+        "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.dll": "src-tauri/bin/dlls/xlink_tool.dll",
+        "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.exp": "src-tauri/bin/dlls/xlink_tool.exp",
+        "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.lib": "src-tauri/bin/dlls/xlink_tool.lib",
+    }
+    if dlls:
+        print("[+] Downloading DLLs")
+        for url, local_path in dlls.items():
+            local_path = Path(local_path)
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            download_file(url, local_path)
+        print(f"[+] Downloaded {len(dlls.keys())} DLLs")
+
 def remove_file(file):
     x = Path(file)
     if x.exists() and x.is_file():
@@ -28,12 +42,10 @@ def rename_directory(source, new_name):
         print(f"Directory renamed from {source_path} to {new_path}")
     return new_path
 
-def create_directory(path):
-    os.makedirs(path, exist_ok=True)
 
 def download_file(url, local_path):
     # Create the directory if it doesn't exist
-    create_directory(os.path.dirname(local_path))
+    Path(local_path).parent.mkdir(parents=True, exist_ok=True)  
     
     # Send a GET request to the URL
     response = requests.get(url, stream=True)
@@ -42,7 +54,7 @@ def download_file(url, local_path):
     
     # Get the total file size from the response headers
     total_size = int(response.headers.get('content-length', 0))
-    
+    local_path = str(local_path)
     # Open a local file for writing in binary mode
     with open(local_path, 'wb') as f, tqdm(
         desc=local_path,
@@ -156,18 +168,21 @@ def repo_init():
     
     site_packages = Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages")
     
+    #Copy zlib compressed json files
     for file in (cwd_path / "src-tauri/misc").glob("*.bin"):
         destfile = cwd_path / "src-tauri/bin" / file.name
         if not destfile.exists():
             print(f"Copying: {file.name}")
             shutil.copyfile(file, destfile)
     print(f"[+] Removing unused exe files")
-    remove_files()
     
+    #Remove junk files
+    remove_files()
     remove_file(winpython_installer_exe)
     if tmp_path.exists():
         shutil.rmtree(str(tmp_path))
     
+    #Copy directories
     dirs_to_copy = {
         # "src-tauri/bin/ainb/ainb": site_packages / "ainb",
         # "src-tauri/bin/asb": site_packages / "asb",
@@ -181,6 +196,9 @@ def repo_init():
             print(f"[+] Copied {src_dir} -> {dest_dir}")
         else:
             print(f"[+] Directory already exists: {dest_dir}")
+    
+    #Download dlls
+    download_dlls()
     
     print("\n[+] Totkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file")
         

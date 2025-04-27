@@ -12,25 +12,25 @@ tauri-build = { version = "1", features = [] }
 
 [dependencies]
 # zstud-sys = {git = "https://github.com/SolidLink95/zstud-sys-rs"}
-#BymlText
-
-fltk = "1.5.7"
-
+libloading = "0.8.0"
 ryml = "0.3.2"
 miow = "0.6.0"
-
 regex = "1.10.4"
 # glob = "0.3"
-msbt_bindings_rs = {git = "https://github.com/SolidLink95/msbt_bindings_rs"}
+msbt_bindings_rs = { git = "https://github.com/SolidLink95/msbt_bindings_rs" }
 # msbt_bindings_rs = {path = "W:/coding/msbt_bindings_rs"}
-tauri = { version = "1.6.7", features = [ "api-all"] }
+tauri = { version = "1.6.7", features = ["api-all"] }
 serde = { version = "1", features = ["derive"] }
 # tauri-bundler = "1.5.1"
 msyt = { git = "https://github.com/SolidLink95/msyt-lib" }
 msbt = { git = "https://github.com/lojewalo/msbt-rs" }
 zstd = "0.13.2"
-updater = {path = "../ext_projects/updater"}
-roead = { git = "https://github.com/SolidLink95/roead", features = ["yaml", "sarc", "byml"] }
+updater = { path = "../ext_projects/updater" }
+roead = { git = "https://github.com/SolidLink95/roead", features = [
+    "yaml",
+    "sarc",
+    "byml",
+] }
 # roead = { path = "./external/roead", features = ["yaml", "sarc", "byml"] }
 # roead = { version = "1.0.0", features = ["yaml", "sarc", "byml"] }
 #roead = { version = "0.25.1", features = ["yaml", "sarc", "byml"] }

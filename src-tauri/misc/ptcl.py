@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from utils import ReadableWriteableStream, RelativeSeekContext, SeekContext
+from .utils import ReadableWriteableStream, RelativeSeekContext, SeekContext
 
 import json
 import mmap

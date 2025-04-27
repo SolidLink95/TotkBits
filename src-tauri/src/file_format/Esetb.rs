@@ -1,8 +1,8 @@
 #![allow(non_snake_case,non_camel_case_types)]
 use std::{io, path::Path, sync::Arc};
 use roead::byml::Byml;
-use crate::{Settings::Pathlib, Zstd::{TotkFileType, TotkZstd}};
-use super::{BinTextFile::{BymlFile, FileData}, Wrapper::PythonWrapper};
+use crate::{Open_and_Save::SendData, Settings::Pathlib, Zstd::{is_esetb_path, TotkFileType, TotkZstd}};
+use super::{BinTextFile::{BymlFile, FileData, OpenedFile}, Wrapper::PythonWrapper};
 
 const PTCL_JSON_KEY: &str = "PTCL_JSON";
 const PTCL_BIN_KEY: &str = "PtclBin";
@@ -163,6 +163,31 @@ impl<'a> Esetb<'a> {
         self.byml.save(path.to_string())?;
 
         Ok(())
+    }
+
+    pub fn open_esetb<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
+        let mut opened_file = OpenedFile::default();
+        let path_ref = path.as_ref();
+        let mut data = SendData::default();
+        print!("Is {:?} a esetb? ", &path_ref);
+        if is_esetb_path(&path) {
+            opened_file.esetb = Esetb::from_file(path_ref, zstd.clone()).ok();
+            if let Some(esetb) = &opened_file.esetb {
+                println!(" yes!");
+                data.tab = "YAML".to_string();
+                opened_file.path = Pathlib::new(path_ref);
+                opened_file.endian = esetb.byml.endian;
+                opened_file.file_type = TotkFileType::Esetb;
+                data.status_text = format!("Opened {}", path_ref.display());
+                data.path = Pathlib::new(path_ref);
+                data.text = esetb.to_string();
+                data.get_file_label(TotkFileType::Esetb, esetb.byml.endian);
+                return Some((opened_file, data));
+            }
+        }
+        println!("no");
+    
+        None
     }
 
 }

@@ -3,6 +3,7 @@ use crate::Open_and_Save::get_string_from_data;
 use crate::TotkConfig::TotkConfig;
 use digest::Digest;
 use flate2::read::ZlibDecoder;
+use libloading::{Library, Symbol};
 use roead::sarc::*;
 use sha2::Sha256;
 use zstd::zstd_safe::zstd_sys::{
@@ -37,6 +38,7 @@ pub enum TotkFileType {
     Bcett,
     Esetb,
     Evfl,
+    Xlink,
     Text,
     Other,
     //SMO
@@ -146,6 +148,8 @@ pub struct TotkZstd<'a> {
     pub compressor: Option<ZstdCompressor<'a>>,
     pub zsdic: Option<Arc<ZsDic>>,
     pub cpp_compressor: Option<ZstdCppCompressor>,
+    //dll
+    pub dll_manager: DllManager
 }
 
 impl<'a> TotkZstd<'_> {
@@ -179,7 +183,8 @@ impl<'a> TotkZstd<'_> {
             decompressor,
             compressor,
             zsdic: zsdic,
-            cpp_compressor: cpp_compressor
+            cpp_compressor: cpp_compressor,
+            dll_manager: DllManager::default()
         })
     }
 
@@ -544,6 +549,10 @@ pub fn is_ainb(data: &[u8]) -> bool {
     data.starts_with(b"AIB")
 }
 #[inline]
+pub fn is_xlink(data: &[u8]) -> bool {
+    data.starts_with(b"XLNK")
+}
+#[inline]
 pub fn is_asb(data: &[u8]) -> bool {
     data.starts_with(b"ASB ")
 }
@@ -570,6 +579,13 @@ pub fn is_gamedatalist<P: AsRef<Path>>(path: P) -> bool {
 #[inline]
 pub fn is_tagproduct_path<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("tag.product")
+    // path.ends_with("GameDataList.Product.110.byml.zs")
+}
+#[inline]
+pub fn is_xlink_path<P: AsRef<Path>>(path: P) -> bool {
+    let tmp = path.as_ref().to_string_lossy().to_ascii_lowercase();
+    tmp.ends_with(".belnk") ||
+    tmp.ends_with(".belnk.zs") 
     // path.ends_with("GameDataList.Product.110.byml.zs")
 }
 #[inline]
@@ -649,3 +665,46 @@ pub fn get_executable_dir() -> String {
     } 
     return String::new();
 }
+
+// DLLS
+
+pub struct CppDll {
+    pub path: String,
+    pub lib: Library
+}
+
+impl CppDll {
+    pub fn get_function<T>(&self, func_name: &str) -> io::Result<Symbol<T>> {
+        unsafe {
+            let lib = &self.lib;
+            let mut func_name_bytes = func_name.as_bytes().to_vec();
+            func_name_bytes.push(0); // Null-terminate the string
+            match lib.get(func_name_bytes.as_slice()) {
+                Ok(func) => Ok(func),
+                Err(_) => Err(io::Error::new(io::ErrorKind::NotFound, "Function not found")),
+            }
+        }
+    }
+}
+
+
+pub struct DllManager {
+    pub xlink_dll: CppDll,
+}
+
+impl Default for DllManager {
+    fn default() -> Self {
+        // let mut xlink_dll = CppDll { path: String::new() };
+        let exe_dir = get_executable_dir();
+        let dll_path = format!("{}/bin/dlls/xlink_tool.dll", exe_dir);
+        let lib;
+        unsafe {
+            lib = Library::new(&dll_path).expect("Failed to load DLL");
+        }
+        let xlink_dll = CppDll { path: dll_path, lib };
+        DllManager {
+            xlink_dll: xlink_dll,
+        }
+    }
+}
+
