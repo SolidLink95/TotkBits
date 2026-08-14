@@ -20,7 +20,7 @@ use crate::Zstd::{sha256, TotkFileType, TotkZstd, ZstdDictionary};
 // use super::SarcEntriesData::get_sarc_entries_data;
 
 pub fn get_sarc_entries_data() -> Arc<HashMap<String, String>> {
-    crate::LookupData::sarc_sha256()
+    crate::utils::LookupData::sarc_sha256()
 }
 
 pub struct PackComparer<'a> {

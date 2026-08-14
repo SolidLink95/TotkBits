@@ -1318,7 +1318,7 @@ pub fn audit_actor_pack(
     zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<BTreeMap<String, ActorPackEntryKind>> {
     let pack = PackFile::from_binary(source_bytes, zstd)?;
-    let vanilla = crate::LookupData::sarc_sha256();
+    let vanilla = crate::utils::LookupData::sarc_sha256();
     let mut result = BTreeMap::new();
     for file in pack.sarc.files() {
         let path = file

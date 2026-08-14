@@ -244,7 +244,7 @@ impl<'a> Restbl<'_> {
     }
 
     pub fn get_restb_entries<P: AsRef<Path>>(&mut self, path: P) -> io::Result<Arc<Vec<String>>> {
-        let mut res = crate::LookupData::rstb_paths();
+        let mut res = crate::utils::LookupData::rstb_paths();
         if !should_scan_local_rstb_paths(path.as_ref()) {
             return Ok(res);
         }

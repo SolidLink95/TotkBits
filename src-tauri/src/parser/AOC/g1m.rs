@@ -21,14 +21,14 @@ use g1m_import_task::G1mImportTask;
 const PARALLEL_IMPORT_MIN_BYTES: usize = 1024 * 1024;
 
 static PAIRS: LazyLock<HashMap<String, serde_json::Value>> = LazyLock::new(|| {
-    serde_json::from_str(&crate::LookupData::read_support_json(
+    serde_json::from_str(&crate::utils::LookupData::read_support_json(
         "G1M_to_G1T_pairs.json",
     ))
     .unwrap_or_default()
 });
 
 static BOTW_BONE_NAMES: LazyLock<HashMap<usize, String>> = LazyLock::new(|| {
-    serde_json::from_str::<HashMap<String, String>>(&crate::LookupData::read_support_json(
+    serde_json::from_str::<HashMap<String, String>>(&crate::utils::LookupData::read_support_json(
         "bones_botw.json",
     ))
     .unwrap_or_default()
@@ -48,8 +48,10 @@ pub struct AocModelEntry {
 }
 
 static AOC_NAMES: LazyLock<HashMap<String, AocModelEntry>> = LazyLock::new(|| {
-    serde_json::from_str(&crate::LookupData::read_support_json("AOC_names.json"))
-        .unwrap_or_default()
+    serde_json::from_str(&crate::utils::LookupData::read_support_json(
+        "AOC_names.json",
+    ))
+    .unwrap_or_default()
 });
 
 pub(crate) fn aoc_names() -> &'static HashMap<String, AocModelEntry> {

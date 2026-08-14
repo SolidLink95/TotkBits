@@ -5,11 +5,9 @@
 use std::{env, io};
 use tauri::Manager;
 use Zstd::get_executable_dir;
-mod Cli;
 mod Comparer;
 mod DocumentState;
 mod InternalFile;
-mod LookupData;
 mod TotkFile;
 // mod InternalFile_EX;
 mod NestedSarc;
@@ -51,7 +49,7 @@ use crate::TauriCommands::{
 };
 
 fn main() -> io::Result<()> {
-    let cli = Cli::CliCommand::from_env();
+    let cli = tools::Cli::CliCommand::from_env();
     if let Some(command) = cli {
         return command.execute().map_err(std::io::Error::other);
     }

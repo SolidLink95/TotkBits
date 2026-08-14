@@ -22,7 +22,7 @@ fn bars_hash_index() -> Option<&'static BarsHashIndex> {
     static INDEX: OnceLock<Option<BarsHashIndex>> = OnceLock::new();
     INDEX
         .get_or_init(|| {
-            serde_json::from_str(&crate::LookupData::read_support_json(
+            serde_json::from_str(&crate::utils::LookupData::read_support_json(
                 "bars_bwav_sha256.json",
             ))
             .ok()

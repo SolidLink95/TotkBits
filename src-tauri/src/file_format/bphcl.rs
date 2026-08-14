@@ -10,7 +10,7 @@ use std::{collections::HashMap, io, path::Path, sync::LazyLock};
 
 static AAMP_TOTK_NAMES: LazyLock<HashMap<u32, String>> = LazyLock::new(|| {
     let mut names = HashMap::new();
-    for name in crate::LookupData::read_support_text("botw_hashed_names.txt", "").lines() {
+    for name in crate::utils::LookupData::read_support_text("botw_hashed_names.txt", "").lines() {
         names
             .entry(roead::aamp::hash_name(name))
             .or_insert_with(|| name.to_owned());
@@ -88,8 +88,10 @@ fn canonical_node_hash(value: &impl Serialize) -> io::Result<String> {
 }
 
 static BPHCL_VANILLA_NODES: LazyLock<HashMap<String, BphclVanillaNodes>> = LazyLock::new(|| {
-    serde_json::from_str(&crate::LookupData::read_support_json("bphcl_nodes.json"))
-        .unwrap_or_default()
+    serde_json::from_str(&crate::utils::LookupData::read_support_json(
+        "bphcl_nodes.json",
+    ))
+    .unwrap_or_default()
 });
 
 #[derive(Clone, Debug, Serialize)]

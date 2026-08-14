@@ -664,7 +664,7 @@ struct AnimationPairing {
 }
 
 static ANIMATION_PAIRINGS: LazyLock<HashMap<String, AnimationPairing>> = LazyLock::new(|| {
-    serde_json::from_str(&crate::LookupData::read_support_json(
+    serde_json::from_str(&crate::utils::LookupData::read_support_json(
         "Animations_paths_and_characters.json",
     ))
     .unwrap_or_default()

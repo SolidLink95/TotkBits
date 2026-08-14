@@ -556,7 +556,7 @@ impl<'a> TotkZstd<'_> {
         internal_path: P,
     ) -> io::Result<String> {
         //parse json
-        let res = crate::LookupData::internal_filepaths();
+        let res = crate::utils::LookupData::internal_filepaths();
         //find the sarc file
         let int_path_str = internal_path.as_ref().to_string_lossy().to_string();
         let sarc_localpath = res
@@ -872,7 +872,7 @@ impl<'a> ZstdCompressor<'_> {
     }
 
     pub fn find_vanila_file_in_romfs<P: AsRef<Path>>(&self, path: P) -> io::Result<String> {
-        let res = crate::LookupData::filename_to_localpath();
+        let res = crate::utils::LookupData::filename_to_localpath();
         let filename = path
             .as_ref()
             .file_name()

@@ -452,7 +452,7 @@ impl TotkConfig {
     //FIND VANLA FILE IN ROMFS
     pub fn find_vanila_file_in_romfs<P: AsRef<Path>>(&self, path: P) -> io::Result<String> {
         //parse json
-        let res = crate::LookupData::filename_to_localpath();
+        let res = crate::utils::LookupData::filename_to_localpath();
         //get filename (key)
         let filename = Pathlib::new(&path).name;
         let mut filenames: Vec<String> = vec![];

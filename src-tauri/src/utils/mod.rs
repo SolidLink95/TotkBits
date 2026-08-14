@@ -1,5 +1,6 @@
 mod AppPaths;
 mod FileUtilities;
+pub mod LookupData;
 mod Startup;
 mod ValueUtilities;
 mod magic;
