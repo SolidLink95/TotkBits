@@ -147,6 +147,28 @@ fn xlink_data(zstd: &TotkZstd<'_>, data: &[u8]) -> io::Result<Vec<u8>> {
     Ok(rawdata)
 }
 
+fn validate_modern_profile(data: &[u8]) -> io::Result<()> {
+    let version_bytes: [u8; 4] = data
+        .get(8..12)
+        .and_then(|bytes| bytes.try_into().ok())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "XLink header is truncated before the profile version",
+            )
+        })?;
+    let version = u32::from_le_bytes(version_bytes);
+    if matches!(version, 0x21 | 0x22 | 0x24) {
+        return Ok(());
+    }
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        format!(
+            "unsupported XLink profile version 0x{version:02x}; the modern converter supports 0x21, 0x22, and 0x24"
+        ),
+    ))
+}
+
 #[cfg(windows)]
 impl<'a> Xlink_rs<'a> {
     pub fn new(zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
@@ -169,6 +191,9 @@ impl<'a> Xlink_rs<'a> {
             return xlink_legacy::new(self.zstd.clone())?.binary_to_yaml(data);
         }
         let rawdata = xlink_data(&self.zstd, data)?;
+        // The native converter terminates the entire process when handed an
+        // unsupported profile, so validate this field before crossing FFI.
+        validate_modern_profile(&rawdata)?;
 
         unsafe {
             let yaml_ptr = xlink_bindings::binary_to_yaml(&rawdata).cast::<i8>();
@@ -327,8 +352,70 @@ impl<'a> Xlink_rs<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::Xlink_rs;
+    use super::{validate_modern_profile, xlink_data, Xlink_rs};
     use crate::TotkConfig::TotkConfig;
+
+    #[test]
+    fn opens_slink2_profile_with_detected_native_profile() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tmp/crash/slink2.Product.100.bslnk.zs");
+        if !path.is_file() {
+            return;
+        }
+        let app = crate::TotkApp::TotkBitsApp::default();
+        let compressed = std::fs::read(&path).unwrap();
+        let raw = xlink_data(&app.zstd, &compressed).unwrap();
+        validate_modern_profile(&raw).unwrap();
+        let text = Xlink_rs::new(app.zstd.clone())
+            .unwrap()
+            .binary_to_yaml(&compressed)
+            .unwrap();
+        assert!(text.starts_with("Metadata {"));
+        assert!(text.contains("ModuleType = SLink"));
+        let (opened, data) = Xlink_rs::open_xlink(&path, app.zstd).unwrap();
+        assert_eq!(opened.file_type, crate::Zstd::TotkFileType::Xlink);
+        assert_eq!(data.tab, "YAML");
+    }
+
+    #[test]
+    fn opens_elink2_profile_with_detected_native_profile() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tmp/crash/elink2.Product.100.belnk.zs");
+        if !path.is_file() {
+            return;
+        }
+        let app = crate::TotkApp::TotkBitsApp::default();
+        let compressed = std::fs::read(&path).unwrap();
+        let text = Xlink_rs::new(app.zstd.clone())
+            .unwrap()
+            .binary_to_yaml(&compressed)
+            .unwrap();
+        assert!(text.starts_with("Metadata {"));
+        assert!(text.contains("ModuleType = ELink"));
+        let (opened, data) = Xlink_rs::open_xlink(&path, app.zstd).unwrap();
+        assert_eq!(opened.file_type, crate::Zstd::TotkFileType::Xlink);
+        assert_eq!(data.tab, "YAML");
+    }
+
+    #[test]
+    fn corrupted_xlink_magic_is_reported_without_process_abort() {
+        let app = crate::TotkApp::TotkBitsApp::default();
+        let mut corrupted = vec![0_u8; 12];
+        corrupted[..4].copy_from_slice(b"XLNK");
+        corrupted[4..8].copy_from_slice(&12_u32.to_le_bytes());
+        corrupted[8..12].copy_from_slice(&0x24_u32.to_le_bytes());
+
+        let error = Xlink_rs::new(app.zstd.clone())
+            .unwrap()
+            .binary_to_yaml(&corrupted)
+            .unwrap_err();
+        assert!(error.to_string().contains("failed to convert"));
+        assert!(
+            Xlink_rs::open_xlink_binary(&corrupted, "corrupted.Product.100.belnk", app.zstd)
+                .is_none()
+        );
+    }
+
     use crate::Zstd::TotkZstd;
     use std::fs;
     use std::path::Path;

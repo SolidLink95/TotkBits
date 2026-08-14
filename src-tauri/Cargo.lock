@@ -3111,7 +3111,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -8295,7 +8295,7 @@ checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
 [[package]]
 name = "xlink2_bindings"
 version = "0.1.0"
-source = "git+https://github.com/SolidLink95/xlink2#85dcefa8847a11bf2caa203e3bfde7a94a06e14c"
+source = "git+https://github.com/SolidLink95/xlink2#195b4666dd23cfc0b0af5758b302c277f63462dc"
 dependencies = [
  "cc",
 ]

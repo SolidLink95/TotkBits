@@ -51,6 +51,7 @@ pub struct TotkConfig {
     pub stop_asking_for_romfs: bool,
     pub last_romfs_prompt: u64,
     pub recent_files: Vec<String>,
+    pub mii_renderer: bool,
 }
 
 impl Default for TotkConfig {
@@ -84,6 +85,7 @@ impl Default for TotkConfig {
             stop_asking_for_romfs: false,
             last_romfs_prompt: 0,
             recent_files: Vec::new(),
+            mii_renderer: false,
         }
     }
 }
@@ -234,6 +236,7 @@ impl TotkConfig {
                     .collect()
             })
             .unwrap_or_default();
+        self.mii_renderer = get_bool(&json_data, "mii_renderer", self.mii_renderer);
 
         self.yaml_max_inl = self
             .yaml_max_inl
@@ -264,6 +267,7 @@ impl TotkConfig {
             "Stop asking for romfs path": self.stop_asking_for_romfs,
             "Last romfs path prompt": self.last_romfs_prompt,
             "Recent files": self.recent_files,
+            "mii_renderer": self.mii_renderer,
         }))
     }
 
@@ -540,5 +544,27 @@ impl TotkConfig {
             }
         }
         String::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mii_renderer_is_hidden_and_disabled_by_default() {
+        let mut config = TotkConfig::default();
+        assert!(!config.mii_renderer);
+        assert_eq!(config.to_json().unwrap()["mii_renderer"], false);
+        assert!(config
+            .to_react_json()
+            .unwrap()
+            .get("mii_renderer")
+            .is_none());
+
+        let mut values = HashMap::new();
+        values.insert("mii_renderer".into(), serde_json::Value::Bool(true));
+        config.update_from_json_data(values);
+        assert!(config.mii_renderer);
     }
 }

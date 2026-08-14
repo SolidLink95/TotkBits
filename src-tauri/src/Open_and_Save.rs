@@ -553,7 +553,16 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
     let file_name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
     let uncompressed_name = file_name.strip_suffix(".zs").unwrap_or(&file_name);
 
-    let mii_result = if uncompressed_name.ends_with(".glb") {
+    if !zstd.totk_config.mii_renderer && crate::tools::mii::is_mii_binary_path(path) {
+        let mut data = SendData::default();
+        data.path = Pathlib::new(path);
+        data.tab = "ERROR".into();
+        data.status_text = "Error: Failed to parse file".into();
+        data.text = data.status_text.clone();
+        return Some((OpenedFile::default(), data));
+    }
+
+    let mii_result = if uncompressed_name.ends_with(".glb") || !zstd.totk_config.mii_renderer {
         None
     } else {
         crate::tools::mii::open(path)
@@ -762,6 +771,19 @@ mod remembered_compression_tests {
         data.set_file_metadata(TotkFileType::TagProduct, None);
         let json = serde_json::to_value(data).unwrap();
         assert_eq!(json["file_type"], "TAGPRODUCT");
+    }
+
+    #[test]
+    fn disabled_mii_open_returns_only_generic_parse_error() {
+        let app = crate::TotkApp::TotkBitsApp::default();
+        let (opened, data) =
+            file_from_disk_to_senddata(Path::new("private-name.charinfo"), app.zstd.clone())
+                .unwrap();
+        assert_eq!(opened.file_type, TotkFileType::None);
+        assert_eq!(data.tab, "ERROR");
+        assert_eq!(data.status_text, "Error: Failed to parse file");
+        assert!(!data.status_text.to_ascii_lowercase().contains("mii"));
+        assert!(!data.status_text.contains("private-name"));
     }
 
     #[test]

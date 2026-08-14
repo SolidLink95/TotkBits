@@ -1502,22 +1502,25 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const showYamlButtonFlag = false;
     const showNormalsButtonFlag = false;
     const exportModel = async () => {
-        if (!isG1m || !document?.fullPath || exportingModel) return;
+        if ((!isG1m && !isGlb) || !document?.fullPath || exportingModel) return;
         const sourcePaths = document.modelPaths?.length ? document.modelPaths : [document.fullPath];
         const stem = sourcePaths.length > 1
             ? 'selected_aoc_models'
-            : (document.title || 'model').replace(/\.g1m$/i, '');
+            : (document.title || 'model').replace(/\.(g1m|glb)$/i, '');
         const output = await save({
-            defaultPath: `${stem}.fbx`,
-            filters: [
+            defaultPath: `${stem}.${isGlb ? 'glb' : 'fbx'}`,
+            filters: isGlb ? [
+                { name: 'Binary glTF model', extensions: ['glb'] },
+            ] : [
                 { name: 'FBX model', extensions: ['fbx'] },
                 { name: 'Binary glTF model', extensions: ['glb'] },
             ],
         });
         if (!output) return;
         const extension = output.split('.').pop()?.toLowerCase();
-        if (!['fbx', 'glb'].includes(extension)) {
-            setStatusText('Model export requires an .fbx or .glb filename');
+        const allowedExtensions = isGlb ? ['glb'] : ['fbx', 'glb'];
+        if (!allowedExtensions.includes(extension)) {
+            setStatusText(isGlb ? 'GLB export requires a .glb filename' : 'Model export requires an .fbx or .glb filename');
             return;
         }
         const label = extension.toUpperCase();
@@ -1526,9 +1529,11 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             detail: { id: operationId, label: `Exporting ${label} model…` },
         }));
         setExportingModel(true);
-        setStatusText(`Exporting ${sourcePaths.length === 1 ? document.title || 'G1M' : `${sourcePaths.length} G1M models`} as ${label}…`);
+        setStatusText(`Exporting ${sourcePaths.length === 1 ? document.title || (isGlb ? 'GLB' : 'G1M') : `${sourcePaths.length} G1M models`} as ${label}…`);
         try {
-            const written = extension === 'fbx'
+            const written = isGlb
+                ? await invoke('export_loaded_glb', { documentId: document.id, output })
+                : extension === 'fbx'
                 ? await invoke('export_g1m_fbx', { documentId: document.id, sourcePaths, output, textureFormat: fbxTextureFormat })
                 : await invoke('export_g1m_glb', { documentId: document.id, sourcePaths, output });
             setStatusText(`Exported ${label} ${written}`);
@@ -1723,22 +1728,22 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                         {renderingViewport ? 'Rendering…' : 'Render'}
                     </button>
                 </section>}
-                {isG1m && <section className="bfres-export-panel">
+                {(isG1m || isGlb) && <section className="bfres-export-panel">
                     {/* <header><strong>FBX Export</strong></header> */}
                     <button type="button" onClick={exportModel} disabled={exportingModel || !bfres?.render?.meshes?.length}>
                         {exportingModel ? 'Exporting…' : 'Export'}
                     </button>
-                    <button type="button" onClick={replaceModelMeshes} disabled={replacingModel || exportingModel}>
+                    {isG1m && <button type="button" onClick={replaceModelMeshes} disabled={replacingModel || exportingModel}>
                         {replacingModel ? 'Replacing…' : 'Replace meshes'}
-                    </button>
+                    </button>}
                     
-                    <select value={fbxTextureFormat} onChange={(event) => setFbxTextureFormat(event.target.value)} disabled={exportingModel}>
+                    {isG1m && <><select value={fbxTextureFormat} onChange={(event) => setFbxTextureFormat(event.target.value)} disabled={exportingModel}>
                             <option value="none">None</option>
                             <option value="png">PNG</option>
                             <option value="dds">DDS</option>
                         </select>
 <label>Textures
-                    </label>
+                    </label></>}
                     
                 </section>}
                 {panel === 'resources' && <NodeInspector detail={detail} textures={bfres?.resolvedTextures} />}

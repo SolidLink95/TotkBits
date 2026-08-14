@@ -12,7 +12,6 @@ use crate::Zstd::TotkFileType;
 use tauri::Manager;
 
 const RENDERER: &str = "https://mii-unsecure.ariankordi.net/miis";
-const STUDIO_RENDERER: &str = "https://studio.mii.nintendo.com/miis/image.png";
 const QR_KEY: [u8; 16] = [
     0x59, 0xfc, 0x81, 0x7e, 0x64, 0x46, 0xea, 0x61, 0x90, 0x34, 0x7b, 0x20, 0xe9, 0xbd, 0xce, 0x52,
 ];
@@ -21,7 +20,7 @@ fn show_connection_error(message: &str) {
     rfd::MessageDialog::new()
         .set_title("TotkBits - Mii renderer unavailable")
         .set_description(format!(
-            "Could not connect to either Mii image renderer.\n\n{message}"
+            "Could not connect to the Mii renderer.\n\n{message}"
         ))
         .set_level(rfd::MessageLevel::Error)
         .set_buttons(rfd::MessageButtons::Ok)
@@ -59,6 +58,19 @@ fn supported_binary_extension(path: &Path) -> bool {
             | "nfsd"
             | "mnms"
     )
+}
+
+pub fn is_mii_binary_path(path: &Path) -> bool {
+    return fs::read(path)
+        .map(|bytes| looks_like_mii_binary(&bytes))
+        .unwrap_or(false);
+    // if supported_binary_extension(path) {
+    //     return true;
+    // }
+}
+
+fn looks_like_mii_binary(data: &[u8]) -> bool {
+    matches!(data.len(), 72 | 74 | 76 | 88 | 92 | 96) && mii_name(data).is_some()
 }
 
 fn possible_qr_image(path: &Path) -> bool {
@@ -144,7 +156,7 @@ fn unwrap_qr_store_data(wrapped: &[u8]) -> Result<Vec<u8>, String> {
 
 pub fn read_mii_data(path: &Path) -> Result<Vec<u8>, String> {
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    if supported_binary_extension(path) {
+    if supported_binary_extension(path) || looks_like_mii_binary(&bytes) {
         if bytes.is_empty() {
             return Err("Mii file is empty".into());
         }
@@ -186,12 +198,16 @@ fn mii_name(data: &[u8]) -> Option<String> {
 #[tauri::command]
 pub fn read_mii_name(app_handle: tauri::AppHandle, documentId: String) -> Result<String, String> {
     let documents = app_handle.state::<crate::DocumentState::DocumentState>();
-    let (file_type, path) = documents.with(&documentId, |app| {
+    let (enabled, file_type, path) = documents.with(&documentId, |app| {
         (
+            app.zstd.totk_config.mii_renderer,
             app.opened_file.file_type,
             app.opened_file.path.full_path.clone(),
         )
     });
+    if !enabled {
+        return Err("Failed to parse file".into());
+    }
     if file_type != TotkFileType::Mii {
         return Err("active document is not a Mii".into());
     }
@@ -200,26 +216,6 @@ pub fn read_mii_name(app_handle: tauri::AppHandle, documentId: String) -> Result
 }
 
 fn request_render(data: &[u8], extension: &str, width: u32) -> Result<Vec<u8>, String> {
-    match request_primary_render(data, extension, width) {
-        Ok(result) => Ok(result),
-        Err(primary_error) if extension == "png" => match request_studio_render(data, width) {
-            Ok(result) => Ok(result),
-            Err(fallback_error) => {
-                let message = format!(
-                    "Primary renderer: {primary_error}\nNintendo Studio fallback: {fallback_error}"
-                );
-                show_connection_error(&message);
-                Err(format!("Mii renderer request failed: {message}"))
-            }
-        },
-        Err(error) => {
-            show_connection_error(&error);
-            Err(format!("Mii renderer request failed: {error}"))
-        }
-    }
-}
-
-fn request_primary_render(data: &[u8], extension: &str, width: u32) -> Result<Vec<u8>, String> {
     let encoded = base64::engine::general_purpose::STANDARD.encode(data);
     let url = format!("{RENDERER}/image.{extension}");
     let response = renderer_client()?
@@ -235,7 +231,11 @@ fn request_primary_render(data: &[u8], extension: &str, width: u32) -> Result<Ve
             "application/x-www-form-urlencoded",
         )
         .send()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| {
+            let message = error.to_string();
+            show_connection_error(&message);
+            format!("Mii renderer request failed: {message}")
+        })?;
     let status = response.status();
     let result = response
         .bytes()
@@ -254,197 +254,6 @@ fn request_primary_render(data: &[u8], extension: &str, width: u32) -> Result<Ve
         }
         _ => Ok(result),
     }
-}
-
-fn studio_data(data: &[u8]) -> Result<[u8; 46], String> {
-    let mut dst = [0_u8; 46];
-    match data.len() {
-        88 => {
-            const MAP: [usize; 46] = [
-                74, 75, 42, 55, 53, 56, 54, 52, 57, 58, 62, 60, 63, 61, 59, 64, 65, 46, 48, 45, 47,
-                39, 40, 80, 81, 79, 82, 50, 51, 49, 41, 84, 83, 85, 86, 72, 70, 71, 69, 73, 77, 76,
-                78, 67, 66, 68,
-            ];
-            for (output, input) in MAP.into_iter().enumerate() {
-                dst[output] = data[input];
-            }
-        }
-        72 | 92 | 96 => {
-            dst[0] = data[66] >> 3 & 7;
-            dst[1] = data[66] & 7;
-            dst[2] = data[47];
-            dst[3] = data[53] >> 5;
-            dst[4] = (data[53] & 1) << 2 | data[52] >> 6;
-            dst[5] = data[54] & 31;
-            dst[6] = data[53] >> 1 & 15;
-            dst[7] = data[52] & 63;
-            dst[8] = (data[55] & 1) << 3 | data[54] >> 5;
-            dst[9] = data[55] >> 1 & 31;
-            dst[10] = data[57] >> 4 & 7;
-            dst[11] = data[56] >> 5;
-            dst[12] = data[58] & 31;
-            dst[13] = data[57] & 15;
-            dst[14] = data[56] & 31;
-            dst[15] = (data[59] & 1) << 3 | data[58] >> 5;
-            dst[16] = data[59] >> 1 & 31;
-            dst[17] = data[48] >> 5;
-            dst[18] = data[49] >> 4;
-            dst[19] = data[48] >> 1 & 15;
-            dst[20] = data[49] & 15;
-            dst[21] = data[25] >> 2 & 15;
-            dst[22] = data[24] & 1;
-            dst[23] = data[68] >> 4 & 7;
-            dst[24] = (data[69] & 7) * 2 | data[68] >> 7;
-            dst[25] = data[68] & 15;
-            dst[26] = data[69] >> 3;
-            dst[27] = data[51] & 7;
-            dst[28] = data[51] >> 3 & 1;
-            dst[29] = data[50];
-            dst[30] = data[46];
-            dst[31] = data[70] >> 1 & 15;
-            dst[32] = data[70] & 1;
-            dst[33] = (data[71] & 3) << 3 | data[70] >> 5;
-            dst[34] = data[71] >> 2 & 31;
-            dst[35] = data[63] >> 5;
-            dst[36] = (data[63] & 1) << 2 | data[62] >> 6;
-            dst[37] = data[63] >> 1 & 15;
-            dst[38] = data[62] & 63;
-            dst[39] = data[64] & 31;
-            dst[40] = (data[67] & 3) << 2 | data[66] >> 6;
-            dst[41] = data[64] >> 5;
-            dst[42] = data[67] >> 2 & 31;
-            dst[43] = (data[61] & 1) << 3 | data[60] >> 5;
-            dst[44] = data[60] & 31;
-            dst[45] = data[61] >> 1 & 31;
-            convert_legacy_studio_fields(&mut dst);
-        }
-        74 | 76 => {
-            const FACE_TEXTURES: [u8; 24] = [
-                0, 0, 0, 1, 0, 6, 0, 9, 5, 0, 2, 0, 3, 0, 7, 0, 8, 0, 0, 10, 9, 0, 11, 0,
-            ];
-            dst[0] = data[50] >> 1 & 7;
-            dst[1] = data[50] >> 4 & 3;
-            dst[2] = data[23];
-            dst[3] = 3;
-            dst[4] = data[42] >> 5;
-            dst[5] = data[41] >> 5 | (data[40] & 3) << 3;
-            dst[6] = data[42] >> 1 & 15;
-            dst[7] = data[40] >> 2;
-            dst[8] = data[43] >> 5 | (data[42] & 1) << 3;
-            dst[9] = data[41] & 31;
-            dst[10] = 3;
-            dst[11] = data[38] >> 5;
-            dst[12] = data[37] >> 6 | (data[36] & 7) << 2;
-            dst[13] = data[38] >> 1 & 15;
-            dst[14] = data[36] >> 3;
-            dst[15] = data[39] & 15;
-            dst[16] = data[39] >> 4 | (data[38] & 1) << 4;
-            dst[17] = data[32] >> 2 & 7;
-            let face_texture = (data[33] >> 6 | (data[32] & 3) << 2) as usize;
-            let face_texture = face_texture.min(11) * 2;
-            dst[18] = FACE_TEXTURES[face_texture + 1];
-            dst[19] = data[32] >> 5;
-            dst[20] = FACE_TEXTURES[face_texture];
-            dst[21] = data[1] >> 1 & 15;
-            dst[22] = data[0] >> 6 & 1;
-            dst[23] = data[48] >> 1 & 7;
-            dst[24] = data[49] >> 5 | (data[48] & 1) << 3;
-            dst[25] = data[48] >> 4;
-            dst[26] = data[49] & 31;
-            dst[27] = data[35] >> 6 | (data[34] & 1) << 2;
-            dst[28] = data[35] >> 5 & 1;
-            dst[29] = data[34] >> 1;
-            dst[30] = data[22];
-            dst[31] = data[52] >> 3 & 15;
-            dst[32] = data[52] >> 7;
-            dst[33] = data[53] >> 1 & 31;
-            dst[34] = data[53] >> 6 | (data[52] & 7) << 2;
-            dst[35] = 3;
-            dst[36] = data[46] >> 1 & 3;
-            dst[37] = data[47] >> 5 | (data[46] & 1) << 3;
-            dst[38] = data[46] >> 3;
-            dst[39] = data[47] & 31;
-            dst[40] = data[51] >> 5 | (data[50] & 1) << 3;
-            dst[41] = data[50] >> 6;
-            dst[42] = data[51] & 31;
-            dst[43] = data[44] & 15;
-            dst[44] = data[44] >> 4;
-            dst[45] = data[45] >> 3;
-            convert_legacy_studio_fields(&mut dst);
-        }
-        46 => dst.copy_from_slice(data),
-        47 => {
-            for index in 0..46 {
-                dst[index] = data[index + 1].wrapping_sub(7) ^ data[index];
-            }
-        }
-        size => {
-            return Err(format!(
-                "Nintendo Studio fallback does not support {size}-byte Mii data"
-            ))
-        }
-    }
-    Ok(dst)
-}
-
-fn convert_legacy_studio_fields(data: &mut [u8; 46]) {
-    if data[27] == 0 {
-        data[27] = 8;
-    }
-    if data[0] == 0 {
-        data[0] = 8;
-    }
-    if data[11] == 0 {
-        data[11] = 8;
-    }
-    data[36] += 19;
-    data[4] += 8;
-    if data[23] == 0 {
-        data[23] = 8;
-    } else if data[23] < 6 {
-        data[23] += 13;
-    }
-    data[2] = data[2].min(127);
-    data[30] = data[30].min(127);
-}
-
-fn studio_url_data(data: &[u8]) -> Result<String, String> {
-    let raw = studio_data(data)?;
-    let mut encoded = [0_u8; 47];
-    for index in 0..46 {
-        encoded[index + 1] = 7_u8.wrapping_add(raw[index] ^ encoded[index]);
-    }
-    Ok(encoded.iter().map(|byte| format!("{byte:02x}")).collect())
-}
-
-fn request_studio_render(data: &[u8], width: u32) -> Result<Vec<u8>, String> {
-    // Nintendo's endpoint rejects the 1024-pixel size accepted by the primary
-    // renderer. Its own editor and the archived request use a 270-pixel face.
-    let width = width.min(270);
-    let response = renderer_client()?
-        .get(STUDIO_RENDERER)
-        .query(&[
-            ("data", studio_url_data(data)?),
-            ("width", width.to_string()),
-            ("type", "face".to_string()),
-        ])
-        .send()
-        .map_err(|error| error.to_string())?;
-    let status = response.status();
-    let result = response
-        .bytes()
-        .map_err(|error| error.to_string())?
-        .to_vec();
-    if !status.is_success() {
-        return Err(format!(
-            "HTTP {status}: {}",
-            String::from_utf8_lossy(&result)
-        ));
-    }
-    if !result.starts_with(b"\x89PNG\r\n\x1a\n") {
-        return Err("Nintendo Studio did not return a PNG".into());
-    }
-    Ok(result)
 }
 
 fn unique_sibling(path: &Path, extension: &str) -> PathBuf {
@@ -476,7 +285,10 @@ fn error_result(path: &Path, message: String) -> (OpenedFile<'static>, SendData)
 }
 
 pub fn open(path: &Path) -> Option<(OpenedFile<'static>, SendData)> {
-    let is_binary = supported_binary_extension(path);
+    let is_binary = supported_binary_extension(path)
+        || fs::read(path)
+            .map(|bytes| looks_like_mii_binary(&bytes))
+            .unwrap_or(false);
     if !is_binary && !possible_qr_image(path) {
         return None;
     }
@@ -528,12 +340,16 @@ pub fn download_mii_glb(
     documentId: String,
 ) -> Result<String, String> {
     let documents = app_handle.state::<crate::DocumentState::DocumentState>();
-    let (file_type, path) = documents.with(&documentId, |app| {
+    let (enabled, file_type, path) = documents.with(&documentId, |app| {
         (
+            app.zstd.totk_config.mii_renderer,
             app.opened_file.file_type,
             app.opened_file.path.full_path.clone(),
         )
     });
+    if !enabled {
+        return Err("Failed to parse file".into());
+    }
     if file_type != TotkFileType::Mii {
         return Err("Download GLB is only available for Mii documents".into());
     }
@@ -558,6 +374,31 @@ pub fn read_glb_preview(
     }
     let bytes = bytes.ok_or_else(|| "GLB preview data is missing".to_string())?;
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+pub fn export_loaded_glb(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    output: String,
+) -> Result<String, String> {
+    if !output.to_ascii_lowercase().ends_with(".glb") {
+        return Err("GLB export requires a .glb filename".into());
+    }
+    let documents = app_handle.state::<crate::DocumentState::DocumentState>();
+    let (file_type, bytes) = documents.with(&documentId, |app| {
+        (
+            app.opened_file.file_type,
+            app.opened_file.visual_data.clone(),
+        )
+    });
+    if file_type != TotkFileType::Glb {
+        return Err("active document is not a GLB".into());
+    }
+    let bytes = bytes.ok_or_else(|| "GLB data is missing".to_string())?;
+    fs::write(&output, bytes).map_err(|error| error.to_string())?;
+    Ok(output.replace('\\', "/"))
 }
 
 pub fn open_glb(path: &Path) -> io::Result<(OpenedFile<'static>, SendData)> {
@@ -614,25 +455,25 @@ mod tests {
     }
 
     #[test]
-    fn archived_studio_url_data_round_trips() {
-        let archived = "000f145b5f5e646752585e64737d80909a9ca0b1bdc4ccd3e2edf4050b12135a656c7568726873829499a1b1bcc6d1";
-        let bytes: Vec<u8> = archived
-            .as_bytes()
-            .chunks_exact(2)
-            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
-            .collect();
-        assert_eq!(bytes.len(), 47);
-        assert_eq!(studio_url_data(&bytes).unwrap(), archived);
-    }
-
-    #[test]
     fn reads_names_from_supplied_switch_and_wii_miis() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/mii");
         let charinfo = fs::read(root.join("Alphie.charinfo")).unwrap();
         assert_eq!(mii_name(&charinfo).as_deref(), Some("Alphie"));
+        assert!(looks_like_mii_binary(&charinfo));
+
+        let disguised = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("mii-content-sniff-{}.asdf", std::process::id()));
+        fs::create_dir_all(disguised.parent().unwrap()).unwrap();
+        fs::write(&disguised, &charinfo).unwrap();
+        assert!(is_mii_binary_path(&disguised));
+        assert_eq!(read_mii_data(&disguised).unwrap(), charinfo);
+        fs::remove_file(disguised).unwrap();
 
         let miigx = fs::read(root.join("data/miigx/MiiCharInfo000.miigx")).unwrap();
         assert_eq!(mii_name(&miigx).as_deref(), Some("MiiCharInf"));
+        assert!(looks_like_mii_binary(&miigx));
+        assert!(!looks_like_mii_binary(&[0_u8; 88]));
     }
 
     #[test]
@@ -649,15 +490,5 @@ mod tests {
         assert!(request_render(&qr_data, "glb", 1024)
             .unwrap()
             .starts_with(b"glTF"));
-    }
-
-    #[test]
-    #[ignore = "contacts Nintendo's public Mii Studio renderer"]
-    fn live_studio_fallback_accepts_charinfo() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/mii/Alphie.charinfo");
-        let charinfo = fs::read(path).unwrap();
-        assert!(request_studio_render(&charinfo, 1024)
-            .unwrap()
-            .starts_with(b"\x89PNG"));
     }
 }
