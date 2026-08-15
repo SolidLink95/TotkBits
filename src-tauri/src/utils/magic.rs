@@ -54,6 +54,8 @@ impl Magic {
             Some("RAR")
         } else if Self::is_bars(data) {
             Some("BARS")
+        } else if Self::is_rfl_db(data) {
+            Some("RFL_DB")
         } else if Self::is_bwav(data) {
             Some("BWAV")
         } else if Self::is_bfwav(data) {
@@ -106,7 +108,11 @@ impl Magic {
             TotkFileType::Evfl
         } else if Self::is_xlink(data) {
             TotkFileType::Xlink
-        } else if Self::is_zip(data) || Self::is_seven_zip(data) || Self::is_rar(data) {
+        } else if Self::is_zip(data)
+            || Self::is_seven_zip(data)
+            || Self::is_rar(data)
+            || Self::is_rfl_db(data)
+        {
             TotkFileType::Archive
         } else if Self::is_bars(data) {
             TotkFileType::Bars
@@ -292,6 +298,10 @@ impl Magic {
         data.starts_with(b"BARS")
     }
     #[inline]
+    pub fn is_rfl_db(data: &[u8]) -> bool {
+        data.starts_with(b"RNOD")
+    }
+    #[inline]
     pub fn is_bwav(data: &[u8]) -> bool {
         data.starts_with(b"BWAV")
     }
@@ -348,6 +358,8 @@ mod tests {
             TotkFileType::Archive
         );
         assert_eq!(Magic::from_binary(b"BARSpayload"), TotkFileType::Bars);
+        assert_eq!(Magic::from_binary(b"RNODpayload"), TotkFileType::Archive);
+        assert_eq!(Magic::format_name(b"RNODpayload"), Some("RFL_DB"));
         assert_eq!(Magic::from_binary(b"G1M_payload"), TotkFileType::G1M);
         assert_eq!(Magic::from_binary(b"unknown"), TotkFileType::Text);
         assert_eq!(Magic::from_binary(b"BWAVpayload"), TotkFileType::Bwav);

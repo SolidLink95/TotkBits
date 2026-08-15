@@ -1,6 +1,7 @@
 #![allow(non_snake_case, non_camel_case_types)]
 pub mod BinTextFile;
 pub mod Image;
+pub mod Mii;
 pub mod Model3D;
 pub mod Pack;
 pub mod Rstb;

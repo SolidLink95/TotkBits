@@ -77,7 +77,7 @@ const inspectGlb = async (title, documentId) => {
     gltf.scene.updateMatrixWorld(true);
 
     const textureKinds = [
-        ['map', 'BaseColor', '_a0'],
+        ['map', 'Base color', '_a0'],
         ['normalMap', 'Normal', '_n0'],
         ['roughnessMap', 'Roughness', '_r0'],
         ['metalnessMap', 'Metalness', '_m0'],
@@ -153,7 +153,14 @@ const inspectGlb = async (title, documentId) => {
                 uv_maps: uvMaps,
                 colors,
                 material_index: material ? registerMaterial(material) : 0,
-                use_vertex_colors: true,
+                // GLB materials commonly carry their visible colour in the
+                // baseColorFactor. Keep that as a material property instead of
+                // manufacturing a vertex-colour attribute: doing the latter
+                // made the renderer lose opaque surfaces that use color factors.
+                material_color: fallbackColor,
+                material_opacity: material?.opacity ?? 1,
+                simple_glb_material: true,
+                use_vertex_colors: false,
                 bone_index: 0,
                 vertex_skin_count: 0,
                 bone_indices: positions.map(() => []),
@@ -482,13 +489,13 @@ function useResolvedTextures(entries, cacheTextures = true) {
     return textures;
 }
 
-function materialTextures(material, textures) {
+function materialTextures(material, textures, allowTomodachiFallback = true) {
     if (!material) return {};
     const slotFor = (type) => material.texture_slots.find((value) => value.texture_type === type);
     const find = (type, lastLayer = false) => {
         const slot = slotFor(type);
         const direct = slot ? textures[lastLayer ? `${slot.name}::last` : slot.name] || textures[slot.name] || null : null;
-        return direct || (!lastLayer ? findTomodachiTexture(textures, type) : null);
+        return direct || (allowTomodachiFallback && !lastLayer ? findTomodachiTexture(textures, type) : null);
     };
     // Never guess the diffuse texture from an unclassified slot. In particular,
     // AO and other packed maps must not become base color merely because they
@@ -558,6 +565,9 @@ function buildWeightPreview(render) {
 
 function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, animation, restWorlds, animationWorlds, culling, viewMode, uvIndex, celShading, glow, weightBone, weightPreviewColors, showNormals, onSelect, textures }) {
     const materialSide = culling ? THREE.FrontSide : THREE.DoubleSide;
+    const surfaceColor = !textures.base && !mesh.use_vertex_colors && mesh.material_color
+        ? new THREE.Color(mesh.material_color[0], mesh.material_color[1], mesh.material_color[2])
+        : new THREE.Color(1, 1, 1);
     const usesMaterialUvs = viewMode === 'default';
     ['base', 'normal', 'roughness', 'metalness', 'emission', 'mask', 'specular', 'ambientOcclusion'].forEach((kind) => {
         if (textures[kind]) textures[kind].channel = usesMaterialUvs ? (textures[`${kind}Uv`] ?? 0) : uvIndex;
@@ -700,7 +710,11 @@ function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, animation, re
     useEffect(() => () => selectedEdges.dispose(), [selectedEdges]);
     return <group>
         <mesh geometry={geometry} visible={!mesh.hidden} onClick={(event) => { event.stopPropagation(); onSelect(mesh); }} castShadow receiveShadow>
-            {viewMode === 'normal'
+            {mesh.simple_glb_material && celShading && ['default', 'lighting', 'wireframe'].includes(viewMode)
+                ? <meshToonMaterial key={`simple-glb-cel-${viewMode}-${uvIndex}`} color={surfaceColor} map={textures.base} wireframe={viewMode === 'wireframe'} side={materialSide} transparent={Boolean(textures.base) || (mesh.material_opacity ?? 1) < 1} opacity={mesh.material_opacity ?? 1} alphaTest={textures.base ? 0.02 : 0} />
+                : mesh.simple_glb_material && ['default', 'lighting', 'wireframe', 'diffuse'].includes(viewMode)
+                ? <meshBasicMaterial key={`simple-glb-${viewMode}-${uvIndex}`} color={surfaceColor} map={textures.base} vertexColors={!textures.base && mesh.use_vertex_colors} wireframe={viewMode === 'wireframe'} side={materialSide} transparent={Boolean(textures.base) || (mesh.material_opacity ?? 1) < 1} opacity={mesh.material_opacity ?? 1} alphaTest={textures.base ? 0.02 : 0} />
+                : viewMode === 'normal'
                 ? <meshNormalMaterial wireframe={false} side={materialSide} />
                 : viewMode === 'blank'
                     ? <meshStandardMaterial color="#aeb8c2" roughness={0.8} metalness={0} side={materialSide} />
@@ -717,9 +731,9 @@ function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, animation, re
                 : viewMode === 'diffuse' && textures.base
                     ? <meshBasicMaterial key={`diffuse-${uvIndex}`} map={textures.base} side={materialSide} transparent alphaTest={0.02} />
                 : celShading && ['default', 'lighting', 'wireframe'].includes(viewMode)
-                    ? <meshToonMaterial key={`cel-${viewMode}-glow-${glow}`} map={textures.base} normalMap={textures.normal} gradientMap={celGradient} alphaMap={textures.mask} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base} wireframe={viewMode === 'wireframe'} side={materialSide} transparent={Boolean(textures.mask || textures.base)} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
+                    ? <meshToonMaterial key={`cel-${viewMode}-glow-${glow}`} color={surfaceColor} map={textures.base} normalMap={textures.normal} gradientMap={celGradient} alphaMap={textures.mask} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base && mesh.use_vertex_colors} wireframe={viewMode === 'wireframe'} side={materialSide} transparent={Boolean(textures.mask || textures.base) || (mesh.material_opacity ?? 1) < 1} opacity={mesh.material_opacity ?? 1} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
                 : ['default', 'lighting', 'wireframe'].includes(viewMode)
-                    ? <meshPhysicalMaterial key={`${viewMode}-${uvIndex}-glow-${glow}`} map={textures.base} normalMap={textures.normal} roughnessMap={textures.roughness} metalnessMap={textures.metalness} alphaMap={textures.mask} aoMap={textures.ambientOcclusion} aoMapIntensity={0.35} specularColorMap={textures.specular} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base} wireframe={viewMode === 'wireframe'} roughness={0.72} metalness={viewMode === 'lighting' ? 0 : 0.05} side={materialSide} transparent={Boolean(textures.mask || textures.base)} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
+                    ? <meshPhysicalMaterial key={`${viewMode}-${uvIndex}-glow-${glow}`} color={surfaceColor} map={textures.base} normalMap={textures.normal} roughnessMap={textures.roughness} metalnessMap={textures.metalness} alphaMap={textures.mask} aoMap={textures.ambientOcclusion} aoMapIntensity={0.35} specularColorMap={textures.specular} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base && mesh.use_vertex_colors} wireframe={viewMode === 'wireframe'} roughness={0.72} metalness={viewMode === 'lighting' ? 0 : 0.05} side={materialSide} transparent={Boolean(textures.mask || textures.base) || (mesh.material_opacity ?? 1) < 1} opacity={mesh.material_opacity ?? 1} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
                     : <meshBasicMaterial vertexColors side={materialSide} />}
         </mesh>
         {viewMode === 'default' && weightBone >= 0 && !mesh.hidden && <mesh geometry={geometry} renderOrder={2}>
@@ -887,7 +901,7 @@ function ResourceScene({ bfres, render, animation, animationPlaying = true, anim
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} zoomSpeed={1.75} />
         <FrontCamera render={render} applyRigidTransform={applyRigidTransform} onReady={onCameraReady} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
-        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} applyRigidTransform={applyRigidTransform} animation={animation} restWorlds={restWorlds} animationWorlds={animationWorlds} culling={culling} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
+        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} applyRigidTransform={applyRigidTransform} animation={animation} restWorlds={restWorlds} animationWorlds={animationWorlds} culling={culling} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures, bfres?.format !== 'GLB')} />)}</group>
         {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} animation={animation} animationWorlds={animationWorlds} />}
     </>;
 }

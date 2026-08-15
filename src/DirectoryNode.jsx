@@ -3,6 +3,7 @@ import { invoke } from './DocumentState';
 import { extractRootFolderClick, extractFolderClick, editInternalSarcFile, openBphclLeaf, removeBphclNodeClick, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick, addEmptyByml,addFilesFromDirRecursively, expandNestedSarc, editNestedSarcFile, extractNestedSarcFile, mutateNestedArchive } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 import {compareInternalFileWithOVanila} from './Comparer';
+import { clearRflMiis } from './Mii';
 
 const dirOpened = `dir_opened.png`;
 const dirClosed = `dir_closed.png`;
@@ -183,7 +184,7 @@ const ContextMenu = ({ x, y, onClose, actions, settings }) => {
   );
 };
 //{ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }
-const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, onSelect }) => {
+const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, onSelect, isArchiveRoot = false }) => {
   const {
     settings, setSettings,
     renamePromptMessage, setRenamePromptMessage,
@@ -197,8 +198,8 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
 
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
   const isFile = node === null;
-  const fullPath = path ? `${path}/${name}` : name;
-  const expansionKey = `root:${fullPath}`;
+  const fullPath = isArchiveRoot ? '' : path ? `${path}/${name}` : name;
+  const expansionKey = `root:${isArchiveRoot ? name : fullPath}`;
   const isCollapsed = !treeExpandedNodes.has(expansionKey);
   const setExpanded = (expanded) => setTreeExpandedNodes((current) => {
     const next = new Set(current);
@@ -291,6 +292,10 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     closeContextMenu();
     removeInternalFileClick(fullPath, setStatusText, setpaths);
   };
+  const handleClearRflDb = async () => {
+    closeContextMenu();
+    await clearRflMiis(setStatusText, setpaths);
+  };
   const handleRemoveBphclNode = async () => {
     closeContextMenu();
     if (window.confirm(`Delete ${name}?`)) {
@@ -316,11 +321,11 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
       });
       return;
     }
-    replaceInternalFileClick(fullPath, setStatusText, setpaths);
+    replaceInternalFileClick(fullPath, setStatusText, setpaths, sarcPaths.file_type);
   };
   const handleAddInternalSarcFileToDir = () => {
     closeContextMenu();
-    addInternalFileToDir(fullPath, setStatusText, setpaths);
+    addInternalFileToDir(fullPath, setStatusText, setpaths, sarcPaths.file_type);
   };  
   const handleAddFilesFromDirRecursively = () => {
     closeContextMenu();
@@ -428,7 +433,10 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: '', isRender: true },
     { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '', isRender: true },
   ];
-  const contextMenuActions = readOnlyPhysicsNode && isFile ? readOnlyActions : isFile ? [
+  const contextMenuActions = isArchiveRoot ? [
+    { label: 'Clear all', method: handleClearRflDb, icon: 'context_menu/remove.png', shortcut: '', isRender: sarcPaths.file_type === 'RFL_DB' && sarcPaths.paths.length > 0 },
+    { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '', isRender: true },
+  ] : readOnlyPhysicsNode && isFile ? readOnlyActions : isFile ? [
     { label: 'Edit', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: '', isRender: true },
     { label: 'Compare', method: handleCompareInternalSarcFile, icon: 'context_menu/compare.png', shortcut: '', isRender: !isBars },
     { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: '', isRender: true },
@@ -479,7 +487,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
                 key={key}
                 node={value}
                 name={key}
-                path={fullPath}
+                path={isArchiveRoot ? '' : fullPath}
                 onContextMenu={onContextMenu}
                 sarcPaths={sarcPaths}
                 selected={selected} // Make sure this is passed correctly

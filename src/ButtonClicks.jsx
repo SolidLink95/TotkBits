@@ -1,8 +1,7 @@
 import { getDocumentsSnapshot, invoke } from './DocumentState';
-import { set } from 'lodash';
-import { act } from 'react';
 import { flushSync } from 'react-dom';
 import * as monaco from 'monaco-editor';
+import { addRflMii, replaceRflMii } from './Mii';
 
 
 export async function addEmptyByml(fullPath,setStatusText, setpaths) {
@@ -396,22 +395,25 @@ export async function removeInternalFileClick(internalPath, setStatusText, setpa
       return;
     }
     setStatusText(content.status_text);
-    if (content.sarc_paths.paths.length > 0) {
-      setpaths(content.sarc_paths);
-    }
+    setpaths(content.sarc_paths);
 
   } catch (error) {
     console.error("Error invoking 'remove_internal_file':", error);
   }
 }
 
-export async function replaceInternalFileClick(internalPath, setStatusText, setpaths) {
+export async function replaceInternalFileClick(internalPath, setStatusText, setpaths, archiveType = '') {
   try {
     const path = await invoke("open_file_dialog");
     if (path === null || path === undefined || path === "") {
       return;
     }
-    const content = await invoke('add_click', { internalPath: internalPath, path: path, overwrite: true });
+    let content;
+    if (archiveType === 'RFL_DB') {
+      content = await replaceRflMii(internalPath, path, setStatusText);
+    } else {
+      content = await invoke('add_click', { internalPath: internalPath, path: path, overwrite: true });
+    }
     if (content === null) {
       console.log("No content returned from add_click");
       return;
@@ -422,17 +424,23 @@ export async function replaceInternalFileClick(internalPath, setStatusText, setp
     }
   } catch (error) {
     console.error("Error invoking 'add_click':", error);
+    setStatusText(`Error replacing archive file: ${String(error)}`);
   }
 
 }
 
-export async function addInternalFileToDir(internalPath, setStatusText, setpaths) {
+export async function addInternalFileToDir(internalPath, setStatusText, setpaths, archiveType = '') {
   try {
     const path = await invoke("open_file_dialog");
     if (path === "" || path === null || path === undefined) {
       return;
     }
-    const content = await invoke('add_to_dir_click', { internalPath: internalPath, path: path });
+    let content;
+    if (archiveType === 'RFL_DB' && /\.(?:charinfo|ltd)$/i.test(path)) {
+      content = await addRflMii(internalPath, path, setStatusText);
+    } else {
+      content = await invoke('add_to_dir_click', { internalPath: internalPath, path: path });
+    }
     if (content === null) {
       console.log("No content returned from add_click");
       return;
@@ -443,6 +451,7 @@ export async function addInternalFileToDir(internalPath, setStatusText, setpaths
     }
   } catch (error) {
     console.error("Error invoking 'addInternalFileToDir':", error);
+    setStatusText(`Error adding archive file: ${String(error)}`);
   }
 
 }

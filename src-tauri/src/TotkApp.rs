@@ -563,9 +563,12 @@ impl<'a> TotkBitsApp<'a> {
             data.path = Pathlib::new(archive.path.clone());
             data.file_label = format!("{} [{}]", data.path.name, archive.kind());
             data.sarc_paths.paths = archive.paths();
-            data.sarc_paths.added_paths = archive.added.iter().cloned().collect();
-            data.sarc_paths.modded_paths = archive.modified.iter().cloned().collect();
+            if archive.file_type() != "RFL_DB" {
+                data.sarc_paths.added_paths = archive.added.iter().cloned().collect();
+                data.sarc_paths.modded_paths = archive.modified.iter().cloned().collect();
+            }
             data.sarc_paths.file_type = archive.file_type().into();
+            data.sarc_paths.root_name = data.path.name.clone();
         } else if let Some(pack) = &self.pack {
             data.get_sarc_paths(pack);
         }
@@ -1085,6 +1088,29 @@ impl<'a> TotkBitsApp<'a> {
         return self.add_internal_file_from_path(internal_path, p2.full_path, true);
 
         // Some(data)
+    }
+
+    pub fn add_internal_file_bytes(
+        &mut self,
+        internal_path: String,
+        bytes: Vec<u8>,
+        overwrite: bool,
+    ) -> Option<SendData> {
+        let archive = self.archive.as_mut()?;
+        let normalized = internal_path.replace('\\', "/");
+        if archive.get(&normalized).is_some() && !overwrite {
+            let mut data = self.archive_send_data(format!("Error: {normalized} already exists"));
+            data.tab = "ERROR".into();
+            return Some(data);
+        }
+        Some(match archive.set(&normalized, bytes) {
+            Ok(()) => self.archive_send_data(format!("Added/replaced: {normalized}")),
+            Err(error) => {
+                let mut data = self.archive_send_data(format!("Error: {error}"));
+                data.tab = "ERROR".into();
+                data
+            }
+        })
     }
 
     pub fn add_internal_file_from_path(

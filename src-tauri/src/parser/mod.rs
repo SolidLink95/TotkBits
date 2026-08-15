@@ -14,6 +14,7 @@ pub mod glb;
 pub mod hkcl;
 pub mod hkcl_merge;
 pub mod hkcl_to_bphcl;
+pub mod mii;
 pub mod msbt;
 #[cfg(test)]
 mod physics_corpus_tests;

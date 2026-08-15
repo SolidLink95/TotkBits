@@ -326,6 +326,7 @@ impl<'a> TotkFile<'a> {
             data.sarc_paths.added_paths = archive.added.iter().cloned().collect();
             data.sarc_paths.modded_paths = archive.modified.iter().cloned().collect();
             data.sarc_paths.file_type = archive.kind().into();
+            data.sarc_paths.root_name = data.path.name.clone();
             data.sarc_paths.read_only = data.read_only;
         } else if matches!(self.file_type, TotkFileType::Sarc | TotkFileType::MalsSarc) {
             data.get_sarc_paths(&self.cache_arc.sarc);

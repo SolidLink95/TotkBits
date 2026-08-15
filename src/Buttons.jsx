@@ -3,7 +3,6 @@ import { removeInternalFileClick, replaceInternalFileClick, clearSearchInSarcCli
 import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
 import { isFileTypeSaveable } from './FileTypes';
 import { useEditorContext } from './StateManager';
-import { set } from 'lodash';
 
 
 

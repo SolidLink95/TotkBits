@@ -653,7 +653,9 @@ pub fn file_from_bytes_to_senddata<'a>(
 ) -> Option<(OpenedFile<'a>, SendData)> {
     let (mut opened, data) = file_from_bytes_name_guess(path_hint, bytes, zstd)?;
     if matches!(data.tab.as_str(), "IMAGE" | "3D") {
-        opened.visual_data = Some(bytes.to_vec());
+        if opened.visual_data.is_none() {
+            opened.visual_data = Some(bytes.to_vec());
+        }
     }
     Some((opened, data))
 }
@@ -670,6 +672,12 @@ fn file_from_bytes_name_guess<'a>(
         .to_ascii_lowercase();
     let uncompressed_name = file_name.strip_suffix(".zs").unwrap_or(&file_name);
     let path_ref = file_path;
+
+    if zstd.totk_config.mii_renderer {
+        if let Some(result) = crate::tools::mii::open_binary(path_ref, bytes) {
+            return Some(result);
+        }
+    }
 
     if is_tagproduct(path_ref) {
         return TagProduct::open_tag_binary(bytes, path_ref, zstd);

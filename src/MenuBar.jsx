@@ -9,6 +9,7 @@ import { getDocumentsSnapshot, openUtilityDocument, subscribeDocuments } from '.
 import { useEditorContext } from './StateManager';
 import { invoke } from '@tauri-apps/api/core';
 import { isFileTypeSaveable } from './FileTypes';
+import { downloadMiiGlb } from './Mii';
 
 function MenuBarDisplay({ updateButton = null }) {
   const { documents, activeDocumentId } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
@@ -77,28 +78,14 @@ function MenuBarDisplay({ updateButton = null }) {
     saveAsFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
 
-  const handleDownloadMiiGlb = async (event) => {
-    event.stopPropagation();
-    closeMenu();
-    if (activeDocument?.fileType !== 'MII') return;
-    const operationId = `mii-glb:${activeDocument.id}:${crypto.randomUUID()}`;
-    window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
-      detail: { id: operationId, label: `Downloading ${activeDocument.title || 'Mii'} GLB…` },
-    }));
-    try {
-      setStatusText('Downloading Mii GLB...');
-      // Let React commit the overlay before the native network request begins.
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      const path = await invoke('download_mii_glb', { documentId: activeDocument.id });
-      await OpenFileFromPath(path, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
-    } catch (error) {
-      setStatusText(`Error downloading Mii GLB: ${String(error)}`);
-    } finally {
-      window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
-        detail: { id: operationId, done: true },
-      }));
-    }
-  };
+  const handleDownloadMiiGlb = (event) => downloadMiiGlb({
+    event,
+    closeMenu,
+    activeDocument,
+    documents,
+    setStatusText,
+    openFile: (path) => OpenFileFromPath(path, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent),
+  });
 
   const handleSearchClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent

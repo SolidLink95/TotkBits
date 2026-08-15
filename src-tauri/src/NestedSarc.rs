@@ -43,6 +43,9 @@ impl NestedArchive {
                 crate::file_format::Archive::Bars::BarsFile::from_bytes(data)
                     .map(RootArchive::Bars),
             ),
+            Some(ArchiveMagic::RflDb) => {
+                Some(crate::file_format::Mii::RflDbFile::from_bytes(data).map(RootArchive::RflDb))
+            }
             None => None,
         };
         if let Some(archive) = generic {

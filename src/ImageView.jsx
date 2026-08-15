@@ -4,6 +4,7 @@ import { invoke } from './DocumentState';
 import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
 import { useSyncExternalStore } from 'react';
 import './ImageView.css';
+import { isMiiDocument, miiDisplayName, MiiRendererCredit, useMiiName } from './Mii';
 
 const replacementFormats = [
     'A1_B5_G5_R5_UNORM', 'A4_B4_G4_R4_UNORM', 'B5_G5_R5_A1_UNORM', 'B5_G6_R5_UNORM',
@@ -35,7 +36,7 @@ export default function ImageView({ activeTab, setStatusText }) {
     const [loading, setLoading] = useState(false);
     const [renameValue, setRenameValue] = useState('');
     const [replacementFormat, setReplacementFormat] = useState('ORIGINAL');
-    const [miiName, setMiiName] = useState('');
+    const miiName = useMiiName(activeTab, document);
     const canvasRef = useRef(null);
 
     const fitImageToCanvas = useCallback(() => {
@@ -58,17 +59,7 @@ export default function ImageView({ activeTab, setStatusText }) {
         setImage(null);
         setError('');
         setReplacementFormat('ORIGINAL');
-        setMiiName('');
     }, [document?.fullPath]);
-
-    useEffect(() => {
-        if (activeTab !== 'IMAGE' || document?.fileType !== 'MII') return;
-        let cancelled = false;
-        invoke('read_mii_name', { documentId: document.id })
-            .then((name) => { if (!cancelled) setMiiName(name); })
-            .catch(() => { if (!cancelled) setMiiName(''); });
-        return () => { cancelled = true; };
-    }, [activeTab, document?.id, document?.fileType, document?.fullPath]);
 
     useEffect(() => {
         if (activeTab !== 'IMAGE' || !document?.fullPath) return;
@@ -133,6 +124,7 @@ export default function ImageView({ activeTab, setStatusText }) {
     const fileName = document?.fullPath?.replace(/\\/g, '/').split('/').pop() || document?.title || 'Image';
     const entries = image?.entries?.length ? image.entries : [{ name: fileName }];
     const selectedEntry = entries[textureIndex];
+    const selectedDisplayName = miiDisplayName(document, miiName, selectedEntry?.name || fileName);
     const selectTexture = (index) => {
         if (index < 0 || index >= entries.length || index === textureIndex) return;
         setTextureIndex(index);
@@ -187,7 +179,7 @@ export default function ImageView({ activeTab, setStatusText }) {
                     <span className="image-tree-caret">▾</span><span className="image-tree-container-icon">▣</span><span>{entry.name}</span>
                 </button>
                 <div className="image-tree-children">{arrayImages(entry).map((subimage) => <button type="button" key={`${subimage.arrayIndex}`} className={textureIndex === index && arrayIndex === subimage.arrayIndex ? 'selected' : ''} onClick={() => selectSubimage(index, subimage)} title={subimage.name}>
-                    <span className="image-tree-image-icon">▧</span><span className="image-tree-label">{document?.fileType === 'MII'
+                    <span className="image-tree-image-icon">▧</span><span className="image-tree-label">{isMiiDocument(document)
                         ? (miiName || fileName)
                         : (entry.arrayCount > 1 ? `${entry.name} [${subimage.arrayIndex}]` : entry.name)}</span><small>{subimage.width} × {subimage.height}</small>
                 </button>)}</div>
@@ -210,7 +202,8 @@ export default function ImageView({ activeTab, setStatusText }) {
             </div>
         </section>
         <aside className="image-options">
-            <header><strong>{selectedEntry?.name || fileName}</strong><small>{image?.format || 'Image'}</small></header>
+            <header><strong>{selectedDisplayName}</strong><small>{image?.format || 'Image'}</small></header>
+            {isMiiDocument(document) && <MiiRendererCredit />}
             {image && <dl><dt>Width</dt><dd>{image.width}</dd><dt>Height</dt><dd>{image.height}</dd><dt>Mip count</dt><dd>{image.mipCount}</dd>{image.ddsType && <><dt>DDS type</dt><dd>{image.ddsType}</dd></>}</dl>}
             {image?.entries?.[textureIndex] && <dl><dt>Array count</dt><dd>{image.entries[textureIndex].arrayCount}</dd><dt>Layer</dt><dd>{arrayIndex}</dd><dt>Mip level</dt><dd>{mipIndex}</dd><dt>Surface format</dt><dd>{image.entries[textureIndex].format}</dd></dl>}
             {(image?.format === 'DDS' || image?.format === 'G1T') && <section>

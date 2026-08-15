@@ -99,6 +99,7 @@ pub enum ArchiveMagic {
     SevenZip,
     Rar,
     Bars,
+    RflDb,
 }
 
 pub fn detect_archive_magic(data: &[u8]) -> Option<ArchiveMagic> {
@@ -113,6 +114,8 @@ pub fn detect_archive_magic(data: &[u8]) -> Option<ArchiveMagic> {
         Some(ArchiveMagic::Rar)
     } else if crate::Settings::Magic::is_bars(data) {
         Some(ArchiveMagic::Bars)
+    } else if crate::Settings::Magic::is_rfl_db(data) {
+        Some(ArchiveMagic::RflDb)
     } else {
         None
     }
@@ -124,6 +127,7 @@ pub enum RootArchive {
     Rar(Rar::RarFile),
     Folder(Folder::FolderFile),
     Bars(Bars::BarsFile),
+    RflDb(crate::file_format::Mii::RflDbFile),
 }
 
 pub struct ArchiveDocument {
@@ -163,6 +167,7 @@ impl ArchiveDocument {
             RootArchive::SevenZip(_) => "7Z",
             RootArchive::Rar(_) => "RAR",
             RootArchive::Folder(_) => "FOLDER",
+            RootArchive::RflDb(_) => "RFL_DB",
             _ => "ARCHIVE",
         }
     }
@@ -210,6 +215,9 @@ impl ArchiveDocument {
             }
             Some(ArchiveMagic::Rar) => RootArchive::Rar(Rar::RarFile::from_bytes(&bytes)?),
             Some(ArchiveMagic::Bars) => RootArchive::Bars(Bars::BarsFile::from_bytes(&bytes)?),
+            Some(ArchiveMagic::RflDb) => {
+                RootArchive::RflDb(crate::file_format::Mii::RflDbFile::from_bytes(&bytes)?)
+            }
             None => return Ok(None),
         };
         let mut document = Self {
@@ -255,6 +263,9 @@ impl ArchiveDocument {
             }
             Some(ArchiveMagic::Rar) => RootArchive::Rar(Rar::RarFile::from_bytes(&bytes)?),
             Some(ArchiveMagic::Bars) => RootArchive::Bars(Bars::BarsFile::from_bytes(&bytes)?),
+            Some(ArchiveMagic::RflDb) => {
+                RootArchive::RflDb(crate::file_format::Mii::RflDbFile::from_bytes(&bytes)?)
+            }
             None => return Ok(None),
         };
         let mut document = Self {
@@ -290,6 +301,24 @@ impl ArchiveDocument {
     }
     pub fn set(&mut self, path: &str, bytes: Vec<u8>) -> ArchiveResult<()> {
         validate_entry_path(path)?;
+        let is_rfl_db = matches!(self.archive, RootArchive::RflDb(_));
+        let bytes = if is_rfl_db {
+            crate::file_format::Mii::RflDbFile::normalize_mii(bytes)?
+        } else {
+            bytes
+        };
+        if is_rfl_db && !self.archive.entries().contains_key(path) {
+            use sha2::{Digest, Sha256};
+            let incoming = Sha256::digest(&bytes);
+            if let Some((existing_path, _)) = self
+                .archive
+                .entries()
+                .iter()
+                .find(|(_, existing)| Sha256::digest(existing) == incoming)
+            {
+                return Err(format!("This Mii is already present in RFL_DB.dat as {existing_path} (matching SHA-256)"));
+            }
+        }
         if self.archive.entries().contains_key(path) {
             self.modified.insert(path.into());
         } else {
@@ -448,6 +477,7 @@ impl RootArchive {
             Self::Rar(v) => v.entries(),
             Self::Folder(v) => v.entries(),
             Self::Bars(v) => v.entries(),
+            Self::RflDb(v) => v.entries(),
         }
     }
     pub(crate) fn entries_mut(&mut self) -> &mut BTreeMap<String, Vec<u8>> {
@@ -457,6 +487,7 @@ impl RootArchive {
             Self::Rar(v) => v.entries_mut(),
             Self::Folder(v) => v.entries_mut(),
             Self::Bars(v) => v.entries_mut(),
+            Self::RflDb(v) => v.entries_mut(),
         }
     }
     pub(crate) fn get(&self, path: &str) -> Option<&[u8]> {
@@ -469,6 +500,7 @@ impl RootArchive {
             Self::Rar(v) => v.to_bytes(),
             Self::Folder(v) => v.to_bytes(),
             Self::Bars(v) => v.to_bytes(),
+            Self::RflDb(v) => v.to_bytes(),
         }
     }
 }
@@ -548,6 +580,10 @@ mod tests {
             detect_archive_magic(b"Rar!\x1A\x07\x01\x00payload"),
             Some(ArchiveMagic::Rar)
         );
+        assert_eq!(
+            detect_archive_magic(b"RNODpayload"),
+            Some(ArchiveMagic::RflDb)
+        );
         assert_eq!(detect_archive_magic(b"example.zip"), None);
     }
 
@@ -556,6 +592,19 @@ mod tests {
         assert!(validate_entry_path("../evil").is_err());
         assert!(validate_entry_path("/evil").is_err());
         assert!(validate_entry_path("safe/file.txt").is_ok());
+    }
+
+    #[test]
+    fn rfl_db_rejects_duplicate_mii_hashes() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/mii");
+        let mut archive = ArchiveDocument::open(&root.join("RFL_DB.dat"))
+            .unwrap()
+            .unwrap();
+        let duplicate = archive.archive.entries().values().next().unwrap().clone();
+        let error = archive
+            .set("Miis/099_duplicate.miigx", duplicate)
+            .unwrap_err();
+        assert!(error.contains("matching SHA-256"), "{error}");
     }
 
     #[test]

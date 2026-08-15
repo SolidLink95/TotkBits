@@ -1,4 +1,5 @@
 use crate::{DocumentState::DocumentState, Open_and_Save::SendData, TotkApp::SaveData};
+use base64::Engine;
 use rfd::MessageDialog;
 use tauri::Manager;
 
@@ -64,6 +65,37 @@ pub fn add_to_dir_click(
         documentId,
         app,
         app.add_internal_file_to_dir(internalPath, path)
+    )
+}
+
+#[tauri::command]
+pub fn read_file_base64(path: String) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+#[tauri::command]
+pub fn add_archive_bytes(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    internalPath: String,
+    data: String,
+    overwrite: bool,
+) -> Option<SendData> {
+    let bytes = match base64::engine::general_purpose::STANDARD.decode(data) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            let mut result = SendData::default();
+            result.tab = "ERROR".into();
+            result.status_text = format!("Error: invalid Mii data: {error}");
+            return Some(result);
+        }
+    };
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.add_internal_file_bytes(internalPath, bytes, overwrite)
     )
 }
 
@@ -140,6 +172,26 @@ pub fn remove_internal_sarc_file(
         documentId,
         app,
         app.remove_internal_elem(internalPath)
+    )
+}
+
+#[tauri::command]
+pub fn clear_rfl_miis(app_handle: tauri::AppHandle, documentId: String) -> Option<SendData> {
+    let confirmed = MessageDialog::new()
+        .set_title("TotkBits - Clear RFL_DB.dat")
+        .set_description("Remove all Miis from this RFL_DB.dat?")
+        .set_level(rfd::MessageLevel::Warning)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        == rfd::MessageDialogResult::Yes;
+    if !confirmed {
+        return None;
+    }
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.remove_internal_elem("Miis".into())
     )
 }
 

@@ -771,6 +771,8 @@ pub struct SarcPaths {
     pub nested_paths: HashMap<String, Vec<String>>,
     pub read_only: bool,
     pub file_type: String,
+    #[serde(default)]
+    pub root_name: String,
 }
 impl Default for SarcPaths {
     fn default() -> Self {
@@ -781,6 +783,7 @@ impl Default for SarcPaths {
             nested_paths: HashMap::new(),
             read_only: false,
             file_type: String::new(),
+            root_name: String::new(),
         }
     }
 }

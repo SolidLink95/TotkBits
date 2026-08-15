@@ -62,7 +62,19 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) =>
         ...activeTab !== 'SARC' && activeTab !== 'AUDIO' ? { height: '0%', width: '0%', marginLeft: '-50px' } : {}
          }}//robust solution to hide tree when not active. This way collapsed nodes states are not lost
       >
-        {Object.entries(renderTree).map(([key, value]) => (
+        {sarcPaths.file_type === 'RFL_DB' && sarcPaths.root_name ? (
+          <DirectoryNode
+            key={sarcPaths.root_name}
+            node={renderTree}
+            name={sarcPaths.root_name}
+            path=""
+            isArchiveRoot
+            onContextMenu={handleContextMenu}
+            sarcPaths={sarcPaths}
+            selected={selectedNode}
+            onSelect={handleSelectNode}
+          />
+        ) : Object.entries(renderTree).map(([key, value]) => (
           <DirectoryNode
             key={key}
             node={value}
