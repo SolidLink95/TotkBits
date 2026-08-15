@@ -11,11 +11,23 @@ function fixMiiJsLodashInterop() {
         return null;
       }
 
+      const cloneHelper = `
+const __totkMiiCloneDeep = (value, seen = new WeakMap()) => {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return seen.get(value);
+  if (value instanceof Date) return new Date(value.getTime());
+  if (ArrayBuffer.isView(value)) return new value.constructor(value);
+  if (value instanceof ArrayBuffer) return value.slice(0);
+  const clone = Array.isArray(value) ? [] : Object.create(Object.getPrototypeOf(value));
+  seen.set(value, clone);
+  for (const key of Reflect.ownKeys(value)) clone[key] = __totkMiiCloneDeep(value[key], seen);
+  return clone;
+};
+`;
       return {
         // MiiJS's prebuilt ESM chunk has incompatible CommonJS Lodash interop.
-        // These calls only clone plain mapping objects, so the platform clone is
-        // equivalent and avoids both `default.cloneDeep` interop variants.
-        code: code.replace(/\b[A-Za-z_$][\w$]*(?:\.default)?\.cloneDeep\(/g, "structuredClone("),
+        // Its format tables contain functions, which must be retained by reference.
+        code: cloneHelper + code.replace(/\b[A-Za-z_$][\w$]*(?:\.default)?\.cloneDeep\(/g, "__totkMiiCloneDeep("),
         map: null,
       };
     },
