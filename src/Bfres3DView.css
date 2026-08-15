@@ -1,15 +1,17 @@
-.bfres-workspace { position: fixed; inset: calc(var(--menu-bar-h) + var(--document-tabs-h)) 0 var(--status-bar-h); display: grid; grid-template: 70px minmax(0, 1fr) auto / var(--bfres-left-width, 280px) minmax(320px, 1fr) var(--bfres-right-width, 340px); grid-template-areas: "tree tools inspector" "tree viewport inspector" "tree timeline timeline"; background: #11151b; color: #dce3ea; z-index: 2; }
+.bfres-workspace { position: fixed; inset: calc(var(--menu-bar-h) + var(--document-tabs-h)) 0 var(--status-bar-h); display: grid; grid-template: 64px minmax(0, 1fr) auto / var(--bfres-left-width, 280px) minmax(320px, 1fr) var(--bfres-right-width, 340px); grid-template-areas: "tree tools inspector" "tree viewport inspector" "tree timeline timeline"; background: #11151b; color: #dce3ea; z-index: 2; }
 .bfres-batch-viewport { position: fixed; left: -1200px; top: 0; width: 1024px; height: 1024px; pointer-events: none; }
-.bfres-viewport-toolbar { grid-area: tools; min-width: 0; display: grid; grid-template-rows: 34px 35px; overflow: hidden; border-bottom: 1px solid #303946; background: #20252c; }
+.bfres-viewport-toolbar { grid-area: tools; min-width: 0; display: grid; grid-template-rows: 29px 35px; overflow: hidden; border-bottom: 1px solid #303946; background: #20252c; }
 .bfres-toolbar-row { min-width: 0; display: flex; align-items: center; gap: 4px; padding: 0 7px; overflow-x: auto; overflow-y: hidden; }
 .bfres-toolbar-tabs { border-bottom: 1px solid #303946; }
 .bfres-viewport-toolbar button, .bfres-yaml-panel button { flex: 0 0 auto; color: #cbd5df; border: 1px solid transparent; background: transparent; border-radius: 3px; padding: 5px 8px; }
+.bfres-toolbar-tabs button { height: 18px; padding-block: 0; }
 .bfres-viewport-toolbar button:hover { background: #303943; }
 .bfres-viewport-toolbar select { flex: 0 0 auto; max-width: 210px; color: #cbd5df; border: 1px solid #394655; background: #171c23; border-radius: 3px; padding: 4px 7px; }
 .bfres-shading-select { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; color: #aeb9c4; font-size: 11px; }
 .bfres-brightness input { width: 78px; accent-color: #4c9ac7; }
 .bfres-brightness span { min-width: 32px; color: #dce3ea; font-variant-numeric: tabular-nums; }
 .bfres-bone-select { margin-left: auto; }
+.bfres-texture-set-select { width: 100%; margin-top: 4px; }
 .bfres-viewport-toolbar button.active { background: #31536c; border-color: #4c86aa; color: white; }
 .bfres-viewport-toolbar small { margin-left: 4px; color: #97bed8; }
 .bfres-viewport { grid-area: viewport; position: relative; min-width: 0; min-height: 0; }

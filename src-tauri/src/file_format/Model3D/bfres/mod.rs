@@ -8,6 +8,7 @@ mod material;
 mod replace;
 mod serializer;
 mod skeleton;
+pub mod tomodachi;
 
 use rfd::{FileDialog, MessageDialog};
 use serde::Serialize;

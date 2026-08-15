@@ -535,6 +535,7 @@ impl<'a> TotkFile<'a> {
                 Path::new(&self.path.full_path),
                 self.visual_source(),
                 Path::new(&self.zstd.totk_config.romfs),
+                Path::new(&self.zstd.totk_config.tomodachi_path),
                 Some(&self.zstd),
             );
             let mut value = serde_json::to_value(bfres).map_err(io::Error::other)?;

@@ -128,6 +128,7 @@ mod tests {
             "bones_botw.json",
             "bphcl_nodes.json",
             "G1M_to_G1T_pairs.json",
+            "tomodachi_bfres.json",
         ] {
             let value = read_support_json(name);
             assert_ne!(value, "{}", "failed to load misc/{name}");

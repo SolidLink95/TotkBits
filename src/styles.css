@@ -712,6 +712,7 @@ button {
 }
 
 .settings-modal {
+  max-width: 720px;
   max-height: 82vh;
   overflow-y: auto;
 }
@@ -785,6 +786,22 @@ button {
 
 .settings-control button {
   flex: 0 0 auto;
+  padding: 6px 10px;
+}
+
+.settings-advanced {
+  margin: 5px 10px 0;
+  padding-top: 10px;
+  border-top: 1px solid #555;
+}
+
+.settings-advanced summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.settings-advanced button {
+  margin-top: 10px;
   padding: 6px 10px;
 }
 

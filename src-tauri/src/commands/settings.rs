@@ -1,8 +1,9 @@
+use crate::utils::Pathlib;
 use crate::{DocumentState::DocumentState, Open_and_Save::SendData, Settings::NO_WINDOW_FLAG};
 use rfd::MessageDialog;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::{env, fs, os::windows::process::CommandExt, path::Path, process::Command};
+use std::{fs, os::windows::process::CommandExt, path::Path, process::Command};
 use tauri::Manager;
 
 #[tauri::command]
@@ -145,41 +146,28 @@ pub fn restart_app(app_handle: tauri::AppHandle) -> Option<()> {
 }
 
 #[tauri::command]
-pub fn edit_config(app_handle: tauri::AppHandle, documentId: String) -> Option<()> {
-    let no_window_flag = NO_WINDOW_FLAG;
+pub fn edit_config(app_handle: tauri::AppHandle, documentId: String) -> Result<(), String> {
     let file_path = with_document!(
         app_handle,
         documentId,
         app,
         app.zstd.totk_config.config_path.clone()
     );
-    let os_type = env::consts::OS;
-
-    let result = match os_type {
-        "windows" => Command::new("cmd")
-            .creation_flags(no_window_flag)
-            .args(["/C", "start", "", &file_path])
-            .status(),
-        "macos" => Command::new("open")
-            .creation_flags(no_window_flag)
-            .arg(file_path)
-            .status(),
-        "linux" => Command::new("xdg-open")
-            .creation_flags(no_window_flag)
-            .arg(file_path)
-            .status(),
-        _ => Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Unsupported OS",
-        )),
-    };
-
-    let _ = result.map(|exit_status| {
-        if exit_status.success() {
-            return Some(());
-        } else {
-            return None;
-        }
-    });
-    None
+    // Command::new("explorer.exe")
+    let dir_path = Pathlib::new(&file_path).parent.replace("/", "\\");
+    // let explorer_arg = format!("/e,\"{}\"", &dir_path);
+    println!("{}", &dir_path);
+    // Command::new("explorer.exe")
+    // Command::new("explorer.exe")
+    //     .creation_flags(NO_WINDOW_FLAG)
+    //     .arg(&explorer_arg)
+    //     .spawn()
+    //     .map(|_| ())
+    //     .map_err(|error| format!("failed to launch Explorer for {explorer_arg}: {error}"))
+    Command::new("cmd.exe")
+        // .creation_flags(NO_WINDOW_FLAG)
+        .args(["/c", "start", "", &dir_path])
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open folder: {error}"))
 }

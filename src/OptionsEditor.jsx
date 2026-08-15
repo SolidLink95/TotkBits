@@ -8,6 +8,7 @@ const fields = [
     { key: "Stop asking for romfs path", label: "Stop asking for a RomFS path", type: "boolean" },
     { key: "BOTW WIIU path (optional)", label: "BOTW Wii U path", type: "path" },
     { key: "AOC path (optional)", label: "Age of Calamity path", type: "path" },
+    { key: "Tomodachi path (optional)", label: "Tomodachi Life path", type: "path" },
     { key: "UI scale", label: "Entire UI scale", type: "number", min: 0.2, max: 3.0, step: 0.1 },
     { key: "font size", label: "Editor font size", type: "number", min: 8, max: 72 },
     { key: "Context menu font size", label: "Context-menu font size", type: "number", min: 8, max: 40 },
@@ -53,6 +54,16 @@ function OptionsEditor() {
     const chooseDirectory = async (key) => {
         const path = await invoke("open_dir_dialog");
         if (path) setConfig((current) => ({ ...current, [key]: path }));
+    };
+
+    const revealTomlConfig = async () => {
+        try {
+            await invoke("edit_config");
+            setStatusText("Config file shown in Explorer");
+        } catch (error) {
+            console.error("Error revealing config file:", error);
+            setStatusText(`Error: unable to show config file: ${error}`);
+        }
     };
 
     const change = (field, rawValue) => {
@@ -131,6 +142,10 @@ function OptionsEditor() {
                         ))}
                     </div>
                 )}
+                <details className="settings-advanced">
+                    <summary>Advanced</summary>
+                    <button type="button" onClick={revealTomlConfig}>Edit TOML</button>
+                </details>
                 <div className="options-modal-footer">
                     <button onClick={save} disabled={configLoading}>Save</button>
                     <button onClick={close}>Close</button>

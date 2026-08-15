@@ -39,9 +39,15 @@ pub fn parse_materials(
                 .filter_map(|index| {
                     let name = read_string(data, u64_at(data, names + index * 8, endian).ok()?)?;
                     let sampler = samplers.get(index).cloned().unwrap_or_default();
+                    let sampler_type = classify_sampler(&sampler);
                     Some(BfresTextureSlot {
                         index,
-                        texture_type: classify_sampler(&sampler).into(),
+                        texture_type: if sampler_type == "Texture" {
+                            classify_texture_name(&name)
+                        } else {
+                            sampler_type
+                        }
+                        .into(),
                         sampler,
                         name,
                     })
@@ -107,9 +113,30 @@ fn classify_sampler(sampler: &str) -> &'static str {
     }
 }
 
+fn classify_texture_name(name: &str) -> &'static str {
+    let name = name.to_ascii_lowercase();
+    if name.contains("_alb") || name.contains("albedo") {
+        "Base color"
+    } else if name.contains("_nrm") || name.contains("normal") {
+        "Normal"
+    } else if name.contains("_emm") || name.contains("emission") || name.contains("emissive") {
+        "Emission"
+    } else if name.contains("_rgh") || name.contains("roughness") {
+        "Roughness"
+    } else if name.contains("_mtl") || name.contains("metalness") || name.contains("metallic") {
+        "Metalness"
+    } else if name.contains("_spc") || name.contains("specular") {
+        "Specular"
+    } else if name.contains("_msk") || name.contains("_alp") || name.contains("mask") {
+        "Mask"
+    } else {
+        "Texture"
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::classify_sampler;
+    use super::{classify_sampler, classify_texture_name};
     use crate::file_format::Model3D::bfres::BfresFile;
 
     #[test]
@@ -117,6 +144,15 @@ mod tests {
         for sampler in ["_ao", "_ao0", "ao", "ao0", "_ambientocclusion0"] {
             assert_eq!(classify_sampler(sampler), "Ambient occlusion");
         }
+    }
+
+    #[test]
+    fn classifies_tomodachi_dummy_texture_names_without_samplers() {
+        assert_eq!(classify_texture_name("Dummy_Alb"), "Base color");
+        assert_eq!(classify_texture_name("Dummy_Nrm"), "Normal");
+        assert_eq!(classify_texture_name("Dummy_Rgh"), "Roughness");
+        assert_eq!(classify_texture_name("Dummy_Msk"), "Mask");
+        assert_eq!(classify_texture_name("Dummy_Emm"), "Emission");
     }
 
     #[test]

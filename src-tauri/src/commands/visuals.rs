@@ -9,11 +9,91 @@ use tauri::Manager;
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BfresResolvedTexture {
     name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    aliases: Vec<String>,
     path: String,
     source: String,
     data_url: String,
     width: u32,
     height: u32,
+}
+
+fn tomodachi_textures(
+    bfres: &crate::file_format::Model3D::bfres::BfresFile,
+    source: &Path,
+    set_name: &str,
+    variant: u8,
+    fallback: Option<&Path>,
+    zstd: Option<&crate::Zstd::TotkZstd<'_>>,
+) -> Vec<BfresResolvedTexture> {
+    crate::file_format::Model3D::bfres::tomodachi::resolve_texture_set(
+        source, set_name, variant, fallback, zstd,
+    )
+    .into_iter()
+    .map(|texture| BfresResolvedTexture {
+        aliases: tomodachi_texture_aliases(bfres, &texture.path),
+        name: texture.name,
+        path: texture.path.to_string_lossy().into_owned(),
+        source: "tomodachi".into(),
+        data_url: texture.data_url,
+        width: texture.width,
+        height: texture.height,
+    })
+    .collect()
+}
+
+fn tomodachi_texture_aliases(
+    bfres: &crate::file_format::Model3D::bfres::BfresFile,
+    path: &Path,
+) -> Vec<String> {
+    let stem = crate::Settings::Pathlib::new(path)
+        .stem
+        .to_ascii_lowercase();
+    let types: &[&str] = if stem.contains("_alb") {
+        &["Base color"]
+    } else if stem.contains("_nrm") {
+        &["Normal"]
+    } else if stem.contains("_emm") {
+        &["Emission"]
+    } else if stem.contains("_mic") {
+        &["Roughness", "Specular", "Metalness"]
+    } else {
+        &["Texture"]
+    };
+    let mut aliases: Vec<_> = bfres
+        .materials
+        .iter()
+        .flat_map(|material| &material.texture_slots)
+        .filter(|slot| types.contains(&slot.texture_type.as_str()))
+        .map(|slot| slot.name.clone())
+        .collect();
+    aliases.sort();
+    aliases.dedup();
+    aliases
+}
+
+#[tauri::command]
+pub fn load_tomodachi_texture_set(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+    textureSet: String,
+    textureVariant: u8,
+) -> Result<Vec<BfresResolvedTexture>, String> {
+    require_experimental_visuals()?;
+    let documents = app_handle.state::<DocumentState>();
+    documents.with(&documentId, |app| {
+        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(&path)
+            .map_err(|error| error.to_string())?;
+        Ok(tomodachi_textures(
+            &bfres,
+            Path::new(&path),
+            &textureSet,
+            textureVariant,
+            Some(Path::new(&app.zstd.totk_config.tomodachi_path)),
+            Some(&app.zstd),
+        ))
+    })
 }
 
 #[tauri::command]
@@ -57,7 +137,7 @@ pub fn inspect_3d_model(
 ) -> Result<serde_json::Value, String> {
     require_experimental_visuals()?;
     let documents = app_handle.state::<DocumentState>();
-    let (internal_bfres, internal_bfres_data, visual_data, romfs, aoc_path) =
+    let (internal_bfres, internal_bfres_data, visual_data, romfs, aoc_path, tomodachi_path) =
         documents.with(&documentId, |app| {
             (
                 app.opened_file.bfres.clone(),
@@ -65,6 +145,7 @@ pub fn inspect_3d_model(
                 app.opened_file.visual_data.clone(),
                 app.zstd.totk_config.romfs.clone(),
                 app.zstd.totk_config.aoc_path.clone(),
+                app.zstd.totk_config.tomodachi_path.clone(),
             )
         });
     if let Some(bfres) = internal_bfres {
@@ -74,6 +155,7 @@ pub fn inspect_3d_model(
                 Path::new(&path),
                 internal_bfres_data.as_deref(),
                 Path::new(&romfs),
+                Path::new(&tomodachi_path),
                 Some(&app.zstd),
             )
         });
@@ -83,6 +165,7 @@ pub fn inspect_3d_model(
                 "resolvedTextures".into(),
                 serde_json::to_value(textures).map_err(|error| error.to_string())?,
             );
+            insert_tomodachi_texture_sets(object, Path::new(&path), Path::new(&tomodachi_path))?;
         }
         return Ok(value);
     }
@@ -141,6 +224,7 @@ pub fn inspect_3d_model(
                 Path::new(&path),
                 None,
                 Path::new(&romfs),
+                Path::new(&tomodachi_path),
                 Some(&app.zstd),
             )
         });
@@ -150,6 +234,7 @@ pub fn inspect_3d_model(
                 "resolvedTextures".into(),
                 serde_json::to_value(textures).map_err(|error| error.to_string())?,
             );
+            insert_tomodachi_texture_sets(object, Path::new(&path), Path::new(&tomodachi_path))?;
         }
         Ok(value)
     }
@@ -368,6 +453,7 @@ pub(crate) fn resolve_bfres_textures(
     source: &Path,
     source_data: Option<&[u8]>,
     romfs: &Path,
+    tomodachi_root: &Path,
     zstd: Option<&crate::Zstd::TotkZstd<'_>>,
 ) -> Vec<BfresResolvedTexture> {
     let names: HashSet<&str> = bfres
@@ -403,6 +489,7 @@ pub(crate) fn resolve_bfres_textures(
             };
             textures.push(BfresResolvedTexture {
                 name: (*name).to_owned(),
+                aliases: Vec::new(),
                 path: path.to_string_lossy().into_owned(),
                 source: "textogo".into(),
                 data_url: rendered.data_url,
@@ -412,8 +499,56 @@ pub(crate) fn resolve_bfres_textures(
             resolved_names.insert(lowercase_name);
         }
     }
+    if let Some(set) = crate::file_format::Model3D::bfres::tomodachi::available_texture_sets(
+        source,
+        Some(tomodachi_root),
+    )
+    .first()
+    {
+        let selected = tomodachi_textures(
+            bfres,
+            source,
+            &set.name,
+            set.variants[0],
+            Some(tomodachi_root),
+            zstd,
+        );
+        let selected_names: HashSet<_> = selected
+            .iter()
+            .map(|texture| texture.name.to_ascii_lowercase())
+            .collect();
+        textures.retain(|texture| !selected_names.contains(&texture.name.to_ascii_lowercase()));
+        textures.extend(selected);
+    }
     textures.sort_by(|left, right| left.name.cmp(&right.name));
     textures
+}
+
+fn insert_tomodachi_texture_sets(
+    object: &mut serde_json::Map<String, Value>,
+    source: &Path,
+    tomodachi_root: &Path,
+) -> Result<(), String> {
+    let sets = crate::file_format::Model3D::bfres::tomodachi::available_texture_sets(
+        source,
+        Some(tomodachi_root),
+    );
+    if sets.is_empty() {
+        return Ok(());
+    }
+    object.insert(
+        "tomodachiTextureSet".into(),
+        Value::String(sets[0].name.clone()),
+    );
+    object.insert(
+        "tomodachiTextureVariant".into(),
+        Value::from(sets[0].variants[0]),
+    );
+    object.insert(
+        "tomodachiTextureSets".into(),
+        serde_json::to_value(sets).map_err(|error| error.to_string())?,
+    );
+    Ok(())
 }
 
 fn bfres_textogo_roots(source: &Path, romfs: &Path) -> Vec<std::path::PathBuf> {
@@ -487,6 +622,7 @@ fn resolve_embedded_bntx_textures(
                 crate::file_format::Image::ImageDocument::render_bntx_bytes(data, index).ok()?;
             Some(BfresResolvedTexture {
                 name: texture.name.clone(),
+                aliases: Vec::new(),
                 path: format!("{}#{}", source.display(), texture.name),
                 source: "embedded".into(),
                 data_url: rendered.data_url,

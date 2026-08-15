@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { getDocumentsSnapshot, invoke, subscribeDocuments } from './DocumentState';
+import Tomodachi, { findTomodachiTexture } from './Tomodachi';
 import './Bfres3DView.css';
 
 const celGradient = new THREE.DataTexture(
@@ -486,13 +487,15 @@ function materialTextures(material, textures) {
     const slotFor = (type) => material.texture_slots.find((value) => value.texture_type === type);
     const find = (type, lastLayer = false) => {
         const slot = slotFor(type);
-        return slot ? textures[lastLayer ? `${slot.name}::last` : slot.name] || textures[slot.name] || null : null;
+        const direct = slot ? textures[lastLayer ? `${slot.name}::last` : slot.name] || textures[slot.name] || null : null;
+        return direct || (!lastLayer ? findTomodachiTexture(textures, type) : null);
     };
     // Never guess the diffuse texture from an unclassified slot. In particular,
     // AO and other packed maps must not become base color merely because they
     // are the first texture referenced by the material.
-    const diffuseSlot = material.texture_slots.find((value) => value.sampler?.toLowerCase() === '_a0');
-    const base = diffuseSlot ? textures[diffuseSlot.name] || null : null;
+    const diffuseSlot = material.texture_slots.find((value) => value.sampler?.toLowerCase() === '_a0')
+        || slotFor('Base color');
+    const base = (diffuseSlot ? textures[diffuseSlot.name] || null : null) || find('Base color');
     // AoC emission arrays store the material image in layer 0. Later layers
     // are auxiliary data and may be black; the legacy importer also selects 0.
     const candidateEmission = find('Emission');
@@ -881,7 +884,7 @@ function ResourceScene({ bfres, render, animation, animationPlaying = true, anim
         {!celShading && <hemisphereLight args={['#ffffff', '#56616f', 2.0]} />}
         <directionalLight position={[6, 10, 8]} intensity={celShading ? 2.2 : 3.5} />
         <PerspectiveCamera makeDefault position={[0, 0, 10]} up={[0, 1, 0]} fov={42} />
-        <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
+        <OrbitControls makeDefault enableDamping dampingFactor={0.08} zoomSpeed={1.75} />
         <FrontCamera render={render} applyRigidTransform={applyRigidTransform} onReady={onCameraReady} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
         <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} applyRigidTransform={applyRigidTransform} animation={animation} restWorlds={restWorlds} animationWorlds={animationWorlds} culling={culling} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
@@ -1120,8 +1123,6 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         setWeightPreviewColors(null);
     }, [bfres]);
 
-    useEffect(() => {
-    }, [document?.fullPath]);
 
     useEffect(() => {
         if (viewMode !== 'weightsPrev' || !bfres?.render || !hasSkeleton || !hasMeshes || weightPreviewColors) return undefined;
@@ -1728,6 +1729,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                         {renderingViewport ? 'Rendering…' : 'Render'}
                     </button>
                 </section>}
+                <Tomodachi model={bfres} setModel={setBfres} documentPath={document?.fullPath} setStatusText={setStatusText} />
                 {(isG1m || isGlb) && <section className="bfres-export-panel">
                     {/* <header><strong>FBX Export</strong></header> */}
                     <button type="button" onClick={exportModel} disabled={exportingModel || !bfres?.render?.meshes?.length}>

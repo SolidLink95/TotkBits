@@ -2,6 +2,7 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
 const documentCommands = new Set([
     'add_empty_byml_file', 'extract_opened_sarc', 'extract_folder_from_opened_sarc',
+    'load_tomodachi_texture_set',
     'get_toml_config', 'update_toml_config', 'edit_config', 'open_file_struct',
     'open_file_from_path', 'open_folder_struct', 'edit_internal_file', 'save_file_struct', 'save_as_click',
     'add_click', 'add_to_dir_click', 'add_files_from_dir_recursively',
