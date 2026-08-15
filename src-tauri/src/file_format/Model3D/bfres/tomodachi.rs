@@ -41,6 +41,9 @@ fn model_name(source: &Path) -> Option<String> {
 
 fn texture_roots(source: &Path, fallback: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
+    if let Some(root) = source.parent().map(Path::to_path_buf) {
+        roots.push(root);
+    }
     if let Some(root) = source
         .parent()
         .and_then(Path::parent)
@@ -175,6 +178,7 @@ mod tests {
         assert_eq!(
             roots,
             [
+                PathBuf::from("C:/game/Model"),
                 PathBuf::from("C:/game/Tex"),
                 PathBuf::from("D:/Tomodachi/Tex")
             ]

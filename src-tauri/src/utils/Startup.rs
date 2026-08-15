@@ -24,7 +24,7 @@ pub fn launch_weapon_icon_cache(config: &TotkConfig) {
     }
 
     let config = config.clone();
-    let cache_directory = cache_directory();
+    let cache_directory = cache_directory().join("webp");
     thread::spawn(move || {
         let _ = populate_weapon_icon_cache(&icon_directory, &cache_directory, config);
     });
@@ -83,7 +83,7 @@ fn convert_icon(source: &Path, destination: &Path, zstd: &TotkZstd<'_>) -> io::R
         .map_err(io::Error::other)
 }
 
-fn cache_directory() -> PathBuf {
+pub(crate) fn cache_directory() -> PathBuf {
     #[cfg(debug_assertions)]
     {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../.cache")

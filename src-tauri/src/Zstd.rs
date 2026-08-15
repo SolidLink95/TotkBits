@@ -449,11 +449,16 @@ impl<'a> TotkZstd<'_> {
         let defaults = [
             ZstdDictionary::Zs,
             ZstdDictionary::Pack,
-            ZstdDictionary::Empty,
             ZstdDictionary::Bcett,
         ];
         let mut attempted = Vec::with_capacity(defaults.len());
-        for kind in preferred.into_iter().chain(defaults) {
+        // A dictionaryless frame can also decode successfully when an unrelated
+        // dictionary is supplied. Probe Empty first so the returned kind records
+        // what the frame actually requires instead of the first usable decoder.
+        for kind in std::iter::once(ZstdDictionary::Empty)
+            .chain(preferred)
+            .chain(defaults)
+        {
             if kind == ZstdDictionary::Yaz0 || attempted.contains(&kind) {
                 continue;
             }
@@ -673,6 +678,24 @@ pub struct ZsDic {
 }
 
 impl ZsDic {
+    const CACHE_FILES: [(&'static str, fn(&ZsDic) -> Option<&Vec<u8>>, &'static str); 3] = [
+        (
+            "zs.zsdic",
+            |dictionaries| dictionaries.zs_data.as_ref(),
+            "64FD3636E13E7A741993637A66F7207B56B95BCD8240A75F41D942CB0119006F",
+        ),
+        (
+            "bcett.byml.zsdic",
+            |dictionaries| dictionaries.bcett_data.as_ref(),
+            "EE052D20D48FEAA75E7AEABC766F0E0EFB3005ACFFBE91208EB8287C51DC48DD",
+        ),
+        (
+            "pack.zsdic",
+            |dictionaries| dictionaries.packzs_data.as_ref(),
+            "280E1D767DA4DD1113DFE4E73DAA8B9CAB3DB8FF1CD013613D6C6624B6DD06FF",
+        ),
+    ];
+
     pub fn empty() -> ZsDic {
         ZsDic {
             zs_data: None,
@@ -683,7 +706,28 @@ impl ZsDic {
     }
 
     pub fn new(totk_config: Arc<TotkConfig>) -> io::Result<ZsDic> {
-        let sarc = ZsDic::get_zsdic_sarc(&totk_config)?;
+        match Self::load_cache() {
+            Ok(dictionaries) => Ok(dictionaries),
+            Err(cache_error) => match Self::load_from_romfs(&totk_config) {
+                Ok(dictionaries) => {
+                    dictionaries.validate()?;
+                    // Caching is an optimization. A read-only install must still
+                    // be able to use the dictionaries loaded from ROMFS.
+                    let _ = dictionaries.save_cache();
+                    Ok(dictionaries)
+                }
+                Err(romfs_error) => Err(io::Error::new(
+                    romfs_error.kind(),
+                    format!(
+                        "cached ZSTD dictionaries are unavailable: {cache_error}; {romfs_error}"
+                    ),
+                )),
+            },
+        }
+    }
+
+    fn load_from_romfs(totk_config: &TotkConfig) -> io::Result<ZsDic> {
+        let sarc = ZsDic::get_zsdic_sarc(totk_config)?;
         let empty_data: Vec<u8> = Vec::new();
         let mut zs_data = None;
         let mut bcett_data = None;
@@ -698,11 +742,78 @@ impl ZsDic {
             }
         }
         Ok(ZsDic {
-            zs_data: zs_data,
-            bcett_data: bcett_data,
-            packzs_data: packzs_data,
+            zs_data,
+            bcett_data,
+            packzs_data,
             empty_data: empty_data,
         })
+    }
+
+    fn is_complete(&self) -> bool {
+        self.zs_data.is_some() && self.bcett_data.is_some() && self.packzs_data.is_some()
+    }
+
+    fn validate(&self) -> io::Result<()> {
+        const ZSTD_DICTIONARY_MAGIC: [u8; 4] = [0x37, 0xA4, 0x30, 0xEC];
+        if !self.is_complete() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "ZSTD dictionary set is incomplete",
+            ));
+        }
+        for (name, dictionary, expected_sha256) in Self::CACHE_FILES {
+            let data = dictionary(self).unwrap();
+            if !data.starts_with(&ZSTD_DICTIONARY_MAGIC) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("{name} does not have Zstandard dictionary magic"),
+                ));
+            }
+            let actual_sha256 = dictionary_sha256(data);
+            if actual_sha256 != expected_sha256 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "{name} failed SHA-256 validation: expected {expected_sha256}, got {actual_sha256}"
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn cache_directory() -> PathBuf {
+        crate::utils::cache_directory().join("zstd")
+    }
+
+    fn save_cache(&self) -> io::Result<()> {
+        self.save_to_directory(&Self::cache_directory())
+    }
+
+    fn save_to_directory(&self, directory: &Path) -> io::Result<()> {
+        self.validate()?;
+        fs::create_dir_all(directory)?;
+        for (name, dictionary, _) in Self::CACHE_FILES {
+            let data = dictionary(self).unwrap();
+            fs::write(directory.join(name), data)?;
+        }
+        Ok(())
+    }
+
+    fn load_cache() -> io::Result<ZsDic> {
+        Self::load_from_directory(&Self::cache_directory())
+    }
+
+    fn load_from_directory(directory: &Path) -> io::Result<ZsDic> {
+        let read = |name: &str| fs::read(directory.join(name));
+        let dictionaries = ZsDic {
+            zs_data: Some(read("zs.zsdic")?),
+            bcett_data: Some(read("bcett.byml.zsdic")?),
+            packzs_data: Some(read("pack.zsdic")?),
+            empty_data: Vec::new(),
+        };
+        dictionaries.validate()?;
+        Ok(dictionaries)
     }
 
     fn get_zsdic_sarc(totk_config: &TotkConfig) -> io::Result<Sarc> {
@@ -722,6 +833,12 @@ impl ZsDic {
 
         Sarc::new(data).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
     }
+}
+
+fn dictionary_sha256(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:X}", hasher.finalize())
 }
 
 #[allow(dead_code)]
@@ -956,7 +1073,7 @@ pub fn get_executable_dir() -> String {
 #[cfg(test)]
 mod yaz0_tests {
     use super::{
-        preferred_dictionary_for_path, sha256, TotkZstd, ZstdDictionary,
+        preferred_dictionary_for_path, sha256, TotkZstd, ZsDic, ZstdDictionary,
         TOTK_ZSTD_COMPRESSION_LEVEL,
     };
     use crate::TotkConfig::TotkConfig;
@@ -1103,6 +1220,52 @@ mod yaz0_tests {
         let data = b"lightweight CLI compression";
         let compressed = codec.compress_empty(data).unwrap();
         assert_eq!(TotkZstd::decompress_empty(&compressed).unwrap(), data);
+    }
+
+    #[test]
+    fn dictionaryless_zsdic_pack_reports_empty_metadata() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/1/ZsDic.pack.zs");
+        if !path.is_file() {
+            return;
+        }
+        let codec =
+            TotkZstd::dictionaryless(Arc::new(TotkConfig::default()), TOTK_ZSTD_COMPRESSION_LEVEL);
+        let source = std::fs::read(&path).unwrap();
+        let (decoded, dictionary) = codec.try_decompress_for_path(&path, &source).unwrap();
+        assert_eq!(dictionary, ZstdDictionary::Empty);
+        assert!(crate::Settings::Magic::is_sarc(&decoded));
+
+        let mut metadata = crate::Open_and_Save::SendData::default();
+        metadata.set_file_metadata(super::TotkFileType::Sarc, Some(dictionary));
+        assert_eq!(metadata.file_metadata, "[Sarc] [ZSTD: Empty]");
+    }
+
+    #[test]
+    fn complete_dictionary_cache_roundtrips_and_rejects_partial_sets() {
+        let Ok(dictionaries) = ZsDic::load_cache() else {
+            return;
+        };
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("zstd-cache-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        dictionaries.save_to_directory(&directory).unwrap();
+        let cached = ZsDic::load_from_directory(&directory).unwrap();
+        assert_eq!(cached.zs_data, dictionaries.zs_data);
+        assert_eq!(cached.bcett_data, dictionaries.bcett_data);
+        assert_eq!(cached.packzs_data, dictionaries.packzs_data);
+
+        std::fs::write(directory.join("zs.zsdic"), [0x37, 0xA4, 0x30, 0xEC, 9]).unwrap();
+        let error = match ZsDic::load_from_directory(&directory) {
+            Ok(_) => panic!("corrupted cached dictionary unexpectedly passed validation"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("SHA-256"));
+        dictionaries.save_to_directory(&directory).unwrap();
+
+        std::fs::remove_file(directory.join("pack.zsdic")).unwrap();
+        assert!(ZsDic::load_from_directory(&directory).is_err());
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
