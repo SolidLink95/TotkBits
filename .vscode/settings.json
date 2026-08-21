@@ -1,14 +1,94 @@
 {
     "rust-analyzer.linkedProjects": [
-        ".\\src-tauri\\Cargo.toml",
-        ".\\src-tauri\\Cargo.toml",
-        ".\\src-tauri\\Cargo.toml"
+        "./src-tauri/Cargo.toml"
     ],
     "cmake.configureOnOpen": false,
+
+    // ---------------------------------------------------------------
+    // Workspace scope: src/, src-tauri/ and the text files in the repo
+    // root. Everything else is hidden from the explorer, search, file
+    // watcher and rust-analyzer.
+    // ---------------------------------------------------------------
+    "files.exclude": {
+        ".cargo": true,
+        ".codex": true,
+        ".git": true,
+        "dist": true,
+        "dist-ssr": true,
+        "ext_projects": true,
+        "node_modules": true,
+        "preview": true,
+        "public": true,
+        "res": true,
+        "target": true,
+        "tmp": true,
+        "bin": true,
+        "src-tauri/target": true,
+        "src-tauri/bin": true,
+        "src-tauri/external": true,
+        "src-tauri/gen": true,
+        "**/__pycache__": true
+    },
     "search.exclude": {
-        "**/node_modules": true,
-        "**/public": true,
+        ".cargo": true,
+        ".claude": true,
+        ".codex": true,
+        "dist": true,
+        "dist-ssr": true,
+        "ext_projects": true,
+        "node_modules": true,
+        "preview": true,
+        "public": true,
+        "res": true,
+        "target": true,
+        "tmp": true,
+        "bin": true,
+        "src-tauri/target": true,
+        "src-tauri/bin": true,
+        "src-tauri/external": true,
+        "src-tauri/gen": true,
+        "src-tauri/misc/**/*.rs": true,
+        "src-tauri/Cargo.lock": true,
         "**/__pycache__": true,
-        "**/target": true
+        "**/*.lock": true
+    },
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/**": true,
+        "**/target/**": true,
+        "**/dist/**": true,
+        "**/preview/**": true,
+        "**/public/**": true,
+        "**/ext_projects/**": true,
+        "**/tmp/**": true,
+        "**/res/**": true,
+        "**/__pycache__/**": true,
+        "**/src-tauri/bin/**": true,
+        "**/src-tauri/external/**": true
+    },
+    "search.useIgnoreFiles": true,
+    "search.useGlobalIgnoreFiles": true,
+    "search.followSymlinks": false,
+    "rust-analyzer.files.excludeDirs": [
+        "ext_projects",
+        "preview",
+        "public",
+        "target",
+        "tmp",
+        "src-tauri/target",
+        "src-tauri/bin",
+        "src-tauri/external",
+        "src-tauri/misc"
+    ],
+    "typescript.tsserver.watchOptions": {
+        "excludeDirectories": [
+            "**/node_modules",
+            "**/target",
+            "**/dist",
+            "**/ext_projects",
+            "**/preview",
+            "**/public"
+        ]
     }
 }
