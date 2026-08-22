@@ -1,0 +1,38 @@
+{
+    "_comment": "Known Luigi's Mansion 3 slot identities from tmp/lm3_code/mario_mod_pipeline/lm3_costume_slots.md. Unlisted slots have no confirmed identity.",
+    "global": {
+        "27": "Story Mode Luigi",
+        "28": "Story Mode Luigi",
+        "29": "Story Mode Luigi",
+        "34": "Mario",
+        "30": "Story Mode Luigi"
+    },
+    "persistent": {
+        "24": "ScareScraper outfit (HD)",
+        "25": "ScareScraper outfit (HD)",
+        "38": "The Green Knight (HD, inferred)",
+        "39": "The Green Knight (HD, inferred)",
+        "40": "The Green Knight (retro)",
+        "41": "The Green Knight (retro)",
+        "42": "The Amazing Luigi (HD, inferred)",
+        "43": "The Amazing Luigi (HD, inferred)",
+        "44": "The Amazing Luigi (retro)",
+        "45": "The Amazing Luigi (retro)",
+        "46": "Paleontoluigist (HD)",
+        "47": "Paleontoluigist (HD)",
+        "48": "Paleontoluigist (retro, inferred)",
+        "49": "Paleontoluigist (retro, inferred)",
+        "50": "Groovigi (HD)",
+        "51": "Groovigi (HD, inferred)",
+        "52": "Groovigi (retro, inferred)",
+        "53": "Groovigi (retro, inferred)",
+        "54": "Mummigi (HD)",
+        "55": "Mummigi (HD)",
+        "56": "Mummigi (retro, inferred)",
+        "57": "Mummigi (retro, inferred)",
+        "58": "Unknown costume (HD)",
+        "59": "Unknown costume (HD)",
+        "60": "Unknown costume (retro)",
+        "61": "Unknown costume (retro)"
+    }
+}

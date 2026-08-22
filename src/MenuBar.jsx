@@ -30,6 +30,7 @@ function MenuBarDisplay({ updateButton = null }) {
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
     compareData, setCompareData,
     setSavingFile, documentSnapshots, aocModelCatalog, setAocModelCatalog,
+    lm3SlotCatalog, setLm3SlotCatalog, setModelBrowserSource,
   } = useEditorContext();
 
   const [showDropdown, setShowDropdown] = useState({ file: false, view: false, tools: false, compare: false, about: false });
@@ -321,21 +322,37 @@ function MenuBarDisplay({ updateButton = null }) {
   }, []);
 
   useEffect(() => {
-    const refresh = () => invoke('get_aoc_model_catalog')
-      .then(setAocModelCatalog)
-      .catch(() => setAocModelCatalog(null));
+    const refresh = () => {
+      invoke('get_aoc_model_catalog')
+        .then(setAocModelCatalog)
+        .catch(() => setAocModelCatalog(null));
+      invoke('get_lm3_slot_catalog')
+        .then(setLm3SlotCatalog)
+        .catch(() => setLm3SlotCatalog(null));
+    };
     refresh();
     window.addEventListener('totkbits:aoc-config-changed', refresh);
     return () => window.removeEventListener('totkbits:aoc-config-changed', refresh);
-  }, [setAocModelCatalog]);
+  }, [setAocModelCatalog, setLm3SlotCatalog]);
+
+  const openModelBrowser = async (source, statusText) => {
+    setModelBrowserSource(source);
+    const { created } = openUtilityDocument('Model browser', 'MODEL_BROWSER');
+    if (created) await new Promise((resolve) => requestAnimationFrame(resolve));
+    setActiveTab('MODEL_BROWSER');
+    setStatusText(statusText);
+  };
 
   const handleOpenAocModels = async (event) => {
     event.stopPropagation();
     closeMenu();
-    const { created } = openUtilityDocument('AOC models', 'AOC_MODELS');
-    if (created) await new Promise((resolve) => requestAnimationFrame(resolve));
-    setActiveTab('AOC_MODELS');
-    setStatusText('Search Age of Calamity models by hash or name');
+    await openModelBrowser('aoc', 'Search Age of Calamity models by hash or name');
+  };
+
+  const handleOpenLm3Models = async (event) => {
+    event.stopPropagation();
+    closeMenu();
+    await openModelBrowser('lm3', "Browse Luigi's Mansion 3 model slots");
   };
   const iconSize = '20px';
   const blankIcon = 'menu/blank.png';
@@ -359,6 +376,7 @@ function MenuBarDisplay({ updateButton = null }) {
     },
     { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
     { label: 'AOC model', onClick: handleOpenAocModels, icon: 'menu/aoc_logo.png', shortcut: '', condition: aocModelCatalog !== null },
+    { label: 'Luigi Mansion 3', onClick: handleOpenLm3Models, icon: blankIcon, shortcut: '', condition: lm3SlotCatalog !== null },
     { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: '', condition: isSaveEnabled },
     { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: '', condition: isSaveEnabled },
     { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },
@@ -522,6 +540,7 @@ function MenuBarDisplay({ updateButton = null }) {
               <option value="all">All</option>
               <option value="g1m">G1M</option>
               <option value="bfres">BFRES</option>
+              <option value="glb">GLB</option>
             </select>
           </label>
           <footer>

@@ -48,6 +48,7 @@ pub struct TotkConfig {
     pub botw_romfs_path: String,
     pub aoc_path: String,
     pub tomodachi_path: String,
+    pub lm3_path: String,
     pub viewport_brightness: f64,
     pub stop_asking_for_romfs: bool,
     pub last_romfs_prompt: u64,
@@ -83,6 +84,7 @@ impl Default for TotkConfig {
             botw_romfs_path: String::new(),
             aoc_path: String::new(),
             tomodachi_path: String::new(),
+            lm3_path: String::new(),
             viewport_brightness: 1.0,
             stop_asking_for_romfs: false,
             last_romfs_prompt: 0,
@@ -213,6 +215,7 @@ impl TotkConfig {
         self.botw_romfs_path = get_string(&json_data, "BOTW WIIU path (optional)");
         self.aoc_path = get_string(&json_data, "AOC path (optional)");
         self.tomodachi_path = get_string(&json_data, "Tomodachi path (optional)");
+        self.lm3_path = get_string(&json_data, "LM3 path (optional)");
         self.viewport_brightness = get_f64(
             &json_data,
             "3D viewport brightness",
@@ -267,6 +270,7 @@ impl TotkConfig {
             "BOTW WIIU path (optional)": self.botw_romfs_path,
             "AOC path (optional)": self.aoc_path,
             "Tomodachi path (optional)": self.tomodachi_path,
+            "LM3 path (optional)": self.lm3_path,
             "3D viewport brightness": self.viewport_brightness,
             "Stop asking for romfs path": self.stop_asking_for_romfs,
             "Last romfs path prompt": self.last_romfs_prompt,

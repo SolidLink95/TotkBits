@@ -1,0 +1,7 @@
+{
+    "_comment": "Luigi's Mansion 3 model archives, relative to the configured LM3 romfs root. Slot counts are hardcoded from tmp/lm3_code research: the Global archive has 815 model slots (expand_archive/EXPANSION_WORKFLOW.md); Persistent slots are documented through 61 (mario_mod_pipeline/lm3_costume_slots.md).",
+    "archives": [
+        { "name": "global", "dict": "global.dict", "slots": 815 },
+        { "name": "persistent", "dict": "Scarescraper/Persistent.dict", "slots": 62 }
+    ]
+}

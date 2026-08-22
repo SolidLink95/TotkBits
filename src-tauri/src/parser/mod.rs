@@ -14,6 +14,8 @@ pub mod glb;
 pub mod hkcl;
 pub mod hkcl_merge;
 pub mod hkcl_to_bphcl;
+pub mod lm3;
+pub mod lm3_parallel;
 pub mod mii;
 pub mod msbt;
 #[cfg(test)]

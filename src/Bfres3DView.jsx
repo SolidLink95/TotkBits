@@ -67,10 +67,20 @@ const textureDataUrl = async (texture) => {
     };
 };
 
+const decodeBase64Bytes = (encoded) => Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+
 const inspectGlb = async (title, documentId) => {
     const encoded = await invoke('read_glb_preview', { documentId });
-    const binary = atob(encoded);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return inspectGlbBytes(title, decodeBase64Bytes(encoded));
+};
+
+const inspectGlbPath = async (path) => {
+    const encoded = await invoke('read_file_base64', { path });
+    const name = path.replace(/\\/g, '/').split('/').pop();
+    return inspectGlbBytes(name, decodeBase64Bytes(encoded));
+};
+
+const inspectGlbBytes = async (title, bytes) => {
     const gltf = await new Promise((resolve, reject) => {
         new GLTFLoader().parse(bytes.buffer, '', resolve, reject);
     });
@@ -889,7 +899,9 @@ function FrontCamera({ render, applyRigidTransform, onReady }) {
 
 function ResourceScene({ bfres, render, animation, animationPlaying = true, animationSeek, onAnimationTime, viewMode, uvIndex, brightness, celShading, glow, culling, showSkeleton, showNormals, weightBone, weightPreviewColors, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes, cacheTextures = true, onCameraReady }) {
     const textures = useResolvedTextures(bfres?.resolvedTextures, cacheTextures);
-    const applyRigidTransform = bfres?.format !== 'G1M';
+    // G1M and LM3 store vertices already in model space. Baking a bone's world
+    // matrix into them (the BFRES rigid-bind path) scatters the geometry.
+    const applyRigidTransform = bfres?.format !== 'G1M' && bfres?.format !== 'LM3';
     const { restWorlds, worldsRef: animationWorlds } = useAnimationPose(render.bones, render.scale_mode, animation, animationPlaying, animationSeek, onAnimationTime);
     return <>
         <SceneExposure brightness={brightness} />
@@ -1235,6 +1247,8 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                                 throw new Error(inspection.error || 'G1M worker failed');
                             }
                             value = inspection.model;
+                        } else if (file.modelKind === 'glb') {
+                            value = await inspectGlbPath(file.source);
                         } else {
                             value = await invoke('inspect_3d_model', { path: file.source });
                         }
@@ -1372,6 +1386,13 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
                 if (value.format === 'G1M') {
                     setStatusText(`Imported G1M in ${importDuration(performance.now() - importStarted)}`);
+                } else if (value.format === 'LM3') {
+                    const textures = value.resolvedTextures?.length || 0;
+                    setStatusText(
+                        `Parsed ${value.name || 'LM3 slot'} in ${importDuration(performance.now() - importStarted)}`
+                        + ` — ${value.render?.meshes?.length || 0} meshes, ${value.render?.bones?.length || 0} bones,`
+                        + ` ${textures} texture${textures === 1 ? '' : 's'}`,
+                    );
                 }
             } catch (reason) {
                 if (!cancelled) setError(String(reason));

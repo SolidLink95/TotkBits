@@ -84,6 +84,25 @@ export const openModelCollectionDocument = (paths, title = 'Selected AOC models'
     return id;
 };
 
+export const openVirtualModelDocument = (fullPath, title, fileMetadata = '', fileType = 'G1M') => {
+    const reusable = documents.length === 1 && documents[0].clean ? documents[0] : null;
+    const id = reusable ? reusable.id : addCleanDocument();
+    documents = documents.map((document) => document.id === id
+        ? {
+            ...document,
+            title,
+            fullPath,
+            fileMetadata,
+            fileType,
+            modelPaths: [fullPath],
+            clean: false,
+        }
+        : document);
+    activateDocument(id);
+    emit();
+    return id;
+};
+
 const updateTitle = (id, title, opened = false) => {
     documents = documents.map((document) => document.id === id
         ? { ...document, title: title || document.title, clean: opened ? false : document.clean }

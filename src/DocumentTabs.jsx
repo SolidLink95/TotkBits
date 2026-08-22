@@ -135,7 +135,11 @@ export default function DocumentTabs() {
         const activeDocument = documents.find((document) => document.id === activeDocumentId);
         const snapshot = latest.documentSnapshots.current.get(activeDocumentId)
             || initialSnapshotForDocument(activeDocument);
-        latest.setActiveTab(snapshot.activeTab);
+        // Utility documents (e.g. the model browser) only ever host their own
+        // view. Their snapshot can record another tab when a preview switches
+        // the view in the same commit as the document change, so the utility
+        // tab always wins on restore.
+        latest.setActiveTab(activeDocument?.utilityTab || snapshot.activeTab);
         latest.setStatusText('Ready');
         latest.setSelectedPath(snapshot.selectedPath);
         latest.setLabelTextDisplay(snapshot.labelTextDisplay);

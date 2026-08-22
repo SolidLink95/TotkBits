@@ -53,7 +53,7 @@ const ButtonsDisplay = () => {
     setSavingFile, documentSnapshots
   } = useEditorContext();
 
-  const displayButtons = !['3D', 'IMAGE', 'AMTA', 'AOC_MODELS'].includes(activeTab);
+  const displayButtons = !['3D', 'IMAGE', 'AMTA', 'MODEL_BROWSER'].includes(activeTab);
   // console.log("Display buttons? ", displayButtons);
   const handlePathToClipboard = (text) => {
     navigator.clipboard.writeText(text).then(() => {

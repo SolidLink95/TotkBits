@@ -26,7 +26,7 @@ import Bfres3DView from './Bfres3DView';
 import AmtaView from './AmtaView';
 import ImageView from './ImageView';
 import AudioView from './AudioView';
-import AocModelView from './AocModelView';
+import ModelBrowserView from './ModelBrowserView';
 
 
 let triggered = false
@@ -298,7 +298,7 @@ function App() {
         setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
       </SearchTextInSarcPrompt>
 
-      {activeTab !== '3D' && activeTab !== 'IMAGE' && activeTab !== 'AMTA' && activeTab !== 'AOC_MODELS' && <ButtonsDisplay
+      {activeTab !== '3D' && activeTab !== 'IMAGE' && activeTab !== 'AMTA' && activeTab !== 'MODEL_BROWSER' && <ButtonsDisplay
         editorRef={editorRef}
         updateEditorContent={updateEditorContent}
         setStatusText={setStatusText}
@@ -332,7 +332,7 @@ function App() {
       <ImageView activeTab={activeTab} setStatusText={setStatusText} />
       <AudioView activeTab={activeTab} setActiveTab={setActiveTab} setStatusText={setStatusText} setpaths={setpaths} />
       <AmtaView activeTab={activeTab} setActiveTab={setActiveTab} />
-      <AocModelView activeTab={activeTab} />
+      <ModelBrowserView activeTab={activeTab} />
       
 
       {activeTab === 'YAML' && readOnly && <div className="physics-yaml-preview-banner" role="status">

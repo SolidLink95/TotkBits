@@ -151,8 +151,15 @@ fn list_batch_render_files_with_zstd(
             continue;
         }
         let path = entry.path();
+        // The size cap avoids content-probing arbitrarily large unrelated
+        // files. GLB files are exempt: the extension is explicit intent, and
+        // GLBs with embedded textures (e.g. downloaded Mii models) routinely
+        // exceed the cap.
+        let is_glb_name = path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("glb"));
         if let Ok(meta) = fs::metadata(path) {
-            if meta.len() > MAX_SIZE {
+            if meta.len() > MAX_SIZE && !is_glb_name {
                 continue;
             }
         }
@@ -183,6 +190,48 @@ fn list_batch_render_files_with_zstd(
 mod tests {
     use super::list_batch_render_files_with_zstd;
     use std::{path::Path, sync::Arc};
+
+    #[test]
+    fn discovers_glb_files_beyond_the_generic_size_cap() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("../tmp/batch-render-glb-{}", std::process::id()));
+        let output = root.join("renders");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        // Detection only reads the magic; a full GLB body is not required.
+        let mut oversized_glb = b"glTF".to_vec();
+        oversized_glb.resize(2 * 1024 * 1024, 0);
+        std::fs::write(root.join("model.glb"), &oversized_glb).unwrap();
+        std::fs::write(root.join("small.glb"), b"glTF\x02\x00\x00\x00").unwrap();
+        // Oversized non-GLB files must still be skipped by the size cap.
+        std::fs::write(root.join("big.bin"), vec![0_u8; 2 * 1024 * 1024]).unwrap();
+
+        let config = Arc::new(crate::TotkConfig::TotkConfig::default());
+        let zstd = crate::Zstd::TotkZstd::dictionaryless(config, 19);
+        let files =
+            list_batch_render_files_with_zstd(root.clone(), output, "overwrite", "all", &zstd)
+                .unwrap();
+        assert_eq!(files.len(), 2);
+        for file in &files {
+            assert_eq!(file.model_kind, "glb");
+            assert_eq!(
+                Path::new(&file.output)
+                    .extension()
+                    .and_then(|value| value.to_str()),
+                Some("png")
+            );
+        }
+        let files = list_batch_render_files_with_zstd(
+            root.clone(),
+            root.join("renders"),
+            "overwrite",
+            "g1m",
+            &zstd,
+        )
+        .unwrap();
+        assert!(files.is_empty(), "kind filter must exclude GLB files");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn supplied_batch_render_corpus_is_discovered_and_renderable() {

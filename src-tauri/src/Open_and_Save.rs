@@ -835,6 +835,75 @@ mod remembered_compression_tests {
     }
 }
 
+#[cfg(test)]
+mod disk_open_router_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/open_router")
+    }
+
+    /// The fallback router must identify files by content when the extension
+    /// says nothing, reading the file once instead of once per opener.
+    #[test]
+    fn fallback_chain_identifies_disguised_files_by_content() {
+        let app = crate::TotkApp::TotkBitsApp::default();
+        let dir = fixture_dir();
+        // The compressed fixtures require the TOTK dictionaries.
+        if !dir.is_dir() || app.zstd.decompressor.bcett.is_none() {
+            return;
+        }
+
+        let (opened, data) =
+            file_from_disk_to_senddata(dir.join("disguised_bcett.bin"), app.zstd.clone()).unwrap();
+        assert_eq!(data.tab, "YAML");
+        assert_eq!(opened.file_type, TotkFileType::Bcett);
+        assert!(!data.text.is_empty());
+
+        let (opened, data) =
+            file_from_disk_to_senddata(dir.join("disguised_ainb.bin"), app.zstd.clone()).unwrap();
+        assert_eq!(data.tab, "YAML");
+        assert_eq!(opened.file_type, TotkFileType::AINB);
+        assert!(!data.text.is_empty());
+
+        let (opened, data) =
+            file_from_disk_to_senddata(dir.join("disguised_bfev.bin"), app.zstd.clone()).unwrap();
+        assert_eq!(data.tab, "YAML");
+        assert_eq!(opened.file_type, TotkFileType::Evfl);
+        assert_eq!(data.lang, "json");
+        assert!(!data.text.is_empty());
+
+        let (opened, data) =
+            file_from_disk_to_senddata(dir.join("disguised_text.bin"), app.zstd.clone()).unwrap();
+        assert_eq!(opened.file_type, TotkFileType::Text);
+        assert!(data.text.contains("plain text disguised as binary"));
+    }
+
+    #[test]
+    fn extension_router_still_handles_recognized_names() {
+        let app = crate::TotkApp::TotkBitsApp::default();
+        let source = fixture_dir().join("Eldin_SkyIsland01_Dynamic.bcett.byml.zs");
+        if !source.is_file() || app.zstd.decompressor.bcett.is_none() {
+            return;
+        }
+        let (opened, data) = file_from_disk_to_senddata(&source, app.zstd.clone()).unwrap();
+        assert_eq!(data.tab, "YAML");
+        assert_eq!(opened.file_type, TotkFileType::Bcett);
+        assert!(!data.text.is_empty());
+    }
+
+    #[test]
+    fn missing_file_fails_without_opener_probing() {
+        let app = crate::TotkApp::TotkBitsApp::default();
+        assert!(file_from_disk_to_senddata(
+            fixture_dir().join("does_not_exist.bin"),
+            app.zstd.clone()
+        )
+        .is_none());
+    }
+}
+
 pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     path: P,
     zstd: Arc<TotkZstd>,
@@ -845,36 +914,119 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
         file_name.display()
     );
     open_file_from_disk_name_guess(file_name, zstd.clone())
-        .or_else(|| Xlink_rs::open_xlink(file_name, zstd.clone()))
-        // .or_else(|| GameDataList::open(&file_name, zstd.clone()))
-        .or_else(|| TagProduct::open_tag(&file_name, zstd.clone()))
-        .or_else(|| Esetb::open_esetb(&file_name, zstd.clone()))
-        .or_else(|| Restbl::open_restbl(&file_name, zstd.clone()))
-        .or_else(|| AsbFile::open_asb(&file_name, zstd.clone()))
-        .or_else(|| AinbFile::open_ainb(&file_name, zstd.clone()))
-        .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
-        .or_else(|| MsbtFile::open_mstb(file_name))
-        .or_else(|| crate::file_format::Model3D::bfres::BfresFile::open(file_name, zstd.clone()))
-        .or_else(|| crate::parser::AOC::g1m::G1mFile::open(file_name))
-        .or_else(|| crate::parser::fbx::FbxFile::open(file_name))
-        // Structured formats must run before the generic image detector. In
-        // particular, many BFEVFL files use the shared `.zs` compres2sion suffix.
-        .or_else(|| BfevFile::open_bfev(&file_name, zstd.clone()))
-        .or_else(|| crate::file_format::Image::ImageDocument::open(file_name, &zstd))
-        .or_else(|| crate::file_format::bphcl::BphclFile::open(file_name))
-        .or_else(|| crate::file_format::hkcl::HkclFile::open(file_name))
-        .or_else(|| crate::file_format::bphhb::BphhbFile::open(file_name))
-        .or_else(|| crate::file_format::SimpleOpeners::AampFile::open_aamp(&file_name))
-        .or_else(|| SmoSaveFile::open_smo_save_file(&file_name, zstd.clone()))
-        .or_else(|| crate::file_format::SimpleOpeners::TextFile::open_text(&file_name))
+        .or_else(|| file_from_disk_content_guess(file_name, zstd.clone()))
         .map(|(opened_file, data)| {
             println!(
                 "[OPEN ROUTER] opener chain accepted {} as {:?}",
                 file_name.display(),
                 opened_file.file_type
             );
-            // self.opened_file = opened_file;
-            // self.internal_file = None;
             (opened_file, data)
         })
+}
+
+/// Fallback for files the extension router rejects. The file is read and
+/// decompressed once up front; each opener then runs only when its magic bytes
+/// (or file name, for name-bound formats) say it can succeed, instead of every
+/// opener repeating its own disk read and decompression. Openers with
+/// disk-only behavior (ASB's BAEV prompt, BYML's full dictionary handling,
+/// G1M's AOC display names, images, BPHCL) reread the file, but only after
+/// their magic matched.
+fn file_from_disk_content_guess<'a>(
+    file_name: &Path,
+    zstd: Arc<TotkZstd<'a>>,
+) -> Option<(OpenedFile<'a>, SendData)> {
+    let bytes = std::fs::read(file_name).ok()?;
+    // Single decompression probe shared by the magic gates below; for
+    // uncompressed files this is the raw content.
+    let (probe, _) = zstd.try_decompress_all_ordered_safe(&bytes, file_name);
+
+    if Magic::is_xlink(&probe) {
+        if let Some(result) = Xlink_rs::open_xlink_binary(&bytes, file_name, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    // Name-bound openers below reject non-matching files before any disk I/O.
+    if let Some(result) = TagProduct::open_tag(file_name, zstd.clone()) {
+        return Some(result);
+    }
+    if let Some(result) = Esetb::open_esetb(file_name, zstd.clone()) {
+        return Some(result);
+    }
+    if let Some(result) = Restbl::open_restbl(file_name, zstd.clone()) {
+        return Some(result);
+    }
+    if Magic::is_asb(&probe) {
+        // The disk opener also prompts for the optional companion BAEV file.
+        if let Some(result) = AsbFile::open_asb(file_name, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if Magic::is_ainb(&probe) {
+        if let Some(result) = AinbFile::open_ainb_binary(&bytes, file_name, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if Magic::is_byml(&probe) {
+        // The disk opener resolves every TOTK dictionary and the Bcett file
+        // type; the in-memory BYML opener only knows the Zs dictionary.
+        if let Some(result) = BymlFile::open_byml(file_name, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if let Some(result) = MsbtFile::open_mstb_binary(&bytes, file_name, zstd.clone()) {
+        return Some(result);
+    }
+    if Magic::is_bfres(&probe) {
+        if let Some(result) = crate::file_format::Model3D::bfres::BfresFile::open_binary(
+            &bytes,
+            file_name,
+            zstd.clone(),
+        ) {
+            return Some(result);
+        }
+    }
+    if Magic::is_g1m(&bytes) {
+        // The disk opener resolves AOC display names for the tab label.
+        if let Some(result) = crate::parser::AOC::g1m::G1mFile::open(file_name) {
+            return Some(result);
+        }
+    }
+    if let Some(result) = crate::parser::fbx::FbxFile::open_binary(file_name, &bytes) {
+        return Some(result);
+    }
+    // Structured formats must run before the generic image detector. In
+    // particular, many BFEVFL files use the shared `.zs` compression suffix.
+    if Magic::is_evfl(&probe) {
+        if let Some(result) = BfevFile::open_bfev_binary(&bytes, file_name, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if crate::file_format::Image::ImageDocument::supports(file_name, &bytes, Some(zstd.as_ref())) {
+        if let Some(result) = crate::file_format::Image::ImageDocument::open(file_name, &zstd) {
+            return Some(result);
+        }
+    }
+    if Magic::is_bphcl(&bytes) {
+        if let Some(result) = crate::file_format::bphcl::BphclFile::open(file_name) {
+            return Some(result);
+        }
+    }
+    if let Some(result) = crate::file_format::hkcl::HkclFile::open(file_name) {
+        return Some(result);
+    }
+    if let Some(result) = crate::file_format::bphhb::BphhbFile::open(file_name) {
+        return Some(result);
+    }
+    if let Some(result) = crate::file_format::SimpleOpeners::AampFile::open_aamp_binary(
+        &bytes,
+        file_name,
+        zstd.clone(),
+    ) {
+        return Some(result);
+    }
+    if let Some(result) = SmoSaveFile::open_smo_save_file_binary(&bytes, file_name, zstd.clone()) {
+        return Some(result);
+    }
+    crate::file_format::SimpleOpeners::TextFile::open_text_binary(&bytes, file_name, zstd)
 }

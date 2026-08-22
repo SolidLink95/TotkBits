@@ -272,6 +272,10 @@ impl Magic {
         data.starts_with(b"Kaydara FBX Binary")
     }
     #[inline]
+    pub fn is_glb(data: &[u8]) -> bool {
+        data.starts_with(b"glTF")
+    }
+    #[inline]
     pub fn is_dds(data: &[u8]) -> bool {
         data.starts_with(b"DDS ")
     }

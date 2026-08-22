@@ -50,6 +50,20 @@ pub fn get_aoc_model_catalog(
 }
 
 #[tauri::command]
+pub fn get_lm3_slot_catalog() -> Result<Option<Vec<crate::parser::lm3::Lm3SlotEntry>>, String> {
+    let config =
+        crate::TotkConfig::TotkConfig::safe_new(false).map_err(|error| error.to_string())?;
+    if config.lm3_path.is_empty() {
+        return Ok(None);
+    }
+    let entries = crate::parser::lm3::slot_catalog(Path::new(&config.lm3_path));
+    if entries.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(entries))
+}
+
+#[tauri::command]
 pub fn preview_aoc_model(hash: String) -> Result<Option<String>, String> {
     if hash.len() != 8 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("invalid AOC model hash".into());

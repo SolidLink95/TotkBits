@@ -1099,7 +1099,11 @@ impl ImageDocument {
         std::fs::write(output, png)
     }
 
-    fn supports(path: &Path, data: &[u8], zstd: Option<&crate::Zstd::TotkZstd<'_>>) -> bool {
+    pub(crate) fn supports(
+        path: &Path,
+        data: &[u8],
+        zstd: Option<&crate::Zstd::TotkZstd<'_>>,
+    ) -> bool {
         if crate::Settings::Magic::is_dds(data)
             || crate::Settings::Magic::is_bntx(data)
             || crate::Settings::Magic::is_g1t(data)

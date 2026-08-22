@@ -211,6 +211,8 @@ impl Pathlib {
             Some("g1m")
         } else if crate::Settings::Magic::is_fbx(&data) {
             Some("fbx")
+        } else if crate::Settings::Magic::is_glb(&data) {
+            Some("glb")
         } else {
             None
         }

@@ -1,17 +1,19 @@
 import { useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { OpenFileFromPath } from './ButtonClicks';
-import { openModelCollectionDocument } from './DocumentState';
+import { openModelCollectionDocument, openVirtualModelDocument } from './DocumentState';
 import { useEditorContext } from './StateManager';
 
-export default function AocModelView({ activeTab }) {
+export default function ModelBrowserView({ activeTab }) {
     const {
-        aocModelCatalog, setStatusText, setActiveTab, setLabelTextDisplay,
+        aocModelCatalog, lm3SlotCatalog, modelBrowserSource, setModelBrowserSource,
+        setStatusText, setActiveTab, setLabelTextDisplay,
         setpaths, updateEditorContent,
     } = useEditorContext();
     const minCharCount = 3;
     const maxDisplayedRecords = 1024;
     const [filter, setFilter] = useState('');
+    const [lm3Filter, setLm3Filter] = useState('');
     const [hideMissingPreviews, setHideMissingPreviews] = useState(false);
     const [hideFarLod, setHideFarLod] = useState(true);
     const [minSizeMb, setMinSizeMb] = useState('');
@@ -38,6 +40,17 @@ export default function AocModelView({ activeTab }) {
         () => matches.slice(0, maxDisplayedRecords),
         [matches],
     );
+    const lm3Query = lm3Filter.trim().toLowerCase();
+    const lm3Matches = useMemo(() => {
+        if (!lm3SlotCatalog) return [];
+        return lm3SlotCatalog.filter((entry) => !lm3Query
+            || entry.id.toLowerCase().includes(lm3Query)
+            || String(entry.name || '').toLowerCase().includes(lm3Query));
+    }, [lm3SlotCatalog, lm3Query]);
+    const displayedLm3Matches = useMemo(
+        () => lm3Matches.slice(0, maxDisplayedRecords),
+        [lm3Matches],
+    );
     const markMissingPreview = (hash, image) => {
         setMissingPreviewHashes((current) => {
             if (current.has(hash)) return current;
@@ -63,6 +76,13 @@ export default function AocModelView({ activeTab }) {
         } catch (error) {
             setStatusText(`Unable to preview AOC model ${hash}: ${error}`);
         }
+    };
+    const previewLm3Slot = (entry) => {
+        setStatusText(`Loading Luigi's Mansion 3 slot ${entry.id}...`);
+        // The new document carries modelPaths, so the document switch itself
+        // restores the 3D tab; setting it here as well would poison the model
+        // browser's own tab snapshot with '3D'.
+        openVirtualModelDocument(`lm3://${entry.archive}/${entry.slot}`, entry.id, '[LM3] [ReadOnly]', 'LM3');
     };
     const toggleSelected = (hash) => {
         setSelectedHashes((current) => {
@@ -98,12 +118,87 @@ export default function AocModelView({ activeTab }) {
             setStatusText(`Unable to copy AOC model hash ${hash}: ${error}`);
         }
     };
+    const copySlotId = async (id) => {
+        try {
+            await navigator.clipboard.writeText(id);
+            setStatusText(`Copied Luigi's Mansion 3 slot id ${id}`);
+        } catch (error) {
+            setStatusText(`Unable to copy slot id ${id}: ${error}`);
+        }
+    };
     const displayName = (name) => {
         const value = name || '—';
         return value.length > 40 ? `${value.slice(0, 37)}...` : value;
     };
     const displaySize = (size) => `${(Number(size || 0) / (1024 * 1024)).toFixed(2)} MB`;
-    if (activeTab !== 'AOC_MODELS') return null;
+    if (activeTab !== 'MODEL_BROWSER') return null;
+    const sourceToggle = aocModelCatalog !== null && lm3SlotCatalog !== null && <div className="aoc-model-filters">
+        {/* <div className="aoc-model-preview-filter">
+            <input
+                type="radio"
+                name="model-browser-source"
+                checked={modelBrowserSource !== 'lm3'}
+                onChange={() => setModelBrowserSource('aoc')}
+                aria-label="Browse Age of Calamity models"
+            />
+            <span>AOC</span>
+        </div>
+        <div className="aoc-model-preview-filter">
+            <input
+                type="radio"
+                name="model-browser-source"
+                checked={modelBrowserSource === 'lm3'}
+                onChange={() => setModelBrowserSource('lm3')}
+                aria-label="Browse Luigi's Mansion 3 slots"
+            />
+            <span>Luigi&#39;s Mansion 3</span>
+        </div> */}
+    </div>;
+    if (modelBrowserSource === 'lm3') {
+        const lm3Title = lm3Query
+            ? `Luigi's Mansion 3 slots (found ${lm3Matches.length})`
+            : `Luigi's Mansion 3 slots (${lm3Matches.length})`;
+        return <main className="aoc-model-view">
+            <header>
+                <h2>{lm3Title}</h2>
+                <input
+                    autoFocus
+                    type="search"
+                    value={lm3Filter}
+                    onChange={(event) => setLm3Filter(event.target.value)}
+                    placeholder="Filter by slot id (e.g. global_25) or costume name"
+                    aria-label="Filter Luigi's Mansion 3 slots"
+                />
+                {sourceToggle}
+            </header>
+            {displayedLm3Matches.length > 0 && <div className="aoc-model-results">
+                {/* The row keeps every cell of the shared seven-column grid so
+                    LM3 entries line up exactly like the AOC ones: the select
+                    and size columns are empty placeholders, and slots have no
+                    rendered previews yet, so they all use the placeholder. */}
+                {displayedLm3Matches.map((entry) => <div className="aoc-model-result" key={entry.id}>
+                    <span />
+                    <img src="/no_preview.png" alt="" />
+                    <code>{entry.id}</code>
+                    <span title={entry.name || undefined}>{displayName(entry.name)}</span>
+                    <span className="aoc-model-size" />
+                    <button
+                        className="aoc-model-copy"
+                        type="button"
+                        onClick={() => copySlotId(entry.id)}
+                        title={`Copy ${entry.id}`}
+                        aria-label={`Copy Luigi's Mansion 3 slot id ${entry.id}`}
+                    >
+                        <img src="/clipboard.png" alt="" />
+                    </button>
+                    <button type="button" onClick={() => previewLm3Slot(entry)}>Preview</button>
+                </div>)}
+            </div>}
+            {lm3Matches.length > maxDisplayedRecords && <p className="aoc-model-result-limit" role="status">
+                Showing the first {maxDisplayedRecords} of {lm3Matches.length} slots. Refine the filter to narrow the results.
+            </p>}
+        </main>;
+    }
     const aocTitle = allMatches.length > 0 && filter.length >= minCharCount ? `AOC models (found ${allMatches.length})` : "AOC models";
     return <main className="aoc-model-view">
         <header>
@@ -116,6 +211,7 @@ export default function AocModelView({ activeTab }) {
                 placeholder="Filter by hash or name"
                 aria-label="Filter AOC models"
             />
+            {sourceToggle}
             <div className="aoc-model-filters">
                 <div className="aoc-model-preview-filter">
                     <input

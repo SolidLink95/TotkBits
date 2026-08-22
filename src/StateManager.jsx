@@ -58,6 +58,8 @@ export const EditorProvider = ({ children }) => {
 
   const [config, setConfig] = useState({});
   const [aocModelCatalog, setAocModelCatalog] = useState(null);
+  const [lm3SlotCatalog, setLm3SlotCatalog] = useState(null);
+  const [modelBrowserSource, setModelBrowserSource] = useState('aoc');
   const [configLoading, setConfigLoading] = useState(false);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
 
@@ -79,6 +81,7 @@ export const EditorProvider = ({ children }) => {
   const value = {
     isOptionsOpen, setIsOptionsOpen,
     config, setConfig, aocModelCatalog, setAocModelCatalog,
+    lm3SlotCatalog, setLm3SlotCatalog, modelBrowserSource, setModelBrowserSource,
     configLoading, setConfigLoading,
     updateState, setUpdateState,
     compareData, setCompareData,

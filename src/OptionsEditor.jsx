@@ -9,6 +9,7 @@ const fields = [
     { key: "BOTW WIIU path (optional)", label: "BOTW Wii U path", type: "path" },
     { key: "AOC path (optional)", label: "Age of Calamity path", type: "path" },
     { key: "Tomodachi path (optional)", label: "Tomodachi Life path", type: "path" },
+    { key: "LM3 path (optional)", label: "Luigi's Mansion 3 RomFS path", type: "path" },
     { key: "UI scale", label: "Entire UI scale", type: "number", min: 0.2, max: 3.0, step: 0.1 },
     { key: "font size", label: "Editor font size", type: "number", min: 8, max: 72 },
     { key: "Context menu font size", label: "Context-menu font size", type: "number", min: 8, max: 40 },

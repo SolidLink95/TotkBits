@@ -137,6 +137,38 @@ pub fn inspect_3d_model(
 ) -> Result<serde_json::Value, String> {
     require_experimental_visuals()?;
     let documents = app_handle.state::<DocumentState>();
+    // LM3 model-browser previews use a virtual path: the slot is parsed out of
+    // the configured read-only LM3 romfs, never from a file on disk.
+    if let Some(reference) = path.strip_prefix("lm3://") {
+        let (archive_name, slot) = reference
+            .split_once('/')
+            .ok_or_else(|| format!("invalid LM3 slot reference: {path}"))?;
+        let slot: usize = slot
+            .parse()
+            .map_err(|_| format!("invalid LM3 slot number in {path}"))?;
+        let spec = crate::parser::lm3::archive_spec(archive_name)
+            .ok_or_else(|| format!("unknown LM3 archive: {archive_name}"))?;
+        let lm3_path = documents.with(&documentId, |app| app.zstd.totk_config.lm3_path.clone());
+        if lm3_path.is_empty() {
+            return Err("The Luigi's Mansion 3 romfs path is not configured".into());
+        }
+        let dict_path = Path::new(&lm3_path).join(&spec.dict);
+        // The archive's large zlib entries inflate concurrently; both readers
+        // produce identical models, this one just gets there sooner.
+        let (model, resolved_textures) =
+            crate::parser::lm3_parallel::parse_slot_parallel(&dict_path, archive_name, slot)
+                .map_err(|error| {
+                    format!("Unable to load LM3 slot {archive_name}_{slot}: {error}")
+                })?;
+        let mut value = serde_json::to_value(model).map_err(|error| error.to_string())?;
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "resolvedTextures".into(),
+                serde_json::to_value(resolved_textures).map_err(|error| error.to_string())?,
+            );
+        }
+        return Ok(value);
+    }
     let (internal_bfres, internal_bfres_data, visual_data, romfs, aoc_path, tomodachi_path) =
         documents.with(&documentId, |app| {
             (

@@ -8,6 +8,11 @@ TotkBits is a Windows-only Tauri 2 desktop app for inspecting and editing Ninten
 
 Never read, write, or execute anything outside `%USERPROFILE%\Desktop\coding\TotkBits` (or its mirror `W:\coding\TotkBits`). Put temporary and test files in `./tmp/` (gitignored). Never read `*.rs` files under `src-tauri/misc/` — those are backups, not build inputs.
 
+Exceptions:
+
+- `E:\TOTK_modding\0100F2C0115B6000\romfs` — **read-only** access is granted (a TOTK RomFS dump, useful as test input). Never write, delete, or move anything there.
+- All writes outside the repo working set — test fixtures, scratch output, copies of RomFS files — are permitted **only inside `./tmp/`**.
+
 ### In-scope paths
 
 Only these are part of the working set — they are the same paths `.vscode/settings.json` leaves visible to VS Code's explorer, search, file watcher and rust-analyzer:
