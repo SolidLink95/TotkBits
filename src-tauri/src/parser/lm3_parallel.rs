@@ -77,6 +77,14 @@ pub fn parse_slot_parallel_timed(
     let shared_elapsed = decompress_started.elapsed();
 
     let workers_started = Instant::now();
+    // A worker panic must not take the app down with it; joining reports it
+    // as an ordinary read failure instead.
+    let worker_panicked = || {
+        io::Error::new(
+            io::ErrorKind::Other,
+            "an LM3 archive worker thread panicked",
+        )
+    };
     let (file54, textures, file53, shared): (_, _, _, Option<Lm3TextureSource>) =
         std::thread::scope(|scope| {
             let archive = &archive;
@@ -92,13 +100,11 @@ pub fn parse_slot_parallel_timed(
             // alongside the local entries keeps it off the critical path.
             let shared =
                 scope.spawn(move || super::lm3::shared_texture_source(dict_path, archive_name));
-            // A worker panic is not recoverable state, so propagate it rather than
-            // silently returning a half-read slot.
             (
-                model.join().expect("LM3 model worker panicked"),
-                textures.join().expect("LM3 texture worker panicked"),
-                rest.join().expect("LM3 skeleton worker panicked"),
-                shared.join().expect("LM3 shared-texture worker panicked"),
+                model.join().unwrap_or_else(|_| Err(worker_panicked())),
+                textures.join().unwrap_or((None, None)),
+                rest.join().unwrap_or(None),
+                shared.join().unwrap_or(None),
             )
         });
     let workers = workers_started.elapsed();

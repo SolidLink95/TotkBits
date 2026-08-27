@@ -101,8 +101,10 @@ pub fn inspect_bfres(
     path: String,
 ) -> Result<crate::file_format::Model3D::bfres::BfresFile, String> {
     require_experimental_visuals()?;
-    crate::file_format::Model3D::bfres::BfresFile::from_path(path)
-        .map_err(|error| error.to_string())
+    crate::Settings::catch_panic(|| {
+        crate::file_format::Model3D::bfres::BfresFile::from_path(path)
+            .map_err(|error| error.to_string())
+    })
 }
 
 #[tauri::command]
@@ -126,11 +128,24 @@ pub fn inspect_g1a_animation(
     path: String,
 ) -> Result<crate::file_format::Animation::g1a::G1aFile, String> {
     require_experimental_visuals()?;
-    crate::file_format::Animation::g1a::G1aFile::from_path(path).map_err(|error| error.to_string())
+    crate::Settings::catch_panic(|| {
+        crate::file_format::Animation::g1a::G1aFile::from_path(path)
+            .map_err(|error| error.to_string())
+    })
 }
 
 #[tauri::command]
 pub fn inspect_3d_model(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    // Model parsing walks untrusted game data through several decoders; a
+    // panic anywhere in there must surface as an error, not close the app.
+    crate::Settings::catch_panic(|| inspect_3d_model_inner(app_handle, documentId, path))
+}
+
+fn inspect_3d_model_inner(
     app_handle: tauri::AppHandle,
     documentId: String,
     path: String,

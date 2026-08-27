@@ -57,6 +57,7 @@ impl CliCommand {
                 | "g1m_to_fbx"
                 | "lm3_render"
                 | "lm3_render_all"
+                | "lm3_slot_sizes"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
         let valid_arguments = if operation == "decompress_dir" {
@@ -65,7 +66,7 @@ impl CliCommand {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -146,6 +147,7 @@ impl CliCommand {
             "g1m_to_fbx" => self.g1m_to_fbx(),
             "lm3_render" => self.lm3_render(),
             "lm3_render_all" => self.lm3_render_all(),
+            "lm3_slot_sizes" => self.lm3_slot_sizes(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -609,7 +611,7 @@ impl CliCommand {
                 }
                 // Texture decoding can panic inside third-party decoders on
                 // malformed slot data; one bad slot must not end the batch.
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let result = crate::Settings::catch_panic(|| {
                     lm3::parse_slot_from_files(&files, name, slot, shared)
                         .map_err(|error| error.to_string())
                         .and_then(|(model, textures)| {
@@ -621,14 +623,6 @@ impl CliCommand {
                                 crate::file_format::Model3D::SoftRender::DEFAULT_SIZE,
                             )
                         })
-                }))
-                .unwrap_or_else(|panic| {
-                    let message = panic
-                        .downcast_ref::<String>()
-                        .map(String::as_str)
-                        .or_else(|| panic.downcast_ref::<&str>().copied())
-                        .unwrap_or("parser panicked");
-                    Err(format!("panicked: {message}"))
                 })
                 .and_then(|png| write_output(&output, &png));
                 match result {
@@ -645,6 +639,44 @@ impl CliCommand {
         }
         println!("Rendered {rendered} slot(s); skipped {skipped} existing; failed {failed}");
         Ok(())
+    }
+
+    /// Emits `{archive: {slot: bytes}}` for every archive in the romfs, ready
+    /// to sit under the "sizes" key of `misc/lm3_slot_names.json`.
+    fn lm3_slot_sizes(&self) -> Result<(), String> {
+        use crate::parser::lm3;
+        use std::collections::BTreeMap;
+        if !self.input.is_dir() {
+            return Err(format!(
+                "LM3 romfs is not a directory: {}",
+                self.input.display()
+            ));
+        }
+        let mut sizes: BTreeMap<String, BTreeMap<String, u64>> = BTreeMap::new();
+        for (name, dict_path) in lm3::discover_archives(&self.input) {
+            let table = match lm3::read_entry_from_disk(&dict_path, lm3::TABLE_ENTRY) {
+                Ok(table) => table,
+                Err(error) => {
+                    eprintln!("{name}: {error}");
+                    continue;
+                }
+            };
+            let per_slot = lm3::slot_sizes_from_table(&table);
+            if per_slot.is_empty() {
+                continue;
+            }
+            println!("{name}: {} slot(s)", per_slot.len());
+            sizes.insert(
+                name,
+                per_slot
+                    .iter()
+                    .enumerate()
+                    .map(|(slot, size)| (slot.to_string(), *size))
+                    .collect(),
+            );
+        }
+        let json = serde_json::to_string_pretty(&sizes).map_err(|error| error.to_string())?;
+        write_output(&self.output, json.as_bytes())
     }
 }
 

@@ -232,8 +232,7 @@ pub fn render_to_png(
                     if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
                         continue;
                     }
-                    let inverse_depth =
-                        w0 * screen[0][2] + w1 * screen[1][2] + w2 * screen[2][2];
+                    let inverse_depth = w0 * screen[0][2] + w1 * screen[1][2] + w2 * screen[2][2];
                     if inverse_depth <= 0.0 {
                         continue;
                     }
@@ -275,10 +274,8 @@ pub fn render_to_png(
                     };
                     // Double-sided lambert: LM3 winding varies per mesh, so
                     // shade by the unsigned incidence angle.
-                    let incidence = (normal[0] * light[0]
-                        + normal[1] * light[1]
-                        + normal[2] * light[2])
-                        .abs();
+                    let incidence =
+                        (normal[0] * light[0] + normal[1] * light[1] + normal[2] * light[2]).abs();
                     let intensity = (AMBIENT + DIFFUSE * incidence).min(1.0);
                     depth[pixel] = pixel_depth;
                     for channel in 0..3 {

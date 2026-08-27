@@ -42,11 +42,25 @@ export default function ModelBrowserView({ activeTab }) {
     );
     const lm3Query = lm3Filter.trim().toLowerCase();
     const maxLm3Results = 2000;
+    const [lm3MinSizeMb, setLm3MinSizeMb] = useState('');
+    const [lm3Sort, setLm3Sort] = useState('name-asc');
+    const lm3MinimumBytes = Math.max(0, Number(lm3MinSizeMb) || 0) * 1024 * 1024;
     const lm3Matches = useMemo(() => {
         if (!lm3SlotCatalog || lm3Query.length < minCharCount) return [];
+        const [key, direction] = lm3Sort.split('-');
         return lm3SlotCatalog.filter((entry) => entry.id.toLowerCase().includes(lm3Query)
-            || String(entry.name || '').toLowerCase().includes(lm3Query));
-    }, [lm3SlotCatalog, lm3Query]);
+            || String(entry.name || '').toLowerCase().includes(lm3Query))
+            .filter((entry) => Number(entry.size || 0) >= lm3MinimumBytes)
+            .sort((left, right) => {
+                const result = key === 'size'
+                    ? Number(left.size || 0) - Number(right.size || 0)
+                    : String(left.name || left.id).localeCompare(String(right.name || right.id), undefined, {
+                        numeric: true,
+                        sensitivity: 'base',
+                    });
+                return direction === 'desc' ? -result : result;
+            });
+    }, [lm3SlotCatalog, lm3Query, lm3MinimumBytes, lm3Sort]);
     const lm3TooMany = lm3Matches.length > maxLm3Results;
     const displayedLm3Matches = lm3TooMany ? [] : lm3Matches;
     const markMissingPreview = (hash, image) => {
@@ -168,6 +182,34 @@ export default function ModelBrowserView({ activeTab }) {
                     aria-label="Filter Luigi's Mansion 3 slots"
                 />
                 {sourceToggle}
+                <div className="aoc-model-filters">
+                    <label className="aoc-model-preview-filter">
+                        <span>Min size (MB)</span>
+                        <input
+                            className="aoc-model-min-size"
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            value={lm3MinSizeMb}
+                            onChange={(event) => setLm3MinSizeMb(event.target.value)}
+                            placeholder="0"
+                            aria-label="Minimum slot size in MB"
+                        />
+                    </label>
+                    <label className="aoc-model-preview-filter">
+                        <span>Sort</span>
+                        <select
+                            value={lm3Sort}
+                            onChange={(event) => setLm3Sort(event.target.value)}
+                            aria-label="Sort Luigi's Mansion 3 slots"
+                        >
+                            <option value="name-asc">Name ascending</option>
+                            <option value="name-desc">Name descending</option>
+                            <option value="size-asc">Size ascending</option>
+                            <option value="size-desc">Size descending</option>
+                        </select>
+                    </label>
+                </div>
             </header>
             {displayedLm3Matches.length > 0 && <div className="aoc-model-results">
                 {/* The row keeps every cell of the shared seven-column grid so
@@ -188,7 +230,7 @@ export default function ModelBrowserView({ activeTab }) {
                     />
                     <code>{entry.id}</code>
                     <span title={entry.name || undefined}>{displayName(entry.name)}</span>
-                    <span className="aoc-model-size" />
+                    <span className="aoc-model-size">{entry.size != null ? displaySize(entry.size) : ''}</span>
                     <button
                         className="aoc-model-copy"
                         type="button"

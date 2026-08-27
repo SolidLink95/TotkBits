@@ -50,6 +50,18 @@ use crate::TauriCommands::{
 };
 
 fn main() -> io::Result<()> {
+    // texture2ddecoder panics on malformed game textures; those panics are
+    // caught and reported as skipped textures, so the default hook's trace
+    // for them is pure console noise. Every other panic keeps its trace.
+    let default_panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let from_texture_decoder = info
+            .location()
+            .is_some_and(|location| location.file().contains("texture2ddecoder"));
+        if !from_texture_decoder {
+            default_panic_hook(info);
+        }
+    }));
     let cli = tools::Cli::CliCommand::from_env();
     if let Some(command) = cli {
         return command.execute().map_err(std::io::Error::other);

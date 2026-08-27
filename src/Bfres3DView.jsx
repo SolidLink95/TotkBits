@@ -1784,8 +1784,10 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     
                 </section>}
                 {panel === 'resources' && <NodeInspector detail={detail} textures={bfres?.resolvedTextures} />}
-                {panel === 'parameters' && bfres && !isG1m && !isGlb && <dl className="bfres-parameters">
-                    <dt>Version</dt><dd>{bfres.header.version.join('.')}</dd>
+                {/* LM3 models carry no BFRES header, so the panel only renders
+                    when the header actually exists. */}
+                {panel === 'parameters' && bfres?.header && !isG1m && !isGlb && <dl className="bfres-parameters">
+                    <dt>Version</dt><dd>{(bfres.header.version || []).join('.')}</dd>
                     <dt>Endian</dt><dd>{bfres.header.endian}</dd>
                     <dt>Address size</dt><dd>{bfres.header.target_address_size || 8} bytes</dd>
                     <dt>Alignment</dt><dd>2^{bfres.header.alignment_exponent}</dd>

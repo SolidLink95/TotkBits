@@ -54,15 +54,20 @@ pub fn decode_astc(
     )
     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
     let mut pixels = vec![0u32; width as usize * height as usize];
-    texture2ddecoder::decode_astc(
-        &linear,
-        width as usize,
-        height as usize,
-        block_width,
-        block_height,
-        &mut pixels,
-    )
-    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    // texture2ddecoder panics on some malformed block payloads instead of
+    // returning an error; a bad game texture must not take down the app.
+    crate::Settings::catch_panic(|| {
+        texture2ddecoder::decode_astc(
+            &linear,
+            width as usize,
+            height as usize,
+            block_width,
+            block_height,
+            &mut pixels,
+        )
+        .map_err(str::to_owned)
+    })
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, format!("ASTC decode: {error}")))?;
     let rgba = pixels
         .into_iter()
         .flat_map(|pixel| {
