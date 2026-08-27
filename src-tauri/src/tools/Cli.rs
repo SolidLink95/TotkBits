@@ -511,9 +511,11 @@ impl CliCommand {
 
     fn lm3_render(&self) -> Result<(), String> {
         let (archive_name, slot) = parse_lm3_slot_id(&self.file_type)?;
-        let spec = crate::parser::lm3::archive_spec(&archive_name)
-            .ok_or_else(|| format!("unknown LM3 archive: {archive_name}"))?;
-        let dict_path = self.input.join(&spec.dict);
+        let dict_path = match crate::parser::lm3::archive_spec(&archive_name) {
+            Some(spec) => self.input.join(&spec.dict),
+            None => crate::parser::lm3::find_archive_dict(&self.input, &archive_name)
+                .ok_or_else(|| format!("unknown LM3 archive: {archive_name}"))?,
+        };
         let (model, textures) =
             crate::parser::lm3_parallel::parse_slot_parallel(&dict_path, &archive_name, slot)
                 .map_err(|error| {
@@ -548,48 +550,9 @@ impl CliCommand {
         }
         fs::create_dir_all(&self.output).map_err(|error| error.to_string())?;
 
-        // Every *.dict under the romfs is an archive. The two researched
-        // catalog entries keep their catalog names (existing renders already
-        // use them); the rest are named after their romfs-relative path.
-        let mut archives: Vec<(String, PathBuf)> = Vec::new();
-        for entry in walkdir::WalkDir::new(&self.input) {
-            let entry = entry.map_err(|error| error.to_string())?;
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let path = entry.path();
-            if !path
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("dict"))
-            {
-                continue;
-            }
-            let relative = path
-                .strip_prefix(&self.input)
-                .map_err(|error| error.to_string())?
-                .to_string_lossy()
-                .replace('\\', "/");
-            let name = lm3::archives()
-                .iter()
-                .find(|spec| spec.dict.eq_ignore_ascii_case(&relative))
-                .map(|spec| spec.name.clone())
-                .unwrap_or_else(|| {
-                    let mut stem = PathBuf::from(&relative);
-                    stem.set_extension("");
-                    stem.to_string_lossy()
-                        .chars()
-                        .map(|character| {
-                            if character.is_ascii_alphanumeric() || character == '-' {
-                                character
-                            } else {
-                                '_'
-                            }
-                        })
-                        .collect()
-                });
-            archives.push((name, path.to_path_buf()));
-        }
-        archives.sort_by(|left, right| left.0.cmp(&right.0));
+        // Every *.dict under the romfs is an archive; the shared discovery
+        // names them the same way the model browser does.
+        let archives = lm3::discover_archives(&self.input);
 
         // Non-global archives all borrow textures from `global`; inflating its
         // texture entries once here avoids re-reading them per archive.
@@ -632,7 +595,7 @@ impl CliCommand {
             // hold exactly the model slots their chunk table declares.
             let slots = lm3::archive_spec(name)
                 .map(|spec| spec.slots)
-                .unwrap_or_else(|| lm3::group_models(&lm3::parse_subentries(&files.table)).len());
+                .unwrap_or_else(|| lm3::model_slot_count(&files.table));
             if slots == 0 {
                 println!("{name}: no model slots");
                 continue;

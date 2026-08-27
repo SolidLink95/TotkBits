@@ -146,13 +146,17 @@ pub fn inspect_3d_model(
         let slot: usize = slot
             .parse()
             .map_err(|_| format!("invalid LM3 slot number in {path}"))?;
-        let spec = crate::parser::lm3::archive_spec(archive_name)
-            .ok_or_else(|| format!("unknown LM3 archive: {archive_name}"))?;
         let lm3_path = documents.with(&documentId, |app| app.zstd.totk_config.lm3_path.clone());
         if lm3_path.is_empty() {
             return Err("The Luigi's Mansion 3 romfs path is not configured".into());
         }
-        let dict_path = Path::new(&lm3_path).join(&spec.dict);
+        // Cataloged names resolve directly; everything else is a discovered
+        // archive named after its romfs-relative path.
+        let dict_path = match crate::parser::lm3::archive_spec(archive_name) {
+            Some(spec) => Path::new(&lm3_path).join(&spec.dict),
+            None => crate::parser::lm3::find_archive_dict(Path::new(&lm3_path), archive_name)
+                .ok_or_else(|| format!("unknown LM3 archive: {archive_name}"))?,
+        };
         // The archive's large zlib entries inflate concurrently; both readers
         // produce identical models, this one just gets there sooner.
         let (model, resolved_textures) =

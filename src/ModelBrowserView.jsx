@@ -41,16 +41,14 @@ export default function ModelBrowserView({ activeTab }) {
         [matches],
     );
     const lm3Query = lm3Filter.trim().toLowerCase();
+    const maxLm3Results = 2000;
     const lm3Matches = useMemo(() => {
-        if (!lm3SlotCatalog) return [];
-        return lm3SlotCatalog.filter((entry) => !lm3Query
-            || entry.id.toLowerCase().includes(lm3Query)
+        if (!lm3SlotCatalog || lm3Query.length < minCharCount) return [];
+        return lm3SlotCatalog.filter((entry) => entry.id.toLowerCase().includes(lm3Query)
             || String(entry.name || '').toLowerCase().includes(lm3Query));
     }, [lm3SlotCatalog, lm3Query]);
-    const displayedLm3Matches = useMemo(
-        () => lm3Matches.slice(0, maxDisplayedRecords),
-        [lm3Matches],
-    );
+    const lm3TooMany = lm3Matches.length > maxLm3Results;
+    const displayedLm3Matches = lm3TooMany ? [] : lm3Matches;
     const markMissingPreview = (hash, image) => {
         setMissingPreviewHashes((current) => {
             if (current.has(hash)) return current;
@@ -155,9 +153,9 @@ export default function ModelBrowserView({ activeTab }) {
         </div> */}
     </div>;
     if (modelBrowserSource === 'lm3') {
-        const lm3Title = lm3Query
+        const lm3Title = lm3Query.length >= minCharCount
             ? `Luigi's Mansion 3 slots (found ${lm3Matches.length})`
-            : `Luigi's Mansion 3 slots (${lm3Matches.length})`;
+            : `Luigi's Mansion 3 slots (${lm3SlotCatalog?.length ?? 0})`;
         return <main className="aoc-model-view">
             <header>
                 <h2>{lm3Title}</h2>
@@ -174,11 +172,20 @@ export default function ModelBrowserView({ activeTab }) {
             {displayedLm3Matches.length > 0 && <div className="aoc-model-results">
                 {/* The row keeps every cell of the shared seven-column grid so
                     LM3 entries line up exactly like the AOC ones: the select
-                    and size columns are empty placeholders, and slots have no
-                    rendered previews yet, so they all use the placeholder. */}
+                    and size columns are empty placeholders. Previews are the
+                    batch-rendered slot images; slots without one fall back to
+                    the shared placeholder. */}
                 {displayedLm3Matches.map((entry) => <div className="aoc-model-result" key={entry.id}>
                     <span />
-                    <img src="/no_preview.png" alt="" />
+                    <img
+                        src={`/webp/lm3/${entry.id}.webp`}
+                        onError={(event) => {
+                            event.currentTarget.onerror = null;
+                            event.currentTarget.src = '/no_preview.png';
+                        }}
+                        loading="lazy"
+                        alt=""
+                    />
                     <code>{entry.id}</code>
                     <span title={entry.name || undefined}>{displayName(entry.name)}</span>
                     <span className="aoc-model-size" />
@@ -194,8 +201,8 @@ export default function ModelBrowserView({ activeTab }) {
                     <button type="button" onClick={() => previewLm3Slot(entry)}>Preview</button>
                 </div>)}
             </div>}
-            {lm3Matches.length > maxDisplayedRecords && <p className="aoc-model-result-limit" role="status">
-                Showing the first {maxDisplayedRecords} of {lm3Matches.length} slots. Refine the filter to narrow the results.
+            {lm3TooMany && <p className="aoc-model-result-limit" role="status">
+                Found {lm3Matches.length} slots. Refine the filter to show at most {maxLm3Results}.
             </p>}
         </main>;
     }

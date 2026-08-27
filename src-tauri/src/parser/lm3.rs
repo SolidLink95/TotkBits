@@ -80,19 +80,25 @@ pub struct Lm3SlotEntry {
     pub name: Option<String>,
 }
 
-/// Browser catalog for every hardcoded slot of every archive that exists in
-/// the configured LM3 romfs. Empty when the path holds no known archive.
+/// Browser catalog for every model slot of every archive in the configured
+/// LM3 romfs. Cataloged archives keep their researched slot counts and slot
+/// names; the rest report the model slots their chunk table declares, read
+/// without loading the archives' data bodies.
 pub fn slot_catalog(romfs: &Path) -> Vec<Lm3SlotEntry> {
     let mut entries = Vec::new();
-    for spec in archives() {
-        if !romfs.join(&spec.dict).is_file() {
-            continue;
-        }
-        let names = SLOT_NAMES.get(&spec.name);
-        for slot in 0..spec.slots {
+    for (archive_name, dict_path) in discover_archives(romfs) {
+        let slots = match archive_spec(&archive_name) {
+            Some(spec) => spec.slots,
+            None => match read_entry_from_disk(&dict_path, TABLE_ENTRY) {
+                Ok(table) => model_slot_count(&table),
+                Err(_) => continue,
+            },
+        };
+        let names = SLOT_NAMES.get(&archive_name);
+        for slot in 0..slots {
             entries.push(Lm3SlotEntry {
-                id: format!("{}_{}", spec.name, slot),
-                archive: spec.name.clone(),
+                id: format!("{archive_name}_{slot}"),
+                archive: archive_name.clone(),
                 slot,
                 name: names.and_then(|map| map.get(&slot.to_string()).cloned()),
             });
@@ -142,31 +148,58 @@ pub struct Lm3Archive {
     pub compressed: bool,
 }
 
+fn parse_dict(dict: &[u8]) -> io::Result<(bool, Vec<Lm3FileEntry>)> {
+    if dict.len() < 16 {
+        return Err(invalid("LM3 dictionary header is truncated"));
+    }
+    let magic = read_u32(dict, 0)?;
+    if magic != DICT_MAGIC {
+        return Err(invalid(format!(
+            "unexpected LM3 dictionary magic 0x{magic:08X}"
+        )));
+    }
+    let compressed = dict[6] != 0;
+    let file_count = dict[12] as usize;
+    let chunk_count = dict[13] as usize;
+    let table_offset = 16 + chunk_count * 24;
+    let mut entries = Vec::with_capacity(file_count);
+    for index in 0..file_count {
+        let base = table_offset + index * ENTRY_SIZE;
+        entries.push(Lm3FileEntry {
+            offset: read_u32(dict, base)?,
+            decompressed_size: read_u32(dict, base + 4)?,
+            compressed_size: read_u32(dict, base + 8)?,
+        });
+    }
+    Ok((compressed, entries))
+}
+
+fn decode_entry(raw: &[u8], entry: &Lm3FileEntry, index: usize, compressed: bool) -> io::Result<Vec<u8>> {
+    if !compressed {
+        return Ok(raw.to_vec());
+    }
+    let mut decompressed = Vec::with_capacity(entry.decompressed_size as usize);
+    if let Err(error) = ZlibDecoder::new(raw).read_to_end(&mut decompressed) {
+        // Some shipped entries have a damaged tail (Scarescraper's texture
+        // data stops about 95% in). Everything inflated before the break is
+        // still valid, and bounds are checked at every use, so keep it
+        // rather than losing the whole entry.
+        if decompressed.is_empty() {
+            return Err(invalid(format!("LM3 file entry {index}: {error}")));
+        }
+        println!(
+            "[LM3] file entry {index} is truncated at {} of {} bytes: {error}",
+            decompressed.len(),
+            entry.decompressed_size
+        );
+    }
+    Ok(decompressed)
+}
+
 impl Lm3Archive {
     pub fn open(dict_path: &Path) -> io::Result<Self> {
         let dict = std::fs::read(dict_path)?;
-        if dict.len() < 16 {
-            return Err(invalid("LM3 dictionary header is truncated"));
-        }
-        let magic = read_u32(&dict, 0)?;
-        if magic != DICT_MAGIC {
-            return Err(invalid(format!(
-                "unexpected LM3 dictionary magic 0x{magic:08X}"
-            )));
-        }
-        let compressed = dict[6] != 0;
-        let file_count = dict[12] as usize;
-        let chunk_count = dict[13] as usize;
-        let table_offset = 16 + chunk_count * 24;
-        let mut entries = Vec::with_capacity(file_count);
-        for index in 0..file_count {
-            let base = table_offset + index * ENTRY_SIZE;
-            entries.push(Lm3FileEntry {
-                offset: read_u32(&dict, base)?,
-                decompressed_size: read_u32(&dict, base + 4)?,
-                compressed_size: read_u32(&dict, base + 8)?,
-            });
-        }
+        let (compressed, entries) = parse_dict(&dict)?;
         let data = std::fs::read(dict_path.with_extension("data"))?;
         Ok(Self {
             data,
@@ -190,26 +223,91 @@ impl Lm3Archive {
             .data
             .get(start..start + stored)
             .ok_or_else(|| invalid(format!("LM3 file entry {index} is out of bounds")))?;
-        if !self.compressed {
-            return Ok(raw.to_vec());
-        }
-        let mut decompressed = Vec::with_capacity(entry.decompressed_size as usize);
-        if let Err(error) = ZlibDecoder::new(raw).read_to_end(&mut decompressed) {
-            // Some shipped entries have a damaged tail (Scarescraper's texture
-            // data stops about 95% in). Everything inflated before the break is
-            // still valid, and bounds are checked at every use, so keep it
-            // rather than losing the whole entry.
-            if decompressed.is_empty() {
-                return Err(invalid(format!("LM3 file entry {index}: {error}")));
-            }
-            println!(
-                "[LM3] file entry {index} is truncated at {} of {} bytes: {error}",
-                decompressed.len(),
-                entry.decompressed_size
-            );
-        }
-        Ok(decompressed)
+        decode_entry(raw, entry, index, self.compressed)
     }
+}
+
+/// Reads a single entry without loading the whole `.data` file. Catalog scans
+/// touch every archive in the romfs and only need the small chunk table, so
+/// they must not pay for the multi-hundred-megabyte texture entries.
+pub fn read_entry_from_disk(dict_path: &Path, index: usize) -> io::Result<Vec<u8>> {
+    use std::io::{Read as _, Seek, SeekFrom};
+    let dict = std::fs::read(dict_path)?;
+    let (compressed, entries) = parse_dict(&dict)?;
+    let entry = *entries
+        .get(index)
+        .ok_or_else(|| invalid(format!("LM3 archive has no file entry {index}")))?;
+    let stored = if compressed {
+        entry.compressed_size
+    } else {
+        entry.decompressed_size
+    } as usize;
+    let mut file = std::fs::File::open(dict_path.with_extension("data"))?;
+    file.seek(SeekFrom::Start(entry.offset as u64))?;
+    let mut raw = vec![0u8; stored];
+    file.read_exact(&mut raw)?;
+    decode_entry(&raw, &entry, index, compressed)
+}
+
+/// The browser and the CLI renderer both name uncataloged archives after
+/// their romfs-relative path, so slot ids and preview image names agree.
+pub fn sanitize_archive_name(relative: &str) -> String {
+    let mut stem = std::path::PathBuf::from(relative);
+    stem.set_extension("");
+    stem.to_string_lossy()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Every `*.dict` archive under the romfs as (browser name, dict path),
+/// sorted by name. Cataloged archives keep their catalog names; the rest are
+/// named after their romfs-relative path.
+pub fn discover_archives(romfs: &Path) -> Vec<(String, std::path::PathBuf)> {
+    let mut result = Vec::new();
+    for entry in walkdir::WalkDir::new(romfs).into_iter().flatten() {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.path();
+        if !path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("dict"))
+        {
+            continue;
+        }
+        let Ok(relative) = path.strip_prefix(romfs) else {
+            continue;
+        };
+        let relative = relative.to_string_lossy().replace('\\', "/");
+        let name = archives()
+            .iter()
+            .find(|spec| spec.dict.eq_ignore_ascii_case(&relative))
+            .map(|spec| spec.name.clone())
+            .unwrap_or_else(|| sanitize_archive_name(&relative));
+        result.push((name, path.to_path_buf()));
+    }
+    result.sort_by(|left, right| left.0.cmp(&right.0));
+    result
+}
+
+/// Case-insensitive: the CLI lowercases its arguments, and slot ids survive
+/// round-trips through file names.
+pub fn find_archive_dict(romfs: &Path, name: &str) -> Option<std::path::PathBuf> {
+    discover_archives(romfs)
+        .into_iter()
+        .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+        .map(|(_, path)| path)
+}
+
+pub fn model_slot_count(table: &[u8]) -> usize {
+    group_models(&parse_subentries(table)).len()
 }
 
 pub fn parse_subentries(table: &[u8]) -> Vec<Lm3SubEntry> {
