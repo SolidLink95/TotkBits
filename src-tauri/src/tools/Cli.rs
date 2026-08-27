@@ -55,6 +55,8 @@ impl CliCommand {
                 | "replace_g1m"
                 | "replace_bfres"
                 | "g1m_to_fbx"
+                | "lm3_render"
+                | "lm3_render_all"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
         let valid_arguments = if operation == "decompress_dir" {
@@ -63,7 +65,7 @@ impl CliCommand {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -142,6 +144,8 @@ impl CliCommand {
             "replace_g1m" => self.replace_g1m(),
             "replace_bfres" => self.replace_bfres(),
             "g1m_to_fbx" => self.g1m_to_fbx(),
+            "lm3_render" => self.lm3_render(),
+            "lm3_render_all" => self.lm3_render_all(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -504,6 +508,191 @@ impl CliCommand {
         )
         .map_err(|error| error.to_string())
     }
+
+    fn lm3_render(&self) -> Result<(), String> {
+        let (archive_name, slot) = parse_lm3_slot_id(&self.file_type)?;
+        let spec = crate::parser::lm3::archive_spec(&archive_name)
+            .ok_or_else(|| format!("unknown LM3 archive: {archive_name}"))?;
+        let dict_path = self.input.join(&spec.dict);
+        let (model, textures) =
+            crate::parser::lm3_parallel::parse_slot_parallel(&dict_path, &archive_name, slot)
+                .map_err(|error| {
+                    format!("failed to read LM3 slot {archive_name}_{slot}: {error}")
+                })?;
+        let png = crate::file_format::Model3D::SoftRender::render_to_png(
+            &model.render,
+            &model.materials,
+            &textures,
+            crate::file_format::Model3D::SoftRender::DEFAULT_SIZE,
+            crate::file_format::Model3D::SoftRender::DEFAULT_SIZE,
+        )?;
+        write_output(&self.output, &png)
+    }
+
+    fn lm3_render_all(&self) -> Result<(), String> {
+        use crate::parser::lm3;
+        let skip_existing = match self.file_type.as_str() {
+            "skip" => true,
+            "overwrite" => false,
+            other => {
+                return Err(format!(
+                    "unsupported existing-file mode: {other}; expected skip or overwrite"
+                ))
+            }
+        };
+        if !self.input.is_dir() {
+            return Err(format!(
+                "LM3 romfs is not a directory: {}",
+                self.input.display()
+            ));
+        }
+        fs::create_dir_all(&self.output).map_err(|error| error.to_string())?;
+
+        // Every *.dict under the romfs is an archive. The two researched
+        // catalog entries keep their catalog names (existing renders already
+        // use them); the rest are named after their romfs-relative path.
+        let mut archives: Vec<(String, PathBuf)> = Vec::new();
+        for entry in walkdir::WalkDir::new(&self.input) {
+            let entry = entry.map_err(|error| error.to_string())?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let path = entry.path();
+            if !path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("dict"))
+            {
+                continue;
+            }
+            let relative = path
+                .strip_prefix(&self.input)
+                .map_err(|error| error.to_string())?
+                .to_string_lossy()
+                .replace('\\', "/");
+            let name = lm3::archives()
+                .iter()
+                .find(|spec| spec.dict.eq_ignore_ascii_case(&relative))
+                .map(|spec| spec.name.clone())
+                .unwrap_or_else(|| {
+                    let mut stem = PathBuf::from(&relative);
+                    stem.set_extension("");
+                    stem.to_string_lossy()
+                        .chars()
+                        .map(|character| {
+                            if character.is_ascii_alphanumeric() || character == '-' {
+                                character
+                            } else {
+                                '_'
+                            }
+                        })
+                        .collect()
+                });
+            archives.push((name, path.to_path_buf()));
+        }
+        archives.sort_by(|left, right| left.0.cmp(&right.0));
+
+        // Non-global archives all borrow textures from `global`; inflating its
+        // texture entries once here avoids re-reading them per archive.
+        let global_source = self
+            .input
+            .join("global.dict")
+            .is_file()
+            .then(|| lm3::Lm3Archive::open(&self.input.join("global.dict")).ok())
+            .flatten()
+            .and_then(|archive| lm3::Lm3TextureSource::from_archive(&archive));
+
+        let mut rendered = 0usize;
+        let mut skipped = 0usize;
+        let mut failed = 0usize;
+        for (name, dict_path) in &archives {
+            // The heavy zlib entries are archive-wide, not per slot: inflate
+            // them once and reuse the buffers for every slot of the archive.
+            let archive = match lm3::Lm3Archive::open(dict_path) {
+                Ok(archive) => archive,
+                Err(error) => {
+                    failed += 1;
+                    eprintln!("{name}: failed to open: {error}");
+                    continue;
+                }
+            };
+            let files = match lm3::Lm3SlotFiles::read(&archive) {
+                Ok(files) => files,
+                Err(error) => {
+                    failed += 1;
+                    eprintln!("{name}: failed to read entries: {error}");
+                    continue;
+                }
+            };
+            let shared = if name == "global" {
+                None
+            } else {
+                global_source.as_ref()
+            };
+            // Cataloged archives keep their researched slot counts; the rest
+            // hold exactly the model slots their chunk table declares.
+            let slots = lm3::archive_spec(name)
+                .map(|spec| spec.slots)
+                .unwrap_or_else(|| lm3::group_models(&lm3::parse_subentries(&files.table)).len());
+            if slots == 0 {
+                println!("{name}: no model slots");
+                continue;
+            }
+            println!("{name}: {slots} slot(s)");
+            for slot in 0..slots {
+                let output = self.output.join(format!("{name}_{slot}.png"));
+                if skip_existing && output.is_file() {
+                    skipped += 1;
+                    continue;
+                }
+                // Texture decoding can panic inside third-party decoders on
+                // malformed slot data; one bad slot must not end the batch.
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    lm3::parse_slot_from_files(&files, name, slot, shared)
+                        .map_err(|error| error.to_string())
+                        .and_then(|(model, textures)| {
+                            crate::file_format::Model3D::SoftRender::render_to_png(
+                                &model.render,
+                                &model.materials,
+                                &textures,
+                                crate::file_format::Model3D::SoftRender::DEFAULT_SIZE,
+                                crate::file_format::Model3D::SoftRender::DEFAULT_SIZE,
+                            )
+                        })
+                }))
+                .unwrap_or_else(|panic| {
+                    let message = panic
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or_else(|| panic.downcast_ref::<&str>().copied())
+                        .unwrap_or("parser panicked");
+                    Err(format!("panicked: {message}"))
+                })
+                .and_then(|png| write_output(&output, &png));
+                match result {
+                    Ok(()) => {
+                        rendered += 1;
+                        println!("{name}_{slot}: rendered");
+                    }
+                    Err(error) => {
+                        failed += 1;
+                        eprintln!("{name}_{slot}: {error}");
+                    }
+                }
+            }
+        }
+        println!("Rendered {rendered} slot(s); skipped {skipped} existing; failed {failed}");
+        Ok(())
+    }
+}
+
+fn parse_lm3_slot_id(value: &str) -> Result<(String, usize), String> {
+    let (archive, slot) = value.rsplit_once('_').ok_or_else(|| {
+        format!("invalid LM3 slot id: {value}; expected <archive>_<slot> like global_27")
+    })?;
+    let slot = slot
+        .parse()
+        .map_err(|_| format!("invalid LM3 slot number in {value}"))?;
+    Ok((archive.to_string(), slot))
 }
 
 fn parse_dictionary(value: &str) -> Result<ZstdDictionary, String> {
