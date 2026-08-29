@@ -32,8 +32,7 @@ zstd = { version = "0.13.2", features = ["experimental"] }
 libloading = "0.8.3"
 tegra_swizzle = "0.3.1"
 fbxcel-dom = "0.0.10"
-fbxcel = { version = "0.9.0", features = ["writer"] }
-fbxscii = "0.1.0"
+fbxcel = "0.9.0"
 mikktspace = "0.3.0"
 # roead = { path = "./external/roead", features = ["yaml", "sarc", "byml"] }
 # roead = { version = "1.0.0", features = ["yaml", "sarc", "byml"] }

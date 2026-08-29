@@ -1,3 +1,4 @@
+mod binary;
 mod document;
 mod export;
 pub mod import;

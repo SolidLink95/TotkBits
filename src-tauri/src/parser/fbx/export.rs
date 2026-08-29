@@ -3,10 +3,16 @@ use crate::parser::AOC::g1m::{G1mFile, G1mMaterial, ResolvedG1tTexture};
 use base64::Engine;
 use image_dds::{ImageFormat, Mipmaps, Quality};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write as _;
 use std::fs;
-use std::io::{self, BufReader, Cursor};
+use std::io::{self, Cursor};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use super::binary::{
+    p_bool, p_color, p_color_rgb, p_compound, p_datetime, p_double, p_enum, p_int, p_ktime, p_lcl,
+    p_number, p_object, p_string, p_url, p_vector, p_visibility, p_visibility_inheritance,
+    p_xref_url, properties70, write_document, Attr, Node, CREATION_TIME, FILE_ID,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TextureExportFormat {
@@ -76,6 +82,8 @@ struct MeshLink {
     clusters: Vec<(i64, usize)>,
 }
 
+const CREATOR: &str = concat!("TotkBits ", env!("CARGO_PKG_VERSION"));
+
 pub fn export_g1m(
     models: &[(&G1mFile, &[ResolvedG1tTexture], String)],
     output: &Path,
@@ -97,179 +105,8 @@ pub fn export_g1m(
         })
         .collect();
     let texture_paths = export_textures(&inputs, output, texture_format)?;
-    let ascii = build_ascii(&inputs, &texture_paths, armature_name);
-    fs::write(output, ascii_to_binary(&ascii)?)
-}
-
-fn ascii_to_binary(ascii: &str) -> io::Result<Vec<u8>> {
-    use fbxcel::{
-        low::FbxVersion,
-        writer::v7400::binary::{FbxFooter, Writer},
-    };
-
-    let tokenizer = fbxscii::Tokenizer::new(BufReader::new(ascii.as_bytes()));
-    let arena = fbxscii::Parser::new(tokenizer).load().map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("invalid generated FBX: {error:?}"),
-        )
-    })?;
-    let mut writer =
-        Writer::new(Cursor::new(Vec::new()), FbxVersion::V7_4).map_err(fbx_writer_error)?;
-    for (index, element) in arena.as_slice().iter().enumerate() {
-        if element.parent_index.is_none() {
-            write_binary_element(&mut writer, &arena, index)?;
-        }
-    }
-    let output = writer
-        .finalize(&FbxFooter::default())
-        .map_err(fbx_writer_error)?;
-    Ok(output.into_inner())
-}
-
-fn write_binary_element(
-    writer: &mut fbxcel::writer::v7400::binary::Writer<Cursor<Vec<u8>>>,
-    arena: &fbxscii::ElementAmphitheatre,
-    index: usize,
-) -> io::Result<()> {
-    let element = arena
-        .get(index)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid FBX element index"))?;
-    let array_child = element
-        .children
-        .iter()
-        .filter_map(|index| arena.get(*index))
-        .find(|child| child.key == "a");
-    {
-        let mut attributes = writer.new_node(&element.key).map_err(fbx_writer_error)?;
-        if let Some(array) = array_child {
-            if matches!(
-                element.key.as_str(),
-                "PolygonVertexIndex" | "Indexes" | "Materials"
-            ) {
-                let values = array
-                    .tokens
-                    .iter()
-                    .map(|value| {
-                        value
-                            .parse::<i32>()
-                            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
-                    })
-                    .collect::<io::Result<Vec<_>>>()?;
-                attributes
-                    .append_arr_i32_from_iter(None, values)
-                    .map_err(fbx_writer_error)?;
-            } else {
-                let values = array
-                    .tokens
-                    .iter()
-                    .map(|value| {
-                        value
-                            .parse::<f64>()
-                            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
-                    })
-                    .collect::<io::Result<Vec<_>>>()?;
-                attributes
-                    .append_arr_f64_from_iter(None, values)
-                    .map_err(fbx_writer_error)?;
-            }
-        } else {
-            for (token_index, token) in element.tokens.iter().enumerate() {
-                append_binary_attribute(
-                    &mut attributes,
-                    &element.key,
-                    token_index,
-                    token,
-                    &element.tokens,
-                )?;
-            }
-        }
-    }
-    if array_child.is_none() {
-        for &child in &element.children {
-            write_binary_element(writer, arena, child)?;
-        }
-    }
-    writer.close_node().map_err(fbx_writer_error)
-}
-
-fn append_binary_attribute(
-    attributes: &mut fbxcel::writer::v7400::binary::AttributesWriter<'_, Cursor<Vec<u8>>>,
-    node: &str,
-    index: usize,
-    value: &str,
-    node_tokens: &[String],
-) -> io::Result<()> {
-    let is_object = matches!(
-        node,
-        "Geometry" | "Model" | "Material" | "Texture" | "Video" | "Deformer" | "NodeAttribute"
-    );
-    if is_object && index == 1 {
-        let binary_name = value
-            .split_once("::")
-            .map(|(class, name)| format!("{name}\0\u{1}{class}"))
-            .unwrap_or_else(|| value.to_owned());
-        return attributes
-            .append_string_direct(&binary_name)
-            .map_err(fbx_writer_error);
-    }
-    if value == "T" || value == "F" {
-        return attributes
-            .append_bool(value == "T")
-            .map_err(fbx_writer_error);
-    }
-    let is_object_id = index == 0
-        && matches!(
-            node,
-            "Geometry"
-                | "Model"
-                | "Material"
-                | "Texture"
-                | "Video"
-                | "Deformer"
-                | "NodeAttribute"
-                | "Document"
-        );
-    let is_connection_id = node == "C" && matches!(index, 1 | 2);
-    let is_root_node_id = node == "RootNode" && index == 0;
-    let is_pose_node_id = node == "Node" && index == 0;
-    if is_object_id || is_connection_id || is_root_node_id || is_pose_node_id {
-        let value = value
-            .parse::<i64>()
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        return attributes.append_i64(value).map_err(fbx_writer_error);
-    }
-    // Properties70 values are strongly typed. In particular, Blender rejects
-    // integral-looking literals (such as UnitScaleFactor = 1) when the FBX
-    // property declaration says that the value is a double.
-    if node == "P" && index >= 4 {
-        let property_type = node_tokens.get(1).map(String::as_str).unwrap_or("");
-        if !matches!(
-            property_type,
-            "int" | "Integer" | "bool" | "Bool" | "enum" | "Enum"
-        ) {
-            let value = value
-                .parse::<f64>()
-                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-            return attributes.append_f64(value).map_err(fbx_writer_error);
-        }
-    }
-    if let Ok(value) = value.parse::<i32>() {
-        return attributes.append_i32(value).map_err(fbx_writer_error);
-    }
-    if let Ok(value) = value.parse::<i64>() {
-        return attributes.append_i64(value).map_err(fbx_writer_error);
-    }
-    if let Ok(value) = value.parse::<f64>() {
-        return attributes.append_f64(value).map_err(fbx_writer_error);
-    }
-    attributes
-        .append_string_direct(value)
-        .map_err(fbx_writer_error)
-}
-
-fn fbx_writer_error(error: fbxcel::writer::v7400::binary::Error) -> io::Error {
-    io::Error::other(error.to_string())
+    let document = build_document(&inputs, &texture_paths, armature_name, output);
+    fs::write(output, write_document(&document)?)
 }
 
 fn export_textures(
@@ -281,17 +118,9 @@ fn export_textures(
     if format == TextureExportFormat::None {
         return Ok(paths);
     }
-    let stem = output
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("model");
-    let folder_name = format!("{stem}_textures");
     let folder = output.parent().unwrap_or_else(|| Path::new("."));
-    // .join(&folder_name);
-    fs::create_dir_all(&folder)?;
-    let extension = if format == TextureExportFormat::Png {
-        "png"
-    } else if format == TextureExportFormat::Dds {
+    fs::create_dir_all(folder)?;
+    let extension = if format == TextureExportFormat::Dds {
         "dds"
     } else {
         "png"
@@ -402,14 +231,17 @@ fn png_to_dds(png: &[u8]) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn build_ascii(
+// ---- Document -----------------------------------------------------------
+
+fn build_document(
     models: &[ModelInput<'_>],
     texture_paths: &BTreeMap<String, ExportedTexture>,
     armature_name: &str,
-) -> String {
+    output: &Path,
+) -> Vec<Node> {
     let mut ids = Ids::new();
-    let rotation_root_id = ids.take();
     let root_id = ids.take();
+    let root_attribute_id = ids.take();
     let document_id = ids.take();
     let mut bone_ids = Vec::with_capacity(models.len());
     let mut bone_attribute_ids = Vec::with_capacity(models.len());
@@ -433,49 +265,47 @@ fn build_ascii(
                 .collect::<Vec<_>>(),
         );
     }
+    let texture_folder = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
-    let mut objects = String::new();
-    write_model_object(
-        &mut objects,
-        rotation_root_id,
-        "G1M_Orientation",
-        "Null",
-        [0.0; 3],
-        [90.0, 0.0, 0.0],
-        [1.0; 3],
-    );
-    write_model_object(
-        &mut objects,
+    // Bones, meshes and cluster bind matrices all share the G1M's native
+    // Y-up space, so the node hierarchy must not introduce any extra
+    // rotation: SDK based readers (Noesis, Autodesk) place bones from the
+    // hierarchy, not from `TransformLink`.
+    let mut objects = Node::new("Objects");
+    objects.push(null_attribute(root_attribute_id, armature_name));
+    objects.push(model_object(
         root_id,
         armature_name,
         "Null",
         [0.0; 3],
         [0.0; 3],
         [1.0; 3],
-    );
+    ));
     for (model_index, input) in models.iter().enumerate() {
         for (index, bone) in input.model.render.bones.iter().enumerate() {
+            let name = format!("{}{}", input.prefix, bone.name);
             let rotation = quaternion_euler_degrees(bone.rotation);
-            write_model_object(
-                &mut objects,
+            objects.push(model_object(
                 bone_ids[model_index][index],
-                &format!("{}{}", input.prefix, bone.name),
+                &name,
                 "LimbNode",
                 bone.translation,
                 rotation,
                 bone.scale,
-            );
-            write_bone_attribute(
-                &mut objects,
+            ));
+            objects.push(bone_attribute(
                 bone_attribute_ids[model_index][index],
-                &format!("{}{}", input.prefix, bone.name),
-            );
+                &name,
+            ));
         }
         for (index, material) in input.model.materials.iter().enumerate() {
             for secondary_uv in [false, true] {
                 let variant = usize::from(secondary_uv);
-                write_material(
-                    &mut objects,
+                objects.push(material_object(
                     material_ids[model_index][index][variant],
                     &format!(
                         "{}{}_{}",
@@ -483,7 +313,7 @@ fn build_ascii(
                         material.name,
                         if secondary_uv { "UV2" } else { "UV1" }
                     ),
-                );
+                ));
                 for (property, slot) in material_texture_slots(material) {
                     let Some(exported_texture) =
                         texture_paths.get(&texture_key(&input.prefix, &slot.name))
@@ -514,27 +344,29 @@ fn build_ascii(
                 .into_iter()
                 .map(|bone| (ids.take(), bone))
                 .collect();
-            write_geometry(&mut objects, geometry_id, mesh, &input.model.render.bones);
-            write_model_object(
-                &mut objects,
-                model_id,
-                &format!("{}{}", input.prefix, mesh.name),
-                "Mesh",
-                [0.0; 3],
-                [0.0; 3],
-                [1.0; 3],
-            );
+            let name = format!("{}{}", input.prefix, mesh.name);
+            objects.push(geometry_object(
+                geometry_id,
+                &name,
+                mesh,
+                &input.model.render.bones,
+            ));
+            objects.push(model_object(
+                model_id, &name, "Mesh", [0.0; 3], [0.0; 3], [1.0; 3],
+            ));
             if let Some(skin) = skin_id {
-                writeln!(
-                    objects,
-                    "    Deformer: {skin}, \"Deformer::Skin\", \"Skin\" {{"
-                )
-                .ok();
-                writeln!(objects, "        Version: 101").ok();
-                writeln!(objects, "        Link_DeformAcuracy: 50").ok();
-                writeln!(objects, "    }}").ok();
+                objects.push(
+                    Node::object("Deformer", skin, &name, "Deformer", "Skin")
+                        .child(Node::leaf("Version", 101i32))
+                        .child(Node::leaf("Link_DeformAcuracy", 50.0f64)),
+                );
                 for &(cluster, bone) in &clusters {
-                    write_cluster(&mut objects, cluster, mesh, bone, &input.model.render.bones);
+                    objects.push(cluster_object(
+                        cluster,
+                        mesh,
+                        bone,
+                        &input.model.render.bones,
+                    ));
                 }
             }
             let material_id = material_ids[model_index]
@@ -551,19 +383,20 @@ fn build_ascii(
         }
     }
     for texture in &texture_links {
-        write_texture(&mut objects, texture);
+        let (texture_node, video_node) = texture_objects(texture, &texture_folder);
+        objects.push(texture_node);
+        objects.push(video_node);
     }
 
-    let mut connections = String::new();
-    connection(&mut connections, rotation_root_id, 0);
-    connection(&mut connections, root_id, rotation_root_id);
+    let mut connections = Node::new("Connections");
+    connections.push(connection(root_id, 0));
+    connections.push(connection(root_attribute_id, root_id));
     for (model_index, input) in models.iter().enumerate() {
         for (index, bone) in input.model.render.bones.iter().enumerate() {
-            connection(
-                &mut connections,
+            connections.push(connection(
                 bone_attribute_ids[model_index][index],
                 bone_ids[model_index][index],
-            );
+            ));
             let parent = if bone.parent_index >= 0 {
                 bone_ids[model_index]
                     .get(bone.parent_index as usize)
@@ -572,41 +405,39 @@ fn build_ascii(
             } else {
                 root_id
             };
-            connection(&mut connections, bone_ids[model_index][index], parent);
+            connections.push(connection(bone_ids[model_index][index], parent));
         }
     }
     let mut mesh_cursor = 0;
     for (model_index, input) in models.iter().enumerate() {
         for _mesh in &input.model.render.meshes {
             let link = &mesh_links[mesh_cursor];
-            connection(&mut connections, link.geometry_id, link.model_id);
-            connection(&mut connections, link.model_id, root_id);
-            connection(&mut connections, link.material_id, link.model_id);
+            connections.push(connection(link.geometry_id, link.model_id));
+            connections.push(connection(link.model_id, root_id));
+            connections.push(connection(link.material_id, link.model_id));
             if let Some(skin) = link.skin_id {
-                connection(&mut connections, skin, link.geometry_id);
+                connections.push(connection(skin, link.geometry_id));
                 for &(cluster, bone) in &link.clusters {
-                    connection(&mut connections, cluster, skin);
-                    connection(&mut connections, bone_ids[model_index][bone], cluster);
+                    connections.push(connection(cluster, skin));
+                    connections.push(connection(bone_ids[model_index][bone], cluster));
                 }
             }
             mesh_cursor += 1;
         }
     }
     for texture in &texture_links {
-        connection(&mut connections, texture.video_id, texture.id);
-        property_connection(
-            &mut connections,
+        connections.push(connection(texture.video_id, texture.id));
+        connections.push(property_connection(
             texture.id,
             texture.material_id,
             texture.property,
-        );
+        ));
         if texture.property == "DiffuseColor" && texture.has_transparency {
-            property_connection(
-                &mut connections,
+            connections.push(property_connection(
                 texture.id,
                 texture.material_id,
                 "TransparentColor",
-            );
+            ));
         }
     }
 
@@ -617,72 +448,486 @@ fn build_ascii(
     let mesh_count = mesh_links.len();
     let material_count = models
         .iter()
-        .map(|input| input.model.materials.len())
+        .map(|input| input.model.materials.len() * 2)
         .sum::<usize>();
     let deformer_count = mesh_links
         .iter()
         .map(|link| usize::from(link.skin_id.is_some()) + link.clusters.len())
         .sum::<usize>();
-    let definition_count = 2
-        + bone_count * 2
-        + mesh_count * 2
-        + material_count
-        + texture_links.len() * 2
-        + deformer_count;
+    let counts = ObjectCounts {
+        node_attributes: bone_count + 1,
+        geometries: mesh_count,
+        models: 1 + bone_count + mesh_count,
+        deformers: deformer_count,
+        materials: material_count,
+        textures: texture_links.len(),
+        videos: texture_links.len(),
+    };
 
-    let ascii = format!(
-        "; FBX 7.4.0 project file\nFBXHeaderExtension:  {{\n    FBXHeaderVersion: 1003\n    FBXVersion: 7400\n    Creator: \"TotkBits\"\n}}\nGlobalSettings:  {{\n    Version: 1000\n    Properties70:  {{\n        P: \"UpAxis\", \"int\", \"Integer\", \"\",1\n        P: \"UpAxisSign\", \"int\", \"Integer\", \"\",1\n        P: \"FrontAxis\", \"int\", \"Integer\", \"\",2\n        P: \"FrontAxisSign\", \"int\", \"Integer\", \"\",-1\n        P: \"CoordAxis\", \"int\", \"Integer\", \"\",0\n        P: \"CoordAxisSign\", \"int\", \"Integer\", \"\",1\n        P: \"UnitScaleFactor\", \"double\", \"Number\", \"\",1\n    }}\n}}\nDocuments:  {{\n    Count: 1\n    Document: {document_id}, \"Scene\", \"Scene\" {{\n        Properties70:  {{}}\n        RootNode: {rotation_root_id}\n    }}\n}}\nReferences:  {{}}\nDefinitions:  {{\n    Version: 100\n    Count: 7\n    ObjectType: \"Model\" {{ Count: {} }}\n    ObjectType: \"NodeAttribute\" {{ Count: {bone_count} }}\n    ObjectType: \"Geometry\" {{ Count: {mesh_count} }}\n    ObjectType: \"Material\" {{ Count: {material_count} }}\n    ObjectType: \"Texture\" {{ Count: {} }}\n    ObjectType: \"Video\" {{ Count: {} }}\n    ObjectType: \"Deformer\" {{ Count: {deformer_count} }}\n}}\nObjects:  {{\n{objects}}}\nConnections:  {{\n{connections}}}\n",
-        2 + bone_count + mesh_count,
-        texture_links.len(),
-        texture_links.len(),
+    let document_url = output.to_string_lossy().replace('/', "\\");
+    vec![
+        header_extension(&document_url),
+        Node::leaf("FileId", Attr::Raw(FILE_ID.to_vec())),
+        Node::leaf("CreationTime", CREATION_TIME),
+        Node::leaf("Creator", CREATOR),
+        global_settings(),
+        Node::new("Documents")
+            .child(Node::leaf("Count", 1i32))
+            .child(
+                Node::object("Document", document_id, "Scene", "", "Scene")
+                    .child(properties70([
+                        p_object("SourceObject"),
+                        p_string("ActiveAnimStackName", ""),
+                    ]))
+                    .child(Node::leaf("RootNode", 0i64)),
+            ),
+        Node::new("References"),
+        definitions(&counts),
+        objects,
+        connections,
+        Node::new("Takes").child(Node::leaf("Current", "")),
+    ]
+}
+
+struct ObjectCounts {
+    node_attributes: usize,
+    geometries: usize,
+    models: usize,
+    deformers: usize,
+    materials: usize,
+    textures: usize,
+    videos: usize,
+}
+
+fn header_extension(document_url: &str) -> Node {
+    let (year, month, day, hour, minute, second, millisecond) = utc_now();
+    let date_time_gmt =
+        format!("{month:02}/{day:02}/{year:04} {hour:02}:{minute:02}:{second:02}.{millisecond:03}");
+    let application = |prefix: &str| {
+        [
+            p_compound(prefix),
+            p_string(&format!("{prefix}|ApplicationVendor"), "TotkBits"),
+            p_string(&format!("{prefix}|ApplicationName"), "TotkBits"),
+            p_string(
+                &format!("{prefix}|ApplicationVersion"),
+                env!("CARGO_PKG_VERSION"),
+            ),
+            p_datetime(&format!("{prefix}|DateTime_GMT"), &date_time_gmt),
+        ]
+    };
+    let mut scene_properties = vec![
+        p_url("DocumentUrl", document_url),
+        p_url("SrcDocumentUrl", document_url),
+    ];
+    scene_properties.extend(application("Original"));
+    scene_properties.push(p_string("Original|FileName", document_url));
+    scene_properties.extend(application("LastSaved"));
+    scene_properties.push(p_string("Original|ApplicationNativeFile", ""));
+    Node::new("FBXHeaderExtension")
+        .child(Node::leaf("FBXHeaderVersion", 1003i32))
+        .child(Node::leaf("FBXVersion", 7400i32))
+        .child(Node::leaf("EncryptionType", 0i32))
+        .child(
+            Node::new("CreationTimeStamp")
+                .child(Node::leaf("Version", 1000i32))
+                .child(Node::leaf("Year", year))
+                .child(Node::leaf("Month", month))
+                .child(Node::leaf("Day", day))
+                .child(Node::leaf("Hour", hour))
+                .child(Node::leaf("Minute", minute))
+                .child(Node::leaf("Second", second))
+                .child(Node::leaf("Millisecond", millisecond)),
+        )
+        .child(Node::leaf("Creator", CREATOR))
+        .child(
+            Node::new("SceneInfo")
+                .attr("GlobalInfo\0\u{1}SceneInfo")
+                .attr("UserData")
+                .child(Node::leaf("Type", "UserData"))
+                .child(Node::leaf("Version", 100i32))
+                .child(
+                    Node::new("MetaData")
+                        .child(Node::leaf("Version", 100i32))
+                        .child(Node::leaf("Title", ""))
+                        .child(Node::leaf("Subject", ""))
+                        .child(Node::leaf("Author", ""))
+                        .child(Node::leaf("Keywords", ""))
+                        .child(Node::leaf("Revision", ""))
+                        .child(Node::leaf("Comment", "")),
+                )
+                .child(properties70(scene_properties)),
+        )
+}
+
+fn global_settings() -> Node {
+    Node::new("GlobalSettings")
+        .child(Node::leaf("Version", 1000i32))
+        .child(properties70([
+            p_int("UpAxis", 1),
+            p_int("UpAxisSign", 1),
+            p_int("FrontAxis", 2),
+            p_int("FrontAxisSign", -1),
+            p_int("CoordAxis", 0),
+            p_int("CoordAxisSign", 1),
+            p_int("OriginalUpAxis", -1),
+            p_int("OriginalUpAxisSign", 1),
+            p_double("UnitScaleFactor", 1.0),
+            p_double("OriginalUnitScaleFactor", 1.0),
+            p_color_rgb("AmbientColor", [0.0; 3]),
+            p_string("DefaultCamera", "Producer Perspective"),
+            p_enum("TimeMode", 10),
+            p_ktime("TimeSpanStart", 0),
+            p_ktime("TimeSpanStop", 46_186_158_000),
+            p_double("CustomFrameRate", 25.0),
+        ]))
+}
+
+fn definitions(counts: &ObjectCounts) -> Node {
+    let total = 1
+        + counts.node_attributes
+        + counts.geometries
+        + counts.models
+        + counts.deformers
+        + counts.materials
+        + counts.textures
+        + counts.videos;
+    let object_type = |name: &str, count: usize| {
+        Node::leaf("ObjectType", name).child(Node::leaf("Count", count as i32))
+    };
+    let template = |name: &str, properties: Vec<Node>| {
+        Node::leaf("PropertyTemplate", name).child(properties70(properties))
+    };
+    let mut node = Node::new("Definitions")
+        .child(Node::leaf("Version", 100i32))
+        .child(Node::leaf("Count", total as i32))
+        .child(object_type("GlobalSettings", 1))
+        .child(object_type("NodeAttribute", counts.node_attributes))
+        .child(
+            object_type("Geometry", counts.geometries).child(template("FbxMesh", mesh_template())),
+        )
+        .child(object_type("Model", counts.models).child(template("FbxNode", node_template())));
+    if counts.deformers > 0 {
+        node.push(object_type("Deformer", counts.deformers));
+    }
+    node.push(
+        object_type("Material", counts.materials)
+            .child(template("FbxSurfacePhong", phong_template())),
     );
-    ascii.replacen(
-        "    Count: 7\n    ObjectType:",
-        &format!("    Count: {definition_count}\n    ObjectType:"),
-        1,
-    )
+    if counts.textures > 0 {
+        node.push(
+            object_type("Texture", counts.textures)
+                .child(template("FbxFileTexture", texture_template())),
+        );
+        node.push(
+            object_type("Video", counts.videos).child(template("FbxVideo", video_template())),
+        );
+    }
+    node
 }
 
-fn write_bone_attribute(out: &mut String, id: i64, name: &str) {
-    writeln!(
-        out,
-        "    NodeAttribute: {id}, \"NodeAttribute::{}\", \"LimbNode\" {{",
-        escaped(name)
-    )
-    .ok();
-    writeln!(out, "        TypeFlags: \"Skeleton\"").ok();
-    writeln!(out, "    }}").ok();
+fn mesh_template() -> Vec<Node> {
+    vec![
+        p_color_rgb("Color", [0.8; 3]),
+        p_vector("BBoxMin", [0.0; 3]),
+        p_vector("BBoxMax", [0.0; 3]),
+        p_bool("Primary Visibility", true),
+        p_bool("Casts Shadows", true),
+        p_bool("Receive Shadows", true),
+    ]
 }
 
-fn write_geometry(out: &mut String, id: i64, mesh: &BfresMesh, bones: &[BfresBone]) {
+fn node_template() -> Vec<Node> {
+    let mut properties = vec![
+        p_enum("QuaternionInterpolate", 0),
+        p_vector("RotationOffset", [0.0; 3]),
+        p_vector("RotationPivot", [0.0; 3]),
+        p_vector("ScalingOffset", [0.0; 3]),
+        p_vector("ScalingPivot", [0.0; 3]),
+        p_bool("TranslationActive", false),
+        p_vector("TranslationMin", [0.0; 3]),
+        p_vector("TranslationMax", [0.0; 3]),
+    ];
+    for axis in ["X", "Y", "Z"] {
+        properties.push(p_bool(&format!("TranslationMin{axis}"), false));
+    }
+    for axis in ["X", "Y", "Z"] {
+        properties.push(p_bool(&format!("TranslationMax{axis}"), false));
+    }
+    properties.extend([
+        p_enum("RotationOrder", 0),
+        p_bool("RotationSpaceForLimitOnly", false),
+        p_double("RotationStiffnessX", 0.0),
+        p_double("RotationStiffnessY", 0.0),
+        p_double("RotationStiffnessZ", 0.0),
+        p_double("AxisLen", 10.0),
+        p_vector("PreRotation", [0.0; 3]),
+        p_vector("PostRotation", [0.0; 3]),
+        p_bool("RotationActive", false),
+        p_vector("RotationMin", [0.0; 3]),
+        p_vector("RotationMax", [0.0; 3]),
+    ]);
+    for axis in ["X", "Y", "Z"] {
+        properties.push(p_bool(&format!("RotationMin{axis}"), false));
+    }
+    for axis in ["X", "Y", "Z"] {
+        properties.push(p_bool(&format!("RotationMax{axis}"), false));
+    }
+    properties.extend([
+        p_enum("InheritType", 0),
+        p_bool("ScalingActive", false),
+        p_vector("ScalingMin", [0.0; 3]),
+        p_vector("ScalingMax", [1.0; 3]),
+    ]);
+    for axis in ["X", "Y", "Z"] {
+        properties.push(p_bool(&format!("ScalingMin{axis}"), false));
+    }
+    for axis in ["X", "Y", "Z"] {
+        properties.push(p_bool(&format!("ScalingMax{axis}"), false));
+    }
+    properties.extend([
+        p_vector("GeometricTranslation", [0.0; 3]),
+        p_vector("GeometricRotation", [0.0; 3]),
+        p_vector("GeometricScaling", [1.0; 3]),
+    ]);
+    for name in [
+        "MinDampRange",
+        "MaxDampRange",
+        "MinDampStrength",
+        "MaxDampStrength",
+        "PreferedAngle",
+    ] {
+        for axis in ["X", "Y", "Z"] {
+            properties.push(p_double(&format!("{name}{axis}"), 0.0));
+        }
+    }
+    properties.extend([
+        p_object("LookAtProperty"),
+        p_object("UpVectorProperty"),
+        p_bool("Show", true),
+        p_bool("NegativePercentShapeSupport", true),
+        p_int("DefaultAttributeIndex", -1),
+        p_bool("Freeze", false),
+        p_bool("LODBox", false),
+        p_lcl("Lcl Translation", [0.0; 3]),
+        p_lcl("Lcl Rotation", [0.0; 3]),
+        p_lcl("Lcl Scaling", [1.0; 3]),
+        p_visibility(1.0),
+        p_visibility_inheritance(1),
+    ]);
+    properties
+}
+
+fn phong_template() -> Vec<Node> {
+    vec![
+        p_string("ShadingModel", "Phong"),
+        p_bool("MultiLayer", false),
+        p_color("EmissiveColor", [0.0; 3]),
+        p_number("EmissiveFactor", 1.0),
+        p_color("AmbientColor", [0.2; 3]),
+        p_number("AmbientFactor", 1.0),
+        p_color("DiffuseColor", [0.8; 3]),
+        p_number("DiffuseFactor", 1.0),
+        p_color("TransparentColor", [0.0; 3]),
+        p_number("TransparencyFactor", 0.0),
+        p_number("Opacity", 1.0),
+        p_vector("NormalMap", [0.0; 3]),
+        p_vector("Bump", [0.0; 3]),
+        p_double("BumpFactor", 1.0),
+        p_color_rgb("DisplacementColor", [0.0; 3]),
+        p_double("DisplacementFactor", 1.0),
+        p_color_rgb("VectorDisplacementColor", [0.0; 3]),
+        p_double("VectorDisplacementFactor", 1.0),
+        p_color("SpecularColor", [0.2; 3]),
+        p_number("SpecularFactor", 1.0),
+        p_number("Shininess", 20.0),
+        p_number("ShininessExponent", 20.0),
+        p_color("ReflectionColor", [0.0; 3]),
+        p_number("ReflectionFactor", 1.0),
+    ]
+}
+
+fn texture_template() -> Vec<Node> {
+    vec![
+        p_enum("TextureTypeUse", 0),
+        p_enum("AlphaSource", 2),
+        p_double("Texture alpha", 1.0),
+        p_bool("PremultiplyAlpha", true),
+        p_enum("CurrentTextureBlendMode", 1),
+        p_enum("CurrentMappingType", 0),
+        p_string("UVSet", "default"),
+        p_enum("WrapModeU", 0),
+        p_enum("WrapModeV", 0),
+        p_bool("UVSwap", false),
+        p_vector("Translation", [0.0; 3]),
+        p_vector("Rotation", [0.0; 3]),
+        p_vector("Scaling", [1.0; 3]),
+        p_vector("TextureRotationPivot", [0.0; 3]),
+        p_vector("TextureScalingPivot", [0.0; 3]),
+        p_bool("UseMaterial", false),
+        p_bool("UseMipMap", false),
+    ]
+}
+
+fn video_template() -> Vec<Node> {
+    vec![
+        p_int("Width", 0),
+        p_int("Height", 0),
+        p_url("Path", ""),
+        p_enum("AccessMode", 0),
+        p_int("StartFrame", 0),
+        p_int("StopFrame", 0),
+        p_ktime("Offset", 0),
+        p_double("PlaySpeed", 0.0),
+        p_bool("FreeRunning", false),
+        p_bool("Loop", false),
+        p_enum("InterlaceMode", 0),
+        p_bool("ImageSequence", false),
+        p_int("ImageSequenceOffset", 0),
+        p_double("FrameRate", 0.0),
+        p_int("LastFrame", 0),
+    ]
+}
+
+// ---- Objects ------------------------------------------------------------
+
+fn null_attribute(id: i64, name: &str) -> Node {
+    Node::object("NodeAttribute", id, name, "NodeAttribute", "Null")
+        .child(Node::leaf("TypeFlags", "Null"))
+        .child(properties70([
+            p_color_rgb("Color", [0.8; 3]),
+            p_double("Size", 100.0),
+            p_enum("Look", 1),
+        ]))
+}
+
+fn bone_attribute(id: i64, name: &str) -> Node {
+    Node::object("NodeAttribute", id, name, "NodeAttribute", "LimbNode")
+        .child(Node::leaf("TypeFlags", "Skeleton"))
+        .child(properties70([p_double("Size", 3.3)]))
+}
+
+fn model_object(
+    id: i64,
+    name: &str,
+    kind: &str,
+    translation: [f32; 3],
+    rotation: [f32; 3],
+    scale: [f32; 3],
+) -> Node {
+    let mut properties = vec![
+        p_lcl("Lcl Translation", translation.map(f64::from)),
+        p_lcl("Lcl Rotation", rotation.map(f64::from)),
+        p_lcl("Lcl Scaling", scale.map(f64::from)),
+    ];
+    properties.push(p_int("DefaultAttributeIndex", 0));
+    properties.push(p_enum("InheritType", 1));
+    Node::object("Model", id, name, "Model", kind)
+        .child(Node::leaf("Version", 232i32))
+        .child(properties70(properties))
+        .child(Node::leaf("MultiLayer", 0i32))
+        .child(Node::leaf("MultiTake", 0i32))
+        .child(Node::leaf("Shading", true))
+        .child(Node::leaf("Culling", "CullingOff"))
+}
+
+fn material_object(id: i64, name: &str) -> Node {
+    Node::object("Material", id, name, "Material", "")
+        .child(Node::leaf("Version", 102i32))
+        .child(Node::leaf("ShadingModel", "Phong"))
+        .child(Node::leaf("MultiLayer", 0i32))
+        .child(properties70([
+            p_color("EmissiveColor", [0.0; 3]),
+            p_number("EmissiveFactor", 1.0),
+            p_color("AmbientColor", [0.2; 3]),
+            p_number("AmbientFactor", 1.0),
+            p_color("DiffuseColor", [0.8; 3]),
+            p_number("DiffuseFactor", 1.0),
+            p_color("TransparentColor", [1.0; 3]),
+            p_number("TransparencyFactor", 0.0),
+            p_number("Opacity", 1.0),
+            p_color("SpecularColor", [0.2; 3]),
+            p_number("SpecularFactor", 1.0),
+            p_number("Shininess", 20.0),
+            p_number("ShininessExponent", 20.0),
+            p_color("ReflectionColor", [0.0; 3]),
+            p_number("ReflectionFactor", 1.0),
+        ]))
+}
+
+fn texture_objects(texture: &TextureLink, folder: &Path) -> (Node, Node) {
+    let relative = texture.relative_path.replace('/', "\\");
+    let absolute = folder
+        .join(&texture.relative_path)
+        .to_string_lossy()
+        .replace('/', "\\");
+    let texture_node = Node::object("Texture", texture.id, &texture.name, "Texture", "")
+        .child(Node::leaf("Type", "TextureVideoClip"))
+        .child(Node::leaf("Version", 202i32))
+        .child(Node::leaf(
+            "TextureName",
+            format!("Texture::{}", texture.name),
+        ))
+        .child(properties70([
+            p_string("UVSet", &texture.uv_set),
+            p_bool("UseMaterial", true),
+        ]))
+        .child(Node::leaf("Media", format!("Video::{}", texture.name)))
+        .child(Node::leaf("FileName", absolute.as_str()))
+        .child(Node::leaf("RelativeFilename", relative.as_str()))
+        .child(Node::new("ModelUVTranslation").attr(0i32).attr(0i32))
+        .child(Node::new("ModelUVScaling").attr(1i32).attr(1i32))
+        .child(Node::leaf(
+            "Texture_Alpha_Source",
+            if texture.has_transparency {
+                "Alpha_Black"
+            } else {
+                "None"
+            },
+        ))
+        .child(
+            Node::new("Cropping")
+                .attr(0i32)
+                .attr(0i32)
+                .attr(0i32)
+                .attr(0i32),
+        );
+    let video_node = Node::object("Video", texture.video_id, &texture.name, "Video", "Clip")
+        .child(Node::leaf("Type", "Clip"))
+        .child(properties70([p_xref_url("Path", &absolute)]))
+        .child(Node::leaf("UseMipMap", 0i32))
+        .child(Node::leaf("Filename", absolute.as_str()))
+        .child(Node::leaf("RelativeFilename", relative.as_str()));
+    (texture_node, video_node)
+}
+
+fn geometry_object(id: i64, name: &str, mesh: &BfresMesh, bones: &[BfresBone]) -> Node {
     let (positions, normals) = model_space_geometry(mesh, bones);
-    writeln!(
-        out,
-        "    Geometry: {id}, \"Geometry::{}\", \"Mesh\" {{",
-        escaped(&mesh.name)
-    )
-    .ok();
-    write_vec3_array(out, "Vertices", &positions);
-    let polygons: Vec<i64> = mesh
+    let polygons: Vec<i32> = mesh
         .indices
         .chunks_exact(3)
         .flat_map(|triangle| {
             [
-                triangle[0] as i64,
-                triangle[1] as i64,
-                -(triangle[2] as i64) - 1,
+                triangle[0] as i32,
+                triangle[1] as i32,
+                -(triangle[2] as i32) - 1,
             ]
         })
         .collect();
-    write_i64_array(out, "PolygonVertexIndex", &polygons);
-    if normals.len() == positions.len() {
-        writeln!(out, "        LayerElementNormal: 0 {{").ok();
-        writeln!(out, "            Version: 101").ok();
-        writeln!(out, "            Name: \"Normals\"").ok();
-        writeln!(out, "            MappingInformationType: \"ByVertice\"").ok();
-        writeln!(out, "            ReferenceInformationType: \"Direct\"").ok();
-        write_vec3_array_indented(out, "Normals", &normals, 12);
-        writeln!(out, "        }}").ok();
+    let mut geometry = Node::object("Geometry", id, name, "Geometry", "Mesh")
+        .child(Node::new("Properties70"))
+        .child(Node::leaf("GeometryVersion", 124i32))
+        .child(Node::leaf("Vertices", flatten3(&positions)))
+        .child(Node::leaf("PolygonVertexIndex", polygons));
+    let has_normals = normals.len() == positions.len();
+    if has_normals {
+        geometry.push(
+            Node::leaf("LayerElementNormal", 0i32)
+                .child(Node::leaf("Version", 101i32))
+                .child(Node::leaf("Name", "Normals"))
+                .child(Node::leaf("MappingInformationType", "ByVertice"))
+                .child(Node::leaf("ReferenceInformationType", "Direct"))
+                .child(Node::leaf("Normals", flatten3(&normals))),
+        );
     }
     let uv_maps = if mesh.uv_maps.is_empty() {
         std::slice::from_ref(&mesh.uv0)
@@ -694,139 +939,53 @@ fn write_geometry(out: &mut String, id: i64, mesh: &BfresMesh, bones: &[BfresBon
         .filter(|uv| uv.len() == positions.len())
         .collect();
     for (index, uv) in valid_uvs.iter().enumerate() {
-        writeln!(out, "        LayerElementUV: {index} {{").ok();
-        writeln!(out, "            Version: 101").ok();
-        writeln!(out, "            Name: \"UVChannel_{}\"", index + 1).ok();
-        writeln!(out, "            MappingInformationType: \"ByVertice\"").ok();
-        writeln!(out, "            ReferenceInformationType: \"Direct\"").ok();
-        write_uv_array(out, "UV", uv);
-        writeln!(out, "        }}").ok();
+        let flat: Vec<f64> = uv
+            .iter()
+            .flat_map(|value| [f64::from(value[0]), 1.0 - f64::from(value[1])])
+            .collect();
+        geometry.push(
+            Node::leaf("LayerElementUV", index as i32)
+                .child(Node::leaf("Version", 101i32))
+                .child(Node::leaf("Name", format!("UVChannel_{}", index + 1)))
+                .child(Node::leaf("MappingInformationType", "ByVertice"))
+                .child(Node::leaf("ReferenceInformationType", "Direct"))
+                .child(Node::leaf("UV", flat)),
+        );
     }
-    writeln!(out, "        LayerElementMaterial: 0 {{").ok();
-    writeln!(out, "            Version: 101").ok();
-    writeln!(out, "            Name: \"\"").ok();
-    writeln!(out, "            MappingInformationType: \"AllSame\"").ok();
-    writeln!(
-        out,
-        "            ReferenceInformationType: \"IndexToDirect\""
-    )
-    .ok();
-    writeln!(out, "            Materials: *1 {{ a: 0 }}").ok();
-    writeln!(out, "        }}").ok();
-    writeln!(out, "        Layer: 0 {{").ok();
-    if normals.len() == positions.len() {
-        layer_element(out, "LayerElementNormal", 0);
+    geometry.push(
+        Node::leaf("LayerElementMaterial", 0i32)
+            .child(Node::leaf("Version", 101i32))
+            .child(Node::leaf("Name", ""))
+            .child(Node::leaf("MappingInformationType", "AllSame"))
+            .child(Node::leaf("ReferenceInformationType", "IndexToDirect"))
+            .child(Node::leaf("Materials", vec![0i32])),
+    );
+    let mut layer = Node::leaf("Layer", 0i32).child(Node::leaf("Version", 100i32));
+    if has_normals {
+        layer.push(layer_element("LayerElementNormal", 0));
     }
     if !valid_uvs.is_empty() {
-        layer_element(out, "LayerElementUV", 0);
+        layer.push(layer_element("LayerElementUV", 0));
     }
-    layer_element(out, "LayerElementMaterial", 0);
-    writeln!(out, "        }}").ok();
+    layer.push(layer_element("LayerElementMaterial", 0));
+    geometry.push(layer);
     for index in 1..valid_uvs.len() {
-        writeln!(out, "        Layer: {index} {{").ok();
-        layer_element(out, "LayerElementUV", index);
-        writeln!(out, "        }}").ok();
+        geometry.push(
+            Node::leaf("Layer", index as i32)
+                .child(Node::leaf("Version", 100i32))
+                .child(layer_element("LayerElementUV", index)),
+        );
     }
-    writeln!(out, "    }}").ok();
+    geometry
 }
 
-fn write_model_object(
-    out: &mut String,
-    id: i64,
-    name: &str,
-    kind: &str,
-    translation: [f32; 3],
-    rotation: [f32; 3],
-    scale: [f32; 3],
-) {
-    writeln!(
-        out,
-        "    Model: {id}, \"Model::{}\", \"{kind}\" {{",
-        escaped(name)
-    )
-    .ok();
-    writeln!(out, "        Version: 232").ok();
-    writeln!(out, "        Properties70:  {{").ok();
-    property_vec3(out, "Lcl Translation", "Lcl Translation", translation);
-    property_vec3(out, "Lcl Rotation", "Lcl Rotation", rotation);
-    property_vec3(out, "Lcl Scaling", "Lcl Scaling", scale);
-    if kind == "Mesh" {
-        property_vec3(out, "GeometricRotation", "Vector3D", [-90.0, 0.0, 0.0]);
-    }
-    writeln!(out, "        }}").ok();
-    writeln!(out, "        Shading: T").ok();
-    writeln!(out, "        Culling: \"CullingOff\"").ok();
-    writeln!(out, "    }}").ok();
+fn layer_element(kind: &str, index: usize) -> Node {
+    Node::new("LayerElement")
+        .child(Node::leaf("Type", kind))
+        .child(Node::leaf("TypedIndex", index as i32))
 }
 
-fn write_material(out: &mut String, id: i64, name: &str) {
-    writeln!(
-        out,
-        "    Material: {id}, \"Material::{}\", \"\" {{",
-        escaped(name)
-    )
-    .ok();
-    writeln!(out, "        Version: 102").ok();
-    writeln!(out, "        ShadingModel: \"phong\"").ok();
-    writeln!(out, "        MultiLayer: 0").ok();
-    writeln!(out, "        Properties70:  {{").ok();
-    writeln!(
-        out,
-        "            P: \"DiffuseColor\", \"Color\", \"\", \"A\",0.8,0.8,0.8"
-    )
-    .ok();
-    writeln!(
-        out,
-        "            P: \"TransparentColor\", \"Color\", \"\", \"A\",1,1,1"
-    )
-    .ok();
-    writeln!(
-        out,
-        "            P: \"TransparencyFactor\", \"Number\", \"\", \"A\",0"
-    )
-    .ok();
-    writeln!(out, "            P: \"Opacity\", \"Number\", \"\", \"A\",1").ok();
-    writeln!(out, "        }}").ok();
-    writeln!(out, "    }}").ok();
-}
-
-fn write_texture(out: &mut String, texture: &TextureLink) {
-    let path = texture.relative_path.replace('/', "\\");
-    writeln!(
-        out,
-        "    Video: {}, \"Video::{}\", \"Clip\" {{",
-        texture.video_id,
-        escaped(&texture.name)
-    )
-    .ok();
-    writeln!(out, "        Type: \"Clip\"").ok();
-    writeln!(out, "        FileName: \"{}\"", escaped(&path)).ok();
-    writeln!(out, "        RelativeFilename: \"{}\"", escaped(&path)).ok();
-    writeln!(out, "    }}").ok();
-    writeln!(
-        out,
-        "    Texture: {}, \"Texture::{}\", \"\" {{",
-        texture.id,
-        escaped(&texture.name)
-    )
-    .ok();
-    writeln!(out, "        Type: \"TextureVideoClip\"").ok();
-    writeln!(out, "        Version: 202").ok();
-    writeln!(
-        out,
-        "        TextureName: \"Texture::{}\"",
-        escaped(&texture.name)
-    )
-    .ok();
-    writeln!(out, "        Media: \"Video::{}\"", escaped(&texture.name)).ok();
-    writeln!(out, "        FileName: \"{}\"", escaped(&path)).ok();
-    writeln!(out, "        RelativeFilename: \"{}\"", escaped(&path)).ok();
-    writeln!(out, "        UVSet: \"{}\"", texture.uv_set).ok();
-    writeln!(out, "        AlphaSource: \"Black\"").ok();
-    writeln!(out, "    }}").ok();
-}
-
-fn write_cluster(out: &mut String, id: i64, mesh: &BfresMesh, bone: usize, bones: &[BfresBone]) {
+fn cluster_object(id: i64, mesh: &BfresMesh, bone: usize, bones: &[BfresBone]) -> Node {
     let mut indices = Vec::new();
     let mut weights = Vec::new();
     for vertex in 0..mesh.positions.len() {
@@ -855,24 +1014,98 @@ fn write_cluster(out: &mut String, id: i64, mesh: &BfresMesh, bone: usize, bones
             }
         }
         if weight > 0.0 {
-            indices.push(vertex as i64);
-            weights.push(weight as f64);
+            indices.push(vertex as i32);
+            weights.push(f64::from(weight));
         }
     }
-    writeln!(
-        out,
-        "    Deformer: {id}, \"SubDeformer::Cluster_{bone}\", \"Cluster\" {{"
-    )
-    .ok();
-    writeln!(out, "        Version: 100").ok();
-    write_i64_array(out, "Indexes", &indices);
-    write_f64_array(out, "Weights", &weights, 8);
     let bone_world = bone_world_matrix(bones, bone);
-    write_matrix(out, "Transform", inverse_affine_matrix(bone_world));
-    write_matrix(out, "TransformLink", bone_world);
-    write_matrix(out, "TransformAssociateModel", identity_matrix());
-    writeln!(out, "    }}").ok();
+    let name = bones
+        .get(bone)
+        .map(|value| value.name.as_str())
+        .unwrap_or("bone");
+    Node::object(
+        "Deformer",
+        id,
+        &format!("Cluster_{name}"),
+        "SubDeformer",
+        "Cluster",
+    )
+    .child(Node::leaf("Version", 100i32))
+    .child(Node::new("UserData").attr("").attr(""))
+    .child(Node::leaf("Indexes", indices))
+    .child(Node::leaf("Weights", weights))
+    .child(Node::leaf(
+        "Transform",
+        fbx_matrix(inverse_affine_matrix(bone_world)),
+    ))
+    .child(Node::leaf("TransformLink", fbx_matrix(bone_world)))
+    .child(Node::leaf(
+        "TransformAssociateModel",
+        fbx_matrix(identity_matrix()),
+    ))
 }
+
+fn connection(child: i64, parent: i64) -> Node {
+    Node::new("C").attr("OO").attr(child).attr(parent)
+}
+
+fn property_connection(child: i64, parent: i64, property: &str) -> Node {
+    Node::new("C")
+        .attr("OP")
+        .attr(child)
+        .attr(parent)
+        .attr(property)
+}
+
+fn flatten3(values: &[[f32; 3]]) -> Vec<f64> {
+    values
+        .iter()
+        .flat_map(|value| value.map(f64::from))
+        .collect()
+}
+
+/// FBX stores transform matrices transposed relative to the column-vector
+/// matrices used by the viewer and the geometry conversion helpers.
+fn fbx_matrix(values: [f64; 16]) -> Vec<f64> {
+    let mut fbx = vec![0.0; 16];
+    for row in 0..4 {
+        for column in 0..4 {
+            fbx[row * 4 + column] = values[column * 4 + row];
+        }
+    }
+    fbx
+}
+
+/// Current UTC time as (year, month, day, hour, minute, second, millisecond).
+fn utc_now() -> (i32, i32, i32, i32, i32, i32, i32) {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let seconds = elapsed.as_secs() as i64;
+    let days = seconds.div_euclid(86_400);
+    let day_seconds = seconds.rem_euclid(86_400);
+    // Civil-from-days (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (
+        year as i32,
+        month as i32,
+        day as i32,
+        (day_seconds / 3600) as i32,
+        (day_seconds % 3600 / 60) as i32,
+        (day_seconds % 60) as i32,
+        elapsed.subsec_millis() as i32,
+    )
+}
+
+// ---- Model helpers ------------------------------------------------------
 
 fn mesh_bones(mesh: &BfresMesh, bone_count: usize) -> Vec<usize> {
     if mesh.vertex_skin_count > 0 {
@@ -1117,80 +1350,10 @@ fn identity_matrix() -> [f64; 16] {
     ]
 }
 
-fn write_vec3_array(out: &mut String, name: &str, values: &[[f32; 3]]) {
-    write_vec3_array_indented(out, name, values, 8);
-}
-fn write_vec3_array_indented(out: &mut String, name: &str, values: &[[f32; 3]], indent: usize) {
-    let flat: Vec<f64> = values
-        .iter()
-        .flat_map(|value| value.map(f64::from))
-        .collect();
-    write_f64_array(out, name, &flat, indent);
-}
-fn write_uv_array(out: &mut String, name: &str, values: &[[f32; 2]]) {
-    let flat: Vec<f64> = values
-        .iter()
-        .flat_map(|value| [value[0] as f64, 1.0 - value[1] as f64])
-        .collect();
-    write_f64_array(out, name, &flat, 12);
-}
-fn write_i64_array(out: &mut String, name: &str, values: &[i64]) {
-    writeln!(out, "        {name}: *{} {{", values.len()).ok();
-    write!(out, "            a: ").ok();
-    for (index, value) in values.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        write!(out, "{value}").ok();
-    }
-    writeln!(out, "\n        }}").ok();
-}
-fn write_f64_array(out: &mut String, name: &str, values: &[f64], indent: usize) {
-    let spaces = " ".repeat(indent);
-    writeln!(out, "{spaces}{name}: *{} {{", values.len()).ok();
-    write!(out, "{spaces}    a: ").ok();
-    for (index, value) in values.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        write!(out, "{value:.9}").ok();
-    }
-    writeln!(out, "\n{spaces}}}").ok();
-}
-fn write_matrix(out: &mut String, name: &str, values: [f64; 16]) {
-    // FBX stores transform matrices transposed relative to the column-vector
-    // matrices used by the viewer and the geometry conversion helpers.
-    let mut fbx = [0.0; 16];
-    for row in 0..4 {
-        for column in 0..4 {
-            fbx[row * 4 + column] = values[column * 4 + row];
-        }
-    }
-    write_f64_array(out, name, &fbx, 8);
-}
-fn property_vec3(out: &mut String, name: &str, kind: &str, value: [f32; 3]) {
-    writeln!(
-        out,
-        "            P: \"{name}\", \"{kind}\", \"\", \"A\",{},{},{}",
-        value[0], value[1], value[2]
-    )
-    .ok();
-}
-fn layer_element(out: &mut String, kind: &str, index: usize) {
-    writeln!(out, "            LayerElement:  {{").ok();
-    writeln!(out, "                Type: \"{kind}\"").ok();
-    writeln!(out, "                TypedIndex: {index}").ok();
-    writeln!(out, "            }}").ok();
-}
-fn connection(out: &mut String, child: i64, parent: i64) {
-    writeln!(out, "    C: \"OO\",{child},{parent}").ok();
-}
-fn property_connection(out: &mut String, child: i64, parent: i64, property: &str) {
-    writeln!(out, "    C: \"OP\",{child},{parent},\"{property}\"").ok();
-}
 fn texture_key(prefix: &str, name: &str) -> String {
     format!("{prefix}\0{name}")
 }
+
 fn safe_name(value: &str) -> String {
     let result: String = value
         .chars()
@@ -1207,12 +1370,6 @@ fn safe_name(value: &str) -> String {
     } else {
         result
     }
-}
-fn escaped(value: &str) -> String {
-    value
-        .replace('\\', "_")
-        .replace('"', "'")
-        .replace(['\r', '\n'], " ")
 }
 
 #[cfg(test)]
@@ -1258,6 +1415,18 @@ mod tests {
     }
 
     #[test]
+    fn utc_now_is_a_plausible_calendar_date() {
+        let (year, month, day, hour, minute, second, millisecond) = utc_now();
+        assert!(year >= 2024);
+        assert!((1..=12).contains(&month));
+        assert!((1..=31).contains(&day));
+        assert!((0..24).contains(&hour));
+        assert!((0..60).contains(&minute));
+        assert!((0..60).contains(&second));
+        assert!((0..1000).contains(&millisecond));
+    }
+
+    #[test]
     fn exports_g1m_geometry_skeleton_and_skinning() {
         let source = std::env::var_os("TOTKBITS_TEST_G1M")
             .map(PathBuf::from)
@@ -1281,6 +1450,9 @@ mod tests {
         assert!(crate::Settings::Magic::is_fbx(&exported));
         let parsed = crate::parser::fbx::FbxFile::parse(&exported, "roundtrip").unwrap();
         assert_eq!(parsed.render.meshes.len(), model.render.meshes.len());
+        let imported = crate::parser::fbx::import::import_for_g1m(&exported).unwrap();
+        assert_eq!(imported.bones.len(), model.render.bones.len());
+        assert_eq!(imported.meshes.len(), model.render.meshes.len());
         if std::env::var_os("TOTKBITS_KEEP_TEST_FBX").is_none() {
             fs::remove_file(output).unwrap();
         }

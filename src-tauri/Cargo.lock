@@ -14,7 +14,6 @@ dependencies = [
  "encoding_rs",
  "fbxcel",
  "fbxcel-dom",
- "fbxscii",
  "flate2",
  "fs2",
  "gltf-json",
@@ -1625,12 +1624,6 @@ dependencies = [
  "rgb",
  "string-interner",
 ]
-
-[[package]]
-name = "fbxscii"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dc6a422cfd439b7d746378ef4440a80587c95ddd93db580c5909d32235a8115"
 
 [[package]]
 name = "fdeflate"

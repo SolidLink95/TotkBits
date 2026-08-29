@@ -258,9 +258,17 @@ fn validate_and_order(
             format!("Material {material_index}"),
             format!("{name}_{material_index}"),
         ];
+        // The FBX exporter emits one material per UV routing (`_UV1`/`_UV2`);
+        // both variants still identify the same G1M material.
+        let material_name = mesh
+            .material
+            .rsplit_once("_UV")
+            .filter(|(_, suffix)| suffix.chars().all(|c| c.is_ascii_digit()) && !suffix.is_empty())
+            .map(|(base, _)| base)
+            .unwrap_or(&mesh.material);
         if !accepted
             .iter()
-            .any(|value| value.eq_ignore_ascii_case(&mesh.material))
+            .any(|value| value.eq_ignore_ascii_case(material_name))
         {
             return Err(invalid(format!(
                 "mesh {} material {} does not match G1M material {}",
