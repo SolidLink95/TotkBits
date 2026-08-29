@@ -566,7 +566,10 @@ fn global_settings() -> Node {
             p_int("UpAxis", 1),
             p_int("UpAxisSign", 1),
             p_int("FrontAxis", 2),
-            p_int("FrontAxisSign", -1),
+            // Y up, -Z forward, +X right: the SDK default. Blender only
+            // converts axes for triples it recognizes; an invalid sign combo
+            // silently imports the Y-up data as Z-up (model lying on its back).
+            p_int("FrontAxisSign", 1),
             p_int("CoordAxis", 0),
             p_int("CoordAxisSign", 1),
             p_int("OriginalUpAxis", -1),
