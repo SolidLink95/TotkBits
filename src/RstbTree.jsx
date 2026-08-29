@@ -133,7 +133,7 @@ const RstbTree = ({ onNodeSelect, sarcPaths, setStatusText, activeTab }) => {
     <div style={{ display: activeTab === 'RSTB' ? "flex" : "none", }}>
       <div className='textsearch' style={{ padding: '10px', }}>
         {/* <button onClick={handleSearch} style={{ marginRight: marg }}>Search</button> */}
-        <ImageButton src="lupa.png" onClick={handleSearch} alt="Search" title="Search" style={{ marginRight: marg }} />
+        <ImageButton src="lupa.webp" onClick={handleSearch} alt="Search" title="Search" style={{ marginRight: marg }} />
         <input
         className='inputtext'
           type="text"
@@ -151,9 +151,9 @@ const RstbTree = ({ onNodeSelect, sarcPaths, setStatusText, activeTab }) => {
           style={{ minWidth: "50px", width: '10%', padding: '5px', color: 'white', marginLeft: marg }}
         />
         {/* <button onClick={handleClear} style={{ marginLeft: marg }}>Save</button> */}
-        <ImageButton src="save_rstb.png" onClick={handleSave} alt="Save" title="Save entry" style={{ marginLeft: marg }} />
+        <ImageButton src="save_rstb.webp" onClick={handleSave} alt="Save" title="Save entry" style={{ marginLeft: marg }} />
         {/* <button onClick={handleClear} style={{ marginLeft: marg }}>Clear</button> */}
-        <ImageButton src="clear_rstb.png" onClick={handleClear} alt="Clear" title="Clear search" style={{ marginLeft: "1px" }} />
+        <ImageButton src="clear_rstb.webp" onClick={handleClear} alt="Clear" title="Clear search" style={{ marginLeft: "1px" }} />
       </div>
 
       <div className='rstb-tree' >
@@ -164,8 +164,8 @@ const RstbTree = ({ onNodeSelect, sarcPaths, setStatusText, activeTab }) => {
             <span style={{ flexGrow: 1, textAlign: 'left', maxWidth: '6000px', overflow: "hidden", textOverflow: "ellipsis" }}>{node.path}</span>
             <span style={{ marginLeft: '20px', marginRight: 'auto', textAlign: 'right' }}>{node.val}</span>
             {/* <button onClick={() => handleEditRow(node)} style={{ marginLeft: marg }}>Edit</button> */}
-            <ImageButton src="edit_rstb.png" onClick={() => handleEditRow(node)} alt="Edit" title="Edit" style={{ marginLeft: marg }} />
-            <ImageButton src="remove.png" onClick={() => handleRemoveEntry(node)} alt="Remove" title="Remove"  />
+            <ImageButton src="edit_rstb.webp" onClick={() => handleEditRow(node)} alt="Edit" title="Edit" style={{ marginLeft: marg }} />
+            <ImageButton src="remove.webp" onClick={() => handleRemoveEntry(node)} alt="Remove" title="Remove"  />
             {/* <button onClick={(e) => e.stopPropagation()} style={{ marginLeft: marg }}>Remove</button> */}
           </div>
         ))}

@@ -130,29 +130,29 @@ const ButtonsDisplay = () => {
   }, []);
 
   const imageButtonsData = activeTab === "AUDIO" ? [
-    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
-    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
-    { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
+    { src: 'open.webp', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
+    { src: 'save.webp', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
+    { src: 'save_as.webp', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
   ] : activeTab === "SARC" ? [
-    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
-    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
-    { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
-    { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit' },
-    { src: 'add_sarc.png', alt: 'add', onClick: handleAddClick, title: 'Add' },
-    { src: 'extract.png', alt: 'extract', onClick: () => extractFileClick(selectedPath, setStatusText), title: 'Extract' },
-    { src: 'lupa.png', alt: 'find', onClick: handleSearchClick, title: 'Search in sarc' },
+    { src: 'open.webp', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
+    { src: 'save.webp', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
+    { src: 'save_as.webp', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
+    { src: 'edit.webp', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit' },
+    { src: 'add_sarc.webp', alt: 'add', onClick: handleAddClick, title: 'Add' },
+    { src: 'extract.webp', alt: 'extract', onClick: () => extractFileClick(selectedPath, setStatusText), title: 'Extract' },
+    { src: 'lupa.webp', alt: 'find', onClick: handleSearchClick, title: 'Search in sarc' },
   ] : activeTab === "YAML" ? [
-    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
-    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
-    { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
-    { src: 'back.png', alt: 'back', onClick: undoInEditor, title: 'Undo' },
-    { src: 'forward.png', alt: 'forward', onClick: redoInEditor, title: 'Redo' },
-    { src: 'lupa.png', alt: 'find', onClick: triggerSearchInEditor, title: 'Find' },
-    { src: 'replace.png', alt: 'replace', onClick: triggerReplaceInEditor, title: 'Replace' },
+    { src: 'open.webp', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
+    { src: 'save.webp', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
+    { src: 'save_as.webp', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
+    { src: 'back.webp', alt: 'back', onClick: undoInEditor, title: 'Undo' },
+    { src: 'forward.webp', alt: 'forward', onClick: redoInEditor, title: 'Redo' },
+    { src: 'lupa.webp', alt: 'find', onClick: triggerSearchInEditor, title: 'Find' },
+    { src: 'replace.webp', alt: 'replace', onClick: triggerReplaceInEditor, title: 'Replace' },
   ] : [
-    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
-    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
-    { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
+    { src: 'open.webp', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
+    { src: 'save.webp', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
+    { src: 'save_as.webp', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
   ]
     ;
   const handleFilterChange = (setPathsFilters, key, val) => {

@@ -355,14 +355,14 @@ function MenuBarDisplay({ updateButton = null }) {
     await openModelBrowser('lm3', "Browse Luigi's Mansion 3 model slots");
   };
   const iconSize = '20px';
-  const blankIcon = 'menu/blank.png';
+  const blankIcon = 'menu/blank.webp';
   const isSaveEnabled = isFileTypeSaveable(activeDocument?.fileType);
 
   const fileMenuItems = [
-    { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.png', shortcut: '' },
+    { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.webp', shortcut: '' },
     {
       label: 'Open recent',
-      icon: 'open_recent.png',
+      icon: 'open_recent.webp',
       shortcut: '',
       children: recentFiles.map((path) => ({
         label: path,
@@ -374,15 +374,23 @@ function MenuBarDisplay({ updateButton = null }) {
         },
       })),
     },
-    { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
-    { label: 'AOC model', onClick: handleOpenAocModels, icon: 'menu/aoc_logo.png', shortcut: '', condition: aocModelCatalog !== null },
-    { label: 'Luigi Mansion 3', onClick: handleOpenLm3Models, icon: blankIcon, shortcut: '', condition: lm3SlotCatalog !== null },
-    { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: '', condition: isSaveEnabled },
-    { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: '', condition: isSaveEnabled },
-    { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },
-    { label: 'Settings', onClick: handleEditOptions, icon: 'menu/edit_config.png', shortcut: '' },
-    { label: 'Restart', onClick: restartAppClick, icon: 'menu/restart.png', shortcut: '' },
-    { label: 'Exit', onClick: useExitApp, icon: 'menu/exit.png', shortcut: '' }
+    { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.webp', shortcut: '' },
+    {
+      label: 'Model browser',
+      icon: '3d_cube.webp',
+      shortcut: '',
+      condition: aocModelCatalog !== null || lm3SlotCatalog !== null,
+      children: [
+        ...(aocModelCatalog !== null ? [{ label: 'AOC model', title: 'AOC model', onClick: handleOpenAocModels, icon: 'menu/aoc_logo.webp' }] : []),
+        ...(lm3SlotCatalog !== null ? [{ label: 'Luigi Mansion 3', title: 'Luigi Mansion 3', onClick: handleOpenLm3Models, icon: 'menu/lm3.webp' }] : []),
+      ],
+    },
+    { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.webp', shortcut: '', condition: isSaveEnabled },
+    { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.webp', shortcut: '', condition: isSaveEnabled },
+    { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.webp', shortcut: '' },
+    { label: 'Settings', onClick: handleEditOptions, icon: 'menu/edit_config.webp', shortcut: '' },
+    { label: 'Restart', onClick: restartAppClick, icon: 'menu/restart.webp', shortcut: '' },
+    { label: 'Exit', onClick: useExitApp, icon: 'menu/exit.webp', shortcut: '' }
   ];
   const isSarcOpened = paths.paths.length > 0 && activeTab === "SARC";
   const isInternalFileSelected = isSarcOpened && selectedPath.path !== '' && selectedPath.isfile;
@@ -390,13 +398,13 @@ function MenuBarDisplay({ updateButton = null }) {
     { label: 'Download GLB', onClick: handleDownloadMiiGlb, icon: blankIcon, shortcut: '', condition: activeDocument?.fileType === 'MII' },
     { label: 'Batch render', onClick: handleBatchRender, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Physics merge', onClick: handlePhysicsMerge, icon: blankIcon, shortcut: '', condition: true },
-    { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.png', shortcut: '', condition: isSarcOpened },
-    { label: 'Add folder', onClick: handleAddFolderClick, icon: 'menu/add_folder.png', shortcut: '', condition: isSarcOpened },
-    { label: 'Extract sarc contents', onClick: handleExtractOpenedSarc, icon: 'context_menu/extract_all.png', shortcut: '', condition: isSarcOpened },
-    { label: 'Search in sarc', onClick: handleSearchClick, icon: 'menu/lupa.png', shortcut: '', condition: isSarcOpened },
-    { label: 'Clear search', onClick: handleClearSearchTextInSarc, icon: 'menu/clear_search.png', shortcut: '', condition: searchInSarcQuery.length > 0 },
-    { label: 'Edit', onClick: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: '', condition: isInternalFileSelected },
-    { label: 'Extract file', onClick: handleExtractClick, icon: 'context_menu/extract.png', shortcut: '', condition: isInternalFileSelected },
+    { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.webp', shortcut: '', condition: isSarcOpened },
+    { label: 'Add folder', onClick: handleAddFolderClick, icon: 'menu/add_folder.webp', shortcut: '', condition: isSarcOpened },
+    { label: 'Extract sarc contents', onClick: handleExtractOpenedSarc, icon: 'context_menu/extract_all.webp', shortcut: '', condition: isSarcOpened },
+    { label: 'Search in sarc', onClick: handleSearchClick, icon: 'menu/lupa.webp', shortcut: '', condition: isSarcOpened },
+    { label: 'Clear search', onClick: handleClearSearchTextInSarc, icon: 'menu/clear_search.webp', shortcut: '', condition: searchInSarcQuery.length > 0 },
+    { label: 'Edit', onClick: handleOpenInternalSarcFile, icon: 'context_menu/edit.webp', shortcut: '', condition: isInternalFileSelected },
+    { label: 'Extract file', onClick: handleExtractClick, icon: 'context_menu/extract.webp', shortcut: '', condition: isInternalFileSelected },
     // { label: 'Show all', onClick: handleShowAllClick, icon: blankIcon, shortcut: '', condition: paths.added_paths.length > 0 || paths.modded_paths.length > 0 },
     // { label: 'Show added', onClick: handleShowAddedClick, icon: blankIcon, shortcut: '', condition: paths.added_paths.length > 0 },
     // { label: 'Show modded', onClick: handleShowModdedClick, icon: blankIcon, shortcut: '', condition: paths.modded_paths.length > 0 }
@@ -457,7 +465,9 @@ function MenuBarDisplay({ updateButton = null }) {
                           className="menu-submenu-item"
                           title={child.title}
                           onClick={child.onClick}
+                          style={child.icon ? menuDivStyle : undefined}
                         >
+                          {child.icon && <img src={child.icon} alt={child.label} style={menuItemImgStyle} />}
                           {child.label}
                         </li>
                       ))}
@@ -580,7 +590,7 @@ function MenuBarDisplayWithUpdateButton() {
     }}>
       <MenuBarDisplay updateButton={SHOW_UPDATE_BUTTON ? <ImageButton
         key={isUp ? 'UpdateAvailableButton' : 'NoUpdateButton'}
-        src={isUp ? 'update.png' : 'noupdate.png'}
+        src={isUp ? 'update.webp' : 'noupdate.webp'}
         alt={
           isUp
             ? `Update to ${updateState.latestVersion}`

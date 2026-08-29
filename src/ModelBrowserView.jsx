@@ -71,7 +71,7 @@ export default function ModelBrowserView({ activeTab }) {
             return next;
         });
         image.onerror = null;
-        image.src = '/no_preview.png';
+        image.src = '/no_preview.webp';
     };
     const preview = async (hash) => {
         setStatusText(`Locating AOC model ${hash}...`);
@@ -211,7 +211,7 @@ export default function ModelBrowserView({ activeTab }) {
                     </label>
                 </div>
             </header>
-            {displayedLm3Matches.length > 0 && <div className="aoc-model-results">
+            {displayedLm3Matches.length > 0 && <div className="aoc-model-results lm3">
                 {/* The row keeps every cell of the shared seven-column grid so
                     LM3 entries line up exactly like the AOC ones: the select
                     and size columns are empty placeholders. Previews are the
@@ -223,12 +223,12 @@ export default function ModelBrowserView({ activeTab }) {
                         src={`/webp/lm3/${entry.id}.webp`}
                         onError={(event) => {
                             event.currentTarget.onerror = null;
-                            event.currentTarget.src = '/no_preview.png';
+                            event.currentTarget.src = '/no_preview.webp';
                         }}
                         loading="lazy"
                         alt=""
                     />
-                    <code>{entry.id}</code>
+                    <code title={entry.id}>{entry.id}</code>
                     <span title={entry.name || undefined}>{displayName(entry.name)}</span>
                     <span className="aoc-model-size">{entry.size != null ? displaySize(entry.size) : ''}</span>
                     <button
@@ -238,7 +238,7 @@ export default function ModelBrowserView({ activeTab }) {
                         title={`Copy ${entry.id}`}
                         aria-label={`Copy Luigi's Mansion 3 slot id ${entry.id}`}
                     >
-                        <img src="/clipboard.png" alt="" />
+                        <img src="/clipboard.webp" alt="" />
                     </button>
                     <button type="button" onClick={() => previewLm3Slot(entry)}>Preview</button>
                 </div>)}
@@ -329,7 +329,7 @@ export default function ModelBrowserView({ activeTab }) {
                     title={selectionFull ? 'A maximum of 5 models can be selected' : `Select ${hash}`}
                 />
                 <img
-                    src={`/webp/${hash.toLocaleLowerCase()}.webp`}
+                    src={`/webp/aoc/${hash.toLocaleLowerCase()}.webp`}
                     onError={(event) => markMissingPreview(hash, event.currentTarget)}
                     alt=""
                 />
@@ -343,7 +343,7 @@ export default function ModelBrowserView({ activeTab }) {
                     title={`Copy ${hash}`}
                     aria-label={`Copy AOC model hash ${hash}`}
                 >
-                    <img src="/clipboard.png" alt="" />
+                    <img src="/clipboard.webp" alt="" />
                 </button>
                 <button type="button" onClick={() => preview(hash)}>Preview</button>
             </div>})}

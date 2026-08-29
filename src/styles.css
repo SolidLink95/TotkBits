@@ -693,6 +693,16 @@ button {
 
 .aoc-model-result code {
   color: #8fc7ff;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* LM3 slot ids are longer than the 8-char AOC hashes; give them a wider id
+   column so they don't get clipped down to the AOC width. */
+.aoc-model-results.lm3 .aoc-model-result {
+  grid-template-columns: 22px 200px 220px minmax(0, 1fr) 72px auto auto;
 }
 
 .aoc-model-size {
