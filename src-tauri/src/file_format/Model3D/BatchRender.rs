@@ -143,7 +143,7 @@ fn list_batch_render_files_with_zstd(
     model_kind: &str,
     zstd: &crate::Zstd::TotkZstd<'_>,
 ) -> Result<Vec<BatchRenderFile>, String> {
-    const MAX_SIZE: u64 = 1024 * 1024;
+    const MAX_SIZE: u64 = 500 * 1024 * 1024;
     let mut models = Vec::new();
     for entry in walkdir::WalkDir::new(&source_root) {
         let entry = entry.map_err(|error| error.to_string())?;
@@ -155,11 +155,11 @@ fn list_batch_render_files_with_zstd(
         // files. GLB files are exempt: the extension is explicit intent, and
         // GLBs with embedded textures (e.g. downloaded Mii models) routinely
         // exceed the cap.
-        let is_glb_name = path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("glb"));
+        // let is_glb_name = path
+        //     .extension()
+        //     .is_some_and(|extension| extension.eq_ignore_ascii_case("glb"));
         if let Ok(meta) = fs::metadata(path) {
-            if meta.len() > MAX_SIZE && !is_glb_name {
+            if meta.len() > MAX_SIZE  {
                 continue;
             }
         }
