@@ -50,19 +50,46 @@ impl Lm3ParseTiming {
 
 type SlotResult = (Lm3Model, Vec<ResolvedG1tTexture>);
 
-/// Reads a slot using three worker threads for the independent entries.
+/// Textures decoded per worker thread once the entries are inflated.
+pub const IMAGES_PER_THREAD: usize = 8;
+
+/// Reads a slot the fastest way: three worker threads inflate the entries,
+/// then geometry parses on one thread while textures decode on one thread
+/// per [`IMAGES_PER_THREAD`] images.
 pub fn parse_slot_parallel(
     dict_path: &Path,
     archive_name: &str,
     slot: usize,
 ) -> io::Result<SlotResult> {
-    parse_slot_parallel_timed(dict_path, archive_name, slot).map(|(result, _)| result)
+    parse_slot_pipelined_timed(dict_path, archive_name, slot, IMAGES_PER_THREAD)
+        .map(|(result, _)| result)
 }
 
+/// Three inflate workers, then everything parses on the calling thread.
 pub fn parse_slot_parallel_timed(
     dict_path: &Path,
     archive_name: &str,
     slot: usize,
+) -> io::Result<(SlotResult, Lm3ParseTiming)> {
+    parse_slot_timed_with(dict_path, archive_name, slot, None)
+}
+
+/// Three inflate workers, then geometry and texture decoding run on their
+/// own threads (`images_per_thread` textures per decode thread).
+pub fn parse_slot_pipelined_timed(
+    dict_path: &Path,
+    archive_name: &str,
+    slot: usize,
+    images_per_thread: usize,
+) -> io::Result<(SlotResult, Lm3ParseTiming)> {
+    parse_slot_timed_with(dict_path, archive_name, slot, Some(images_per_thread))
+}
+
+fn parse_slot_timed_with(
+    dict_path: &Path,
+    archive_name: &str,
+    slot: usize,
+    images_per_thread: Option<usize>,
 ) -> io::Result<(SlotResult, Lm3ParseTiming)> {
     let started = Instant::now();
     let archive = Lm3Archive::open(dict_path)?;
@@ -120,7 +147,13 @@ pub fn parse_slot_parallel_timed(
     let decompressed = decompress_started.elapsed();
 
     let parse_started = Instant::now();
-    let result = super::lm3::parse_slot_from_files(&files, archive_name, slot, shared.as_ref())?;
+    let result = super::lm3::parse_slot_from_files_with(
+        &files,
+        archive_name,
+        slot,
+        shared.as_ref(),
+        images_per_thread,
+    )?;
     Ok((
         result,
         Lm3ParseTiming {
@@ -364,5 +397,88 @@ mod tests {
 
         eprintln!("{}", sequential_timing.describe("sequential"));
         eprintln!("{}", parallel_timing.describe("3 threads  "));
+    }
+
+    /// The pipelined reader must produce exactly what the single-thread parse
+    /// produces, and this reports how much faster it is on the reference
+    /// slots (run with `--nocapture`).
+    #[test]
+    fn pipelined_reader_matches_and_benchmarks_reference_slots() {
+        let Some(romfs) = romfs() else { return };
+        let dict = romfs.join("global.dict");
+        const ROUNDS: usize = 3;
+        let mut old_total = Duration::ZERO;
+        let mut new_total = Duration::ZERO;
+        for slot in [27usize, 30, 34] {
+            let mut old_best = Duration::MAX;
+            let mut new_best = Duration::MAX;
+            let mut old_parse = Duration::MAX;
+            let mut new_parse = Duration::MAX;
+            let mut old_result = None;
+            let mut new_result = None;
+            for _ in 0..ROUNDS {
+                let (result, timing) = parse_slot_parallel_timed(&dict, "global", slot).unwrap();
+                old_best = old_best.min(timing.total);
+                old_parse = old_parse.min(timing.parse);
+                old_result = Some(result);
+                let (result, timing) =
+                    parse_slot_pipelined_timed(&dict, "global", slot, IMAGES_PER_THREAD).unwrap();
+                if timing.total < new_best {
+                    eprintln!("{}", timing.describe(&format!("global_{slot} new")));
+                }
+                new_best = new_best.min(timing.total);
+                new_parse = new_parse.min(timing.parse);
+                new_result = Some(result);
+            }
+            let (old_model, old_textures) = old_result.unwrap();
+            let (new_model, new_textures) = new_result.unwrap();
+            assert_eq!(old_model.render.meshes.len(), new_model.render.meshes.len());
+            assert_eq!(old_model.render.bones.len(), new_model.render.bones.len());
+            assert_eq!(old_model.materials.len(), new_model.materials.len());
+            for (left, right) in old_model.materials.iter().zip(&new_model.materials) {
+                let slots = |material: &crate::parser::AOC::g1m::G1mMaterial| {
+                    material
+                        .texture_slots
+                        .iter()
+                        .map(|slot| (slot.texture_type.clone(), slot.name.clone()))
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(slots(left), slots(right), "slot {slot} materials");
+            }
+            for (left, right) in old_model.render.meshes.iter().zip(&new_model.render.meshes) {
+                assert_eq!(
+                    left.positions, right.positions,
+                    "slot {slot} mesh {}",
+                    left.name
+                );
+                assert_eq!(left.bone_weights, right.bone_weights);
+            }
+            assert_eq!(
+                old_textures.len(),
+                new_textures.len(),
+                "slot {slot} textures"
+            );
+            for (left, right) in old_textures.iter().zip(&new_textures) {
+                assert_eq!(left.name, right.name);
+                assert_eq!(left.data_url, right.data_url);
+            }
+            eprintln!(
+                "global_{slot}: {} textures | old {:.1}ms (parse {:.1}ms) | new {:.1}ms (parse {:.1}ms) | {:.2}x",
+                new_textures.len(),
+                old_best.as_secs_f64() * 1000.0,
+                old_parse.as_secs_f64() * 1000.0,
+                new_best.as_secs_f64() * 1000.0,
+                new_parse.as_secs_f64() * 1000.0,
+                old_best.as_secs_f64() / new_best.as_secs_f64().max(1e-9),
+            );
+            old_total += old_best;
+            new_total += new_best;
+        }
+        eprintln!(
+            "total: old {:.1}ms | new {:.1}ms | {:.2}x",
+            old_total.as_secs_f64() * 1000.0,
+            new_total.as_secs_f64() * 1000.0,
+            old_total.as_secs_f64() / new_total.as_secs_f64().max(1e-9),
+        );
     }
 }

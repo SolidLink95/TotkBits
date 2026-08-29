@@ -164,7 +164,9 @@ fn read_f32(data: &[u8], offset: usize) -> io::Result<f32> {
 }
 
 pub struct Lm3Archive {
-    pub data: Vec<u8>,
+    /// The `.data` file is several hundred megabytes; entries are read from
+    /// it on demand rather than holding the whole file in memory.
+    pub data_path: std::path::PathBuf,
     pub entries: Vec<Lm3FileEntry>,
     pub compressed: bool,
 }
@@ -226,15 +228,24 @@ impl Lm3Archive {
     pub fn open(dict_path: &Path) -> io::Result<Self> {
         let dict = std::fs::read(dict_path)?;
         let (compressed, entries) = parse_dict(&dict)?;
-        let data = std::fs::read(dict_path.with_extension("data"))?;
+        let data_path = dict_path.with_extension("data");
+        if !data_path.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("{} not found", data_path.display()),
+            ));
+        }
         Ok(Self {
-            data,
+            data_path,
             entries,
             compressed,
         })
     }
 
+    /// Reads and inflates one entry. Each call opens its own handle, so the
+    /// inflate workers can read concurrently.
     pub fn entry_bytes(&self, index: usize) -> io::Result<Vec<u8>> {
+        use std::io::{Seek, SeekFrom};
         let entry = self
             .entries
             .get(index)
@@ -244,12 +255,12 @@ impl Lm3Archive {
         } else {
             entry.decompressed_size
         } as usize;
-        let start = entry.offset as usize;
-        let raw = self
-            .data
-            .get(start..start + stored)
-            .ok_or_else(|| invalid(format!("LM3 file entry {index} is out of bounds")))?;
-        decode_entry(raw, entry, index, self.compressed)
+        let mut file = std::fs::File::open(&self.data_path)?;
+        file.seek(SeekFrom::Start(entry.offset as u64))?;
+        let mut raw = vec![0u8; stored];
+        file.read_exact(&mut raw)
+            .map_err(|_| invalid(format!("LM3 file entry {index} is out of bounds")))?;
+        decode_entry(&raw, entry, index, self.compressed)
     }
 }
 
@@ -1244,111 +1255,30 @@ pub fn parse_slot(
     parse_slot_from_files(&files, archive_name, slot, fallback.as_ref())
 }
 
-/// Fraction of sampled pixels that are the ASTC decoder's magenta error fill.
-fn magenta_fraction(image: &image::RgbaImage) -> f32 {
-    let mut magenta = 0usize;
-    let mut total = 0usize;
-    for pixel in image.pixels().step_by(13) {
-        total += 1;
-        let [red, green, blue, _] = pixel.0;
-        if red > 240 && blue > 240 && green < 32 {
-            magenta += 1;
-        }
-    }
-    if total == 0 {
-        0.0
-    } else {
-        magenta as f32 / total as f32
-    }
-}
-
-/// The "first sRGB record" base-colour heuristic occasionally lands on a
-/// packed data map whose allocation is dominated by the decoder's magenta
-/// error fill (Peach's dress in Hotel/Shiny is one). When the chosen base
-/// colour decodes mostly magenta, move the designation to the least-magenta
-/// sRGB candidate of the same material.
-fn reassign_magenta_base_colors(
-    materials: &mut [crate::parser::AOC::g1m::G1mMaterial],
-    mesh_hashes: &[u32],
-    textures_by_mesh: &HashMap<u32, Vec<Lm3TextureRef>>,
-    decoded: &std::collections::BTreeMap<u32, image::RgbaImage>,
-) {
-    for (mesh_index, material) in materials.iter_mut().enumerate() {
-        let Some(references) = mesh_hashes
-            .get(mesh_index)
-            .and_then(|hash| textures_by_mesh.get(hash))
-        else {
-            continue;
-        };
-        let Some(base_slot) = material
-            .texture_slots
-            .iter()
-            .position(|slot| slot.texture_type == "Base color")
-        else {
-            continue;
-        };
-        let base_hash =
-            u32::from_str_radix(&material.texture_slots[base_slot].name, 16).unwrap_or(0);
-        let Some(base_image) = decoded.get(&base_hash) else {
-            continue;
-        };
-        let base_fraction = magenta_fraction(base_image);
-        if base_fraction < 0.25 {
-            continue;
-        }
-        let candidate = |allow_packed: bool| {
-            references
-                .iter()
-                .filter(|entry| {
-                    entry.known
-                        && !entry.is_normal_map()
-                        && entry.hash != base_hash
-                        && (allow_packed || (entry.is_srgb() && entry.format != 0x1D))
-                })
-                .filter_map(|entry| {
-                    decoded
-                        .get(&entry.hash)
-                        .map(|image| (entry.hash, magenta_fraction(image)))
-                })
-                .min_by(|left, right| left.1.total_cmp(&right.1))
-        };
-        let replacement = candidate(false).or_else(|| candidate(true));
-        material.texture_slots[base_slot].texture_type = "Texture".into();
-        material.texture_slots[base_slot].sampler = "_x0".into();
-        match replacement {
-            Some((new_hash, new_fraction)) if new_fraction + 0.1 < base_fraction => {
-                let new_name = format!("{new_hash:08X}");
-                if let Some(slot) = material
-                    .texture_slots
-                    .iter_mut()
-                    .find(|slot| slot.name == new_name)
-                {
-                    slot.texture_type = "Base color".into();
-                    slot.sampler = "_a0".into();
-                }
-                println!(
-                    "[LM3] material {mesh_index}: base colour {base_hash:08X} is {:.0}% magenta, using {new_hash:08X}",
-                    base_fraction * 100.0
-                );
-            }
-            _ => {
-                // No usable alternative: leave the mesh untextured so it
-                // shades neutrally instead of magenta.
-                println!(
-                    "[LM3] material {mesh_index}: base colour {base_hash:08X} is {:.0}% magenta, no usable replacement",
-                    base_fraction * 100.0
-                );
-            }
-        }
-    }
-}
-
 /// Builds a slot's model from already-decompressed archive entries.
+/// Parses a slot on the calling thread.
 pub(crate) fn parse_slot_from_files(
     files: &Lm3SlotFiles,
     archive_name: &str,
     slot: usize,
     fallback: Option<&Lm3TextureSource>,
+) -> io::Result<(Lm3Model, Vec<crate::parser::AOC::g1m::ResolvedG1tTexture>)> {
+    parse_slot_from_files_with(files, archive_name, slot, fallback, None)
+}
+
+/// One decoded texture ready for the viewer: hash, PNG data URL, width, height.
+type DecodedTexture = (u32, String, u32, u32);
+
+/// Parses a slot. With `images_per_thread` set, geometry (skeleton, meshes,
+/// materials) parses on one worker while the referenced textures decode and
+/// PNG-encode on one worker per `images_per_thread` textures; the calling
+/// thread joins them. `None` keeps everything on the calling thread.
+pub(crate) fn parse_slot_from_files_with(
+    files: &Lm3SlotFiles,
+    archive_name: &str,
+    slot: usize,
+    fallback: Option<&Lm3TextureSource>,
+    images_per_thread: Option<usize>,
 ) -> io::Result<(Lm3Model, Vec<crate::parser::AOC::g1m::ResolvedG1tTexture>)> {
     let table = &files.table;
     let file52 = &files.file52;
@@ -1383,11 +1313,29 @@ pub(crate) fn parse_slot_from_files(
         }
     }
 
+    let mesh_count = b003.size as usize / 0x40;
+    let mesh_hashes: Vec<u32> = (0..mesh_count)
+        .map(|index| read_u32(&file52, b003.offset as usize + index * 0x40))
+        .collect::<io::Result<_>>()?;
+    let textures_by_mesh = material_textures(&file52, model, &mesh_hashes, &texture_formats);
+    let mut referenced: Vec<u32> = textures_by_mesh
+        .values()
+        .flatten()
+        .filter(|entry| entry.known)
+        .map(|entry| entry.hash)
+        .collect();
+    referenced.sort_unstable();
+    referenced.dedup();
+
+    let parse_geometry = || -> io::Result<(
+        Vec<crate::file_format::Model3D::bfres::BfresBone>,
+        Vec<BfresMesh>,
+        Vec<crate::parser::AOC::g1m::G1mMaterial>,
+    )> {
     // The skeleton lives in its own file entry and is optional: a slot still
     // previews as a static model when no compatible skeleton is found.
-    let file53 = files.file53.clone();
+    let file53 = files.file53.as_deref();
     let (bones, bone_hash_to_id) = file53
-        .as_deref()
         .and_then(|file53| {
             let index = select_skeleton_group(&file52, file53, &table, &subentries, model, slot)?;
             let group = skeleton_groups(&subentries).into_iter().nth(index)?;
@@ -1405,12 +1353,6 @@ pub(crate) fn parse_slot_from_files(
                 .collect()
         })
         .unwrap_or_default();
-
-    let mesh_count = b003.size as usize / 0x40;
-    let mesh_hashes: Vec<u32> = (0..mesh_count)
-        .map(|index| read_u32(&file52, b003.offset as usize + index * 0x40))
-        .collect::<io::Result<_>>()?;
-    let textures_by_mesh = material_textures(&file52, model, &mesh_hashes, &texture_formats);
 
     let mut meshes = Vec::with_capacity(mesh_count);
     let mut materials = Vec::with_capacity(mesh_count);
@@ -1587,15 +1529,70 @@ pub(crate) fn parse_slot_from_files(
             skin_bones,
         });
     }
+    Ok((bones, meshes, materials))
+    };
 
-    let mut referenced: Vec<u32> = textures_by_mesh
-        .values()
-        .flatten()
-        .filter(|entry| entry.known)
-        .map(|entry| entry.hash)
-        .collect();
-    referenced.sort_unstable();
-    referenced.dedup();
+    // Resolve against this archive first, then the fallback store: a
+    // Scarescraper costume shares several textures with `global`. The PNG
+    // encode happens right after the decode so it lands on the same worker.
+    let decode_texture = |texture_hash: u32| -> Option<DecodedTexture> {
+        use base64::Engine;
+        let decoded = local
+            .as_ref()
+            .and_then(|source| source.decode(texture_hash))
+            .or_else(|| fallback.and_then(|source| source.decode(texture_hash)));
+        let image = match decoded {
+            Some(Ok(image)) => image,
+            Some(Err(error)) => {
+                println!("[LM3] skipping texture {texture_hash:08X}: {error}");
+                return None;
+            }
+            None => {
+                println!("[LM3] texture {texture_hash:08X} is not stored in a known archive");
+                return None;
+            }
+        };
+        let png = crate::file_format::Image::png::encode(&image).ok()?;
+        let data_url = format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(png)
+        );
+        Some((texture_hash, data_url, image.width(), image.height()))
+    };
+
+    let worker_panicked = || io::Error::other("an LM3 slot worker thread panicked");
+    let ((bones, meshes, materials), mut decoded): (_, Vec<DecodedTexture>) =
+        match images_per_thread {
+            Some(per_thread) if per_thread > 0 && !referenced.is_empty() => {
+                std::thread::scope(|scope| {
+                    let geometry = scope.spawn(&parse_geometry);
+                    let workers: Vec<_> = referenced
+                        .chunks(per_thread)
+                        .map(|chunk| {
+                            let decode_texture = &decode_texture;
+                            scope.spawn(move || {
+                                chunk
+                                    .iter()
+                                    .filter_map(|hash| decode_texture(*hash))
+                                    .collect::<Vec<_>>()
+                            })
+                        })
+                        .collect();
+                    let mut decoded = Vec::with_capacity(referenced.len());
+                    for worker in workers {
+                        decoded.extend(worker.join().map_err(|_| worker_panicked())?);
+                    }
+                    Ok::<_, io::Error>((geometry.join().map_err(|_| worker_panicked())??, decoded))
+                })?
+            }
+            _ => (
+                parse_geometry()?,
+                referenced
+                    .iter()
+                    .filter_map(|hash| decode_texture(*hash))
+                    .collect(),
+            ),
+        };
     println!(
         "[LM3] slot {archive_name}_{slot}: {mesh_count} meshes, {} bones, {} texture headers, {} referenced textures",
         bones.len(),
@@ -1603,46 +1600,13 @@ pub(crate) fn parse_slot_from_files(
         referenced.len()
     );
 
-    let mut decoded_images: std::collections::BTreeMap<u32, image::RgbaImage> = Default::default();
-    for texture_hash in referenced {
-        // Resolve against this archive first, then the fallback store: a
-        // Scarescraper costume shares several textures with `global`.
-        let decoded = local
-            .as_ref()
-            .and_then(|source| source.decode(texture_hash))
-            .or_else(|| fallback.and_then(|source| source.decode(texture_hash)));
-        match decoded {
-            Some(Ok(image)) => {
-                decoded_images.insert(texture_hash, image);
-            }
-            Some(Err(error)) => {
-                println!("[LM3] skipping texture {texture_hash:08X}: {error}");
-            }
-            None => {
-                println!("[LM3] texture {texture_hash:08X} is not stored in a known archive");
-            }
-        }
-    }
-    reassign_magenta_base_colors(
-        &mut materials,
-        &mesh_hashes,
-        &textures_by_mesh,
-        &decoded_images,
-    );
-
-    let mut resolved_textures = Vec::new();
-    {
-        use base64::Engine;
-        for (&texture_hash, image) in &decoded_images {
-            let (width, height) = (image.width(), image.height());
-            let Ok(png) = crate::file_format::Image::png::encode(image) else {
-                continue;
-            };
-            let data_url = format!(
-                "data:image/png;base64,{}",
-                base64::engine::general_purpose::STANDARD.encode(png)
-            );
-            resolved_textures.push(crate::parser::AOC::g1m::ResolvedG1tTexture {
+    // Workers return in chunk order; keep the viewer's texture list sorted by
+    // hash regardless of threading.
+    decoded.sort_unstable_by_key(|(texture_hash, ..)| *texture_hash);
+    let resolved_textures = decoded
+        .into_iter()
+        .map(|(texture_hash, data_url, width, height)| {
+            crate::parser::AOC::g1m::ResolvedG1tTexture {
                 name: format!("{texture_hash:08X}"),
                 aliases: Vec::new(),
                 path: format!("lm3://{archive_name}/{slot}/{texture_hash:08X}"),
@@ -1653,9 +1617,9 @@ pub(crate) fn parse_slot_from_files(
                 array_count: 1,
                 renderable: true,
                 data_urls: Vec::new(),
-            });
-        }
-    }
+            }
+        })
+        .collect();
 
     let name = format!("{archive_name}_{slot}");
     Ok((
