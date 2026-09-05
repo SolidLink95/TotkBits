@@ -164,3 +164,53 @@ pub fn merge_bphcl_nodes(
         .show();
     Ok(result)
 }
+
+#[tauri::command]
+pub fn list_open_sidecar_documents(
+    app_handle: tauri::AppHandle,
+) -> Vec<crate::DocumentState::OpenSidecarDocument> {
+    app_handle.state::<DocumentState>().open_sidecar_documents()
+}
+
+#[tauri::command]
+pub fn list_sidecar_driver_groups(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+) -> Result<Vec<crate::parser::physics::SidecarDriverGroup>, String> {
+    app_handle
+        .state::<DocumentState>()
+        .sidecar_driver_groups(&documentId)
+}
+
+#[tauri::command]
+pub fn merge_sidecar_driver_group(
+    app_handle: tauri::AppHandle,
+    targetDocumentId: String,
+    sourceDocumentId: String,
+    groupIndex: usize,
+) -> Result<crate::DocumentState::SidecarMergeResult, String> {
+    app_handle
+        .state::<DocumentState>()
+        .merge_sidecar_driver_group(&targetDocumentId, &sourceDocumentId, groupIndex)
+}
+
+#[tauri::command]
+pub fn mirror_sidecar_driver_group(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    groupIndex: usize,
+) -> Result<crate::DocumentState::SidecarMergeResult, String> {
+    app_handle
+        .state::<DocumentState>()
+        .mirror_sidecar_driver_group(&documentId, groupIndex)
+}
+
+#[tauri::command]
+pub fn compact_bphcl_document(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+) -> Result<crate::DocumentState::BphclMutationResult, String> {
+    app_handle
+        .state::<DocumentState>()
+        .compact_bphcl_document(&documentId)
+}

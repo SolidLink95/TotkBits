@@ -509,6 +509,9 @@ fn convert_bphcl_cloth_to_hkcl_template_internal(
         converted.collidables[index]
             .shape
             .clone_from(&source_value.shape);
+        // Pinch detection travels with the collider; the template's own
+        // settings belonged to a different body.
+        converted.collidables[index].pinch_detection = source_value.pinch_detection;
     }
     Ok(converted)
 }

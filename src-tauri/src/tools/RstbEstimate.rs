@@ -546,6 +546,8 @@ impl SizeRule {
             | TotkFileType::Glb
             | TotkFileType::Mii
             | TotkFileType::Hkcl
+            | TotkFileType::Hkrg
+            | TotkFileType::Bphyssb
             | TotkFileType::Image
             | TotkFileType::Msbt
             | TotkFileType::Bwav

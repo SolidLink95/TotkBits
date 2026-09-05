@@ -11,7 +11,9 @@ use crate::{
         asb::AsbFile,
         bphcl::BphclFile,
         bphhb::BphhbFile,
+        bphyssb::BphyssbFile,
         hkcl::HkclFile,
+        hkrg::HkrgFile,
         msbt::MsbtFile,
         Ainb::AinbFile,
         Archive::ArchiveDocument,
@@ -99,7 +101,9 @@ pub struct CacheOther<'a> {
     pub rstb: Option<Restbl<'a>>,
     pub bphcl: Option<BphclFile>,
     pub bphhb: Option<BphhbFile>,
+    pub bphyssb: Option<BphyssbFile>,
     pub hkcl: Option<HkclFile>,
+    pub hkrg: Option<HkrgFile>,
     pub audio_data: Option<Vec<u8>>,
     pub physics_data: Option<Vec<u8>>,
 }
@@ -110,7 +114,9 @@ impl Default for CacheOther<'_> {
             rstb: None,
             bphcl: None,
             bphhb: None,
+            bphyssb: None,
             hkcl: None,
+            hkrg: None,
             audio_data: None,
             physics_data: None,
         }
@@ -204,7 +210,9 @@ impl<'a> TotkFile<'a> {
             | TotkFileType::Image
             | TotkFileType::Bntx
             | TotkFileType::Bphhb
+            | TotkFileType::Bphyssb
             | TotkFileType::Hkcl
+            | TotkFileType::Hkrg
             | TotkFileType::Bwav
             | TotkFileType::Bfwav
             | TotkFileType::Amta
@@ -225,7 +233,9 @@ impl<'a> TotkFile<'a> {
             | TotkFileType::MalsSarc
             | TotkFileType::Bphcl
             | TotkFileType::Bphhb
+            | TotkFileType::Bphyssb
             | TotkFileType::Hkcl
+            | TotkFileType::Hkrg
             | TotkFileType::Archive
             | TotkFileType::Bars => "SARC",
             TotkFileType::Restbl => {
@@ -470,7 +480,10 @@ impl<'a> TotkFile<'a> {
                     "unsupported file type",
                 ));
             }
-            TotkFileType::Bphhb | TotkFileType::Hkcl => {
+            TotkFileType::Bphhb
+            | TotkFileType::Bphyssb
+            | TotkFileType::Hkcl
+            | TotkFileType::Hkrg => {
                 return self.cache_misc.physics_data.clone().ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "missing physics source")
                 });
@@ -1017,6 +1030,12 @@ impl<'a> TotkFile<'a> {
         if Pathlib::is_hkcl_path(path) {
             return TotkFileType::Hkcl;
         }
+        if Pathlib::is_hkrg_path(path) {
+            return TotkFileType::Hkrg;
+        }
+        if Pathlib::is_bphyssb_path(path) {
+            return TotkFileType::Bphyssb;
+        }
         TotkFileType::None
     }
 
@@ -1103,7 +1122,9 @@ impl<'a> TotkFile<'a> {
         result.cache_misc.rstb = opened.restbl;
         result.cache_misc.bphcl = opened.bphcl;
         result.cache_misc.bphhb = opened.bphhb;
+        result.cache_misc.bphyssb = opened.bphyssb;
         result.cache_misc.hkcl = opened.hkcl;
+        result.cache_misc.hkrg = opened.hkrg;
         result.cache_3d.bfres = opened.bfres;
         result.cache_3d.source_data = opened.visual_data.or(opened.bfres_data);
         result.cache_3d.custom_g1m = opened.custom_g1m;
@@ -1236,6 +1257,26 @@ impl<'a> TotkFile<'a> {
                         .or_else(|_| res.raise_err_path_filetype())?,
                 );
                 res.file_type = TotkFileType::Hkcl;
+                res.cache_misc.physics_data = Some(data.to_vec());
+                res.update_properties_from_file_type();
+                return Ok(res);
+            }
+            TotkFileType::Hkrg => {
+                res.cache_misc.hkrg = Some(
+                    HkrgFile::from_binary(&res.binary_raw, Some(path))
+                        .or_else(|_| res.raise_err_path_filetype())?,
+                );
+                res.file_type = TotkFileType::Hkrg;
+                res.cache_misc.physics_data = Some(data.to_vec());
+                res.update_properties_from_file_type();
+                return Ok(res);
+            }
+            TotkFileType::Bphyssb => {
+                res.cache_misc.bphyssb = Some(
+                    BphyssbFile::from_binary(&res.binary_raw, Some(path))
+                        .or_else(|_| res.raise_err_path_filetype())?,
+                );
+                res.file_type = TotkFileType::Bphyssb;
                 res.cache_misc.physics_data = Some(data.to_vec());
                 res.update_properties_from_file_type();
                 return Ok(res);
@@ -1464,6 +1505,24 @@ impl<'a> TotkFile<'a> {
                     Some(path)
                 )));
                 res.file_type = TotkFileType::Bphcl;
+            }
+            TotkFileType::Hkrg => {
+                res.cache_misc.hkrg = Some(magic_result!(HkrgFile::from_binary(
+                    &res.binary_raw,
+                    Some(path)
+                )));
+                res.file_type = TotkFileType::Hkrg;
+                res.cache_misc.physics_data = Some(data.to_vec());
+                res.update_properties_from_file_type();
+            }
+            TotkFileType::Bphyssb => {
+                res.cache_misc.bphyssb = Some(magic_result!(BphyssbFile::from_binary(
+                    &res.binary_raw,
+                    Some(path)
+                )));
+                res.file_type = TotkFileType::Bphyssb;
+                res.cache_misc.physics_data = Some(data.to_vec());
+                res.update_properties_from_file_type();
             }
             TotkFileType::Hkcl => {
                 res.cache_misc.hkcl = Some(magic_result!(HkclFile::from_binary(

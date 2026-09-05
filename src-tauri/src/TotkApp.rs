@@ -373,6 +373,20 @@ impl<'a> TotkBitsApp<'a> {
                 )
             })
             .or_else(|| {
+                crate::file_format::bphyssb::BphyssbFile::open_internal(
+                    &bytes,
+                    &path,
+                    outer_path.as_deref(),
+                )
+            })
+            .or_else(|| {
+                crate::file_format::hkrg::HkrgFile::open_internal(
+                    &bytes,
+                    &path,
+                    outer_path.as_deref(),
+                )
+            })
+            .or_else(|| {
                 crate::file_format::hkcl::HkclFile::open_internal(
                     &bytes,
                     &path,

@@ -332,6 +332,20 @@ fn materialize_collidable(
         checked_add(offset, 159)?,
         &[u8::from(collidable.enabled)],
     )?;
+    // Pinch settings sit just before the enabled flag: radius at +152, then
+    // priority and the enabled byte. A disabled source only clears the flag
+    // and leaves the template's radius and priority in place.
+    match collidable.pinch_detection {
+        Some((priority, radius)) => {
+            write_f32(&mut builder.data, checked_add(offset, 152)?, radius)?;
+            write_bytes(
+                &mut builder.data,
+                checked_add(offset, 156)?,
+                &[priority as u8, 1],
+            )?;
+        }
+        None => write_bytes(&mut builder.data, checked_add(offset, 157)?, &[0])?,
+    }
     Ok(renamed.then_some((old_name, new_name)))
 }
 

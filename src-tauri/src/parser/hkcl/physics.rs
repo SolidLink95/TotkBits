@@ -312,7 +312,9 @@ pub(super) fn parse_physics_graph(
 
     let mut constraints = objects
         .iter()
-        .filter(|(_, class)| class.contains("Constraint"))
+        // Only hcl cloth constraint sets; ragdoll packfiles carry hkp
+        // constraint classes with unrelated layouts.
+        .filter(|(_, class)| class.starts_with("hcl") && class.contains("Constraint"))
         .map(|(key, class)| reader.constraint(*key, class))
         .collect::<io::Result<Vec<_>>>()?;
     let mut collidables = objects

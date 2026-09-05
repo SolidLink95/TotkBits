@@ -14,6 +14,8 @@ impl Magic {
             Some("BYML")
         } else if Self::is_sarc(data) {
             Some("SARC")
+        } else if Self::is_bphyssb(data) {
+            Some("BPHYSSB")
         } else if Self::is_aamp(data) {
             Some("AAMP")
         } else if Self::is_msbt(data) {
@@ -32,6 +34,8 @@ impl Magic {
             Some("BFRES")
         } else if Self::is_bphcl(data) {
             Some("BPHCL")
+        } else if Self::is_hkrg(data) {
+            Some("HKRG")
         } else if Self::is_hkcl(data) {
             Some("HKCL")
         } else if Self::is_bntx(data) {
@@ -90,6 +94,8 @@ impl Magic {
             TotkFileType::Sarc
         } else if Self::is_byml(data) {
             TotkFileType::Byml
+        } else if Self::is_bphyssb(data) {
+            TotkFileType::Bphyssb
         } else if Self::is_aamp(data) {
             TotkFileType::Aamp
         } else if Self::is_bfres(data) {
@@ -100,6 +106,8 @@ impl Magic {
             TotkFileType::Image
         } else if Self::is_bphcl(data) {
             TotkFileType::Bphcl
+        } else if Self::is_hkrg(data) {
+            TotkFileType::Hkrg
         } else if Self::is_hkcl(data) {
             TotkFileType::Hkcl
         } else if Self::is_msbt(data) {
@@ -262,6 +270,22 @@ impl Magic {
     #[inline]
     pub fn is_hkcl(data: &[u8]) -> bool {
         data.starts_with(&[0x57, 0xE0, 0xE0, 0x57, 0x10, 0xC0, 0xC0, 0x10])
+    }
+    /// A Havok packfile whose class table names the ragdoll instance; the
+    /// class-name section precedes the data, so the scan stays cheap.
+    #[inline]
+    pub fn is_hkrg(data: &[u8]) -> bool {
+        const CLASS: &[u8] = b"hkaRagdollInstance\0";
+        Self::is_hkcl(data)
+            && data
+                .windows(CLASS.len())
+                .take(1 << 20)
+                .any(|window| window == CLASS)
+    }
+    /// An AAMP archive whose parameter type is BotW's `physsb`.
+    #[inline]
+    pub fn is_bphyssb(data: &[u8]) -> bool {
+        Self::is_aamp(data) && data.get(0x30..0x37) == Some(b"physsb\0")
     }
     #[inline]
     pub fn is_g1m(data: &[u8]) -> bool {

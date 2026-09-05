@@ -202,6 +202,8 @@ pub fn get_binary_by_filetype(
         }
         TotkFileType::Hkcl => return None,
         TotkFileType::Bphhb => return None,
+        TotkFileType::Hkrg => return None,
+        TotkFileType::Bphyssb => return None,
         TotkFileType::Xlink => {
             rawdata = Xlink_rs::text_to_binary(text, file_path, zstd.clone(), None)?;
         }
@@ -596,6 +598,10 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
         crate::file_format::hkcl::HkclFile::open(path)
     } else if uncompressed_name.ends_with(".bphhb") {
         crate::file_format::bphhb::BphhbFile::open(path)
+    } else if uncompressed_name.ends_with(".bphyssb") {
+        crate::file_format::bphyssb::BphyssbFile::open(path)
+    } else if uncompressed_name.ends_with(".hkrg") {
+        crate::file_format::hkrg::HkrgFile::open(path)
     } else if uncompressed_name.ends_with(".bfres") || file_name.ends_with(".bfres.mc") {
         crate::file_format::Model3D::bfres::BfresFile::open(path, zstd)
     } else if uncompressed_name.ends_with(".g1m") {
@@ -1012,10 +1018,16 @@ fn file_from_disk_content_guess<'a>(
             return Some(result);
         }
     }
+    if let Some(result) = crate::file_format::hkrg::HkrgFile::open(file_name) {
+        return Some(result);
+    }
     if let Some(result) = crate::file_format::hkcl::HkclFile::open(file_name) {
         return Some(result);
     }
     if let Some(result) = crate::file_format::bphhb::BphhbFile::open(file_name) {
+        return Some(result);
+    }
+    if let Some(result) = crate::file_format::bphyssb::BphyssbFile::open(file_name) {
         return Some(result);
     }
     if let Some(result) = crate::file_format::SimpleOpeners::AampFile::open_aamp_binary(

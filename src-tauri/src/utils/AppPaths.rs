@@ -275,6 +275,18 @@ impl Pathlib {
             .is_some_and(|extension| extension.eq_ignore_ascii_case("hkcl"))
     }
 
+    pub fn is_hkrg_path<P: AsRef<Path>>(path: P) -> bool {
+        path.as_ref()
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("hkrg"))
+    }
+
+    pub fn is_bphyssb_path<P: AsRef<Path>>(path: P) -> bool {
+        path.as_ref()
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("bphyssb"))
+    }
+
     fn lowercase<P: AsRef<Path>>(path: P) -> String {
         path.as_ref().to_string_lossy().to_ascii_lowercase()
     }

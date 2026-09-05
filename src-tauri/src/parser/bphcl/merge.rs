@@ -38,6 +38,79 @@ impl BphclDocument {
                 .filter(|item| *item != skeleton.item_index),
         )?;
         builder.replace_aamp(AampRegistrationMerger::remove_cloth(self, &cloth.name)?);
+        let removed = validate_rebuild(builder.build()?)?;
+        // Colliders only the removed cloth used leave with it, along with
+        // their AAMP registrations. DATA allocations stay where they are.
+        let pruned = BphclDocument::parse(&removed)?.prune_unreferenced_collidables()?;
+        let result = BphclDocument::parse(&pruned)?;
+        result.validate_item_graph()?;
+        if result.cloth.len() != self.cloth.len() - 1 {
+            return Err(invalid(&format!(
+                "cloth removal produced {} cloths; expected {}",
+                result.cloth.len(),
+                self.cloth.len() - 1
+            )));
+        }
+        let expected_skeletons = self.skeletons.len().saturating_sub(1);
+        if result.skeletons.len() != expected_skeletons {
+            return Err(invalid(&format!(
+                "cloth removal produced {} skeletons; expected {expected_skeletons}",
+                result.skeletons.len()
+            )));
+        }
+        if result.aamp.is_some()
+            && AampRegistrationMerger::cloth_entry_names(&result)?
+                .iter()
+                .any(|entry| entry == &cloth.name)
+        {
+            return Err(invalid(&format!(
+                "cloth removal left '{}' registered in AAMP metadata",
+                cloth.name
+            )));
+        }
+        let referenced = result.referenced_collidable_items();
+        if result
+            .collidables
+            .iter()
+            .any(|collider| !referenced.contains(&collider.item_index))
+        {
+            return Err(invalid(
+                "cloth removal left unreferenced colliders in the collider array",
+            ));
+        }
+        Ok(pruned)
+    }
+
+    /// ITEM indices of every collider some simulation still references.
+    pub fn referenced_collidable_items(&self) -> HashSet<usize> {
+        self.cloth
+            .iter()
+            .flat_map(|cloth| &cloth.simulations)
+            .flat_map(|simulation| &simulation.collidable_item_indices)
+            .copied()
+            .collect()
+    }
+
+    /// Drops colliders no simulation references from the container array and
+    /// from the AAMP collidable list, leaving DATA allocations untouched.
+    pub fn prune_unreferenced_collidables(&self) -> io::Result<Vec<u8>> {
+        let referenced = self.referenced_collidable_items();
+        let retained: Vec<&Collidable> = self
+            .collidables
+            .iter()
+            .filter(|collider| referenced.contains(&collider.item_index))
+            .collect();
+        if retained.len() == self.collidables.len() {
+            return Ok(self.raw.clone());
+        }
+        let array = cloth_container_array(self, 24)?;
+        let mut builder = BphclBuilder::new(self)?;
+        builder
+            .replace_reference_array(&array, retained.iter().map(|collider| collider.item_index))?;
+        builder.replace_aamp(AampRegistrationMerger::keep_collidables(
+            self,
+            retained.iter().map(|collider| collider.name.as_str()),
+        )?);
         validate_rebuild(builder.build()?)
     }
 
@@ -450,7 +523,7 @@ fn reusable_colliders(
             .iter()
             .filter(|target_collider| {
                 !claimed.contains(&target_collider.item_index)
-                    && source_collider.name == target_collider.name
+                    && colliders_match(source_collider, target_collider)
             })
             .collect();
         if matches.len() == 1 {
@@ -460,6 +533,26 @@ fn reusable_colliders(
     }
     result
 }
+/// A target collider can stand in for a donor's only when everything the
+/// simulation reads from it agrees: identity, shape class, pinch detection,
+/// enabled state and placement.
+fn colliders_match(source: &Collidable, target: &Collidable) -> bool {
+    source.name == target.name
+        && source.shape_class_name == target.shape_class_name
+        && source.shape_kind == target.shape_kind
+        && source.pinch_detection_enabled == target.pinch_detection_enabled
+        && source.pinch_detection_priority == target.pinch_detection_priority
+        && source.enabled == target.enabled
+        && approximately_equal(source.pinch_detection_radius, target.pinch_detection_radius)
+        && approximately_equal(source.translation.x, target.translation.x)
+        && approximately_equal(source.translation.y, target.translation.y)
+        && approximately_equal(source.translation.z, target.translation.z)
+}
+
+fn approximately_equal(left: f32, right: f32) -> bool {
+    (left - right).abs() <= 0.00001
+}
+
 fn validate_rebuild(bytes: Vec<u8>) -> io::Result<Vec<u8>> {
     let rebuilt = BphclDocument::parse(&bytes)?;
     rebuilt.validate_item_graph()?;
@@ -513,7 +606,34 @@ mod tests {
                 center: Default::default(),
                 radius: 1.0,
             },
+            shape_class_name: "hclSphereShape".into(),
+            shape_kind: 1,
+            pinch_detection_radius: 0.0,
+            pinch_detection_priority: 0,
+            pinch_detection_enabled: false,
+            virtual_collision_point_collision_enabled: false,
         }
+    }
+
+    #[test]
+    fn collider_reuse_requires_matching_shape_pinch_and_placement() {
+        let target = collider("Body", 1.0);
+        assert!(colliders_match(&collider("Body", 1.0), &target));
+        assert!(colliders_match(&collider("Body", 1.000001), &target));
+        assert!(!colliders_match(&collider("Body", 1.5), &target));
+        assert!(!colliders_match(&collider("body", 1.0), &target));
+        let mut pinching = collider("Body", 1.0);
+        pinching.pinch_detection_enabled = true;
+        assert!(!colliders_match(&pinching, &target));
+        let mut wider = collider("Body", 1.0);
+        wider.pinch_detection_radius = 0.01;
+        assert!(!colliders_match(&wider, &target));
+        let mut capsule = collider("Body", 1.0);
+        capsule.shape_class_name = "hclCapsuleShape".into();
+        assert!(!colliders_match(&capsule, &target));
+        let mut disabled = collider("Body", 1.0);
+        disabled.enabled = false;
+        assert!(!colliders_match(&disabled, &target));
     }
 
     #[test]

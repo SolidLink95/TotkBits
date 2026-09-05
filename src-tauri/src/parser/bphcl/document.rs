@@ -288,6 +288,19 @@ impl BphclDocument {
             collidable_item_indices: self.reference_array(item.data_offset + 208),
         }
     }
+    /// The class name and `type` word of a collidable's shape object.
+    fn shape_identity(&self, collider: &Item) -> (String, u32) {
+        let Some(si) = self.referenced(collider.data_offset + 136) else {
+            return (String::new(), 0);
+        };
+        let shape = &self.items[si];
+        let class = self
+            .type_names
+            .get(shape.type_index as usize)
+            .cloned()
+            .unwrap_or_default();
+        (class, self.u32(shape.data_offset + 24).unwrap_or_default())
+    }
     fn read_shape(&self, collider: &Item) -> CollidableShape {
         let Some(si) = self.referenced(collider.data_offset + 136) else {
             return CollidableShape::Unknown {
@@ -413,6 +426,7 @@ impl BphclDocument {
                 .enumerate()
                 .map(|(index, item_index)| {
                     let item = &self.items[item_index];
+                    let (shape_class_name, shape_kind) = self.shape_identity(item);
                     Collidable {
                         index,
                         name: self
@@ -432,6 +446,22 @@ impl BphclDocument {
                             .data_bytes(item.data_offset + 159, 1)
                             .is_some_and(|b| b[0] != 0),
                         shape: self.read_shape(item),
+                        shape_class_name,
+                        shape_kind,
+                        // hclCollidable keeps its pinch settings right before
+                        // the enabled flag: radius, priority, then two flags.
+                        pinch_detection_radius: self
+                            .f32(item.data_offset + 152)
+                            .unwrap_or_default(),
+                        pinch_detection_priority: self
+                            .data_bytes(item.data_offset + 156, 1)
+                            .map_or(0, |b| b[0] as i8),
+                        pinch_detection_enabled: self
+                            .data_bytes(item.data_offset + 157, 1)
+                            .is_some_and(|b| b[0] != 0),
+                        virtual_collision_point_collision_enabled: self
+                            .data_bytes(item.data_offset + 158, 1)
+                            .is_some_and(|b| b[0] != 0),
                     }
                 })
                 .collect();

@@ -423,3 +423,31 @@ fn rejection_category(message: &str) -> String {
         message.into()
     }
 }
+
+/// Removing a cloth must take the colliders only it used along with it, so
+/// the rebuilt collider array never holds an entry no simulation references.
+#[test]
+fn cloth_removal_prunes_orphaned_colliders_across_corpus() {
+    let mut pruned_total = 0;
+    let mut samples = 0;
+    for (name, document) in corpus()
+        .iter()
+        .filter(|(_, document)| document.cloth.len() > 1 && !document.collidables.is_empty())
+    {
+        let bytes = document
+            .remove_cloth(1)
+            .unwrap_or_else(|error| panic!("failed to remove cloth from {name}: {error}"));
+        let result = validate_merged("cloth removal", &bytes);
+        let referenced = result.referenced_collidable_items();
+        for collider in &result.collidables {
+            assert!(
+                referenced.contains(&collider.item_index),
+                "{name}: collider '{}' survived without any simulation referencing it",
+                collider.name
+            );
+        }
+        pruned_total += document.collidables.len() - result.collidables.len();
+        samples += 1;
+    }
+    eprintln!("cloth removal pruned {pruned_total} colliders across {samples} corpus samples");
+}

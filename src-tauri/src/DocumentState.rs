@@ -61,6 +61,28 @@ pub struct OpenBphhbDocument {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OpenSidecarDocument {
+    pub document_id: String,
+    pub label: String,
+    pub path: String,
+    pub location: String,
+    pub format: String,
+    pub bone_count: usize,
+    pub group_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SidecarMergeResult {
+    pub status_text: String,
+    pub format: String,
+    pub group_count: usize,
+    pub bone_count: usize,
+    pub sarc_paths: crate::file_format::Pack::SarcPaths,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HkclSelectableNode {
     pub document_id: String,
     pub node_id: String,
@@ -1028,6 +1050,10 @@ impl DocumentState {
             (file.leaf(&path).ok()?, "HKCL")
         } else if let Some(file) = parent.opened_file.bphhb.as_ref() {
             (file.leaf(&path).ok()?, "BPHHB")
+        } else if let Some(file) = parent.opened_file.bphyssb.as_ref() {
+            (file.leaf(&path).ok()?, "BPHYSSB")
+        } else if let Some(file) = parent.opened_file.hkrg.as_ref() {
+            (file.leaf(&path).ok()?, "HKRG")
         } else {
             return None;
         };
@@ -1070,6 +1096,8 @@ impl DocumentState {
                 "BPHCL" => crate::Zstd::TotkFileType::Bphcl,
                 "HKCL" => crate::Zstd::TotkFileType::Hkcl,
                 "BPHHB" => crate::Zstd::TotkFileType::Bphhb,
+                "BPHYSSB" => crate::Zstd::TotkFileType::Bphyssb,
+                "HKRG" => crate::Zstd::TotkFileType::Hkrg,
                 _ => crate::Zstd::TotkFileType::Other,
             }
         };
@@ -1427,6 +1455,310 @@ fn parse_physics_node_id(node_id: &str) -> Result<(&str, usize), String> {
         .parse()
         .map_err(|_| format!("Invalid physics node ID '{node_id}'"))?;
     Ok((kind, index))
+}
+
+/// Helper-bone (BPHHB) and support-bone (BPHYSSB) documents share one
+/// driver-group surface; only same-format merges are meaningful.
+impl DocumentState {
+    fn sidecar_bytes(app: &crate::TotkApp::TotkBitsApp<'_>) -> Option<(&'static str, Vec<u8>)> {
+        if let Some(file) = app.opened_file.bphhb.as_ref() {
+            return Some(("bphhb", file.document.raw.clone()));
+        }
+        if let Some(file) = app.opened_file.bphyssb.as_ref() {
+            return Some(("bphyssb", file.document.bytes.clone()));
+        }
+        None
+    }
+
+    fn sidecar_groups(
+        format: &str,
+        bytes: &[u8],
+    ) -> Result<(Vec<String>, Vec<crate::parser::physics::SidecarDriverGroup>), String> {
+        let result = match format {
+            "bphhb" => crate::parser::physics::HelperBoneDocument::parse(bytes)
+                .and_then(|document| Ok((document.bone_names(), document.driver_groups()?))),
+            _ => crate::parser::physics::SupportBoneDocument::parse(bytes)
+                .and_then(|document| Ok((document.bone_names(), document.driver_groups()?))),
+        };
+        result.map_err(|error| error.to_string())
+    }
+
+    fn document_location(app: &crate::TotkApp::TotkBitsApp<'_>) -> &'static str {
+        match app
+            .internal_parent
+            .as_ref()
+            .and_then(|link| link.outer_path.as_ref())
+        {
+            Some(_) => "nested-archive",
+            None if app.internal_parent.is_some() => "archive",
+            None => "disk",
+        }
+    }
+
+    pub fn open_sidecar_documents(&self) -> Vec<OpenSidecarDocument> {
+        let documents = self.documents();
+        let mut result: Vec<_> = documents
+            .iter()
+            .filter_map(|(document_id, app)| {
+                let (format, bytes) = Self::sidecar_bytes(app)?;
+                let (bones, groups) = Self::sidecar_groups(format, &bytes).ok()?;
+                let label = if app.opened_file.path.name.is_empty() {
+                    document_id.clone()
+                } else {
+                    app.opened_file.path.name.clone()
+                };
+                Some(OpenSidecarDocument {
+                    document_id: document_id.clone(),
+                    label,
+                    path: app.opened_file.path.full_path.clone(),
+                    location: Self::document_location(app).into(),
+                    format: format.into(),
+                    bone_count: bones.len(),
+                    group_count: groups.len(),
+                })
+            })
+            .collect();
+        result.sort_by(|left, right| left.document_id.cmp(&right.document_id));
+        result
+    }
+
+    pub fn sidecar_driver_groups(
+        &self,
+        document_id: &str,
+    ) -> Result<Vec<crate::parser::physics::SidecarDriverGroup>, String> {
+        let documents = self.documents();
+        let app = documents
+            .get(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' is not open"))?;
+        let (format, bytes) = Self::sidecar_bytes(app).ok_or_else(|| {
+            format!("Document '{document_id}' is not a BPHHB or BPHYSSB document")
+        })?;
+        Ok(Self::sidecar_groups(format, &bytes)?.1)
+    }
+
+    /// Imports one driver group from a same-format donor into the target and
+    /// refreshes the target's tree.
+    pub fn merge_sidecar_driver_group(
+        &self,
+        target_document_id: &str,
+        source_document_id: &str,
+        group_index: usize,
+    ) -> Result<SidecarMergeResult, String> {
+        if target_document_id == source_document_id {
+            return Err("Source and target documents must be different".into());
+        }
+        let mut documents = self.documents();
+        let (source_format, source_bytes) = documents
+            .get(source_document_id)
+            .ok_or_else(|| format!("Document '{source_document_id}' is not open"))
+            .and_then(|app| {
+                Self::sidecar_bytes(app).ok_or_else(|| {
+                    format!("Document '{source_document_id}' is not a BPHHB or BPHYSSB document")
+                })
+            })?;
+        let (target_format, target_bytes) = documents
+            .get(target_document_id)
+            .ok_or_else(|| format!("Document '{target_document_id}' is not open"))
+            .and_then(|app| {
+                Self::sidecar_bytes(app).ok_or_else(|| {
+                    format!("Document '{target_document_id}' is not a BPHHB or BPHYSSB document")
+                })
+            })?;
+        if source_format != target_format {
+            return Err(
+                "Driver-group merging requires both documents to use the same sidecar format. \
+                 Convert the donor first when moving between BPHHB and BPHYSSB."
+                    .into(),
+            );
+        }
+        let merged = match target_format {
+            "bphhb" => {
+                let target = crate::parser::physics::HelperBoneDocument::parse(&target_bytes);
+                let source = crate::parser::physics::HelperBoneDocument::parse(&source_bytes);
+                target
+                    .and_then(|target| Ok(target.merge_driver_group(&source?, group_index)?.bytes))
+            }
+            _ => {
+                let target = crate::parser::physics::SupportBoneDocument::parse(&target_bytes);
+                let source = crate::parser::physics::SupportBoneDocument::parse(&source_bytes);
+                target
+                    .and_then(|target| Ok(target.merge_driver_group(&source?, group_index)?.bytes))
+            }
+        }
+        .map_err(|error| format!("Failed to merge driver group {group_index}: {error}"))?;
+        let (bones, groups) = Self::sidecar_groups(target_format, &merged)?;
+        let sarc_paths = Self::replace_sidecar_document(
+            &mut documents,
+            target_document_id,
+            target_format,
+            merged,
+        )?;
+        Ok(SidecarMergeResult {
+            status_text: format!(
+                "Merged driver group {group_index}: {} groups, {} bones",
+                groups.len(),
+                bones.len()
+            ),
+            format: target_format.into(),
+            group_count: groups.len(),
+            bone_count: bones.len(),
+            sarc_paths,
+        })
+    }
+
+    /// Reflects one driver group across X, swapping L/R name tokens.
+    pub fn mirror_sidecar_driver_group(
+        &self,
+        document_id: &str,
+        group_index: usize,
+    ) -> Result<SidecarMergeResult, String> {
+        let mut documents = self.documents();
+        let (format, bytes) = documents
+            .get(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' is not open"))
+            .and_then(|app| {
+                Self::sidecar_bytes(app).ok_or_else(|| {
+                    format!("Document '{document_id}' is not a BPHHB or BPHYSSB document")
+                })
+            })?;
+        let mirrored = match format {
+            "bphhb" => crate::parser::physics::HelperBoneDocument::parse(&bytes)
+                .and_then(|document| Ok(document.mirror_driver_group_across_x(group_index)?.bytes)),
+            _ => crate::parser::physics::SupportBoneDocument::parse(&bytes)
+                .and_then(|document| Ok(document.mirror_driver_group_across_x(group_index)?.bytes)),
+        }
+        .map_err(|error| format!("Failed to mirror driver group {group_index}: {error}"))?;
+        let (bones, groups) = Self::sidecar_groups(format, &mirrored)?;
+        let sarc_paths =
+            Self::replace_sidecar_document(&mut documents, document_id, format, mirrored)?;
+        Ok(SidecarMergeResult {
+            status_text: format!("Mirrored driver group {group_index} across X"),
+            format: format.into(),
+            group_count: groups.len(),
+            bone_count: bones.len(),
+            sarc_paths,
+        })
+    }
+
+    fn replace_sidecar_document(
+        documents: &mut std::collections::HashMap<String, crate::TotkApp::TotkBitsApp<'static>>,
+        document_id: &str,
+        format: &str,
+        bytes: Vec<u8>,
+    ) -> Result<crate::file_format::Pack::SarcPaths, String> {
+        let app = documents
+            .get(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' is not open"))?;
+        let parent_link = app.internal_parent.clone();
+        let source_path = match format {
+            "bphhb" => app
+                .opened_file
+                .bphhb
+                .as_ref()
+                .and_then(|file| file.source_path.clone()),
+            _ => app
+                .opened_file
+                .bphyssb
+                .as_ref()
+                .and_then(|file| file.source_path.clone()),
+        };
+        if let Some(link) = &parent_link {
+            documents
+                .get_mut(&link.document_id)
+                .ok_or_else(|| format!("Parent document '{}' is not open", link.document_id))?
+                .update_child_entry(link.outer_path.as_deref(), &link.inner_path, bytes.clone())?;
+        }
+        let target = documents
+            .get_mut(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' was closed during update"))?;
+        let root_name = if target.opened_file.path.name.is_empty() {
+            format!("merged.{format}")
+        } else {
+            target.opened_file.path.name.clone()
+        };
+        let path = source_path.as_deref().map(std::path::Path::new);
+        let sarc_paths = match format {
+            "bphhb" => {
+                let file = crate::file_format::bphhb::BphhbFile::from_binary(&bytes, path)
+                    .map_err(|error| format!("Rebuilt BPHHB did not reparse: {error}"))?;
+                let paths = file
+                    .send_data(std::path::Path::new(&root_name), "Refreshed BPHHB".into())
+                    .map_err(|error| format!("Failed to refresh BPHHB tree: {error}"))?
+                    .sarc_paths;
+                target.opened_file.bphhb = Some(file);
+                paths
+            }
+            _ => {
+                let file = crate::file_format::bphyssb::BphyssbFile::from_binary(&bytes, path)
+                    .map_err(|error| format!("Rebuilt BPHYSSB did not reparse: {error}"))?;
+                let paths = file
+                    .send_data(std::path::Path::new(&root_name), "Refreshed BPHYSSB".into())
+                    .map_err(|error| format!("Failed to refresh BPHYSSB tree: {error}"))?
+                    .sarc_paths;
+                target.opened_file.bphyssb = Some(file);
+                paths
+            }
+        };
+        Ok(sarc_paths)
+    }
+
+    /// Drops every unreachable DATA allocation from an open BPHCL, the way
+    /// PhysicsTool's save-without-cloth path does after a removal.
+    pub fn compact_bphcl_document(&self, document_id: &str) -> Result<BphclMutationResult, String> {
+        let mut documents = self.documents();
+        let app = documents
+            .get(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' is not open"))?;
+        let file = app
+            .opened_file
+            .bphcl
+            .as_ref()
+            .ok_or_else(|| format!("Document '{document_id}' is not a BPHCL document"))?;
+        let source_path = file.source_path.clone();
+        let parent_link = app.internal_parent.clone();
+        let before = file.document.raw.len();
+        let bytes = crate::parser::physics::compact(&file.document)
+            .map_err(|error| format!("BPHCL compaction failed: {error}"))?;
+        let rebuilt = crate::parser::bphcl::BphclDocument::parse(&bytes)
+            .map_err(|error| format!("Compacted BPHCL did not reparse: {error}"))?;
+        rebuilt
+            .validate_item_graph()
+            .map_err(|error| format!("Compacted BPHCL is invalid: {error}"))?;
+        if let Some(link) = &parent_link {
+            documents
+                .get_mut(&link.document_id)
+                .ok_or_else(|| format!("Parent document '{}' is not open", link.document_id))?
+                .update_child_entry(link.outer_path.as_deref(), &link.inner_path, bytes.clone())?;
+        }
+        let target = documents
+            .get_mut(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' was closed during compaction"))?;
+        target.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
+            source_path,
+            document: rebuilt,
+        });
+        let root_name = if target.opened_file.path.name.is_empty() {
+            "compacted.bphcl".to_string()
+        } else {
+            target.opened_file.path.name.clone()
+        };
+        let mut sarc_paths = crate::file_format::Pack::SarcPaths::default();
+        sarc_paths.read_only = true;
+        sarc_paths.paths = target
+            .opened_file
+            .bphcl
+            .as_ref()
+            .ok_or_else(|| "Compacted BPHCL state was lost".to_owned())?
+            .leaves()
+            .map_err(|error| format!("Failed to refresh BPHCL tree: {error}"))?
+            .into_iter()
+            .map(|leaf| format!("{root_name}/{}", leaf.path))
+            .collect();
+        Ok(BphclMutationResult {
+            status_text: format!("Compacted BPHCL from {before} to {} bytes", bytes.len()),
+            sarc_paths,
+        })
+    }
 }
 
 #[cfg(test)]

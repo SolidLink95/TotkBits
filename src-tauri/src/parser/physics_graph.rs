@@ -390,7 +390,9 @@ impl From<&bphcl::BphclDocument> for FormatNeutralPhysicsGraph {
                     linear_velocity: None,
                     angular_velocity: None,
                     enabled: value.enabled,
-                    pinch_detection: None,
+                    pinch_detection: value
+                        .pinch_detection_enabled
+                        .then_some((value.pinch_detection_priority, value.pinch_detection_radius)),
                     shape: Some(shape(&value.shape)),
                 })
                 .collect(),

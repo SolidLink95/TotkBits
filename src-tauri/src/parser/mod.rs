@@ -18,6 +18,7 @@ pub mod lm3;
 pub mod lm3_parallel;
 pub mod mii;
 pub mod msbt;
+pub mod physics;
 #[cfg(test)]
 mod physics_corpus_tests;
 pub mod physics_graph;

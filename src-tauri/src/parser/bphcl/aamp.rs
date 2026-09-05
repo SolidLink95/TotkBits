@@ -86,6 +86,28 @@ impl AampRegistrationMerger {
         remove_entry(document, COLLIDABLE_LIST, name)
     }
 
+    /// Keeps only the collidable registrations whose names are listed.
+    pub fn keep_collidables<'a>(
+        document: &BphclDocument,
+        names: impl IntoIterator<Item = &'a str>,
+    ) -> io::Result<Vec<u8>> {
+        let names: HashSet<String> = names.into_iter().map(str::to_owned).collect();
+        retain_entries(document, COLLIDABLE_LIST, |object| {
+            names.contains(&object.name)
+        })
+    }
+
+    /// Names registered in the cloth_mesh_list.
+    pub fn cloth_entry_names(document: &BphclDocument) -> io::Result<Vec<String>> {
+        let archive = Archive::from_document(document)?;
+        Ok(archive
+            .find_list(CLOTH_LIST)?
+            .objects
+            .iter()
+            .map(|object| object.name.clone())
+            .collect())
+    }
+
     pub fn rename_template_entries(
         document: &BphclDocument,
         cloth_name: (&str, &str),
@@ -101,13 +123,17 @@ impl AampRegistrationMerger {
 }
 
 fn remove_entry(document: &BphclDocument, list_hash: u32, name: &str) -> io::Result<Vec<u8>> {
+    retain_entries(document, list_hash, |object| object.name != name)
+}
+
+fn retain_entries(
+    document: &BphclDocument,
+    list_hash: u32,
+    keep: impl Fn(&Object) -> bool,
+) -> io::Result<Vec<u8>> {
     let archive = Archive::from_document(document)?;
     let list = archive.find_list(list_hash)?;
-    let removed: Vec<_> = list
-        .objects
-        .iter()
-        .filter(|object| object.name == name)
-        .collect();
+    let removed: Vec<_> = list.objects.iter().filter(|object| !keep(object)).collect();
     if removed.is_empty() {
         return Ok(archive.bytes);
     }
@@ -125,7 +151,7 @@ fn remove_entry(document: &BphclDocument, list_hash: u32, name: &str) -> io::Res
     let objects: Vec<_> = list
         .objects
         .iter()
-        .filter(|object| object.name != name)
+        .filter(|object| keep(object))
         .cloned()
         .collect();
     rebuild_list(

@@ -270,16 +270,17 @@ function MenuBarDisplay({ updateButton = null }) {
     event.stopPropagation();
     closeMenu();
     try {
-      const [bphcl, hkcl] = await Promise.all([
+      const [bphcl, hkcl, sidecars] = await Promise.all([
         invoke('list_open_bphcl_documents'),
         invoke('list_open_hkcl_documents'),
+        invoke('list_open_sidecar_documents'),
       ]);
-      if (bphcl.length + hkcl.length >= 2) {
+      if (bphcl.length + hkcl.length >= 2 || sidecars.length >= 2) {
         setPhysicsMergeReturnTab(activeTab);
         setActiveTab('PHYSICS_MERGE');
-        setStatusText('Select HKCL or BPHCL nodes to merge');
+        setStatusText('Select HKCL or BPHCL nodes, or BPHHB/BPHYSSB driver groups, to merge');
       } else {
-        setStatusText('ERROR: Open at least two HKCL or BPHCL documents before using Physics Merge');
+        setStatusText('ERROR: Open at least two HKCL, BPHCL, BPHHB or BPHYSSB documents before using Physics Merge');
       }
     } catch (error) {
       setStatusText(`ERROR: ${error}`);

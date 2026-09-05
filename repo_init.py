@@ -21,7 +21,7 @@ def download_files():
         # "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.lib": "src-tauri/bin/dlls/xlink_tool.lib",
         "https://github.com/SolidLink95/oead/releases/download/v1.0/oead_byml_pipe.exe": "src-tauri/bin/cpp/oead_byml_pipe.exe",
         "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/meshcodec.dll": "src-tauri/bin/dlls/meshcodec.dll",
-        "https://github.com/SolidLink95/roead/blob/master/data/botw_hashed_names.txt": "src-tauri/bin/botw_hashed_names.txt",
+        "https://raw.githubusercontent.com/SolidLink95/roead/master/data/botw_hashed_names.txt": "src-tauri/bin/botw_hashed_names.txt",
         # "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/meshcodec.exp": "src-tauri/bin/dlls/meshcodec.exp",
         # "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/MeshCodec.lib": "src-tauri/bin/dlls/MeshCodec.lib",
     }

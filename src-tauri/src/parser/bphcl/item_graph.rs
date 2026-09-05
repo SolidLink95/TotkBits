@@ -10,7 +10,9 @@ impl BphclDocument {
         let data_size = u32::try_from(data_size).map_err(|_| invalid("DATA exceeds u32"))?;
         let mut grouped: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
         for (index, item) in self.items.iter().enumerate() {
-            if item.data_offset < data_size {
+            // A zero-count array rebuilt by the native editors sits at the
+            // very end of DATA; it owns an empty range rather than none.
+            if item.data_offset <= data_size {
                 grouped.entry(item.data_offset).or_default().push(index);
             }
         }
@@ -105,13 +107,39 @@ impl BphclDocument {
             })
             .collect::<io::Result<_>>()?;
         selected.sort_by_key(|(_, range)| range.start);
+        // Havok allocates each object at its type's declared alignment, and
+        // vector or transform payloads need their 16 bytes. Items sharing a
+        // DATA range are laid out together, so the range takes the strictest
+        // of their alignments.
+        let mut alignment_by_type: HashMap<u32, u32> = HashMap::new();
+        for body in &self.type_table.bodies {
+            alignment_by_type
+                .entry(body.type_index)
+                .or_insert(body.alignment.unwrap_or(1).max(1));
+        }
+        let mut required_alignment: HashMap<u32, u32> = HashMap::new();
+        for (index, range) in &selected {
+            let alignment = self
+                .items
+                .get(*index)
+                .and_then(|item| alignment_by_type.get(&item.type_index))
+                .copied()
+                .unwrap_or(1);
+            let required = required_alignment.entry(range.start).or_insert(1);
+            *required = (*required).max(alignment);
+        }
         let data = self.graph_data_bytes()?;
         let mut copied = HashMap::new();
         for (_, range) in selected {
             if copied.contains_key(&range.start) {
                 continue;
             }
-            while destination.len() % 8 != 0 {
+            let alignment = required_alignment
+                .get(&range.start)
+                .copied()
+                .unwrap_or(1)
+                .max(1) as usize;
+            while destination.len() % alignment != 0 {
                 destination.push(0);
             }
             let new_start = u32::try_from(destination.len())

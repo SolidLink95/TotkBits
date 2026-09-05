@@ -8,9 +8,15 @@ use serde_yaml::{
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, io, path::Path, sync::LazyLock};
 
+/// AAMP key names shipped in `misc/botw_hashed_names.txt`, keyed by CRC32.
+/// Blank lines and `#` comments are skipped.
 static AAMP_TOTK_NAMES: LazyLock<HashMap<u32, String>> = LazyLock::new(|| {
     let mut names = HashMap::new();
-    for name in crate::utils::LookupData::read_support_text("botw_hashed_names.txt", "").lines() {
+    for line in crate::utils::LookupData::read_support_text("botw_hashed_names.txt", "").lines() {
+        let name = line.trim();
+        if name.is_empty() || name.starts_with('#') {
+            continue;
+        }
         names
             .entry(roead::aamp::hash_name(name))
             .or_insert_with(|| name.to_owned());
@@ -353,11 +359,148 @@ pub(crate) fn generate_node_catalog(input: &Path, output: &Path) -> io::Result<(
     std::fs::write(output, json)
 }
 
-fn yaml_name(hash: u32) -> Value {
-    match AAMP_TOTK_NAMES.get(&hash) {
-        Some(name) => Value::String(name.clone()),
+/// Resolves an AAMP key to its plaintext name.
+///
+/// `misc/botw_hashed_names.txt` is consulted first. Keys not listed there are
+/// matched against numbered families using `index` (the key's position inside
+/// its parent) and the parent's own name, and unknown keys fall back to their
+/// numeric CRC32 so the YAML still round-trips.
+fn yaml_name(hash: u32, index: usize, parent: Option<&str>) -> Value {
+    if let Some(name) = AAMP_TOTK_NAMES.get(&hash) {
+        return Value::String(name.clone());
+    }
+    match numbered_name(hash, index, parent) {
+        Some(name) => Value::String(name),
         None => Value::Number(hash.into()),
     }
+}
+
+/// A numbered key family such as `ItemName%02d`: the text around one integer
+/// placeholder and the zero-padded width it is printed with.
+struct NumberedPattern {
+    prefix: String,
+    suffix: String,
+    width: usize,
+}
+
+impl NumberedPattern {
+    /// Parses one `misc/botw_numbered_names.txt` line. Only lines made of a
+    /// single `%d`, `%2d` or `%02d` style placeholder inside an identifier are
+    /// accepted; anything else in that file is noise from a strings dump.
+    fn parse(line: &str) -> Option<Self> {
+        let (prefix, rest) = line.split_once('%')?;
+        let spec_end = rest.find('d')?;
+        let (spec, suffix) = rest.split_at(spec_end);
+        let suffix = &suffix[1..];
+        let is_identifier =
+            |text: &str| text.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+        if prefix.is_empty()
+            || !is_identifier(prefix)
+            || !is_identifier(suffix)
+            || !spec.bytes().all(|b| b.is_ascii_digit())
+        {
+            return None;
+        }
+        let width = spec.trim_start_matches('0').parse().unwrap_or(0);
+        Some(Self {
+            prefix: prefix.to_owned(),
+            suffix: suffix.to_owned(),
+            width,
+        })
+    }
+
+    fn render(&self, number: usize) -> String {
+        format!(
+            "{}{:0width$}{}",
+            self.prefix,
+            number,
+            self.suffix,
+            width = self.width
+        )
+    }
+}
+
+/// Numbered families from `misc/botw_numbered_names.txt` (`AI_%d`,
+/// `ItemName%02d`, `cloth_mesh_%d`, ...).
+static AAMP_NUMBERED_PATTERNS: LazyLock<Vec<NumberedPattern>> = LazyLock::new(|| {
+    crate::utils::LookupData::read_support_text("botw_numbered_names.txt", "")
+        .lines()
+        .filter_map(|line| NumberedPattern::parse(line.trim()))
+        .collect()
+});
+
+/// Numbered stems whose parent name gives no hint and which the pattern file
+/// does not list: `Children` holds `Child#`, `Elements` holds `Element#`,
+/// actor `Tags` hold `Tag#`, AI index objects hold `Idx_N`, drop tables are
+/// `NormalN` and physics sets nest `RigidBody_N`.
+const NUMBERED_NAME_STEMS: &[&str] = &[
+    "Child",
+    "Element",
+    "Tag",
+    "Idx",
+    "Normal",
+    "RigidBody",
+    "RigidBodySet",
+];
+
+/// Guesses a numbered key from its position. Candidates come from the pattern
+/// file, from the parent name (`ASDefines` gives `ASDefine`, `BodyParamList`
+/// gives `BodyParam`, `StringArray0` gives `String`) and from
+/// [`NUMBERED_NAME_STEMS`]; each candidate is checked against the real hash,
+/// so a wrong guess is never used.
+fn numbered_name(hash: u32, index: usize, parent: Option<&str>) -> Option<String> {
+    // Keys are normally numbered by position, but drop tables start at 01 and a
+    // few files skip numbers, so a window around the position is tried.
+    let low = if index < 64 { 0 } else { index - 8 };
+    let high = index.saturating_add(8);
+    let numbers = || low..=high;
+
+    let mut stems: Vec<String> = Vec::new();
+    if let Some(parent) = parent {
+        stems.push(parent.to_owned());
+        for suffix in ["List", "Idx", "Info", "es", "s"] {
+            if let Some(stem) = parent.strip_suffix(suffix) {
+                if !stem.is_empty() {
+                    stems.push(stem.to_owned());
+                }
+            }
+        }
+        let trimmed = parent.trim_end_matches(|c: char| c.is_ascii_digit());
+        if trimmed.len() < parent.len() && !trimmed.is_empty() {
+            stems.push(trimmed.to_owned());
+            if let Some(stem) = trimmed.strip_suffix("Array") {
+                if !stem.is_empty() {
+                    stems.push(stem.to_owned());
+                }
+            }
+        }
+    }
+    stems.extend(NUMBERED_NAME_STEMS.iter().map(|stem| (*stem).to_owned()));
+    for stem in &stems {
+        for number in numbers() {
+            for candidate in [
+                format!("{stem}_{number}"),
+                format!("{stem}{number}"),
+                format!("{stem}_{number:02}"),
+                format!("{stem}{number:02}"),
+                format!("{stem}_{number:03}"),
+                format!("{stem}{number:03}"),
+            ] {
+                if roead::aamp::hash_name(&candidate) == hash {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    for pattern in AAMP_NUMBERED_PATTERNS.iter() {
+        for number in numbers() {
+            let candidate = pattern.render(number);
+            if roead::aamp::hash_name(&candidate) == hash {
+                return Some(candidate);
+            }
+        }
+    }
+    None
 }
 
 fn tagged(tag: &str, value: Value) -> Value {
@@ -451,19 +594,31 @@ fn parameter_yaml(parameter: &Parameter) -> Value {
 }
 
 pub(crate) fn safe_aamp_yaml(pio: &ParameterIO) -> io::Result<String> {
-    fn list(value: &ParameterList) -> Value {
+    fn plain(value: &Value) -> Option<&str> {
+        match value {
+            Value::String(name) => Some(name),
+            _ => None,
+        }
+    }
+    fn list(value: &ParameterList, own_name: Option<&str>) -> Value {
         let mut root = Mapping::new();
         let mut lists = Mapping::new();
-        for (name, child) in value.lists.iter() {
-            lists.insert(yaml_name(name.hash()), list(child));
+        for (index, (name, child)) in value.lists.iter().enumerate() {
+            let key = yaml_name(name.hash(), index, own_name);
+            let child = list(child, plain(&key));
+            lists.insert(key, child);
         }
         let mut objects = Mapping::new();
-        for (name, object) in value.objects.iter() {
+        for (index, (name, object)) in value.objects.iter().enumerate() {
+            let key = yaml_name(name.hash(), index, own_name);
             let mut params = Mapping::new();
-            for (parameter_name, parameter) in object.iter() {
-                params.insert(yaml_name(parameter_name.hash()), parameter_yaml(parameter));
+            for (parameter_index, (parameter_name, parameter)) in object.iter().enumerate() {
+                params.insert(
+                    yaml_name(parameter_name.hash(), parameter_index, plain(&key)),
+                    parameter_yaml(parameter),
+                );
             }
-            objects.insert(yaml_name(name.hash()), tagged("!obj", params.into()));
+            objects.insert(key, tagged("!obj", params.into()));
         }
         root.insert("lists".into(), lists.into());
         root.insert("objects".into(), objects.into());
@@ -472,7 +627,10 @@ pub(crate) fn safe_aamp_yaml(pio: &ParameterIO) -> io::Result<String> {
     let mut root = Mapping::new();
     root.insert("version".into(), pio.version.into());
     root.insert("type".into(), pio.data_type.to_string().into());
-    root.insert("param_root".into(), list(&pio.param_root));
+    root.insert(
+        "param_root".into(),
+        list(&pio.param_root, Some("param_root")),
+    );
     serde_yaml::to_string(&tagged("!io", root.into())).map_err(io::Error::other)
 }
 
@@ -500,7 +658,7 @@ mod tests {
             "TwistMaxAngle",
         ] {
             assert_eq!(
-                yaml_name(roead::aamp::hash_name(name)),
+                yaml_name(roead::aamp::hash_name(name), 0, None),
                 Value::String(name.to_owned()),
                 "missing bundled AAMP name {name}"
             );
@@ -508,11 +666,127 @@ mod tests {
     }
 
     #[test]
+    fn numbered_aamp_names_are_recovered_from_index_and_parent() {
+        for (name, index, parent) in [
+            ("cloth_mesh_7", 7, "cloth_mesh_list"),
+            ("collidable_12", 12, "collidable_list"),
+            ("RigidBody_3", 3, "RigidBodySet_0"),
+            ("ASDefine_5", 5, "ASDefines"),
+            ("BodyParam_2", 2, "BodyParamList"),
+            ("Element4", 4, "Elements"),
+            ("Value3", 3, "StringArray0"),
+            ("ItemName01", 1, "Normal"),
+            ("ItemProbability01", 2, "Normal"),
+            ("Table02", 3, "Header"),
+            ("Tag0", 0, "Tags"),
+            ("ModelData_0", 0, "ModelData"),
+            ("Unit_0", 0, "Unit"),
+        ] {
+            assert_eq!(
+                yaml_name(roead::aamp::hash_name(name), index, Some(parent)),
+                Value::String(name.to_owned()),
+                "numbered AAMP name {name} under {parent}"
+            );
+        }
+    }
+
+    #[test]
+    fn numbered_pattern_file_is_parsed_and_used() {
+        let pattern = super::NumberedPattern::parse("ItemName%02d").unwrap();
+        assert_eq!(pattern.render(3), "ItemName03");
+        let pattern = super::NumberedPattern::parse("Bone%d_Name").unwrap();
+        assert_eq!(pattern.render(12), "Bone12_Name");
+        assert!(super::NumberedPattern::parse("!%At/Vh").is_none());
+        assert!(super::NumberedPattern::parse("%s_%d").is_none());
+        assert!(super::NumberedPattern::parse("Table (addr:0x%x, size:%d)").is_none());
+        assert!(
+            super::AAMP_NUMBERED_PATTERNS.len() > 300,
+            "misc/botw_numbered_names.txt is missing or unreadable"
+        );
+        for (name, index) in [("ASName3", 3), ("CollisionInfo_11", 11), ("Check_2", 2)] {
+            assert_eq!(
+                yaml_name(roead::aamp::hash_name(name), index, None),
+                Value::String(name.to_owned()),
+                "pattern-file name {name}"
+            );
+        }
+    }
+
+    #[test]
     fn unknown_aamp_name_falls_back_to_numeric_hash() {
         let unknown = (0..=u32::MAX)
-            .find(|hash| !super::AAMP_TOTK_NAMES.contains_key(hash))
+            .find(|hash| {
+                !super::AAMP_TOTK_NAMES.contains_key(hash)
+                    && super::numbered_name(*hash, 0, None).is_none()
+            })
             .expect("the AAMP name table cannot contain every u32 hash");
-        assert_eq!(yaml_name(unknown), Value::Number(unknown.into()));
+        assert_eq!(yaml_name(unknown, 0, None), Value::Number(unknown.into()));
+    }
+
+    /// Counts mapping keys that are still numeric hashes in the rendered YAML.
+    fn numeric_keys(yaml: &str) -> Vec<String> {
+        yaml.lines()
+            .filter_map(|line| {
+                let key = line.trim_start().split(':').next()?.trim();
+                (!key.is_empty() && key.bytes().all(|b| b.is_ascii_digit())).then(|| key.to_owned())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn actor_pack_aamp_files_use_plaintext_names() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tmp/_CLAUDE/Enemy_Bokoblin_Dark.sbactorpack");
+        let Ok(bytes) = std::fs::read(&path) else {
+            return;
+        };
+        let raw = roead::yaz0::decompress(&bytes).expect("Yaz0 actor pack");
+        let sarc = roead::sarc::Sarc::new(raw).expect("SARC actor pack");
+        let mut checked = 0;
+        let mut total_keys = 0;
+        let mut unresolved = Vec::new();
+        let mut yamls = String::new();
+        for file in sarc.files() {
+            if !crate::Settings::Magic::is_aamp(file.data) {
+                continue;
+            }
+            let name = file.name().unwrap_or("?");
+            let pio = roead::aamp::ParameterIO::from_binary(file.data)
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            let yaml = super::safe_aamp_yaml(&pio).unwrap();
+            total_keys += yaml.lines().filter(|line| line.contains(':')).count();
+            unresolved.extend(
+                numeric_keys(&yaml)
+                    .into_iter()
+                    .map(|hash| format!("{name}: {hash}")),
+            );
+            yamls.push_str(&yaml);
+            checked += 1;
+        }
+        assert!(checked > 0, "actor pack has no AAMP files");
+        // Structural names that used to render as hashes.
+        for name in [
+            "ControllerInfo:",
+            "ModelData_0:",
+            "Unit_0:",
+            "RigidBodySet_0:",
+            "RigidBody_0:",
+            "RigidBody_1:",
+            "RigidBodyParam:",
+            "ContactInfo:",
+            "AIProgram",
+            "DemoAIActionIdx:",
+        ] {
+            assert!(yamls.contains(name), "actor pack YAML is missing {name}");
+        }
+        // A handful of ModelList fields, ragdoll blend-weight objects and
+        // actor-specific AI node names have no publicly known plaintext, so a
+        // residue of at most 2% hashed keys is tolerated.
+        assert!(
+            unresolved.len() * 50 < total_keys,
+            "{} of {total_keys} AAMP keys are still hashed: {unresolved:?}",
+            unresolved.len()
+        );
     }
 
     #[test]

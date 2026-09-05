@@ -38,6 +38,8 @@ pub enum TotkFileType {
     Bphcl,
     Bphhb,
     Hkcl,
+    Hkrg,
+    Bphyssb,
     Msbt,
     Bcett,
     Esetb,
