@@ -14,7 +14,8 @@ const documentCommands = new Set([
     'remove_bphcl_node',
     'mutate_nested_archive',
     'open_bfwav_node', 'replace_bfwav_node', 'replace_bars_audio_from_folder', 'export_bfwav_node', 'open_amta_node',
-    'inspect_3d_model', 'export_g1m_fbx', 'replace_g1m_meshes', 'list_batch_render_files',
+    'inspect_3d_model', 'export_g1m_fbx', 'export_g1m_glb', 'export_lm3_fbx', 'export_lm3_glb',
+    'replace_g1m_meshes', 'list_batch_render_files',
     'render_image', 'export_image_png', 'rename_bntx_texture', 'replace_bntx_image',
 ]);
 

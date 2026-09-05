@@ -381,7 +381,7 @@ function MenuBarDisplay({ updateButton = null }) {
       shortcut: '',
       condition: aocModelCatalog !== null || lm3SlotCatalog !== null,
       children: [
-        ...(aocModelCatalog !== null ? [{ label: 'AOC model', title: 'AOC model', onClick: handleOpenAocModels, icon: 'menu/aoc_logo.webp' }] : []),
+        ...(aocModelCatalog !== null ? [{ label: 'HW: Age of Calamity', title: 'HW: Age of Calamity', onClick: handleOpenAocModels, icon: 'menu/aoc_logo.webp' }] : []),
         ...(lm3SlotCatalog !== null ? [{ label: 'Luigi Mansion 3', title: 'Luigi Mansion 3', onClick: handleOpenLm3Models, icon: 'menu/lm3.webp' }] : []),
       ],
     },

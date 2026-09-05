@@ -413,6 +413,16 @@ pub struct Lm3Model {
     pub format: String,
 }
 
+impl Lm3Model {
+    pub fn export_model(&self) -> crate::parser::AOC::g1m::ExportModel<'_> {
+        crate::parser::AOC::g1m::ExportModel {
+            materials: &self.materials,
+            render: &self.render,
+            rigid_meshes_in_bone_space: false,
+        }
+    }
+}
+
 fn find_chunk(model: &[Lm3SubEntry], kind: u16) -> io::Result<Lm3SubEntry> {
     model
         .iter()
@@ -515,14 +525,30 @@ fn decode_lm3_texture(header: &[u8], data: &[u8]) -> io::Result<image::RgbaImage
             height = (height / 2).max(1);
         }
     }
-    switch_texture::decode(
+    let mut image = switch_texture::decode(
         width,
         height,
         image_format,
         data,
         gob_height_log2(width, height, format),
         false,
-    )
+    )?;
+    if matches!(format, 0x15 | 0x16) {
+        reconstruct_normal_z(&mut image);
+    }
+    Ok(image)
+}
+
+/// BC5 keeps only the X and Y of a tangent-space normal, so the decoder
+/// leaves the blue channel flat. Rebuild Z from the unit-length constraint so
+/// the PNG is a complete normal map for the viewer and for exports.
+fn reconstruct_normal_z(image: &mut image::RgbaImage) {
+    for pixel in image.pixels_mut() {
+        let x = f32::from(pixel[0]) / 127.5 - 1.0;
+        let y = f32::from(pixel[1]) / 127.5 - 1.0;
+        let z = (1.0 - x * x - y * y).max(0.0).sqrt();
+        pixel[2] = ((z * 0.5 + 0.5) * 255.0).round().clamp(0.0, 255.0) as u8;
+    }
 }
 
 /// Pairs every B501 texture-header record with its adjacent B502 image-data

@@ -1,5 +1,5 @@
 use crate::file_format::Model3D::bfres::{BfresBone, BfresMesh};
-use crate::parser::AOC::g1m::{G1mFile, G1mMaterial, ResolvedG1tTexture};
+use crate::parser::AOC::g1m::{ExportModel, G1mFile, G1mMaterial, ResolvedG1tTexture};
 use base64::Engine;
 use image_dds::{ImageFormat, Mipmaps, Quality};
 use std::collections::{BTreeMap, BTreeSet};
@@ -36,7 +36,7 @@ impl TextureExportFormat {
 }
 
 struct ModelInput<'a> {
-    model: &'a G1mFile,
+    model: ExportModel<'a>,
     textures: &'a [ResolvedG1tTexture],
     prefix: String,
 }
@@ -90,16 +90,30 @@ pub fn export_g1m(
     texture_format: TextureExportFormat,
     armature_name: &str,
 ) -> io::Result<()> {
+    let views: Vec<_> = models
+        .iter()
+        .map(|(model, textures, prefix)| (model.export_model(), *textures, prefix.clone()))
+        .collect();
+    export_models(&views, output, texture_format, armature_name)
+}
+
+/// Writes any model exposing the [`ExportModel`] view (G1M, LM3) as FBX.
+pub fn export_models(
+    models: &[(ExportModel<'_>, &[ResolvedG1tTexture], String)],
+    output: &Path,
+    texture_format: TextureExportFormat,
+    armature_name: &str,
+) -> io::Result<()> {
     if models.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "no G1M models to export",
+            "no models to export",
         ));
     }
     let inputs: Vec<_> = models
         .iter()
         .map(|(model, textures, prefix)| ModelInput {
-            model,
+            model: *model,
             textures,
             prefix: prefix.clone(),
         })
@@ -184,12 +198,16 @@ fn texture_export_base(input: &ModelInput<'_>, texture: &ResolvedG1tTexture) -> 
         .and_then(|value| value.to_str())
         .filter(|value| !value.is_empty())
         .unwrap_or("g1t");
+    // Embedded textures (LM3) are identified by a single hash.
+    if archive_hash == archive_index {
+        return safe_name(&format!("{kind}_{archive_index}"));
+    }
     safe_name(&format!("{kind}_{archive_hash}_{archive_index}"))
 }
 
 fn texture_kind_prefix(kind: &str) -> &'static str {
     match kind {
-        "Diffuse" => "alb",
+        "Diffuse" | "Base color" => "alb",
         "Normal" => "nrm",
         "Emission" => "emm",
         "AmbientOcclusion" => "aoo",
@@ -248,6 +266,7 @@ fn build_document(
     let mut material_ids = Vec::with_capacity(models.len());
     let mut mesh_links = Vec::new();
     let mut texture_links = Vec::new();
+    let mut material_count = 0usize;
     for input in models {
         bone_ids.push(
             (0..input.model.render.bones.len())
@@ -303,8 +322,18 @@ fn build_document(
             ));
         }
         for (index, material) in input.model.materials.iter().enumerate() {
+            // The UV2 variant exists only for meshes that route their detail
+            // textures through a second UV set; nothing else needs it.
+            let needs_secondary =
+                input.model.render.meshes.iter().any(|mesh| {
+                    mesh.material_index as usize == index && mesh_has_secondary_uv(mesh)
+                });
             for secondary_uv in [false, true] {
+                if secondary_uv && !needs_secondary {
+                    continue;
+                }
                 let variant = usize::from(secondary_uv);
+                material_count += 1;
                 objects.push(material_object(
                     material_ids[model_index][index][variant],
                     &format!(
@@ -350,6 +379,7 @@ fn build_document(
                 &name,
                 mesh,
                 &input.model.render.bones,
+                input.model.rigid_meshes_in_bone_space,
             ));
             objects.push(model_object(
                 model_id, &name, "Mesh", [0.0; 3], [0.0; 3], [1.0; 3],
@@ -446,10 +476,6 @@ fn build_document(
         .map(|input| input.model.render.bones.len())
         .sum::<usize>();
     let mesh_count = mesh_links.len();
-    let material_count = models
-        .iter()
-        .map(|input| input.model.materials.len() * 2)
-        .sum::<usize>();
     let deformer_count = mesh_links
         .iter()
         .map(|link| usize::from(link.skin_id.is_some()) + link.clusters.len())
@@ -903,8 +929,14 @@ fn texture_objects(texture: &TextureLink, folder: &Path) -> (Node, Node) {
     (texture_node, video_node)
 }
 
-fn geometry_object(id: i64, name: &str, mesh: &BfresMesh, bones: &[BfresBone]) -> Node {
-    let (positions, normals) = model_space_geometry(mesh, bones);
+fn geometry_object(
+    id: i64,
+    name: &str,
+    mesh: &BfresMesh,
+    bones: &[BfresBone],
+    rigid_in_bone_space: bool,
+) -> Node {
+    let (positions, normals) = model_space_geometry(mesh, bones, rigid_in_bone_space);
     let polygons: Vec<i32> = mesh
         .indices
         .chunks_exact(3)
@@ -1125,18 +1157,10 @@ fn material_texture_slots(
     material: &G1mMaterial,
 ) -> Vec<(&'static str, &crate::parser::AOC::g1m::G1mTextureSlot)> {
     let mut result = Vec::with_capacity(2);
-    if let Some(slot) = material
-        .texture_slots
-        .iter()
-        .find(|slot| slot.texture_type == "Diffuse")
-    {
+    if let Some(slot) = material.texture_slots.iter().find(|slot| slot.is_diffuse()) {
         result.push(("DiffuseColor", slot));
     }
-    if let Some(slot) = material
-        .texture_slots
-        .iter()
-        .find(|slot| slot.texture_type == "Normal")
-    {
+    if let Some(slot) = material.texture_slots.iter().find(|slot| slot.is_normal()) {
         result.push(("NormalMap", slot));
     }
     result
@@ -1158,8 +1182,12 @@ fn texture_uv_index(property: &str, secondary_uv: bool) -> usize {
     }
 }
 
-fn model_space_geometry(mesh: &BfresMesh, bones: &[BfresBone]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
-    if mesh.vertex_skin_count != 1 || bones.is_empty() {
+fn model_space_geometry(
+    mesh: &BfresMesh,
+    bones: &[BfresBone],
+    rigid_in_bone_space: bool,
+) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
+    if !rigid_in_bone_space || mesh.vertex_skin_count != 1 || bones.is_empty() {
         return (mesh.positions.clone(), mesh.normals.clone());
     }
     let worlds: Vec<_> = (0..bones.len())
@@ -1378,6 +1406,8 @@ fn safe_name(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::file_format::Model3D::bfres::BfresRenderGraph;
+    use crate::parser::AOC::g1m::G1mTextureSlot;
 
     #[test]
     fn uses_g1m_importer_texture_prefixes() {
@@ -1427,6 +1457,139 @@ mod tests {
         assert!((0..60).contains(&minute));
         assert!((0..60).contains(&second));
         assert!((0..1000).contains(&millisecond));
+    }
+
+    /// Two bones (the second offset from the root) and one triangle bound
+    /// rigidly to that second bone, with an LM3-style `Base color` slot.
+    fn synthetic_model() -> (Vec<G1mMaterial>, BfresRenderGraph) {
+        let bone = |name: &str, parent_index: i16, translation: [f32; 3]| BfresBone {
+            name: name.into(),
+            parent_index,
+            smooth_matrix_index: -1,
+            rigid_matrix_index: -1,
+            rotation_mode: "quaternion".into(),
+            scale: [1.0; 3],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            translation,
+        };
+        let slot = |index: usize, name: &str, texture_type: &str| G1mTextureSlot {
+            index,
+            name: name.into(),
+            uv_layer: 0,
+            sampler: String::new(),
+            texture_type: texture_type.into(),
+        };
+        let mesh = BfresMesh {
+            name: "rigid".into(),
+            material_index: 0,
+            bone_index: 1,
+            vertex_skin_count: 1,
+            is_cloth: false,
+            cloth_id: 0,
+            nun_id: 0,
+            positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            normals: vec![[0.0, 0.0, 1.0]; 3],
+            uv0: vec![[0.0, 0.0]; 3],
+            uv_maps: vec![vec![[0.0, 0.0]; 3]],
+            colors: Vec::new(),
+            bone_indices: vec![[1, 0, 0, 0]; 3],
+            bone_weights: vec![[1.0, 0.0, 0.0, 0.0]; 3],
+            indices: vec![0, 1, 2],
+            skin_bones: vec![1],
+        };
+        let materials = vec![G1mMaterial {
+            name: "Material 0".into(),
+            offset: 0,
+            texture_slots: vec![
+                slot(0, "AABBCCDD", "Base color"),
+                slot(1, "11223344", "Specular"),
+            ],
+        }];
+        let render = BfresRenderGraph {
+            bones: vec![bone("root", -1, [0.0; 3]), bone("hand", 0, [1.0, 2.0, 3.0])],
+            matrix_to_bone: Vec::new(),
+            meshes: vec![mesh],
+        };
+        (materials, render)
+    }
+
+    fn embedded_texture(name: &str) -> ResolvedG1tTexture {
+        let image = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            1,
+            1,
+            image::Rgba([255, 0, 0, 255]),
+        ));
+        let mut png = Cursor::new(Vec::new());
+        image.write_to(&mut png, image::ImageFormat::Png).unwrap();
+        ResolvedG1tTexture {
+            name: name.into(),
+            aliases: Vec::new(),
+            path: format!("lm3://global/27/{name}"),
+            source: "embedded".into(),
+            data_url: format!(
+                "data:image/png;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(png.into_inner())
+            ),
+            width: 1,
+            height: 1,
+            array_count: 1,
+            renderable: true,
+            data_urls: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn model_space_rigid_meshes_keep_their_vertices() {
+        let (_, render) = synthetic_model();
+        let mesh = &render.meshes[0];
+        let (kept, _) = model_space_geometry(mesh, &render.bones, false);
+        assert_eq!(kept, mesh.positions);
+        let (baked, _) = model_space_geometry(mesh, &render.bones, true);
+        assert_eq!(
+            baked,
+            vec![[1.0, 2.0, 3.0], [2.0, 2.0, 3.0], [1.0, 3.0, 3.0]]
+        );
+    }
+
+    #[test]
+    fn base_color_slots_become_diffuse_textures() {
+        let (materials, render) = synthetic_model();
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/lm3_material_export_test");
+        fs::create_dir_all(&dir).unwrap();
+        let output = dir.join("model.fbx");
+        let textures = [embedded_texture("AABBCCDD"), embedded_texture("11223344")];
+        let view = ExportModel {
+            materials: &materials,
+            render: &render,
+            rigid_meshes_in_bone_space: false,
+        };
+        export_models(
+            &[(view, &textures, String::new())],
+            &output,
+            TextureExportFormat::Png,
+            "test",
+        )
+        .unwrap();
+        let exported = fs::read(&output).unwrap();
+        let contains = |needle: &str| {
+            exported
+                .windows(needle.len())
+                .any(|window| window == needle.as_bytes())
+        };
+        assert!(
+            contains("alb_AABBCCDD"),
+            "base colour slot links as the diffuse texture"
+        );
+        assert!(
+            !contains("spm_11223344"),
+            "unreferenced slots never become material textures"
+        );
+        assert!(
+            !contains("Material 0_UV2"),
+            "single-UV meshes get one material"
+        );
+        assert!(dir.join("alb_AABBCCDD.png").is_file());
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

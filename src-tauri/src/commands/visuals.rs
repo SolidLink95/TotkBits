@@ -134,6 +134,45 @@ pub fn inspect_g1a_animation(
     })
 }
 
+/// Parses the LM3 slot behind a `lm3://archive/slot` viewer reference out of
+/// the configured read-only LM3 romfs.
+fn load_lm3_slot(
+    documents: &DocumentState,
+    documentId: &str,
+    path: &str,
+) -> Result<
+    (
+        crate::parser::lm3::Lm3Model,
+        Vec<crate::parser::AOC::g1m::ResolvedG1tTexture>,
+    ),
+    String,
+> {
+    let reference = path
+        .strip_prefix("lm3://")
+        .ok_or_else(|| format!("invalid LM3 slot reference: {path}"))?;
+    let (archive_name, slot) = reference
+        .split_once('/')
+        .ok_or_else(|| format!("invalid LM3 slot reference: {path}"))?;
+    let slot: usize = slot
+        .parse()
+        .map_err(|_| format!("invalid LM3 slot number in {path}"))?;
+    let lm3_path = documents.with(documentId, |app| app.zstd.totk_config.lm3_path.clone());
+    if lm3_path.is_empty() {
+        return Err("The Luigi's Mansion 3 romfs path is not configured".into());
+    }
+    // Cataloged names resolve directly; everything else is a discovered
+    // archive named after its romfs-relative path.
+    let dict_path = match crate::parser::lm3::archive_spec(archive_name) {
+        Some(spec) => Path::new(&lm3_path).join(&spec.dict),
+        None => crate::parser::lm3::find_archive_dict(Path::new(&lm3_path), archive_name)
+            .ok_or_else(|| format!("unknown LM3 archive: {archive_name}"))?,
+    };
+    // The archive's large zlib entries inflate concurrently; both readers
+    // produce identical models, this one just gets there sooner.
+    crate::parser::lm3_parallel::parse_slot_parallel(&dict_path, archive_name, slot)
+        .map_err(|error| format!("Unable to load LM3 slot {archive_name}_{slot}: {error}"))
+}
+
 #[tauri::command]
 pub fn inspect_3d_model(
     app_handle: tauri::AppHandle,
@@ -154,31 +193,8 @@ fn inspect_3d_model_inner(
     let documents = app_handle.state::<DocumentState>();
     // LM3 model-browser previews use a virtual path: the slot is parsed out of
     // the configured read-only LM3 romfs, never from a file on disk.
-    if let Some(reference) = path.strip_prefix("lm3://") {
-        let (archive_name, slot) = reference
-            .split_once('/')
-            .ok_or_else(|| format!("invalid LM3 slot reference: {path}"))?;
-        let slot: usize = slot
-            .parse()
-            .map_err(|_| format!("invalid LM3 slot number in {path}"))?;
-        let lm3_path = documents.with(&documentId, |app| app.zstd.totk_config.lm3_path.clone());
-        if lm3_path.is_empty() {
-            return Err("The Luigi's Mansion 3 romfs path is not configured".into());
-        }
-        // Cataloged names resolve directly; everything else is a discovered
-        // archive named after its romfs-relative path.
-        let dict_path = match crate::parser::lm3::archive_spec(archive_name) {
-            Some(spec) => Path::new(&lm3_path).join(&spec.dict),
-            None => crate::parser::lm3::find_archive_dict(Path::new(&lm3_path), archive_name)
-                .ok_or_else(|| format!("unknown LM3 archive: {archive_name}"))?,
-        };
-        // The archive's large zlib entries inflate concurrently; both readers
-        // produce identical models, this one just gets there sooner.
-        let (model, resolved_textures) =
-            crate::parser::lm3_parallel::parse_slot_parallel(&dict_path, archive_name, slot)
-                .map_err(|error| {
-                    format!("Unable to load LM3 slot {archive_name}_{slot}: {error}")
-                })?;
+    if path.starts_with("lm3://") {
+        let (model, resolved_textures) = load_lm3_slot(&documents, &documentId, &path)?;
         let mut value = serde_json::to_value(model).map_err(|error| error.to_string())?;
         if let Some(object) = value.as_object_mut() {
             object.insert(
@@ -450,6 +466,49 @@ pub fn export_g1m_glb(
         .collect();
     crate::parser::glb::export_g1m(&borrowed, Path::new(&output))
         .map_err(|error| error.to_string())?;
+    Ok(output)
+}
+
+/// Exports the LM3 slot shown in the viewer (`sourcePath` is its
+/// `lm3://archive/slot` reference) as FBX, with textures written next to it.
+#[tauri::command]
+pub fn export_lm3_fbx(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    source_path: String,
+    output: String,
+    texture_format: String,
+) -> Result<String, String> {
+    require_experimental_visuals()?;
+    let documents = app_handle.state::<DocumentState>();
+    let (model, textures) = load_lm3_slot(&documents, &documentId, &source_path)?;
+    crate::parser::fbx::export_models(
+        &[(model.export_model(), textures.as_slice(), String::new())],
+        Path::new(&output),
+        crate::parser::fbx::TextureExportFormat::parse(&texture_format)
+            .map_err(|error| error.to_string())?,
+        &model.name,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(output)
+}
+
+/// Exports the LM3 slot shown in the viewer as a self-contained binary glTF.
+#[tauri::command]
+pub fn export_lm3_glb(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    source_path: String,
+    output: String,
+) -> Result<String, String> {
+    require_experimental_visuals()?;
+    let documents = app_handle.state::<DocumentState>();
+    let (model, textures) = load_lm3_slot(&documents, &documentId, &source_path)?;
+    crate::parser::glb::export_models(
+        &[(model.export_model(), textures.as_slice(), String::new())],
+        Path::new(&output),
+    )
+    .map_err(|error| error.to_string())?;
     Ok(output)
 }
 

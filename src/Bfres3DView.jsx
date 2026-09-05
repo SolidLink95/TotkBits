@@ -1134,6 +1134,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     }, []);
     const isG1m = bfres?.format === 'G1M';
     const isGlb = bfres?.format === 'GLB';
+    const isLm3 = bfres?.format === 'LM3';
     const hasGlow = useMemo(() => {
         const renderableTextures = new Set((bfres?.resolvedTextures || [])
             .filter((texture) => texture.renderable !== false)
@@ -1538,11 +1539,11 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const showYamlButtonFlag = false;
     const showNormalsButtonFlag = false;
     const exportModel = async () => {
-        if ((!isG1m && !isGlb) || !document?.fullPath || exportingModel) return;
+        if ((!isG1m && !isGlb && !isLm3) || !document?.fullPath || exportingModel) return;
         const sourcePaths = document.modelPaths?.length ? document.modelPaths : [document.fullPath];
         const stem = sourcePaths.length > 1
             ? 'selected_aoc_models'
-            : (document.title || 'model').replace(/\.(g1m|glb)$/i, '');
+            : (document.title || 'model').replace(/\.(g1m|glb)$/i, '').replace(/[^\w.-]+/g, '_');
         const output = await save({
             defaultPath: `${stem}.${isGlb ? 'glb' : 'fbx'}`,
             filters: isGlb ? [
@@ -1565,10 +1566,14 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             detail: { id: operationId, label: `Exporting ${label} model…` },
         }));
         setExportingModel(true);
-        setStatusText(`Exporting ${sourcePaths.length === 1 ? document.title || (isGlb ? 'GLB' : 'G1M') : `${sourcePaths.length} G1M models`} as ${label}…`);
+        setStatusText(`Exporting ${sourcePaths.length === 1 ? document.title || bfres.format : `${sourcePaths.length} G1M models`} as ${label}…`);
         try {
             const written = isGlb
                 ? await invoke('export_loaded_glb', { documentId: document.id, output })
+                : isLm3
+                ? (extension === 'fbx'
+                    ? await invoke('export_lm3_fbx', { documentId: document.id, sourcePath: document.fullPath, output, textureFormat: fbxTextureFormat })
+                    : await invoke('export_lm3_glb', { documentId: document.id, sourcePath: document.fullPath, output }))
                 : extension === 'fbx'
                 ? await invoke('export_g1m_fbx', { documentId: document.id, sourcePaths, output, textureFormat: fbxTextureFormat })
                 : await invoke('export_g1m_glb', { documentId: document.id, sourcePaths, output });
@@ -1765,7 +1770,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     </button>
                 </section>}
                 <Tomodachi model={bfres} setModel={setBfres} documentPath={document?.fullPath} setStatusText={setStatusText} />
-                {(isG1m || isGlb) && <section className="bfres-export-panel">
+                {(isG1m || isGlb || isLm3) && <section className="bfres-export-panel">
                     {/* <header><strong>FBX Export</strong></header> */}
                     <button type="button" onClick={exportModel} disabled={exportingModel || !bfres?.render?.meshes?.length}>
                         {exportingModel ? 'Exporting…' : 'Export'}
@@ -1774,7 +1779,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                         {replacingModel ? 'Replacing…' : 'Replace meshes'}
                     </button>}
                     
-                    {isG1m && <><select value={fbxTextureFormat} onChange={(event) => setFbxTextureFormat(event.target.value)} disabled={exportingModel}>
+                    {(isG1m || isLm3) && <><select value={fbxTextureFormat} onChange={(event) => setFbxTextureFormat(event.target.value)} disabled={exportingModel}>
                             <option value="none">None</option>
                             <option value="png">PNG</option>
                             <option value="dds">DDS</option>

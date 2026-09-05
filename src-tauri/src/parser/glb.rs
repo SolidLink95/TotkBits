@@ -9,7 +9,7 @@ use std::{
 
 use crate::parser::{
     binary::BinaryWriter,
-    AOC::g1m::{G1mFile, ResolvedG1tTexture},
+    AOC::g1m::{ExportModel, G1mFile, ResolvedG1tTexture},
 };
 
 struct BinaryChunk {
@@ -244,7 +244,7 @@ fn texture_png(texture: &ResolvedG1tTexture) -> Option<(Vec<u8>, bool)> {
     Some((png.into_inner(), has_transparency))
 }
 
-fn texture_export_base(model: &G1mFile, texture: &ResolvedG1tTexture) -> String {
+fn texture_export_base(model: &ExportModel<'_>, texture: &ResolvedG1tTexture) -> String {
     let texture_names: HashSet<_> = std::iter::once(texture.name.as_str())
         .chain(texture.aliases.iter().map(String::as_str))
         .collect();
@@ -254,7 +254,7 @@ fn texture_export_base(model: &G1mFile, texture: &ResolvedG1tTexture) -> String 
         .flat_map(|material| &material.texture_slots)
         .find(|slot| texture_names.contains(slot.name.as_str()))
         .map(|slot| match slot.texture_type.as_str() {
-            "Diffuse" => "alb",
+            "Diffuse" | "Base color" => "alb",
             "Normal" => "nrm",
             "Emission" => "emm",
             "AmbientOcclusion" => "aoo",
@@ -271,6 +271,10 @@ fn texture_export_base(model: &G1mFile, texture: &ResolvedG1tTexture) -> String 
         .and_then(|value| value.to_str())
         .filter(|value| !value.is_empty())
         .unwrap_or("g1t");
+    // Embedded textures (LM3) are identified by a single hash.
+    if archive_hash == archive_index {
+        return safe_texture_name(&format!("{kind}_{archive_index}"));
+    }
     safe_texture_name(&format!("{kind}_{archive_hash}_{archive_index}"))
 }
 
@@ -294,6 +298,18 @@ fn safe_texture_name(value: &str) -> String {
 
 pub fn export_g1m(
     models: &[(&G1mFile, &[ResolvedG1tTexture], String)],
+    output: &Path,
+) -> io::Result<()> {
+    let views: Vec<_> = models
+        .iter()
+        .map(|(model, textures, prefix)| (model.export_model(), *textures, prefix.clone()))
+        .collect();
+    export_models(&views, output)
+}
+
+/// Writes any model exposing the [`ExportModel`] view (G1M, LM3) as binary glTF.
+pub fn export_models(
+    models: &[(ExportModel<'_>, &[ResolvedG1tTexture], String)],
     output: &Path,
 ) -> io::Result<()> {
     let mut binary = BinaryChunk::new();
@@ -340,20 +356,24 @@ pub fn export_g1m(
         }
     }
 
-    let mut material_base = 0usize;
     for (model, _, prefix) in models {
-        for material in &model.materials {
-            let diffuse = material
-                .texture_slots
-                .iter()
-                .find(|slot| slot.texture_type.eq_ignore_ascii_case("Diffuse"));
-            let normal = material
-                .texture_slots
-                .iter()
-                .find(|slot| slot.texture_type.eq_ignore_ascii_case("Normal"));
+        // Per material: the glTF index of its UV1 variant and, only when a
+        // mesh routes detail textures through UV2, of its UV2 variant.
+        let mut material_slots: Vec<[Option<usize>; 2]> = Vec::with_capacity(model.materials.len());
+        for (material_index, material) in model.materials.iter().enumerate() {
+            let diffuse = material.texture_slots.iter().find(|slot| slot.is_diffuse());
+            let normal = material.texture_slots.iter().find(|slot| slot.is_normal());
             let diffuse_key =
                 diffuse.map(|slot| format!("{prefix}{}", slot.name).to_ascii_lowercase());
+            let needs_secondary = model.render.meshes.iter().any(|mesh| {
+                mesh.material_index as usize == material_index && mesh_has_secondary_uv(mesh)
+            });
+            let mut variants = [None, None];
             for secondary_uv in [false, true] {
+                if secondary_uv && !needs_secondary {
+                    continue;
+                }
+                variants[usize::from(secondary_uv)] = Some(materials.len());
                 let mut pbr = json!({ "metallicFactor": 0.0, "roughnessFactor": 1.0 });
                 if let Some(texture) = diffuse.and_then(|slot| {
                     texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
@@ -382,6 +402,7 @@ pub fn export_g1m(
                 }
                 materials.push(exported);
             }
+            material_slots.push(variants);
         }
 
         let bone_node_base = nodes.len();
@@ -444,7 +465,7 @@ pub fn export_g1m(
             }
             let mut positions = mesh.positions.clone();
             let mut normals = mesh.normals.clone();
-            if mesh.vertex_skin_count == 1 {
+            if model.rigid_meshes_in_bone_space && mesh.vertex_skin_count == 1 {
                 for vertex in 0..positions.len() {
                     let bone = mesh
                         .bone_indices
@@ -545,8 +566,12 @@ pub fn export_g1m(
                 "primitives": [{
                     "attributes": Value::Object(attributes),
                     "indices": index_accessor,
-                    "material": material_base + mesh.material_index as usize * 2
-                        + usize::from(mesh_has_secondary_uv(mesh)),
+                    "material": material_slots
+                        .get(mesh.material_index as usize)
+                        .and_then(|variants| {
+                            variants[usize::from(mesh_has_secondary_uv(mesh))].or(variants[0])
+                        })
+                        .unwrap_or(0),
                     "mode": 4
                 }]
             }));
@@ -558,7 +583,6 @@ pub fn export_g1m(
             }
             nodes.push(node);
         }
-        material_base += model.materials.len() * 2;
     }
 
     let child_nodes: std::collections::HashSet<usize> = nodes

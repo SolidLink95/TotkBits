@@ -106,6 +106,18 @@ pub struct G1mTextureSlot {
     pub texture_type: String,
 }
 
+impl G1mTextureSlot {
+    /// The slot feeding the base colour, whichever label the source format
+    /// uses for it (G1M says `Diffuse`, LM3 says `Base color`).
+    pub fn is_diffuse(&self) -> bool {
+        matches!(self.texture_type.as_str(), "Diffuse" | "Base color")
+    }
+
+    pub fn is_normal(&self) -> bool {
+        self.texture_type == "Normal"
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct G1mMaterial {
     pub name: String,
@@ -123,6 +135,29 @@ pub struct G1mFile {
     pub materials: Vec<G1mMaterial>,
     pub render: BfresRenderGraph,
     pub format: String,
+}
+
+/// The slice of a parsed model the FBX and glTF exporters consume. G1M and
+/// LM3 models both carry it, so one exporter serves both formats.
+#[derive(Clone, Copy)]
+pub struct ExportModel<'a> {
+    pub materials: &'a [G1mMaterial],
+    pub render: &'a BfresRenderGraph,
+    /// Whether meshes skinned to a single bone store their vertices in that
+    /// bone's space (G1M) rather than in model space (LM3). The exporters
+    /// bake the bone's bind transform into the former so every mesh lands in
+    /// model space; doing that to the latter scatters them.
+    pub rigid_meshes_in_bone_space: bool,
+}
+
+impl G1mFile {
+    pub fn export_model(&self) -> ExportModel<'_> {
+        ExportModel {
+            materials: &self.materials,
+            render: &self.render,
+            rigid_meshes_in_bone_space: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
