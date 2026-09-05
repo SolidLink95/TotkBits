@@ -9,7 +9,8 @@ use std::{
 
 use crate::parser::{
     binary::BinaryWriter,
-    AOC::g1m::{ExportModel, G1mFile, ResolvedG1tTexture},
+    fbx::{ExportThreading, TEXTURES_PER_THREAD},
+    AOC::g1m::{ExportModel, G1mFile, G1mMaterial, ResolvedG1tTexture},
 };
 
 struct BinaryChunk {
@@ -312,59 +313,268 @@ pub fn export_models(
     models: &[(ExportModel<'_>, &[ResolvedG1tTexture], String)],
     output: &Path,
 ) -> io::Result<()> {
+    export_models_with(models, output, ExportThreading::Parallel)
+}
+
+/// A texture decoded for embedding: its PNG bytes plus what the materials
+/// need to know about it.
+struct DecodedTexture {
+    key: String,
+    aliases: Vec<String>,
+    exported_name: String,
+    png: Vec<u8>,
+    has_transparency: bool,
+}
+
+/// Every buffer view, accessor and node that geometry alone determines.
+struct Geometry {
+    binary: BinaryChunk,
+    accessors: Vec<Value>,
+    meshes: Vec<Value>,
+    nodes: Vec<Value>,
+    skins: Vec<Value>,
+    /// glTF material index assignments in emission order: model index,
+    /// material index, and whether the variant routes detail maps through UV2.
+    material_order: Vec<(usize, usize, bool)>,
+}
+
+pub(crate) fn export_models_with(
+    models: &[(ExportModel<'_>, &[ResolvedG1tTexture], String)],
+    output: &Path,
+    threading: ExportThreading,
+) -> io::Result<()> {
+    let pending = plan_textures(models);
+    let (decoded, geometry) = match threading {
+        ExportThreading::Sequential => (Ok(decode_textures(&pending)), build_geometry(models)),
+        ExportThreading::Parallel => std::thread::scope(|scope| {
+            // Every `TEXTURES_PER_THREAD` textures decode on a thread of their
+            // own while the vertex buffers build on this one.
+            let workers: Vec<_> = pending
+                .chunks(TEXTURES_PER_THREAD)
+                .map(|chunk| scope.spawn(move || decode_textures(chunk)))
+                .collect();
+            let geometry = build_geometry(models);
+            let decoded = workers
+                .into_iter()
+                .map(|worker| {
+                    worker
+                        .join()
+                        .map_err(|_| io::Error::other("texture decode thread panicked"))
+                })
+                .collect::<io::Result<Vec<_>>>()
+                .map(|chunks| chunks.into_iter().flatten().collect::<Vec<_>>());
+            (decoded, geometry)
+        }),
+    };
+    let Geometry {
+        mut binary,
+        accessors,
+        meshes,
+        nodes,
+        skins,
+        material_order,
+    } = geometry?;
+
+    let mut images = Vec::new();
+    let mut textures = Vec::new();
+    let mut texture_indices = HashMap::<String, usize>::new();
+    let mut texture_has_transparency = HashMap::<String, bool>::new();
+    for texture in decoded? {
+        let view = binary.push(&texture.png, None)?;
+        let index = images.len();
+        images.push(json!({ "name": format!("{}.png", texture.exported_name), "bufferView": view, "mimeType": "image/png" }));
+        textures.push(json!({ "name": texture.exported_name, "source": index, "sampler": 0 }));
+        for key in std::iter::once(texture.key).chain(texture.aliases) {
+            texture_indices.entry(key.clone()).or_insert(index);
+            texture_has_transparency
+                .entry(key)
+                .or_insert(texture.has_transparency);
+        }
+    }
+    let materials: Vec<Value> = material_order
+        .iter()
+        .map(|&(model_index, material_index, secondary_uv)| {
+            let (model, _, prefix) = &models[model_index];
+            material_json(
+                &model.materials[material_index],
+                prefix,
+                secondary_uv,
+                &texture_indices,
+                &texture_has_transparency,
+            )
+        })
+        .collect();
+
+    let child_nodes: std::collections::HashSet<usize> = nodes
+        .iter()
+        .filter_map(|node| node.get("children").and_then(Value::as_array))
+        .flatten()
+        .filter_map(Value::as_u64)
+        .map(|value| value as usize)
+        .collect();
+    let scene_nodes: Vec<_> = (0..nodes.len())
+        .filter(|index| !child_nodes.contains(index))
+        .collect();
+    let mut document = json!({
+        "asset": { "version": "2.0", "generator": "TotkBits" },
+        "scene": 0,
+        "scenes": [{ "name": "Scene", "nodes": scene_nodes }],
+        "nodes": nodes,
+        "meshes": meshes,
+        "materials": materials,
+        "accessors": accessors,
+        "bufferViews": binary.views,
+        "buffers": [{ "byteLength": binary.data.position() }],
+        "samplers": [{ "magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497 }],
+        "images": images,
+        "textures": textures
+    });
+    if !skins.is_empty() {
+        document["skins"] = json!(skins);
+    }
+    // Round-trip through gltf-json so malformed schema values fail before a file is written.
+    let root: gltf_json::Root = serde_json::from_value(document.take())
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let mut json_bytes = serde_json::to_vec(&root).map_err(io::Error::other)?;
+    while json_bytes.len() % 4 != 0 {
+        json_bytes.push(b' ');
+    }
+    binary.data.align(4)?;
+    let binary_data = binary.data.into_inner();
+    let total = 12 + 8 + json_bytes.len() + 8 + binary_data.len();
+    let mut glb = BinaryWriter::new();
+    glb.write_bytes(b"glTF");
+    glb.write_u32(2);
+    glb.write_u32(total as u32);
+    glb.write_u32(json_bytes.len() as u32);
+    glb.write_u32(0x4e4f534a);
+    glb.write_bytes(&json_bytes);
+    glb.write_u32(binary_data.len() as u32);
+    glb.write_u32(0x004e4942);
+    glb.write_bytes(&binary_data);
+    fs::write(output, glb.into_inner())
+}
+
+/// A texture awaiting decoding, with its embedded name already settled.
+struct PendingTexture<'a> {
+    key: String,
+    aliases: Vec<String>,
+    exported_name: String,
+    texture: &'a ResolvedG1tTexture,
+}
+
+/// Lists every distinct texture in model order and settles its embedded name.
+/// Nothing is decoded here.
+fn plan_textures<'a>(
+    models: &[(ExportModel<'_>, &'a [ResolvedG1tTexture], String)],
+) -> Vec<PendingTexture<'a>> {
+    let mut pending = Vec::new();
+    let mut seen = HashSet::new();
+    let mut used_names = HashSet::new();
+    for (model, resolved, prefix) in models {
+        for texture in *resolved {
+            let key = format!("{prefix}{}", texture.name).to_ascii_lowercase();
+            if seen.contains(&key) {
+                continue;
+            }
+            let base = texture_export_base(model, texture);
+            let mut exported_name = base.clone();
+            let mut suffix = 2;
+            while !used_names.insert(exported_name.to_ascii_lowercase()) {
+                exported_name = format!("{base}_{suffix}");
+                suffix += 1;
+            }
+            let aliases: Vec<String> = texture
+                .aliases
+                .iter()
+                .map(|alias| format!("{prefix}{alias}").to_ascii_lowercase())
+                .collect();
+            seen.insert(key.clone());
+            seen.extend(aliases.iter().cloned());
+            pending.push(PendingTexture {
+                key,
+                aliases,
+                exported_name,
+                texture,
+            });
+        }
+    }
+    pending
+}
+
+/// Decodes the given textures to PNG bytes, dropping any that fail.
+fn decode_textures(pending: &[PendingTexture<'_>]) -> Vec<DecodedTexture> {
+    pending
+        .iter()
+        .filter_map(|entry| {
+            let (png, has_transparency) = texture_png(entry.texture)?;
+            Some(DecodedTexture {
+                key: entry.key.clone(),
+                aliases: entry.aliases.clone(),
+                exported_name: entry.exported_name.clone(),
+                png,
+                has_transparency,
+            })
+        })
+        .collect()
+}
+
+fn material_json(
+    material: &G1mMaterial,
+    prefix: &str,
+    secondary_uv: bool,
+    texture_indices: &HashMap<String, usize>,
+    texture_has_transparency: &HashMap<String, bool>,
+) -> Value {
+    let diffuse = material.texture_slots.iter().find(|slot| slot.is_diffuse());
+    let normal = material.texture_slots.iter().find(|slot| slot.is_normal());
+    let diffuse_key = diffuse.map(|slot| format!("{prefix}{}", slot.name).to_ascii_lowercase());
+    let mut pbr = json!({ "metallicFactor": 0.0, "roughnessFactor": 1.0 });
+    if let Some(texture) = diffuse_key
+        .as_ref()
+        .and_then(|key| texture_indices.get(key))
+    {
+        pbr["baseColorTexture"] = json!({ "index": texture, "texCoord": 0 });
+    }
+    let mut exported = json!({
+        "name": format!("{prefix}{}{}", material.name, if secondary_uv { "_UV2" } else { "_UV1" }),
+        "pbrMetallicRoughness": pbr,
+        "doubleSided": true
+    });
+    let detail_uv = usize::from(secondary_uv);
+    if let Some(texture) = normal.and_then(|slot| {
+        texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
+    }) {
+        exported["normalTexture"] = json!({ "index": texture, "texCoord": detail_uv });
+    }
+    if diffuse_key
+        .as_ref()
+        .and_then(|key| texture_has_transparency.get(key))
+        .copied()
+        .unwrap_or(false)
+    {
+        exported["alphaMode"] = json!("MASK");
+        exported["alphaCutoff"] = json!(0.5);
+    }
+    exported
+}
+
+/// Builds the vertex buffers, accessors, skins and nodes for every model and
+/// assigns the glTF material indices their meshes reference.
+fn build_geometry(
+    models: &[(ExportModel<'_>, &[ResolvedG1tTexture], String)],
+) -> io::Result<Geometry> {
     let mut binary = BinaryChunk::new();
     let mut accessors = Vec::new();
     let mut meshes = Vec::new();
     let mut nodes = Vec::new();
-    let mut materials = Vec::new();
-    let mut images = Vec::new();
-    let mut textures = Vec::new();
     let mut skins = Vec::new();
-    let mut texture_indices = HashMap::<String, usize>::new();
-    let mut texture_has_transparency = HashMap::<String, bool>::new();
-    let mut used_texture_names = HashSet::new();
-
-    for (model, resolved, prefix) in models {
-        for texture in *resolved {
-            let key = format!("{prefix}{}", texture.name).to_ascii_lowercase();
-            if texture_indices.contains_key(&key) {
-                continue;
-            }
-            let Some((bytes, has_transparency)) = texture_png(texture) else {
-                continue;
-            };
-            let view = binary.push(&bytes, None)?;
-            let index = images.len();
-            let base = texture_export_base(model, texture);
-            let mut exported_name = base.clone();
-            let mut suffix = 2;
-            while !used_texture_names.insert(exported_name.to_ascii_lowercase()) {
-                exported_name = format!("{base}_{suffix}");
-                suffix += 1;
-            }
-            images.push(json!({ "name": format!("{exported_name}.png"), "bufferView": view, "mimeType": "image/png" }));
-            textures.push(json!({ "name": exported_name, "source": index, "sampler": 0 }));
-            texture_indices.insert(key.clone(), index);
-            texture_has_transparency.insert(key, has_transparency);
-            for alias in &texture.aliases {
-                let alias = format!("{prefix}{alias}").to_ascii_lowercase();
-                texture_indices.entry(alias.clone()).or_insert(index);
-                texture_has_transparency
-                    .entry(alias)
-                    .or_insert(has_transparency);
-            }
-        }
-    }
-
-    for (model, _, prefix) in models {
+    let mut material_order = Vec::new();
+    for (model_index, (model, _, prefix)) in models.iter().enumerate() {
         // Per material: the glTF index of its UV1 variant and, only when a
         // mesh routes detail textures through UV2, of its UV2 variant.
         let mut material_slots: Vec<[Option<usize>; 2]> = Vec::with_capacity(model.materials.len());
-        for (material_index, material) in model.materials.iter().enumerate() {
-            let diffuse = material.texture_slots.iter().find(|slot| slot.is_diffuse());
-            let normal = material.texture_slots.iter().find(|slot| slot.is_normal());
-            let diffuse_key =
-                diffuse.map(|slot| format!("{prefix}{}", slot.name).to_ascii_lowercase());
+        for material_index in 0..model.materials.len() {
             let needs_secondary = model.render.meshes.iter().any(|mesh| {
                 mesh.material_index as usize == material_index && mesh_has_secondary_uv(mesh)
             });
@@ -373,38 +583,11 @@ pub fn export_models(
                 if secondary_uv && !needs_secondary {
                     continue;
                 }
-                variants[usize::from(secondary_uv)] = Some(materials.len());
-                let mut pbr = json!({ "metallicFactor": 0.0, "roughnessFactor": 1.0 });
-                if let Some(texture) = diffuse.and_then(|slot| {
-                    texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
-                }) {
-                    pbr["baseColorTexture"] = json!({ "index": texture, "texCoord": 0 });
-                }
-                let mut exported = json!({
-                    "name": format!("{prefix}{}{}", material.name, if secondary_uv { "_UV2" } else { "_UV1" }),
-                    "pbrMetallicRoughness": pbr,
-                    "doubleSided": true
-                });
-                let detail_uv = usize::from(secondary_uv);
-                if let Some(texture) = normal.and_then(|slot| {
-                    texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
-                }) {
-                    exported["normalTexture"] = json!({ "index": texture, "texCoord": detail_uv });
-                }
-                if diffuse_key
-                    .as_ref()
-                    .and_then(|key| texture_has_transparency.get(key))
-                    .copied()
-                    .unwrap_or(false)
-                {
-                    exported["alphaMode"] = json!("MASK");
-                    exported["alphaCutoff"] = json!(0.5);
-                }
-                materials.push(exported);
+                variants[usize::from(secondary_uv)] = Some(material_order.len());
+                material_order.push((model_index, material_index, secondary_uv));
             }
             material_slots.push(variants);
         }
-
         let bone_node_base = nodes.len();
         let mut bone_worlds = Vec::with_capacity(model.render.bones.len());
         for (bone_index, bone) in model.render.bones.iter().enumerate() {
@@ -585,54 +768,14 @@ pub fn export_models(
         }
     }
 
-    let child_nodes: std::collections::HashSet<usize> = nodes
-        .iter()
-        .filter_map(|node| node.get("children").and_then(Value::as_array))
-        .flatten()
-        .filter_map(Value::as_u64)
-        .map(|value| value as usize)
-        .collect();
-    let scene_nodes: Vec<_> = (0..nodes.len())
-        .filter(|index| !child_nodes.contains(index))
-        .collect();
-    let mut document = json!({
-        "asset": { "version": "2.0", "generator": "TotkBits" },
-        "scene": 0,
-        "scenes": [{ "name": "Scene", "nodes": scene_nodes }],
-        "nodes": nodes,
-        "meshes": meshes,
-        "materials": materials,
-        "accessors": accessors,
-        "bufferViews": binary.views,
-        "buffers": [{ "byteLength": binary.data.position() }],
-        "samplers": [{ "magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497 }],
-        "images": images,
-        "textures": textures
-    });
-    if !skins.is_empty() {
-        document["skins"] = json!(skins);
-    }
-    // Round-trip through gltf-json so malformed schema values fail before a file is written.
-    let root: gltf_json::Root = serde_json::from_value(document.take())
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    let mut json_bytes = serde_json::to_vec(&root).map_err(io::Error::other)?;
-    while json_bytes.len() % 4 != 0 {
-        json_bytes.push(b' ');
-    }
-    binary.data.align(4)?;
-    let binary_data = binary.data.into_inner();
-    let total = 12 + 8 + json_bytes.len() + 8 + binary_data.len();
-    let mut glb = BinaryWriter::new();
-    glb.write_bytes(b"glTF");
-    glb.write_u32(2);
-    glb.write_u32(total as u32);
-    glb.write_u32(json_bytes.len() as u32);
-    glb.write_u32(0x4e4f534a);
-    glb.write_bytes(&json_bytes);
-    glb.write_u32(binary_data.len() as u32);
-    glb.write_u32(0x004e4942);
-    glb.write_bytes(&binary_data);
-    fs::write(output, glb.into_inner())
+    Ok(Geometry {
+        binary,
+        accessors,
+        meshes,
+        nodes,
+        skins,
+        material_order,
+    })
 }
 
 #[cfg(test)]

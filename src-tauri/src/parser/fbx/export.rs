@@ -61,6 +61,7 @@ struct TextureLink {
     id: i64,
     video_id: i64,
     material_id: i64,
+    key: String,
     property: &'static str,
     name: String,
     relative_path: String,
@@ -68,11 +69,36 @@ struct TextureLink {
     has_transparency: bool,
 }
 
-struct ExportedTexture {
+/// A texture's export file name, settled before any decoding so the document
+/// draft can reference it while the file is still being written.
+struct PlannedTexture<'a> {
     name: String,
     relative_path: String,
-    has_transparency: bool,
+    texture: &'a ResolvedG1tTexture,
 }
+
+/// Everything about the document that geometry alone determines; the texture
+/// nodes join once their transparency is known.
+struct DocumentDraft {
+    document_id: i64,
+    document_url: String,
+    texture_folder: PathBuf,
+    objects: Node,
+    connections: Node,
+    counts: ObjectCounts,
+    texture_links: Vec<TextureLink>,
+}
+
+/// Whether texture files are produced on their own thread while the geometry
+/// builds on the caller's, or everything runs on the caller's thread.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExportThreading {
+    Sequential,
+    Parallel,
+}
+
+/// How many textures each decoding thread takes in the parallel pipeline.
+pub(crate) const TEXTURES_PER_THREAD: usize = 8;
 
 struct MeshLink {
     geometry_id: i64,
@@ -104,6 +130,22 @@ pub fn export_models(
     texture_format: TextureExportFormat,
     armature_name: &str,
 ) -> io::Result<()> {
+    export_models_with(
+        models,
+        output,
+        texture_format,
+        armature_name,
+        ExportThreading::Parallel,
+    )
+}
+
+pub(crate) fn export_models_with(
+    models: &[(ExportModel<'_>, &[ResolvedG1tTexture], String)],
+    output: &Path,
+    texture_format: TextureExportFormat,
+    armature_name: &str,
+    threading: ExportThreading,
+) -> io::Result<()> {
     if models.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -118,22 +160,51 @@ pub fn export_models(
             prefix: prefix.clone(),
         })
         .collect();
-    let texture_paths = export_textures(&inputs, output, texture_format)?;
-    let document = build_document(&inputs, &texture_paths, armature_name, output);
+    let plan = plan_textures(&inputs, texture_format);
+    let planned: Vec<_> = plan.iter().collect();
+    let folder = output.parent().unwrap_or_else(|| Path::new("."));
+    if !planned.is_empty() {
+        fs::create_dir_all(folder)?;
+    }
+    let (transparency, draft) = match threading {
+        ExportThreading::Sequential => (
+            write_textures(&planned, folder, texture_format)
+                .map(|written| written.into_iter().collect()),
+            draft_document(&inputs, &plan, armature_name, output),
+        ),
+        ExportThreading::Parallel => std::thread::scope(|scope| {
+            // Every `TEXTURES_PER_THREAD` textures decode and write on a
+            // thread of their own while the document draft builds on this one.
+            let workers: Vec<_> = planned
+                .chunks(TEXTURES_PER_THREAD)
+                .map(|chunk| scope.spawn(move || write_textures(chunk, folder, texture_format)))
+                .collect();
+            let draft = draft_document(&inputs, &plan, armature_name, output);
+            let transparency = workers
+                .into_iter()
+                .map(|worker| {
+                    worker
+                        .join()
+                        .unwrap_or_else(|_| Err(io::Error::other("texture export thread panicked")))
+                })
+                .collect::<io::Result<Vec<_>>>()
+                .map(|written| written.into_iter().flatten().collect());
+            (transparency, draft)
+        }),
+    };
+    let document = finish_document(draft, &transparency?);
     fs::write(output, write_document(&document)?)
 }
 
-fn export_textures(
-    models: &[ModelInput<'_>],
-    output: &Path,
+/// Settles every texture's file name. Nothing is decoded or written here.
+fn plan_textures<'a>(
+    models: &[ModelInput<'a>],
     format: TextureExportFormat,
-) -> io::Result<BTreeMap<String, ExportedTexture>> {
-    let mut paths = BTreeMap::new();
+) -> BTreeMap<String, PlannedTexture<'a>> {
+    let mut plan = BTreeMap::new();
     if format == TextureExportFormat::None {
-        return Ok(paths);
+        return plan;
     }
-    let folder = output.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(folder)?;
     let extension = if format == TextureExportFormat::Dds {
         "dds"
     } else {
@@ -143,7 +214,7 @@ fn export_textures(
     for input in models {
         for texture in input.textures {
             let key = texture_key(&input.prefix, &texture.name);
-            if paths.contains_key(&key) {
+            if plan.contains_key(&key) {
                 continue;
             }
             let base = texture_export_base(input, texture);
@@ -153,28 +224,43 @@ fn export_textures(
                 filename = format!("{base}_{suffix}.{extension}");
                 suffix += 1;
             }
-            let png = decode_data_url(&texture.data_url)?;
+            plan.insert(
+                key,
+                PlannedTexture {
+                    name: filename
+                        .strip_suffix(&format!(".{extension}"))
+                        .unwrap_or(&filename)
+                        .to_owned(),
+                    relative_path: filename,
+                    texture,
+                },
+            );
+        }
+    }
+    plan
+}
+
+/// Decodes and writes the given planned textures into `folder`, reporting
+/// which ones contain a fully transparent pixel.
+fn write_textures(
+    planned: &[(&String, &PlannedTexture<'_>)],
+    folder: &Path,
+    format: TextureExportFormat,
+) -> io::Result<Vec<(String, bool)>> {
+    planned
+        .iter()
+        .map(|(key, planned)| {
+            let png = decode_data_url(&planned.texture.data_url)?;
             let has_transparency = has_fully_transparent_pixel(&png)?;
             let bytes = if format == TextureExportFormat::Png {
                 png
             } else {
                 png_to_dds(&png)?
             };
-            fs::write(folder.join(&filename), bytes)?;
-            paths.insert(
-                key,
-                ExportedTexture {
-                    name: filename
-                        .strip_suffix(&format!(".{extension}"))
-                        .unwrap_or(&filename)
-                        .to_owned(),
-                    relative_path: filename,
-                    has_transparency,
-                },
-            );
-        }
-    }
-    Ok(paths)
+            fs::write(folder.join(&planned.relative_path), bytes)?;
+            Ok(((*key).clone(), has_transparency))
+        })
+        .collect()
 }
 
 fn texture_export_base(input: &ModelInput<'_>, texture: &ResolvedG1tTexture) -> String {
@@ -251,12 +337,12 @@ fn png_to_dds(png: &[u8]) -> io::Result<Vec<u8>> {
 
 // ---- Document -----------------------------------------------------------
 
-fn build_document(
+fn draft_document(
     models: &[ModelInput<'_>],
-    texture_paths: &BTreeMap<String, ExportedTexture>,
+    plan: &BTreeMap<String, PlannedTexture<'_>>,
     armature_name: &str,
     output: &Path,
-) -> Vec<Node> {
+) -> DocumentDraft {
     let mut ids = Ids::new();
     let root_id = ids.take();
     let root_attribute_id = ids.take();
@@ -344,9 +430,8 @@ fn build_document(
                     ),
                 ));
                 for (property, slot) in material_texture_slots(material) {
-                    let Some(exported_texture) =
-                        texture_paths.get(&texture_key(&input.prefix, &slot.name))
-                    else {
+                    let key = texture_key(&input.prefix, &slot.name);
+                    let Some(planned) = plan.get(&key) else {
                         continue;
                     };
                     let uv_index = texture_uv_index(property, secondary_uv);
@@ -354,12 +439,13 @@ fn build_document(
                         id: ids.take(),
                         video_id: ids.take(),
                         material_id: material_ids[model_index][index][variant],
+                        key,
                         property,
-                        name: exported_texture.name.clone(),
-                        relative_path: exported_texture.relative_path.clone(),
+                        name: planned.name.clone(),
+                        relative_path: planned.relative_path.clone(),
                         uv_set: format!("UVChannel_{uv_index}"),
-                        has_transparency: property == "DiffuseColor"
-                            && exported_texture.has_transparency,
+                        // Settled once the texture thread has decoded it.
+                        has_transparency: false,
                     });
                 }
             }
@@ -412,11 +498,6 @@ fn build_document(
             });
         }
     }
-    for texture in &texture_links {
-        let (texture_node, video_node) = texture_objects(texture, &texture_folder);
-        objects.push(texture_node);
-        objects.push(video_node);
-    }
 
     let mut connections = Node::new("Connections");
     connections.push(connection(root_id, 0));
@@ -455,21 +536,6 @@ fn build_document(
             mesh_cursor += 1;
         }
     }
-    for texture in &texture_links {
-        connections.push(connection(texture.video_id, texture.id));
-        connections.push(property_connection(
-            texture.id,
-            texture.material_id,
-            texture.property,
-        ));
-        if texture.property == "DiffuseColor" && texture.has_transparency {
-            connections.push(property_connection(
-                texture.id,
-                texture.material_id,
-                "TransparentColor",
-            ));
-        }
-    }
 
     let bone_count = models
         .iter()
@@ -491,6 +557,53 @@ fn build_document(
     };
 
     let document_url = output.to_string_lossy().replace('/', "\\");
+    DocumentDraft {
+        document_id,
+        document_url,
+        texture_folder,
+        objects,
+        connections,
+        counts,
+        texture_links,
+    }
+}
+
+/// Adds the texture objects and their connections, now that each texture's
+/// transparency is known, and assembles the top-level document.
+fn finish_document(draft: DocumentDraft, transparency: &BTreeMap<String, bool>) -> Vec<Node> {
+    let DocumentDraft {
+        document_id,
+        document_url,
+        texture_folder,
+        mut objects,
+        mut connections,
+        counts,
+        mut texture_links,
+    } = draft;
+    for texture in &mut texture_links {
+        texture.has_transparency = texture.property == "DiffuseColor"
+            && transparency.get(&texture.key).copied().unwrap_or(false);
+    }
+    for texture in &texture_links {
+        let (texture_node, video_node) = texture_objects(texture, &texture_folder);
+        objects.push(texture_node);
+        objects.push(video_node);
+    }
+    for texture in &texture_links {
+        connections.push(connection(texture.video_id, texture.id));
+        connections.push(property_connection(
+            texture.id,
+            texture.material_id,
+            texture.property,
+        ));
+        if texture.has_transparency {
+            connections.push(property_connection(
+                texture.id,
+                texture.material_id,
+                "TransparentColor",
+            ));
+        }
+    }
     vec![
         header_extension(&document_url),
         Node::leaf("FileId", Attr::Raw(FILE_ID.to_vec())),
@@ -1590,6 +1703,103 @@ mod tests {
         );
         assert!(dir.join("alb_AABBCCDD.png").is_file());
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Exports slot 29 of the LM3 `global` archive (Luigi with the
+    /// Poltergust, 52 textures) single-threaded and with one decoding thread
+    /// per `TEXTURES_PER_THREAD` textures plus the geometry thread, prints
+    /// the best of five timings for each, and checks that both write
+    /// identical files. Skips when the RomFS dump is not present.
+    #[test]
+    fn lm3_export_threading_benchmark() {
+        use std::time::{Duration, Instant};
+        let romfs = Path::new("E:/Yuzu/dumps/LM3/romfs");
+        let spec = crate::parser::lm3::archive_spec("global").unwrap();
+        let dict = romfs.join(&spec.dict);
+        if !dict.is_file() {
+            eprintln!("skipping: {} missing", dict.display());
+            return;
+        }
+        let (model, textures) =
+            crate::parser::lm3_parallel::parse_slot_parallel(&dict, "global", 29).unwrap();
+        let view = model.export_model();
+        let inputs = [(view, textures.as_slice(), String::new())];
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_CLAUDE/lm3_export_benchmark");
+        let _ = fs::remove_dir_all(&dir);
+        let runs = 5;
+        // Best of `runs` exports into `output`; returns the timing and the file.
+        let time = |output: &Path, run: &dyn Fn(&Path) -> io::Result<()>| {
+            fs::create_dir_all(output.parent().unwrap()).unwrap();
+            let mut best = Duration::MAX;
+            for _ in 0..runs {
+                let started = Instant::now();
+                run(output).unwrap();
+                best = best.min(started.elapsed());
+            }
+            (best, fs::read(output).unwrap())
+        };
+        let mut report = format!(
+            "\n{:<12} {:>12} {:>12} {:>8}\n",
+            "export", "sequential", "parallel", "speedup"
+        );
+        let mut row = |label: &str, sequential: Duration, parallel: Duration| {
+            report += &format!(
+                "{label:<12} {sequential:>12.1?} {parallel:>12.1?} {:>7.2}x\n",
+                sequential.as_secs_f64() / parallel.as_secs_f64()
+            );
+        };
+        for (label, format) in [
+            ("fbx+png", TextureExportFormat::Png),
+            ("fbx+dds", TextureExportFormat::Dds),
+            ("fbx", TextureExportFormat::None),
+        ] {
+            let output = dir.join(label).join("global_29.fbx");
+            let (sequential, sequential_file) = time(&output, &|output| {
+                export_models_with(
+                    &inputs,
+                    output,
+                    format,
+                    "global_29",
+                    ExportThreading::Sequential,
+                )
+            });
+            let (parallel, parallel_file) = time(&output, &|output| {
+                export_models_with(
+                    &inputs,
+                    output,
+                    format,
+                    "global_29",
+                    ExportThreading::Parallel,
+                )
+            });
+            // The header extension carries the export timestamp; everything
+            // from GlobalSettings on must match byte for byte.
+            let body = |bytes: &[u8]| {
+                let start = bytes
+                    .windows(b"GlobalSettings".len())
+                    .position(|window| window == b"GlobalSettings")
+                    .unwrap();
+                bytes[start..].to_vec()
+            };
+            assert!(
+                body(&sequential_file) == body(&parallel_file),
+                "{label}: pipelines must agree"
+            );
+            row(label, sequential, parallel);
+        }
+        let output = dir.join("glb").join("global_29.glb");
+        let (sequential, sequential_file) = time(&output, &|output| {
+            crate::parser::glb::export_models_with(&inputs, output, ExportThreading::Sequential)
+        });
+        let (parallel, parallel_file) = time(&output, &|output| {
+            crate::parser::glb::export_models_with(&inputs, output, ExportThreading::Parallel)
+        });
+        assert!(
+            sequential_file == parallel_file,
+            "glb: pipelines must agree"
+        );
+        row("glb", sequential, parallel);
+        eprintln!("{report}");
     }
 
     #[test]
