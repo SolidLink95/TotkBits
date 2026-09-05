@@ -391,19 +391,30 @@ pub(crate) fn export_models_with(
                 .or_insert(texture.has_transparency);
         }
     }
-    let materials: Vec<Value> = material_order
+    let materials = material_order
         .iter()
         .map(|&(model_index, material_index, secondary_uv)| {
-            let (model, _, prefix) = &models[model_index];
-            material_json(
-                &model.materials[material_index],
+            let (model, _, prefix) = models.get(model_index).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("material order references missing model {model_index}"),
+                )
+            })?;
+            let material = model.materials.get(material_index).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("material order references missing material {material_index}"),
+                )
+            })?;
+            Ok(material_json(
+                material,
                 prefix,
                 secondary_uv,
                 &texture_indices,
                 &texture_has_transparency,
-            )
+            ))
         })
-        .collect();
+        .collect::<io::Result<Vec<Value>>>()?;
 
     let child_nodes: std::collections::HashSet<usize> = nodes
         .iter()
