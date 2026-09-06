@@ -6,7 +6,8 @@
 //! header, the property list, nested records, and a 13-byte null sentinel
 //! after the children (or in place of them when a node has no properties).
 
-use std::io::{self, Write};
+use crate::parser::binary::BinaryWriter;
+use std::io;
 
 pub const VERSION_7400: u32 = 7400;
 
@@ -129,27 +130,27 @@ impl Node {
 
 /// Serializes top-level nodes into a complete FBX binary file.
 pub fn write_document(nodes: &[Node]) -> io::Result<Vec<u8>> {
-    let mut out = Vec::new();
-    out.write_all(HEAD_MAGIC)?;
-    out.write_all(&VERSION_7400.to_le_bytes())?;
+    let mut out = BinaryWriter::new();
+    out.write_bytes(HEAD_MAGIC);
+    out.write_u32(VERSION_7400);
     for node in nodes {
         write_node(&mut out, node)?;
     }
-    out.write_all(&SENTINEL)?;
-    out.write_all(&FOOTER_ID)?;
-    out.write_all(&[0; 4])?;
+    out.write_bytes(&SENTINEL);
+    out.write_bytes(&FOOTER_ID);
+    out.write_bytes(&[0; 4]);
     let mut pad = (16 - out.len() % 16) % 16;
     if pad == 0 {
         pad = 16;
     }
-    out.write_all(&vec![0; pad])?;
-    out.write_all(&VERSION_7400.to_le_bytes())?;
-    out.write_all(&[0; 120])?;
-    out.write_all(&FOOTER_MAGIC)?;
-    Ok(out)
+    out.write_bytes(&vec![0; pad]);
+    out.write_u32(VERSION_7400);
+    out.write_bytes(&[0; 120]);
+    out.write_bytes(&FOOTER_MAGIC);
+    Ok(out.into_inner())
 }
 
-fn write_node(out: &mut Vec<u8>, node: &Node) -> io::Result<()> {
+fn write_node(out: &mut BinaryWriter, node: &Node) -> io::Result<()> {
     if node.name.len() > u8::MAX as usize {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -157,83 +158,76 @@ fn write_node(out: &mut Vec<u8>, node: &Node) -> io::Result<()> {
         ));
     }
     let start = out.len();
-    out.write_all(&[0; 12])?;
-    out.push(node.name.len() as u8);
-    out.write_all(node.name.as_bytes())?;
+    out.write_bytes(&[0; 12]);
+    out.write_u8(node.name.len() as u8);
+    out.write_bytes(node.name.as_bytes());
     let props_start = out.len();
     for attr in &node.attrs {
-        write_attr(out, attr)?;
+        write_attr(out, attr);
     }
     let props_len = out.len() - props_start;
     for child in &node.children {
         write_node(out, child)?;
     }
     if !node.children.is_empty() || node.attrs.is_empty() {
-        out.write_all(&SENTINEL)?;
+        out.write_bytes(&SENTINEL);
     }
-    let end = out.len();
-    let header = [
-        u32::try_from(end).map_err(|_| io::Error::other("FBX file exceeds 4 GiB"))?,
-        node.attrs.len() as u32,
-        props_len as u32,
-    ];
-    for (index, value) in header.iter().enumerate() {
-        out[start + index * 4..start + index * 4 + 4].copy_from_slice(&value.to_le_bytes());
-    }
+    let end = u32::try_from(out.len()).map_err(|_| io::Error::other("FBX file exceeds 4 GiB"))?;
+    out.write_u32_at(start, end);
+    out.write_u32_at(start + 4, node.attrs.len() as u32);
+    out.write_u32_at(start + 8, props_len as u32);
     Ok(())
 }
 
-fn write_attr(out: &mut Vec<u8>, attr: &Attr) -> io::Result<()> {
+fn write_attr(out: &mut BinaryWriter, attr: &Attr) {
     match attr {
         Attr::Bool(value) => {
-            out.push(b'C');
-            out.push(u8::from(*value));
+            out.write_u8(b'C');
+            out.write_u8(u8::from(*value));
         }
         Attr::I32(value) => {
-            out.push(b'I');
-            out.write_all(&value.to_le_bytes())?;
+            out.write_u8(b'I');
+            out.write_i32(*value);
         }
         Attr::I64(value) => {
-            out.push(b'L');
-            out.write_all(&value.to_le_bytes())?;
+            out.write_u8(b'L');
+            out.write_i64(*value);
         }
         Attr::F64(value) => {
-            out.push(b'D');
-            out.write_all(&value.to_le_bytes())?;
+            out.write_u8(b'D');
+            out.write_f64(*value);
         }
         Attr::Str(value) => {
-            out.push(b'S');
-            out.write_all(&(value.len() as u32).to_le_bytes())?;
-            out.write_all(value.as_bytes())?;
+            out.write_u8(b'S');
+            out.write_u32(value.len() as u32);
+            out.write_bytes(value.as_bytes());
         }
         Attr::Raw(value) => {
-            out.push(b'R');
-            out.write_all(&(value.len() as u32).to_le_bytes())?;
-            out.write_all(value)?;
+            out.write_u8(b'R');
+            out.write_u32(value.len() as u32);
+            out.write_bytes(value);
         }
         Attr::ArrI32(values) => {
-            out.push(b'i');
-            write_array_header(out, values.len(), 4)?;
+            out.write_u8(b'i');
+            write_array_header(out, values.len(), 4);
             for value in values {
-                out.write_all(&value.to_le_bytes())?;
+                out.write_i32(*value);
             }
         }
         Attr::ArrF64(values) => {
-            out.push(b'd');
-            write_array_header(out, values.len(), 8)?;
+            out.write_u8(b'd');
+            write_array_header(out, values.len(), 8);
             for value in values {
-                out.write_all(&value.to_le_bytes())?;
+                out.write_f64(*value);
             }
         }
     }
-    Ok(())
 }
 
-fn write_array_header(out: &mut Vec<u8>, count: usize, element_size: usize) -> io::Result<()> {
-    out.write_all(&(count as u32).to_le_bytes())?;
-    out.write_all(&0u32.to_le_bytes())?;
-    out.write_all(&((count * element_size) as u32).to_le_bytes())?;
-    Ok(())
+fn write_array_header(out: &mut BinaryWriter, count: usize, element_size: usize) {
+    out.write_u32(count as u32);
+    out.write_u32(0);
+    out.write_u32((count * element_size) as u32);
 }
 
 // ---- Properties70 helpers -------------------------------------------------
@@ -322,7 +316,9 @@ mod tests {
     use super::*;
 
     fn read_u32(bytes: &[u8], at: usize) -> u32 {
-        u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
+        crate::parser::binary::BinaryReader::new(bytes)
+            .read_u32_at(at)
+            .unwrap()
     }
 
     #[test]

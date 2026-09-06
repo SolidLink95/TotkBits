@@ -6,6 +6,12 @@
 //! records that receive the output. Every edit rebuilds the archive from the
 //! decoded tree so unrelated parameters survive untouched.
 
+mod document;
+mod header;
+
+pub use document::{BphhbBone, BphhbDocument, BphhbMetadata, BphhbTransform, BphhbValue};
+pub use header::{BphhbHeader, BPHHB_HEADER_SIZE};
+
 use super::{
     aamp_tree::{crc32, invalid, AampList, AampObject, AampParameter, AampTree, KIND_STRING256},
     bphyssb::{self, SupportBoneDocument},
@@ -14,6 +20,7 @@ use super::{
         unique_bone_name, SidecarDriverGroup, UnionFind,
     },
 };
+use crate::parser::binary::BinaryReader;
 use serde::Serialize;
 use std::{collections::HashMap, io};
 
@@ -140,26 +147,20 @@ pub(crate) fn read_sidecar_header(bytes: &[u8], expected_type: &str) -> io::Resu
     if &bytes[..4] != b"AAMP" {
         return Err(invalid("the sidecar must begin with the AAMP signature"));
     }
-    let word = |offset: usize| {
-        u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ])
-    };
-    let declared = word(0x0c) as usize;
+    let reader = BinaryReader::new(bytes);
+    let word = |offset: usize| -> io::Result<u32> { reader.read_u32_at(offset) };
+    let declared = word(0x0c)? as usize;
     if declared != bytes.len() {
         return Err(invalid(&format!(
             "AAMP header declares {declared} bytes, but the file contains {}",
             bytes.len()
         )));
     }
-    let root_offset = word(0x14) as usize;
+    let root_offset = word(0x14)? as usize;
     if HEADER_SIZE.saturating_add(root_offset) >= bytes.len() {
         return Err(invalid("AAMP parameter root offset lies outside the file"));
     }
-    let string_pool_size = word(0x28);
+    let string_pool_size = word(0x28)?;
     if string_pool_size as usize > bytes.len() {
         return Err(invalid("AAMP string pool lies outside the file"));
     }
@@ -176,13 +177,13 @@ pub(crate) fn read_sidecar_header(bytes: &[u8], expected_type: &str) -> io::Resu
     }
     Ok(SidecarHeader {
         file_size: bytes.len(),
-        archive_version: word(0x04),
-        format_version: word(0x08),
-        parameter_io_version: word(0x10),
-        list_count: word(0x18),
-        object_count: word(0x1c),
-        parameter_count: word(0x20),
-        data_size: word(0x24),
+        archive_version: word(0x04)?,
+        format_version: word(0x08)?,
+        parameter_io_version: word(0x10)?,
+        list_count: word(0x18)?,
+        object_count: word(0x1c)?,
+        parameter_count: word(0x20)?,
+        data_size: word(0x24)?,
         string_pool_size,
     })
 }

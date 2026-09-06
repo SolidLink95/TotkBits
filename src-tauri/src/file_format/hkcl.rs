@@ -1,4 +1,4 @@
-use crate::parser::hkcl::{HkclDocument, HkclLeaf};
+use crate::parser::physics::hkcl::{HkclDocument, HkclLeaf};
 use std::io::ErrorKind;
 use std::{io, path::Path};
 

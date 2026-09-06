@@ -1,4 +1,5 @@
 use super::{BphclDocument, CopiedItemGraph, ImportedRange, ItemRange, Patch};
+use crate::parser::binary::{BinaryPatcher, BinaryReader};
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     io::{self, ErrorKind},
@@ -188,14 +189,11 @@ impl BphclDocument {
                             "ITEM {source_item} was not included in imported graph"
                         ))
                     })?;
-                let bytes = destination
-                    .get_mut(target_offset..target_offset + 4)
-                    .ok_or_else(|| invalid("relocated pointer exceeds destination DATA"))?;
-                bytes.copy_from_slice(
-                    &u32::try_from(target_item)
-                        .map_err(|_| invalid("target ITEM index exceeds u32"))?
-                        .to_le_bytes(),
-                );
+                let target_item = u32::try_from(target_item)
+                    .map_err(|_| invalid("target ITEM index exceeds u32"))?;
+                BinaryPatcher::new(destination)
+                    .write_u32_at(target_offset, target_item)
+                    .map_err(|_| invalid("relocated pointer exceeds destination DATA"))?;
             }
         }
         Ok(())
@@ -237,12 +235,9 @@ impl BphclDocument {
         {
             return Err(invalid(&format!("DATA+{offset:#x} is not PTCH-backed")));
         }
-        let bytes = self.graph_data_bytes()?;
-        let start = offset as usize;
-        let raw = bytes
-            .get(start..start.saturating_add(4))
-            .ok_or_else(|| invalid("pointer exceeds DATA"))?;
-        let value = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]) as usize;
+        let value = BinaryReader::new(self.graph_data_bytes()?)
+            .read_u32_at(offset as usize)
+            .map_err(|_| invalid("pointer exceeds DATA"))? as usize;
         if value >= self.items.len() {
             return Err(invalid(&format!("pointer references missing ITEM {value}")));
         }

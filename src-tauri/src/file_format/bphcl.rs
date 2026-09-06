@@ -1,4 +1,4 @@
-use crate::parser::bphcl::BphclDocument;
+use crate::parser::physics::bphcl::BphclDocument;
 use roead::aamp::{Parameter, ParameterIO, ParameterList};
 use serde::{Deserialize, Serialize};
 use serde_yaml::{
@@ -261,7 +261,7 @@ impl BphclFile {
     }
     pub fn replace_aamp_yaml(&mut self, yaml: &str) -> io::Result<()> {
         let aamp = aamp_from_yaml(yaml)?.to_binary();
-        let mut builder = crate::parser::bphcl::BphclBuilder::new(&self.document)?;
+        let mut builder = crate::parser::physics::bphcl::BphclBuilder::new(&self.document)?;
         builder.replace_aamp(aamp);
         let bytes = builder.build()?;
         let rebuilt = BphclDocument::parse(&bytes)?;
@@ -794,7 +794,7 @@ mod tests {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../tmp/_bphcl/Animal_Donkey.bphcl");
         let bytes = std::fs::read(path).expect("Animal_Donkey.bphcl fixture is missing");
-        let document = crate::parser::bphcl::BphclDocument::parse(&bytes).unwrap();
+        let document = crate::parser::physics::bphcl::BphclDocument::parse(&bytes).unwrap();
         let aamp = document.aamp.expect("Donkey BPHCL has no AAMP section");
         let pio = roead::aamp::ParameterIO::from_binary(&aamp.raw).unwrap();
         let yaml = super::safe_aamp_yaml(&pio).unwrap();

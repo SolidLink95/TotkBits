@@ -733,7 +733,7 @@ fn invalid(message: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::hkcl::HkclLayoutRules;
+    use crate::parser::physics::hkcl::HkclLayoutRules;
     use std::ops::Range;
 
     #[test]
@@ -814,18 +814,14 @@ mod tests {
     }
 
     fn write_u16(raw: &mut [u8], offset: usize, value: u16, endian: Endian) {
-        let bytes = match endian {
-            Endian::Little => value.to_le_bytes(),
-            Endian::Big => value.to_be_bytes(),
-        };
-        raw[offset..offset + 2].copy_from_slice(&bytes);
+        crate::parser::binary::BinaryPatcher::with_endian(raw, endian)
+            .write_u16_at(offset, value)
+            .unwrap();
     }
 
     fn write_u32(raw: &mut [u8], offset: usize, value: u32, endian: Endian) {
-        let bytes = match endian {
-            Endian::Little => value.to_le_bytes(),
-            Endian::Big => value.to_be_bytes(),
-        };
-        raw[offset..offset + 4].copy_from_slice(&bytes);
+        crate::parser::binary::BinaryPatcher::with_endian(raw, endian)
+            .write_u32_at(offset, value)
+            .unwrap();
     }
 }

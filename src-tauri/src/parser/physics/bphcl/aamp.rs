@@ -1,4 +1,5 @@
 use super::BphclDocument;
+use crate::parser::binary::{BinaryPatcher, BinaryReader};
 use std::{
     collections::HashSet,
     io::{self, ErrorKind},
@@ -543,14 +544,12 @@ fn ensure(bytes: &[u8], offset: usize, size: usize) -> io::Result<()> {
     }
 }
 fn read_u32(bytes: &[u8], offset: usize) -> io::Result<u32> {
-    crate::parser::binary::BinaryReader::new(bytes).read_u32_at(offset)
+    BinaryReader::new(bytes).read_u32_at(offset)
 }
 fn write_u32(bytes: &mut [u8], offset: usize, value: u32) -> io::Result<()> {
-    bytes
-        .get_mut(offset..offset + 4)
-        .ok_or_else(|| invalid("AAMP write exceeds archive"))?
-        .copy_from_slice(&value.to_le_bytes());
-    Ok(())
+    BinaryPatcher::new(bytes)
+        .write_u32_at(offset, value)
+        .map_err(|_| invalid("AAMP write exceeds archive"))
 }
 fn apply_delta(bytes: &mut [u8], offset: usize, delta: i64) -> io::Result<()> {
     let value = i64::from(read_u32(bytes, offset)?)

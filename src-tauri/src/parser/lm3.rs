@@ -4,6 +4,7 @@
 //! mesh layer). Read-only: nothing here mutates archives.
 
 use crate::file_format::Model3D::bfres::{BfresMesh, BfresRenderGraph};
+use crate::parser::binary::BinaryReader;
 use flate2::read::ZlibDecoder;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -148,15 +149,15 @@ fn invalid(message: impl Into<String>) -> io::Error {
 }
 
 fn read_u16(data: &[u8], offset: usize) -> io::Result<u16> {
-    data.get(offset..offset + 2)
-        .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap()))
-        .ok_or_else(|| invalid(format!("u16 read out of bounds at 0x{offset:X}")))
+    BinaryReader::new(data)
+        .read_u16_at(offset)
+        .map_err(|_| invalid(format!("u16 read out of bounds at 0x{offset:X}")))
 }
 
 fn read_u32(data: &[u8], offset: usize) -> io::Result<u32> {
-    data.get(offset..offset + 4)
-        .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()))
-        .ok_or_else(|| invalid(format!("u32 read out of bounds at 0x{offset:X}")))
+    BinaryReader::new(data)
+        .read_u32_at(offset)
+        .map_err(|_| invalid(format!("u32 read out of bounds at 0x{offset:X}")))
 }
 
 fn read_f32(data: &[u8], offset: usize) -> io::Result<f32> {
@@ -357,21 +358,31 @@ pub fn slot_sizes_from_table(table: &[u8]) -> Vec<u64> {
 }
 
 pub fn parse_subentries(table: &[u8]) -> Vec<Lm3SubEntry> {
+    let reader = BinaryReader::new(table);
     let mut position = 0;
     // Leading table records are 24 bytes and begin with 0x1301; the sub-entry
     // records that follow are 12 bytes each.
-    while position + 2 <= table.len()
-        && u16::from_le_bytes([table[position], table[position + 1]]) == 0x1301
+    while reader
+        .read_u16_at(position)
+        .is_ok_and(|kind| kind == 0x1301)
     {
         position += 24;
     }
     let mut result = Vec::new();
     while position + 12 <= table.len() {
+        let (Ok(kind), Ok(flags), Ok(size), Ok(offset)) = (
+            reader.read_u16_at(position),
+            reader.read_u16_at(position + 2),
+            reader.read_u32_at(position + 4),
+            reader.read_u32_at(position + 8),
+        ) else {
+            break;
+        };
         result.push(Lm3SubEntry {
-            kind: u16::from_le_bytes([table[position], table[position + 1]]),
-            flags: u16::from_le_bytes([table[position + 2], table[position + 3]]),
-            size: u32::from_le_bytes(table[position + 4..position + 8].try_into().unwrap()),
-            offset: u32::from_le_bytes(table[position + 8..position + 12].try_into().unwrap()),
+            kind,
+            flags,
+            size,
+            offset,
         });
         position += 12;
     }
@@ -582,8 +593,7 @@ const SHARED_SKELETON: [(usize, usize); 6] =
 fn primary_records(table: &[u8]) -> Vec<(u16, u32)> {
     let mut records = Vec::new();
     let mut position = 0;
-    while position + 24 <= table.len()
-        && u16::from_le_bytes([table[position], table[position + 1]]) == 0x1301
+    while position + 24 <= table.len() && read_u16(table, position).is_ok_and(|kind| kind == 0x1301)
     {
         if let (Ok(offset), Ok(kind)) = (
             read_u32(table, position + 8),
@@ -1200,8 +1210,11 @@ fn legacy_material_textures(
             continue;
         };
         let mut references = Vec::new();
+        let reader = BinaryReader::new(payload);
         for offset in (0..payload.len().saturating_sub(3)).step_by(4) {
-            let value = u32::from_le_bytes(payload[offset..offset + 4].try_into().unwrap());
+            let Ok(value) = reader.read_u32_at(offset) else {
+                break;
+            };
             if texture_formats.contains_key(&value) && !references.contains(&value) {
                 references.push(value);
             }

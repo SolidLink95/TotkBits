@@ -3,10 +3,7 @@ use crate::parser::binary::Endian;
 use encoding_rs::SHIFT_JIS;
 use std::io::{self, ErrorKind};
 fn u16at(b: &[u8], i: usize, e: Endian) -> u16 {
-    match e {
-        Endian::Little => u16::from_le_bytes([b[i], b[i + 1]]),
-        Endian::Big => u16::from_be_bytes([b[i], b[i + 1]]),
-    }
+    e.u16_from_bytes([b[i], b[i + 1]])
 }
 pub fn decode(raw: &[u8], enc: u8, e: Endian) -> io::Result<Vec<TextPart>> {
     if enc == 1 {
@@ -114,10 +111,7 @@ pub fn encode(parts: &[TextPart], enc: u8, e: Endian) -> io::Result<Vec<u8>> {
         return Ok(v);
     }
     let mut v = Vec::new();
-    let put = |v: &mut Vec<u8>, x: u16| match e {
-        Endian::Little => v.extend(x.to_le_bytes()),
-        Endian::Big => v.extend(x.to_be_bytes()),
-    };
+    let put = |v: &mut Vec<u8>, x: u16| v.extend(e.u16_to_bytes(x));
     for p in parts {
         match p {
             TextPart::Text(s) => {

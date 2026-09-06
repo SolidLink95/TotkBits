@@ -11,10 +11,7 @@ fn string_pool(data: &[u8], encoding: u8, endian: crate::parser::binary::Endian)
         let mut result = Vec::new();
         let mut current = Vec::new();
         for bytes in data.chunks_exact(2) {
-            let unit = match endian {
-                crate::parser::binary::Endian::Little => u16::from_le_bytes([bytes[0], bytes[1]]),
-                crate::parser::binary::Endian::Big => u16::from_be_bytes([bytes[0], bytes[1]]),
-            };
+            let unit = endian.u16_from_bytes([bytes[0], bytes[1]]);
             if unit == 0 {
                 if !current.is_empty() {
                     result.push(String::from_utf16_lossy(&current));

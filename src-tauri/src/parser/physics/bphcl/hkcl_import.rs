@@ -1,8 +1,11 @@
 use super::{write_constraint_elements, AampRegistrationMerger, BphclBuilder, BphclDocument, Item};
 use crate::parser::{
-    hkcl_to_bphcl::convert_hkcl_cloth_to_bphcl_template,
-    physics_graph::{
-        FormatNeutralPhysicsGraph, PhysicsCloth, PhysicsCollidable, PhysicsSkeleton, SourceRef,
+    binary::{BinaryPatcher, BinaryReader, BinaryWriter, Endian},
+    physics::{
+        hkcl_to_bphcl::convert_hkcl_cloth_to_bphcl_template,
+        physics_graph::{
+            FormatNeutralPhysicsGraph, PhysicsCloth, PhysicsCollidable, PhysicsSkeleton, SourceRef,
+        },
     },
 };
 use std::{
@@ -139,7 +142,7 @@ fn write_particles(
     builder: &mut BphclBuilder<'_>,
     document: &BphclDocument,
     simulation_offset: u32,
-    particles: &[crate::parser::physics_graph::PhysicsParticle],
+    particles: &[crate::parser::physics::physics_graph::PhysicsParticle],
 ) -> io::Result<()> {
     let physics = array_item(document, checked_add(simulation_offset, 64)?)?;
     if physics.count as usize != particles.len() {
@@ -451,9 +454,11 @@ fn replace_u16_array(
         u32::try_from(builder.data.len()).map_err(|_| invalid("BPHCL DATA exceeds u32"))?;
     storage.count =
         u32::try_from(values.len()).map_err(|_| invalid("BPHCL array count exceeds u32"))?;
+    let mut writer = BinaryWriter::appending(std::mem::take(&mut builder.data), Endian::Little);
     for value in values {
-        builder.data.extend_from_slice(&value.to_le_bytes());
+        writer.write_u16(*value);
     }
+    builder.data = writer.into_inner();
     let item_index =
         u32::try_from(builder.items.len()).map_err(|_| invalid("BPHCL ITEM index exceeds u32"))?;
     builder.items.push(storage);
@@ -501,33 +506,37 @@ fn write_f32(data: &mut [u8], offset: u32, value: f32) -> io::Result<()> {
     if !value.is_finite() {
         return Err(invalid("physics value is not finite"));
     }
-    write_bytes(data, offset, &value.to_le_bytes())
+    BinaryPatcher::new(data)
+        .write_f32_at(offset as usize, value)
+        .map_err(write_error)
 }
 
 fn write_u16(data: &mut [u8], offset: u32, value: u16) -> io::Result<()> {
-    write_bytes(data, offset, &value.to_le_bytes())
+    BinaryPatcher::new(data)
+        .write_u16_at(offset as usize, value)
+        .map_err(write_error)
 }
 
 fn read_u32(data: &[u8], offset: u32) -> io::Result<u32> {
-    let offset = offset as usize;
-    let source = data
-        .get(offset..offset + 4)
-        .ok_or_else(|| invalid("BPHCL read exceeds DATA"))?;
-    let mut bytes = [0; 4];
-    bytes.copy_from_slice(source);
-    Ok(u32::from_le_bytes(bytes))
+    BinaryReader::new(data)
+        .read_u32_at(offset as usize)
+        .map_err(|_| invalid("BPHCL read exceeds DATA"))
 }
 
 fn write_u32(data: &mut [u8], offset: u32, value: u32) -> io::Result<()> {
-    write_bytes(data, offset, &value.to_le_bytes())
+    BinaryPatcher::new(data)
+        .write_u32_at(offset as usize, value)
+        .map_err(write_error)
 }
 
 fn write_bytes(data: &mut [u8], offset: u32, bytes: &[u8]) -> io::Result<()> {
-    let offset = offset as usize;
-    data.get_mut(offset..offset + bytes.len())
-        .ok_or_else(|| invalid("BPHCL write exceeds DATA"))?
-        .copy_from_slice(bytes);
-    Ok(())
+    BinaryPatcher::new(data)
+        .write_bytes_at(offset as usize, bytes)
+        .map_err(write_error)
+}
+
+fn write_error(_: io::Error) -> io::Error {
+    invalid("BPHCL write exceeds DATA")
 }
 
 fn checked_add(value: u32, addition: u32) -> io::Result<u32> {

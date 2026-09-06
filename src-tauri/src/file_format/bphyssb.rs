@@ -1,4 +1,4 @@
-use crate::parser::{hkcl::HkclLeaf, physics::SupportBoneDocument};
+use crate::parser::physics::{hkcl::HkclLeaf, SupportBoneDocument};
 use serde::Serialize;
 use std::{io, path::Path};
 

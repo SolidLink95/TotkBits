@@ -6,7 +6,7 @@ use std::{
     io,
 };
 
-use crate::parser::hkcl::HkclLeaf;
+use crate::parser::physics::hkcl::HkclLeaf;
 
 #[derive(Serialize)]
 struct BphhbYaml<'a> {

@@ -203,8 +203,8 @@ fn invalid(message: &str) -> io::Error {
 mod tests {
     use super::*;
     use crate::parser::binary::{BinaryWriter, Endian};
-    use crate::parser::hkcl::header::HEADER_SIZE;
-    use crate::parser::hkcl::section::SECTION_HEADER_SIZE;
+    use crate::parser::physics::hkcl::header::HEADER_SIZE;
+    use crate::parser::physics::hkcl::section::SECTION_HEADER_SIZE;
 
     fn packfile_with_sections(header_endian: Endian, sections: Vec<(&str, Vec<u8>)>) -> Vec<u8> {
         let mut writer = BinaryWriter::with_endian(header_endian);
@@ -238,10 +238,7 @@ mod tests {
         let mut section_meta = Vec::new();
         let start = HEADER_SIZE + section_count * SECTION_HEADER_SIZE;
         let mut cursor = start;
-        let write_u32 = |value: u32| match header_endian {
-            Endian::Little => value.to_le_bytes(),
-            Endian::Big => value.to_be_bytes(),
-        };
+        let write_u32 = |value: u32| header_endian.u32_to_bytes(value);
         for (tag, payload) in sections.iter() {
             let mut tag_bytes = [0u8; 16];
             let signature = tag.as_bytes();
@@ -289,7 +286,7 @@ mod tests {
                     ("DATA", data_payload.clone()),
                 ],
             );
-            let document = crate::parser::hkcl::HkclDocument::parse(&bytes).unwrap();
+            let document = crate::parser::physics::hkcl::HkclDocument::parse(&bytes).unwrap();
             let data = document.data_range().unwrap();
             assert_eq!(document.header.layout.endian, endian);
             assert_eq!(data.len(), data_payload.len());
@@ -315,7 +312,7 @@ mod tests {
                 ("DATA", data_payload.to_vec()),
             ],
         );
-        let document = crate::parser::hkcl::HkclDocument::parse(&bytes).unwrap();
+        let document = crate::parser::physics::hkcl::HkclDocument::parse(&bytes).unwrap();
         assert!(document.resolve_patched_item(12).is_err());
     }
 }

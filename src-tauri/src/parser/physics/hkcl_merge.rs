@@ -1,4 +1,4 @@
-use crate::parser::physics_graph::{
+use crate::parser::physics::physics_graph::{
     FormatNeutralPhysicsGraph, PhysicsCollidable, PhysicsFormat, PhysicsId, SkeletonBinding,
 };
 use std::{collections::BTreeMap, io};
@@ -234,7 +234,7 @@ fn invalid(message: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::hkcl_to_bphcl::tests::graph;
+    use crate::parser::physics::hkcl_to_bphcl::tests::graph;
 
     #[test]
     fn complete_cloth_merge_copies_and_remaps_the_reachable_package() {

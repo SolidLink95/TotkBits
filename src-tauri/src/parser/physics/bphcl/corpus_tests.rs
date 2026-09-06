@@ -1,5 +1,5 @@
 use super::BphclDocument;
-use crate::parser::{
+use crate::parser::physics::{
     hkcl_to_bphcl::analyze_hkcl_to_bphcl,
     physics_graph::{FormatNeutralPhysicsGraph, PhysicsFormat},
 };

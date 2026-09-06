@@ -25,7 +25,9 @@ pub struct BphclDocument {
     pub aamp: Option<AampSection>,
 }
 impl BphclDocument {
-    pub fn neutral_physics_graph(&self) -> crate::parser::physics_graph::FormatNeutralPhysicsGraph {
+    pub fn neutral_physics_graph(
+        &self,
+    ) -> crate::parser::physics::physics_graph::FormatNeutralPhysicsGraph {
         self.into()
     }
 
@@ -143,7 +145,7 @@ impl BphclDocument {
         }
         let data = self.tag.find("DATA")?;
         let o = data.payload_offset.checked_add(offset as usize)?;
-        let i = u32::from_le_bytes(self.raw.get(o..o + 4)?.try_into().ok()?) as usize;
+        let i = BinaryReader::new(&self.raw).read_u32_at(o).ok()? as usize;
         (i < self.items.len()).then_some(i)
     }
     fn string_ptr(&self, offset: u32) -> Option<String> {
@@ -218,10 +220,14 @@ impl BphclDocument {
         self.raw.get(o..o.checked_add(count)?)
     }
     fn u16(&self, o: u32) -> Option<u16> {
-        Some(u16::from_le_bytes(self.data_bytes(o, 2)?.try_into().ok()?))
+        BinaryReader::new(self.data_bytes(o, 2)?)
+            .read_u16_at(0)
+            .ok()
     }
     fn u32(&self, o: u32) -> Option<u32> {
-        Some(u32::from_le_bytes(self.data_bytes(o, 4)?.try_into().ok()?))
+        BinaryReader::new(self.data_bytes(o, 4)?)
+            .read_u32_at(0)
+            .ok()
     }
     fn f32(&self, o: u32) -> Option<f32> {
         Some(f32::from_bits(self.u32(o)?))

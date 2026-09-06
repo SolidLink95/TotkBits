@@ -2,6 +2,7 @@
 //! support-bone sidecars. Parameters keep their raw payload and type code, so
 //! hashes the editors do not understand survive a rebuild untouched.
 
+use crate::parser::binary::{BinaryPatcher, BinaryReader, BinaryWriter};
 use std::io::{self, ErrorKind};
 
 pub const KIND_BOOL: u8 = 0;
@@ -66,13 +67,13 @@ impl AampParameter {
         Self { hash, kind, bytes }
     }
     pub fn int(hash: u32, value: i32) -> Self {
-        Self::raw(hash, KIND_I32, value.to_le_bytes().to_vec())
+        Self::raw(hash, KIND_I32, encode_i32(value))
     }
     pub fn float(hash: u32, value: f32) -> Self {
-        Self::raw(hash, KIND_F32, value.to_le_bytes().to_vec())
+        Self::raw(hash, KIND_F32, encode_floats(&[value]))
     }
     pub fn boolean(hash: u32, value: bool) -> Self {
-        Self::raw(hash, KIND_BOOL, i32::from(value).to_le_bytes().to_vec())
+        Self::raw(hash, KIND_BOOL, encode_i32(i32::from(value)))
     }
     pub fn vec3(hash: u32, value: [f32; 3]) -> Self {
         Self::raw(hash, KIND_VEC3, encode_floats(&value))
@@ -92,9 +93,7 @@ impl AampParameter {
         )
     }
     pub fn as_i32(&self) -> Option<i32> {
-        self.bytes
-            .get(..4)
-            .map(|bytes| i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+        BinaryReader::new(&self.bytes).read_i32_at(0).ok()
     }
     pub fn as_f32(&self) -> Option<f32> {
         self.as_i32().map(|value| f32::from_bits(value as u32))
@@ -173,7 +172,7 @@ impl AampObject {
         }
     }
     pub fn set_int(&mut self, hash: u32, value: i32) {
-        self.set_raw(hash, KIND_I32, value.to_le_bytes().to_vec());
+        self.set_raw(hash, KIND_I32, encode_i32(value));
     }
     pub fn set_existing_int(&mut self, hash: u32, value: i32) {
         if self.position(hash).is_some() {
@@ -568,24 +567,25 @@ fn write_relative(
     Ok(())
 }
 
+fn encode_i32(value: i32) -> Vec<u8> {
+    let mut writer = BinaryWriter::new();
+    writer.write_i32(value);
+    writer.into_inner()
+}
+
 fn encode_floats(values: &[f32]) -> Vec<u8> {
-    values
-        .iter()
-        .flat_map(|value| value.to_le_bytes())
-        .collect()
+    let mut writer = BinaryWriter::new();
+    for value in values {
+        writer.write_f32(*value);
+    }
+    writer.into_inner()
 }
 
 fn decode_floats(bytes: &[u8], count: usize) -> Option<Vec<f32>> {
-    if bytes.len() < count * 4 {
-        return None;
-    }
-    Some(
-        bytes
-            .chunks_exact(4)
-            .take(count)
-            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-            .collect(),
-    )
+    let reader = BinaryReader::new(bytes);
+    (0..count)
+        .map(|index| reader.read_f32_at(index * 4).ok())
+        .collect()
 }
 
 fn align(bytes: &mut Vec<u8>, alignment: usize) {
@@ -606,16 +606,15 @@ fn ensure(bytes: &[u8], offset: usize, length: usize) -> io::Result<()> {
 
 fn read_u32(bytes: &[u8], offset: usize) -> io::Result<u32> {
     ensure(bytes, offset, 4)?;
-    Ok(u32::from_le_bytes([
-        bytes[offset],
-        bytes[offset + 1],
-        bytes[offset + 2],
-        bytes[offset + 3],
-    ]))
+    BinaryReader::new(bytes).read_u32_at(offset)
 }
 
+/// The archive is sized before any field is written, so a miss here is a
+/// layout bug rather than a malformed input.
 fn write_u32(bytes: &mut [u8], offset: usize, value: u32) {
-    bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    BinaryPatcher::new(bytes)
+        .write_u32_at(offset, value)
+        .expect("AAMP field lies inside the sized archive");
 }
 
 fn read_c_string(bytes: &[u8], offset: usize) -> io::Result<String> {

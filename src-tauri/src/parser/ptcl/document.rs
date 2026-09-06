@@ -3,7 +3,7 @@ use super::{
     emitter::{Emitter, EmitterLocation},
     header::{relative, SectionHeader, END},
 };
-use crate::parser::binary::BinaryReader;
+use crate::parser::binary::{BinaryPatcher, BinaryReader};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, io};
 
@@ -255,7 +255,7 @@ fn write_emitter(
             )));
         }
         let count = (frames.len() - minimum) as u32;
-        write_bytes(data, base + 0x80 + count_index * 4, &count.to_le_bytes())?;
+        write_u32(data, base + 0x80 + count_index * 4, count)?;
         write_bytes(data, animation, &[0; ANIMATION_SLOT_SIZE])?;
         for (index, frame) in frames.iter().enumerate() {
             let at = animation + index * 16;
@@ -265,7 +265,7 @@ fn write_emitter(
                 .chain(std::iter::once(&frame.keyframe))
                 .enumerate()
             {
-                write_bytes(data, at + component * 4, &value.to_le_bytes())?;
+                write_f32(data, at + component * 4, *value)?;
             }
         }
         animation += ANIMATION_SLOT_SIZE;
@@ -314,20 +314,31 @@ fn read_f32x4(data: &[u8], offset: usize) -> io::Result<[f32; 4]> {
 
 fn write_f32x4(data: &mut [u8], offset: usize, values: [f32; 4]) -> io::Result<()> {
     for (index, value) in values.into_iter().enumerate() {
-        write_bytes(data, offset + index * 4, &value.to_le_bytes())?;
+        write_f32(data, offset + index * 4, value)?;
     }
     Ok(())
 }
 
+fn write_u32(data: &mut [u8], offset: usize, value: u32) -> io::Result<()> {
+    BinaryPatcher::new(data)
+        .write_u32_at(offset, value)
+        .map_err(write_error)
+}
+
+fn write_f32(data: &mut [u8], offset: usize, value: f32) -> io::Result<()> {
+    BinaryPatcher::new(data)
+        .write_f32_at(offset, value)
+        .map_err(write_error)
+}
+
 fn write_bytes(data: &mut [u8], offset: usize, bytes: &[u8]) -> io::Result<()> {
-    let end = offset
-        .checked_add(bytes.len())
-        .ok_or_else(|| invalid("write offset overflow"))?;
-    let target = data
-        .get_mut(offset..end)
-        .ok_or_else(|| invalid("write exceeds PTCL data"))?;
-    target.copy_from_slice(bytes);
-    Ok(())
+    BinaryPatcher::new(data)
+        .write_bytes_at(offset, bytes)
+        .map_err(write_error)
+}
+
+fn write_error(_: io::Error) -> io::Error {
+    invalid("write exceeds PTCL data")
 }
 
 fn invalid(message: &str) -> io::Error {

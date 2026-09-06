@@ -20,11 +20,7 @@ fn take<'a>(data: &'a [u8], offset: &mut usize, count: usize) -> io::Result<&'a 
 
 fn u16_at(data: &[u8], offset: &mut usize, endian: Endian) -> io::Result<u16> {
     let source = take(data, offset, 2)?;
-    let bytes = [source[0], source[1]];
-    Ok(match endian {
-        Endian::Little => u16::from_le_bytes(bytes),
-        Endian::Big => u16::from_be_bytes(bytes),
-    })
+    Ok(endian.u16_from_bytes([source[0], source[1]]))
 }
 
 fn argument_text(
@@ -43,10 +39,7 @@ fn argument_text(
             let bytes = take(data, offset, byte_len)?;
             let mut units = bytes
                 .chunks_exact(2)
-                .map(|b| match endian {
-                    Endian::Little => u16::from_le_bytes([b[0], b[1]]),
-                    Endian::Big => u16::from_be_bytes([b[0], b[1]]),
-                })
+                .map(|b| endian.u16_from_bytes([b[0], b[1]]))
                 .collect::<Vec<_>>();
             if byte_len % 2 != 0 {
                 units.push(0xFFFD);
@@ -115,10 +108,7 @@ pub fn parse_end(name: &str) -> io::Result<(u16, u16)> {
 }
 
 fn push_u16(data: &mut Vec<u8>, value: u16, endian: Endian) {
-    match endian {
-        Endian::Little => data.extend_from_slice(&value.to_le_bytes()),
-        Endian::Big => data.extend_from_slice(&value.to_be_bytes()),
-    }
+    data.extend_from_slice(&endian.u16_to_bytes(value));
 }
 fn encode_argument(
     data: &mut Vec<u8>,

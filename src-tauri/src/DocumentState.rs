@@ -156,7 +156,7 @@ pub struct PhysicsMergeValidation {
 #[serde(rename_all = "camelCase")]
 pub struct PhysicsGraphMergeResult {
     pub imported: Vec<String>,
-    pub graph: crate::parser::physics_graph::FormatNeutralPhysicsGraph,
+    pub graph: crate::parser::physics::physics_graph::FormatNeutralPhysicsGraph,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -235,12 +235,12 @@ impl DocumentState {
             return Err("Rebuilt physics document is empty".into());
         }
         enum Parsed {
-            Hkcl(crate::parser::hkcl::HkclDocument),
-            Bphcl(crate::parser::bphcl::BphclDocument),
+            Hkcl(crate::parser::physics::hkcl::HkclDocument),
+            Bphcl(crate::parser::physics::bphcl::BphclDocument),
         }
         let parsed = match request.format {
             PhysicsMergeFormat::Hkcl => {
-                let document = crate::parser::hkcl::HkclDocument::parse(&request.bytes)
+                let document = crate::parser::physics::hkcl::HkclDocument::parse(&request.bytes)
                     .map_err(|error| format!("Rebuilt HKCL did not parse: {error}"))?;
                 document
                     .validate()
@@ -248,7 +248,7 @@ impl DocumentState {
                 Parsed::Hkcl(document)
             }
             PhysicsMergeFormat::Bphcl => {
-                let document = crate::parser::bphcl::BphclDocument::parse(&request.bytes)
+                let document = crate::parser::physics::bphcl::BphclDocument::parse(&request.bytes)
                     .map_err(|error| format!("Rebuilt BPHCL did not parse: {error}"))?;
                 document
                     .validate()
@@ -328,7 +328,7 @@ impl DocumentState {
                     .leaves()
                     .map_err(|error| format!("Failed to refresh rebuilt BPHCL tree: {error}"))?
                     .into_iter()
-                    .map(|leaf| crate::parser::hkcl::HkclLeaf {
+                    .map(|leaf| crate::parser::physics::hkcl::HkclLeaf {
                         path: leaf.path,
                         yaml: leaf.yaml,
                         viewer_type: leaf.viewer_type,
@@ -428,25 +428,25 @@ impl DocumentState {
             let (kind, index) = parse_physics_node_id(node_id)?;
             merged = match (request.target_format, request.source_format, kind) {
                 (PhysicsMergeFormat::Hkcl, PhysicsMergeFormat::Hkcl, "cloth") => {
-                    crate::parser::hkcl_merge::merge_complete_hkcl_cloth(&merged, &source, index)
+                    crate::parser::physics::hkcl_merge::merge_complete_hkcl_cloth(&merged, &source, index)
                 }
                 (PhysicsMergeFormat::Hkcl, PhysicsMergeFormat::Hkcl, "collidable") => {
-                    crate::parser::hkcl_merge::merge_standalone_hkcl_collidable(
+                    crate::parser::physics::hkcl_merge::merge_standalone_hkcl_collidable(
                         &merged, &source, index,
                     )
                 }
                 (PhysicsMergeFormat::Bphcl, PhysicsMergeFormat::Hkcl, "cloth") => {
-                    crate::parser::hkcl_to_bphcl::merge_hkcl_cloth_into_bphcl(
+                    crate::parser::physics::hkcl_to_bphcl::merge_hkcl_cloth_into_bphcl(
                         &source, &merged, index, template,
                     )
                 }
                 (PhysicsMergeFormat::Hkcl, PhysicsMergeFormat::Bphcl, "cloth") => {
                     if let Some(helper) = helper {
-                        crate::parser::bphcl_to_hkcl::merge_bphcl_cloth_into_hkcl_with_bphhb(
+                        crate::parser::physics::bphcl_to_hkcl::merge_bphcl_cloth_into_hkcl_with_bphhb(
                             &source, &merged, index, template, helper,
                         )
                     } else {
-                        crate::parser::bphcl_to_hkcl::merge_bphcl_cloth_into_hkcl(
+                        crate::parser::physics::bphcl_to_hkcl::merge_bphcl_cloth_into_hkcl(
                             &source, &merged, index, template,
                         )
                     }
@@ -541,7 +541,7 @@ impl DocumentState {
             let bytes = merged
                 .import_hkcl_cloth(&source, index, template)
                 .map_err(|error| format!("Failed to import '{node_id}': {error}"))?;
-            merged = crate::parser::bphcl::BphclDocument::parse(&bytes)
+            merged = crate::parser::physics::bphcl::BphclDocument::parse(&bytes)
                 .map_err(|error| format!("Imported BPHCL did not reparse: {error}"))?;
             imported.push(format!("Cloth: {name}"));
         }
@@ -653,7 +653,7 @@ impl DocumentState {
             file.document.remove_collidable(index)
         }
         .map_err(|error| error.to_string())?;
-        let rebuilt = crate::parser::bphcl::BphclDocument::parse(&bytes)
+        let rebuilt = crate::parser::physics::bphcl::BphclDocument::parse(&bytes)
             .map_err(|error| format!("Removed BPHCL did not reparse: {error}"))?;
 
         if let Some(link) = &parent_link {
@@ -807,7 +807,7 @@ impl DocumentState {
                 }
             } else {
                 imported.push(display_name);
-                merged = crate::parser::bphcl::BphclDocument::parse(&bytes)
+                merged = crate::parser::physics::bphcl::BphclDocument::parse(&bytes)
                     .map_err(|error| format!("Merged BPHCL did not reparse: {error}"))?;
             }
         }
@@ -1038,7 +1038,7 @@ impl DocumentState {
         let (leaf, format_name) = if let Some(file) = parent.opened_file.bphcl.as_ref() {
             let leaf = file.leaf(&path).ok()?;
             (
-                crate::parser::hkcl::HkclLeaf {
+                crate::parser::physics::hkcl::HkclLeaf {
                     path: leaf.path,
                     yaml: leaf.yaml,
                     viewer_type: leaf.viewer_type,
@@ -1373,7 +1373,7 @@ fn validate_physics_merge_request(
                     };
                     let compatibility = match (request.target_format, request.source_format) {
                         (PhysicsMergeFormat::Bphcl, PhysicsMergeFormat::Hkcl) => {
-                            crate::parser::hkcl_to_bphcl::analyze_hkcl_to_bphcl(
+                            crate::parser::physics::hkcl_to_bphcl::analyze_hkcl_to_bphcl(
                                 &source_graph,
                                 &target_graph,
                                 cloth,
@@ -1382,7 +1382,7 @@ fn validate_physics_merge_request(
                         }
                         (PhysicsMergeFormat::Hkcl, PhysicsMergeFormat::Bphcl) => {
                             if let Some(helper) = helper {
-                                crate::parser::bphcl_to_hkcl::analyze_bphcl_to_hkcl_with_bphhb(
+                                crate::parser::physics::bphcl_to_hkcl::analyze_bphcl_to_hkcl_with_bphhb(
                                     &source_graph,
                                     &target_graph,
                                     cloth,
@@ -1390,7 +1390,7 @@ fn validate_physics_merge_request(
                                     helper,
                                 )
                             } else {
-                                crate::parser::bphcl_to_hkcl::analyze_bphcl_to_hkcl(
+                                crate::parser::physics::bphcl_to_hkcl::analyze_bphcl_to_hkcl(
                                     &source_graph,
                                     &target_graph,
                                     cloth,
@@ -1427,7 +1427,7 @@ fn validate_physics_merge_request(
 fn neutral_graph(
     app: &TotkBitsApp<'static>,
     format: PhysicsMergeFormat,
-) -> Result<crate::parser::physics_graph::FormatNeutralPhysicsGraph, String> {
+) -> Result<crate::parser::physics::physics_graph::FormatNeutralPhysicsGraph, String> {
     match format {
         PhysicsMergeFormat::Hkcl => app
             .opened_file
@@ -1719,7 +1719,7 @@ impl DocumentState {
         let before = file.document.raw.len();
         let bytes = crate::parser::physics::compact(&file.document)
             .map_err(|error| format!("BPHCL compaction failed: {error}"))?;
-        let rebuilt = crate::parser::bphcl::BphclDocument::parse(&bytes)
+        let rebuilt = crate::parser::physics::bphcl::BphclDocument::parse(&bytes)
             .map_err(|error| format!("Compacted BPHCL did not reparse: {error}"))?;
         rebuilt
             .validate_item_graph()
@@ -1872,13 +1872,15 @@ mod tests {
                     PhysicsMergeFormat::Hkcl => {
                         app.opened_file.hkcl = Some(crate::file_format::hkcl::HkclFile {
                             source_path: Some(path.to_string_lossy().into_owned()),
-                            document: crate::parser::hkcl::HkclDocument::parse(&bytes).unwrap(),
+                            document: crate::parser::physics::hkcl::HkclDocument::parse(&bytes)
+                                .unwrap(),
                         });
                     }
                     PhysicsMergeFormat::Bphcl => {
                         app.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
                             source_path: Some(path.to_string_lossy().into_owned()),
-                            document: crate::parser::bphcl::BphclDocument::parse(&bytes).unwrap(),
+                            document: crate::parser::physics::bphcl::BphclDocument::parse(&bytes)
+                                .unwrap(),
                         });
                     }
                 }

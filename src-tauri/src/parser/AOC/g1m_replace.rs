@@ -1,5 +1,5 @@
 use crate::parser::{
-    binary::{BinaryReader, Endian},
+    binary::{BinaryPatcher, BinaryReader, Endian},
     fbx::import::{import_for_g1m, ImportedFbx, ImportedMesh},
     AOC::g1m::{bone_index, G1mFile},
 };
@@ -884,7 +884,7 @@ fn encode_value(dst: &mut [u8], kind: u8, v: [f32; 4], endian: Endian) -> io::Re
     match kind {
         0x00..=0x03 => {
             for (i, value) in v.iter().take((kind + 1) as usize).enumerate() {
-                write_f32(&mut dst[i * 4..], *value, endian);
+                write_f32(&mut dst[i * 4..], *value, endian)?;
             }
         }
         0x05 => {
@@ -898,22 +898,22 @@ fn encode_value(dst: &mut [u8], kind: u8, v: [f32; 4], endian: Endian) -> io::Re
                     &mut dst[i * 2..],
                     v[i].round().clamp(0.0, 65535.0) as u16,
                     endian,
-                );
+                )?;
             }
         }
         0x09 => {
             for i in 0..4 {
-                write_u32(&mut dst[i * 4..], v[i].round().max(0.0) as u32, endian);
+                write_u32(&mut dst[i * 4..], v[i].round().max(0.0) as u32, endian)?;
             }
         }
         0x0a => {
             for i in 0..2 {
-                write_u16(&mut dst[i * 2..], f32_to_half(v[i]), endian);
+                write_u16(&mut dst[i * 2..], f32_to_half(v[i]), endian)?;
             }
         }
         0x0b => {
             for i in 0..4 {
-                write_u16(&mut dst[i * 2..], f32_to_half(v[i]), endian);
+                write_u16(&mut dst[i * 2..], f32_to_half(v[i]), endian)?;
             }
         }
         0x0d => {
@@ -1251,45 +1251,28 @@ fn read_u32(data: &[u8], offset: usize, endian: Endian) -> io::Result<u32> {
     BinaryReader::with_endian(data, endian).read_u32_at(offset)
 }
 fn push_u16(out: &mut Vec<u8>, v: u16, e: Endian) {
-    let bytes = match e {
-        Endian::Little => v.to_le_bytes(),
-        Endian::Big => v.to_be_bytes(),
-    };
-    out.extend_from_slice(&bytes);
+    out.extend_from_slice(&e.u16_to_bytes(v));
 }
 fn push_u32(out: &mut Vec<u8>, v: u32, e: Endian) {
-    let bytes = match e {
-        Endian::Little => v.to_le_bytes(),
-        Endian::Big => v.to_be_bytes(),
-    };
-    out.extend_from_slice(&bytes);
+    out.extend_from_slice(&e.u32_to_bytes(v));
 }
 fn push_f32(out: &mut Vec<u8>, v: f32, e: Endian) {
     push_u32(out, v.to_bits(), e)
 }
-fn write_u16(out: &mut [u8], v: u16, e: Endian) {
-    let bytes = match e {
-        Endian::Little => v.to_le_bytes(),
-        Endian::Big => v.to_be_bytes(),
-    };
-    out[..2].copy_from_slice(&bytes);
+fn write_u16(out: &mut [u8], v: u16, e: Endian) -> io::Result<()> {
+    put_bounded(BinaryPatcher::with_endian(out, e).write_u16_at(0, v))
 }
-fn write_u32(out: &mut [u8], v: u32, e: Endian) {
-    let bytes = match e {
-        Endian::Little => v.to_le_bytes(),
-        Endian::Big => v.to_be_bytes(),
-    };
-    out[..4].copy_from_slice(&bytes);
+fn write_u32(out: &mut [u8], v: u32, e: Endian) -> io::Result<()> {
+    put_bounded(BinaryPatcher::with_endian(out, e).write_u32_at(0, v))
 }
-fn write_f32(out: &mut [u8], v: f32, e: Endian) {
+fn write_f32(out: &mut [u8], v: f32, e: Endian) -> io::Result<()> {
     write_u32(out, v.to_bits(), e)
 }
 fn put_u32(out: &mut [u8], offset: usize, v: u32, e: Endian) -> io::Result<()> {
-    let target = out
-        .get_mut(offset..offset + 4)
-        .ok_or_else(|| invalid("write exceeds output"))?;
-    write_u32(target, v, e);
-    Ok(())
+    put_bounded(BinaryPatcher::with_endian(out, e).write_u32_at(offset, v))
+}
+fn put_bounded(result: io::Result<()>) -> io::Result<()> {
+    result.map_err(|_| invalid("write exceeds output"))
 }
 fn f32_to_half(value: f32) -> u16 {
     let bits = value.to_bits();

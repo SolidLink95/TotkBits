@@ -49,7 +49,9 @@ struct HkclYaml<'a> {
 }
 
 impl HkclDocument {
-    pub fn neutral_physics_graph(&self) -> crate::parser::physics_graph::FormatNeutralPhysicsGraph {
+    pub fn neutral_physics_graph(
+        &self,
+    ) -> crate::parser::physics::physics_graph::FormatNeutralPhysicsGraph {
         (&self.physics).into()
     }
 
@@ -529,11 +531,9 @@ fn discover_graph_sections_in_range(
         if cursor + 8 > payload.end {
             return Err(invalid("HKCL nested section is truncated"));
         }
-        let size_bytes = data
-            .get(cursor..cursor + 4)
-            .ok_or_else(|| invalid("HKCL nested section is truncated"))?;
-        let size_word =
-            u32::from_be_bytes([size_bytes[0], size_bytes[1], size_bytes[2], size_bytes[3]]);
+        let size_word = BinaryReader::with_endian(data, Endian::Big)
+            .read_u32_at(cursor)
+            .map_err(|_| invalid("HKCL nested section is truncated"))?;
         let size = (size_word & 0x3fff_ffff) as usize;
         let signature = std::str::from_utf8(
             data.get(cursor + 4..cursor + 8)
@@ -674,10 +674,7 @@ mod tests {
         let mut section_meta = Vec::new();
         let start = HEADER_SIZE + section_count * SECTION_HEADER_SIZE;
         let mut cursor = start;
-        let write_u32 = |value: u32| match endian {
-            Endian::Little => value.to_le_bytes(),
-            Endian::Big => value.to_be_bytes(),
-        };
+        let write_u32 = |value: u32| endian.u32_to_bytes(value);
         for (tag, payload) in sections {
             let mut tag_bytes = [0u8; 16];
             let signature = tag.as_bytes();

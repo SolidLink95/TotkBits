@@ -1,4 +1,4 @@
-use crate::parser::{
+use crate::parser::physics::{
     bphhb::{BphhbBone, BphhbDocument},
     physics_graph::PhysicsSkeleton,
 };
@@ -107,7 +107,7 @@ fn normalize(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{
+    use crate::parser::physics::{
         bphhb::BphhbTransform, hkcl_to_bphcl::tests::graph, physics_graph::PhysicsFormat,
     };
 

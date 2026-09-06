@@ -1,4 +1,4 @@
-use crate::parser::{
+use crate::parser::physics::{
     bphhb::BphhbDocument,
     bphhb_mapping::map_skeleton_bones,
     hkcl_to_bphcl::{CompatibilityIssue, HkclToBphclCompatibility},
@@ -96,7 +96,7 @@ fn append_converted_hkcl(
     merged.cloths.push(copied_cloth);
     merged
         .skeleton_bindings
-        .push(crate::parser::physics_graph::SkeletonBinding {
+        .push(crate::parser::physics::physics_graph::SkeletonBinding {
             cloth: cloth_id,
             skeleton: skeleton_id,
         });
@@ -543,7 +543,7 @@ fn collider_matrix(
 fn paired_skeleton(
     graph: &FormatNeutralPhysicsGraph,
     cloth: usize,
-) -> Option<&crate::parser::physics_graph::PhysicsSkeleton> {
+) -> Option<&crate::parser::physics::physics_graph::PhysicsSkeleton> {
     paired_skeleton_index(graph, cloth).and_then(|index| graph.skeletons.get(index))
 }
 fn paired_skeleton_index(graph: &FormatNeutralPhysicsGraph, cloth: usize) -> Option<usize> {
@@ -565,7 +565,7 @@ fn referenced_colliders<'a>(
     cloth: &PhysicsCloth,
 ) -> Vec<(
     PhysicsId,
-    &'a crate::parser::physics_graph::PhysicsCollidable,
+    &'a crate::parser::physics::physics_graph::PhysicsCollidable,
 )> {
     let mut ids: Vec<_> = cloth
         .simulations
@@ -672,7 +672,7 @@ fn issue(code: &'static str, message: &str, issues: &mut Vec<CompatibilityIssue>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{
+    use crate::parser::physics::{
         bphhb::{BphhbBone, BphhbHeader, BphhbMetadata, BphhbTransform},
         hkcl_to_bphcl::tests::graph,
         physics_graph::PhysicsShape,

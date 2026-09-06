@@ -11,8 +11,8 @@
 //! claims to describe. Edits write values back in place and never move data.
 
 use crate::parser::{
-    binary::{BinaryReader, Endian},
-    hkcl::{HkclDocument, HkclHeader, HkclLeaf, HkclSection, ObjectKey},
+    binary::{BinaryPatcher, BinaryReader, Endian},
+    physics::hkcl::{HkclDocument, HkclHeader, HkclLeaf, HkclSection, ObjectKey},
 };
 use serde::Serialize;
 use std::{
@@ -2455,12 +2455,7 @@ fn write_f32(
     value: f32,
 ) -> io::Result<()> {
     let start = absolute_field(sections, key, field, 4)?;
-    let bytes = match endian {
-        Endian::Little => value.to_le_bytes(),
-        Endian::Big => value.to_be_bytes(),
-    };
-    raw[start..start + 4].copy_from_slice(&bytes);
-    Ok(())
+    BinaryPatcher::with_endian(raw, endian).write_f32_at(start, value)
 }
 
 fn write_vec4(

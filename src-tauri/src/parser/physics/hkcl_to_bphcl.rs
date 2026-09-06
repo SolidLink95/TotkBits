@@ -1,4 +1,4 @@
-use crate::parser::physics_graph::{
+use crate::parser::physics::physics_graph::{
     FormatNeutralPhysicsGraph, PhysicsCloth, PhysicsFormat, PhysicsId, PhysicsShape,
 };
 use serde::Serialize;
@@ -101,7 +101,7 @@ pub fn merge_hkcl_cloth_into_bphcl(
     merged.cloths.push(copied_cloth);
     merged
         .skeleton_bindings
-        .push(crate::parser::physics_graph::SkeletonBinding {
+        .push(crate::parser::physics::physics_graph::SkeletonBinding {
             cloth: cloth_id,
             skeleton: skeleton_id,
         });
@@ -442,7 +442,7 @@ pub fn analyze_hkcl_to_bphcl(
 fn paired_skeleton(
     graph: &FormatNeutralPhysicsGraph,
     cloth: usize,
-) -> Option<&crate::parser::physics_graph::PhysicsSkeleton> {
+) -> Option<&crate::parser::physics::physics_graph::PhysicsSkeleton> {
     paired_skeleton_index(graph, cloth).and_then(|index| graph.skeletons.get(index))
 }
 fn paired_skeleton_index(graph: &FormatNeutralPhysicsGraph, cloth: usize) -> Option<usize> {
@@ -464,7 +464,7 @@ fn referenced_colliders<'a>(
     cloth: &PhysicsCloth,
 ) -> Vec<(
     PhysicsId,
-    &'a crate::parser::physics_graph::PhysicsCollidable,
+    &'a crate::parser::physics::physics_graph::PhysicsCollidable,
 )> {
     let mut ids: Vec<_> = cloth
         .simulations
@@ -564,7 +564,7 @@ fn issue(code: &'static str, message: &str, issues: &mut Vec<CompatibilityIssue>
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::parser::physics_graph::*;
+    use crate::parser::physics::physics_graph::*;
 
     pub(crate) fn graph(format: PhysicsFormat) -> FormatNeutralPhysicsGraph {
         let prefix = if format == PhysicsFormat::Hkcl {

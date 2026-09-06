@@ -1,5 +1,8 @@
 use super::{BphclBuilder, BphclDocument, Item};
-use crate::parser::physics_graph::PhysicsConstraintElement;
+use crate::parser::{
+    binary::{BinaryPatcher, BinaryReader},
+    physics::physics_graph::PhysicsConstraintElement,
+};
 use std::io::{self, ErrorKind};
 
 #[derive(Clone, Copy)]
@@ -226,13 +229,15 @@ fn data(document: &BphclDocument) -> io::Result<&[u8]> {
 }
 
 fn read_integer(data: &[u8], offset: u32, kind: PrimitiveKind) -> io::Result<u16> {
+    let reader = BinaryReader::new(data);
+    let offset = offset as usize;
     let value = match kind {
-        PrimitiveKind::U8 => read_bytes(data, offset, 1)?[0] as i64,
-        PrimitiveKind::I8 => i8::from_le_bytes([read_bytes(data, offset, 1)?[0]]) as i64,
-        PrimitiveKind::U16 => u16::from_le_bytes(read_array(data, offset)?) as i64,
-        PrimitiveKind::I16 => i16::from_le_bytes(read_array(data, offset)?) as i64,
-        PrimitiveKind::U32 => u32::from_le_bytes(read_array(data, offset)?) as i64,
-        PrimitiveKind::I32 => i32::from_le_bytes(read_array(data, offset)?) as i64,
+        PrimitiveKind::U8 => i64::from(reader.read_u8_at(offset).map_err(read_error)?),
+        PrimitiveKind::I8 => i64::from(reader.read_i8_at(offset).map_err(read_error)?),
+        PrimitiveKind::U16 => i64::from(reader.read_u16_at(offset).map_err(read_error)?),
+        PrimitiveKind::I16 => i64::from(reader.read_i16_at(offset).map_err(read_error)?),
+        PrimitiveKind::U32 => i64::from(reader.read_u32_at(offset).map_err(read_error)?),
+        PrimitiveKind::I32 => i64::from(reader.read_i32_at(offset).map_err(read_error)?),
         PrimitiveKind::Real => {
             return Err(invalid(
                 "particle index is stored as a floating-point value",
@@ -243,84 +248,77 @@ fn read_integer(data: &[u8], offset: u32, kind: PrimitiveKind) -> io::Result<u16
 }
 
 fn read_number(data: &[u8], offset: u32, kind: PrimitiveKind) -> io::Result<f32> {
+    let reader = BinaryReader::new(data);
+    let offset = offset as usize;
     Ok(match kind {
-        PrimitiveKind::U8 => read_bytes(data, offset, 1)?[0] as f32,
-        PrimitiveKind::I8 => i8::from_le_bytes([read_bytes(data, offset, 1)?[0]]) as f32,
-        PrimitiveKind::U16 => u16::from_le_bytes(read_array(data, offset)?) as f32,
-        PrimitiveKind::I16 => i16::from_le_bytes(read_array(data, offset)?) as f32,
-        PrimitiveKind::U32 => u32::from_le_bytes(read_array(data, offset)?) as f32,
-        PrimitiveKind::I32 => i32::from_le_bytes(read_array(data, offset)?) as f32,
-        PrimitiveKind::Real => f32::from_le_bytes(read_array(data, offset)?),
+        PrimitiveKind::U8 => reader.read_u8_at(offset).map_err(read_error)? as f32,
+        PrimitiveKind::I8 => reader.read_i8_at(offset).map_err(read_error)? as f32,
+        PrimitiveKind::U16 => reader.read_u16_at(offset).map_err(read_error)? as f32,
+        PrimitiveKind::I16 => reader.read_i16_at(offset).map_err(read_error)? as f32,
+        PrimitiveKind::U32 => reader.read_u32_at(offset).map_err(read_error)? as f32,
+        PrimitiveKind::I32 => reader.read_i32_at(offset).map_err(read_error)? as f32,
+        PrimitiveKind::Real => reader.read_f32_at(offset).map_err(read_error)?,
     })
 }
 
 fn write_integer(data: &mut [u8], offset: u32, kind: PrimitiveKind, value: u16) -> io::Result<()> {
+    let mut patcher = BinaryPatcher::new(data);
+    let offset = offset as usize;
     match kind {
-        PrimitiveKind::U8 => write_bytes(
-            data,
+        PrimitiveKind::U8 => patcher.write_u8_at(
             offset,
-            &[u8::try_from(value).map_err(|_| invalid("particle index exceeds u8"))?],
+            u8::try_from(value).map_err(|_| invalid("particle index exceeds u8"))?,
         ),
-        PrimitiveKind::I8 => write_bytes(
-            data,
+        PrimitiveKind::I8 => patcher.write_i8_at(
             offset,
-            &i8::try_from(value)
-                .map_err(|_| invalid("particle index exceeds i8"))?
-                .to_le_bytes(),
+            i8::try_from(value).map_err(|_| invalid("particle index exceeds i8"))?,
         ),
-        PrimitiveKind::U16 => write_bytes(data, offset, &value.to_le_bytes()),
-        PrimitiveKind::I16 => write_bytes(
-            data,
+        PrimitiveKind::U16 => patcher.write_u16_at(offset, value),
+        PrimitiveKind::I16 => patcher.write_i16_at(
             offset,
-            &i16::try_from(value)
-                .map_err(|_| invalid("particle index exceeds i16"))?
-                .to_le_bytes(),
+            i16::try_from(value).map_err(|_| invalid("particle index exceeds i16"))?,
         ),
-        PrimitiveKind::U32 => write_bytes(data, offset, &u32::from(value).to_le_bytes()),
-        PrimitiveKind::I32 => write_bytes(data, offset, &i32::from(value).to_le_bytes()),
-        PrimitiveKind::Real => Err(invalid(
-            "particle index cannot be written to a floating-point member",
-        )),
+        PrimitiveKind::U32 => patcher.write_u32_at(offset, u32::from(value)),
+        PrimitiveKind::I32 => patcher.write_i32_at(offset, i32::from(value)),
+        PrimitiveKind::Real => {
+            return Err(invalid(
+                "particle index cannot be written to a floating-point member",
+            ))
+        }
     }
+    .map_err(write_error)
 }
 
 fn write_number(data: &mut [u8], offset: u32, kind: PrimitiveKind, value: f32) -> io::Result<()> {
     if !value.is_finite() {
         return Err(invalid("constraint value is not finite"));
     }
+    let mut patcher = BinaryPatcher::new(data);
+    let offset = offset as usize;
     match kind {
-        PrimitiveKind::Real => write_bytes(data, offset, &value.to_le_bytes()),
-        PrimitiveKind::U8 => write_bytes(data, offset, &(value as u8).to_le_bytes()),
-        PrimitiveKind::I8 => write_bytes(data, offset, &(value as i8).to_le_bytes()),
-        PrimitiveKind::U16 => write_bytes(data, offset, &(value as u16).to_le_bytes()),
-        PrimitiveKind::I16 => write_bytes(data, offset, &(value as i16).to_le_bytes()),
-        PrimitiveKind::U32 => write_bytes(data, offset, &(value as u32).to_le_bytes()),
-        PrimitiveKind::I32 => write_bytes(data, offset, &(value as i32).to_le_bytes()),
+        PrimitiveKind::Real => patcher.write_f32_at(offset, value),
+        PrimitiveKind::U8 => patcher.write_u8_at(offset, value as u8),
+        PrimitiveKind::I8 => patcher.write_i8_at(offset, value as i8),
+        PrimitiveKind::U16 => patcher.write_u16_at(offset, value as u16),
+        PrimitiveKind::I16 => patcher.write_i16_at(offset, value as i16),
+        PrimitiveKind::U32 => patcher.write_u32_at(offset, value as u32),
+        PrimitiveKind::I32 => patcher.write_i32_at(offset, value as i32),
     }
+    .map_err(write_error)
 }
 
 fn read_u32(data: &[u8], offset: u32) -> io::Result<u32> {
-    Ok(u32::from_le_bytes(read_array(data, offset)?))
+    BinaryReader::new(data)
+        .read_u32_at(offset as usize)
+        .map_err(read_error)
 }
 
-fn read_array<const N: usize>(data: &[u8], offset: u32) -> io::Result<[u8; N]> {
-    let mut bytes = [0; N];
-    bytes.copy_from_slice(read_bytes(data, offset, N)?);
-    Ok(bytes)
+fn read_error(_: io::Error) -> io::Error {
+    invalid("constraint read exceeds DATA")
 }
 
-fn read_bytes(data: &[u8], offset: u32, size: usize) -> io::Result<&[u8]> {
-    let offset = offset as usize;
-    data.get(offset..offset + size)
-        .ok_or_else(|| invalid("constraint read exceeds DATA"))
-}
-
-fn write_bytes(data: &mut [u8], offset: u32, bytes: &[u8]) -> io::Result<()> {
-    let offset = offset as usize;
-    data.get_mut(offset..offset + bytes.len())
-        .ok_or_else(|| invalid("constraint write exceeds DATA"))?
-        .copy_from_slice(bytes);
-    Ok(())
+fn write_error(_: io::Error) -> io::Error {
+    invalid("constraint write exceeds DATA")
 }
 
 fn checked_add(value: u32, addition: u32) -> io::Result<u32> {

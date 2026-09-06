@@ -1,4 +1,5 @@
 use super::{BphclDocument, Item, Patch, ReferenceArray, Section};
+use crate::parser::binary::{BinaryPatcher, BinaryReader, BinaryWriter, Endian};
 use std::io::{self, ErrorKind};
 
 /// Mutable TAG0 payload state used by the native merge stages.
@@ -86,11 +87,13 @@ fn replace_array_data(
         data.push(0);
     }
     let data_offset = u32::try_from(data.len()).map_err(|_| invalid("BPHCL DATA exceeds u32"))?;
+    let mut writer = BinaryWriter::appending(std::mem::take(data), Endian::Little);
     for entry in entries {
         let entry = u32::try_from(*entry).map_err(|_| invalid("BPHCL ITEM index exceeds u32"))?;
-        data.extend_from_slice(&entry.to_le_bytes());
-        data.extend_from_slice(&0u32.to_le_bytes());
+        writer.write_u32(entry);
+        writer.write_u32(0);
     }
+    *data = writer.into_inner();
 
     let storage_index = items.len();
     let storage_index_u32 =
@@ -230,28 +233,26 @@ fn rebuild(
 }
 
 fn read_header_u32(data: &[u8], offset: usize) -> io::Result<u32> {
-    crate::parser::binary::BinaryReader::new(data).read_u32_at(offset)
+    BinaryReader::new(data).read_u32_at(offset)
 }
 fn write_u32_at(data: &mut [u8], offset: usize, value: u32) -> io::Result<()> {
-    data.get_mut(offset..offset + 4)
-        .ok_or_else(|| invalid("header write exceeds file"))?
-        .copy_from_slice(&value.to_le_bytes());
-    Ok(())
+    BinaryPatcher::new(data)
+        .write_u32_at(offset, value)
+        .map_err(|_| invalid("header write exceeds file"))
 }
 
 fn build_items(kind: u8, items: &[Item]) -> io::Result<Vec<u8>> {
-    let mut payload = Vec::with_capacity(
-        items
-            .len()
-            .checked_mul(12)
-            .ok_or_else(|| invalid("ITEM size overflow"))?,
-    );
+    items
+        .len()
+        .checked_mul(12)
+        .ok_or_else(|| invalid("ITEM size overflow"))?;
+    let mut payload = BinaryWriter::new();
     for item in items {
-        payload.extend_from_slice(&item.flags.to_le_bytes());
-        payload.extend_from_slice(&item.data_offset.to_le_bytes());
-        payload.extend_from_slice(&item.count.to_le_bytes());
+        payload.write_u32(item.flags);
+        payload.write_u32(item.data_offset);
+        payload.write_u32(item.count);
     }
-    build_section("ITEM", kind, &payload)
+    build_section("ITEM", kind, &payload.into_inner())
 }
 
 fn build_patches(
@@ -259,49 +260,38 @@ fn build_patches(
     original: &Section,
     patches: &[Patch],
 ) -> io::Result<Vec<u8>> {
-    let mut payload = Vec::new();
+    let mut payload = BinaryWriter::new();
     for patch in patches {
-        payload.extend_from_slice(&patch.type_index.to_le_bytes());
-        payload.extend_from_slice(
-            &u32::try_from(patch.offsets.len())
-                .map_err(|_| invalid("PTCH count exceeds u32"))?
-                .to_le_bytes(),
+        payload.write_u32(patch.type_index);
+        payload.write_u32(
+            u32::try_from(patch.offsets.len()).map_err(|_| invalid("PTCH count exceeds u32"))?,
         );
         for offset in &patch.offsets {
-            payload.extend_from_slice(&offset.to_le_bytes());
+            payload.write_u32(*offset);
         }
     }
     let (terminator, tail) = external_patch_tail(&document.raw, original)?;
     if terminator {
-        payload.extend_from_slice(&0u32.to_le_bytes());
+        payload.write_u32(0);
     }
-    payload.extend_from_slice(tail);
-    build_section("PTCH", original.kind, &payload)
+    payload.write_bytes(tail);
+    build_section("PTCH", original.kind, &payload.into_inner())
 }
 
 fn external_patch_tail<'a>(bytes: &'a [u8], section: &Section) -> io::Result<(bool, &'a [u8])> {
+    let reader = BinaryReader::new(bytes);
     let mut cursor = section.payload_offset;
     let end = section.payload_end();
     while cursor + 4 <= end {
-        let type_index = u32::from_le_bytes([
-            bytes[cursor],
-            bytes[cursor + 1],
-            bytes[cursor + 2],
-            bytes[cursor + 3],
-        ]);
+        let type_index = reader.read_u32_at(cursor)?;
         cursor += 4;
         if type_index == 0 {
-            return Ok((true, &bytes[cursor..end]));
+            return Ok((true, reader.slice(cursor, end)?));
         }
         if cursor + 4 > end {
             return Err(invalid("truncated PTCH count"));
         }
-        let count = u32::from_le_bytes([
-            bytes[cursor],
-            bytes[cursor + 1],
-            bytes[cursor + 2],
-            bytes[cursor + 3],
-        ]) as usize;
+        let count = reader.read_u32_at(cursor)? as usize;
         cursor += 4;
         cursor = cursor
             .checked_add(
@@ -332,11 +322,11 @@ fn build_section(signature: &str, kind: u8, payload: &[u8]) -> io::Result<Vec<u8
     if size > 0x3fff_ffff {
         return Err(invalid("section exceeds 30-bit size limit"));
     }
-    let mut result = Vec::with_capacity(size);
-    result.extend_from_slice(&(((kind as u32) << 30) | size as u32).to_be_bytes());
-    result.extend_from_slice(signature.as_bytes());
-    result.extend_from_slice(payload);
-    Ok(result)
+    let mut result = BinaryWriter::from_vec(Vec::with_capacity(size), Endian::Big);
+    result.write_u32(((kind as u32) << 30) | size as u32);
+    result.write_bytes(signature.as_bytes());
+    result.write_bytes(payload);
+    Ok(result.into_inner())
 }
 
 fn copy_section(output: &mut Vec<u8>, source: &[u8], section: &Section) -> io::Result<()> {
@@ -363,24 +353,19 @@ fn add_patch(patches: &mut Vec<Patch>, type_index: u32, offset: u32) {
 }
 
 fn read_u32(data: &[u8], offset: u32) -> io::Result<u32> {
-    crate::parser::binary::BinaryReader::new(data).read_u32_at(offset as usize)
+    BinaryReader::new(data).read_u32_at(offset as usize)
 }
 
 fn write_u32(data: &mut [u8], offset: u32, value: u32) -> io::Result<()> {
-    let offset = offset as usize;
-    data.get_mut(offset..offset + 4)
-        .ok_or_else(|| invalid("DATA write exceeds section"))?
-        .copy_from_slice(&value.to_le_bytes());
-    Ok(())
+    BinaryPatcher::new(data)
+        .write_u32_at(offset as usize, value)
+        .map_err(|_| invalid("DATA write exceeds section"))
 }
 
 fn write_adjusted_u32(data: &mut [u8], offset: usize, value: u32, delta: i64) -> io::Result<()> {
     let adjusted =
         u32::try_from(i64::from(value) + delta).map_err(|_| invalid("header value overflow"))?;
-    data.get_mut(offset..offset + 4)
-        .ok_or_else(|| invalid("header write exceeds file"))?
-        .copy_from_slice(&adjusted.to_le_bytes());
-    Ok(())
+    write_u32_at(data, offset, adjusted)
 }
 
 fn adjust_offset_after(
@@ -389,7 +374,7 @@ fn adjust_offset_after(
     old_tag_end: usize,
     delta: i64,
 ) -> io::Result<()> {
-    let value = crate::parser::binary::BinaryReader::new(data).read_u32_at(field)?;
+    let value = read_header_u32(data, field)?;
     if value as usize >= old_tag_end {
         write_adjusted_u32(data, field, value, delta)?;
     }

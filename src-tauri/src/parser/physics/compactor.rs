@@ -8,7 +8,10 @@
 //! variants renumber items without moving data; they exist to prove whether
 //! the game depends on ITEM identities outside the relocation graph.
 
-use crate::parser::bphcl::{BphclBuilder, BphclDocument, Item, Patch};
+use crate::parser::{
+    binary::{BinaryPatcher, BinaryReader},
+    physics::bphcl::{BphclBuilder, BphclDocument, Item, Patch},
+};
 use std::{
     collections::{BTreeMap, HashMap},
     io::{self, ErrorKind},
@@ -367,14 +370,13 @@ fn ensure_no_external_patches(document: &BphclDocument) -> io::Result<()> {
         .tag
         .find("PTCH")
         .ok_or_else(|| invalid("BPHCL INDX has no PTCH section"))?;
-    let bytes = &document.raw;
+    let reader = BinaryReader::new(&document.raw);
     let mut cursor = section.payload_offset;
     let end = section.payload_end();
     let word = |offset: usize| -> io::Result<u32> {
-        bytes
-            .get(offset..offset + 4)
-            .map(|slice| u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
-            .ok_or_else(|| invalid("truncated BPHCL PTCH"))
+        reader
+            .read_u32_at(offset)
+            .map_err(|_| invalid("truncated BPHCL PTCH"))
     };
     while cursor + 4 <= end {
         let type_index = word(cursor)?;
@@ -418,20 +420,17 @@ fn find_range(copies: &HashMap<u32, CompactRange>, offset: u32) -> io::Result<Co
 }
 
 fn read_pointer(data: &[u8], offset: u32) -> io::Result<usize> {
-    let start = offset as usize;
-    let bytes = data
-        .get(start..start + 4)
-        .ok_or_else(|| invalid(&format!("BPHCL pointer at DATA+{offset:#x} exceeds DATA")))?;
-    Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize)
+    BinaryReader::new(data)
+        .read_u32_at(offset as usize)
+        .map(|value| value as usize)
+        .map_err(|_| invalid(&format!("BPHCL pointer at DATA+{offset:#x} exceeds DATA")))
 }
 
 fn write_pointer(data: &mut [u8], offset: u32, item_index: usize) -> io::Result<()> {
-    let start = offset as usize;
     let value = u32::try_from(item_index).map_err(|_| invalid("ITEM index exceeds u32"))?;
-    data.get_mut(start..start + 4)
-        .ok_or_else(|| invalid(&format!("BPHCL pointer at DATA+{offset:#x} exceeds DATA")))?
-        .copy_from_slice(&value.to_le_bytes());
-    Ok(())
+    BinaryPatcher::new(data)
+        .write_u32_at(offset as usize, value)
+        .map_err(|_| invalid(&format!("BPHCL pointer at DATA+{offset:#x} exceeds DATA")))
 }
 
 fn invalid(message: &str) -> io::Error {

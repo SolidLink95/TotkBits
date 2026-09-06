@@ -1,4 +1,4 @@
-use crate::parser::{bphhb::BphhbDocument, hkcl::HkclLeaf};
+use crate::parser::physics::{bphhb::BphhbDocument, hkcl::HkclLeaf};
 use std::{io, path::Path};
 
 pub struct BphhbFile {
