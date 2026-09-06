@@ -1183,11 +1183,26 @@ fn build_from_helper_bones(source: &HelperBoneDocument) -> io::Result<Vec<u8>> {
             Ok(handle)
         };
 
+    let target_bone = |source_bone: i32, role: &str, index: usize| -> io::Result<i32> {
+        target_bone_ids.get(&source_bone).copied().ok_or_else(|| {
+            invalid(&format!(
+                "BPHHB {role} #{index} references bone #{source_bone}, which is not a usable helper bone"
+            ))
+        })
+    };
+    if source_poses.objects.len() < source_driven.objects.len() {
+        return Err(invalid(&format!(
+            "BPHHB has {} driven bones but only {} pose records",
+            source_driven.objects.len(),
+            source_poses.objects.len()
+        )));
+    }
+
     for (index, record) in source_drivers.objects.iter().enumerate() {
         let mut main = AampObject::named(&format!("main_bone_{}", main_list.objects.len()));
         main.push(AampParameter::int(
             TARGET_BONE,
-            target_bone_ids[&driver_bone_ids[index]],
+            target_bone(driver_bone_ids[index], "driver", index)?,
         ));
         main.copy_from(record, BASE_TRANSLATION, None)?;
         main.copy_from(record, BASE_ROTATION, None)?;
@@ -1197,13 +1212,17 @@ fn build_from_helper_bones(source: &HelperBoneDocument) -> io::Result<Vec<u8>> {
         main_list.objects.push(main);
     }
 
-    for (index, _record) in source_driven.objects.iter().enumerate() {
-        let pose = &source_poses.objects[index];
+    for (index, pose) in source_poses
+        .objects
+        .iter()
+        .take(source_driven.objects.len())
+        .enumerate()
+    {
         let mut support =
             AampObject::named(&format!("support_bone_{}", support_list.objects.len()));
         support.push(AampParameter::int(
             TARGET_BONE,
-            target_bone_ids[&driven_bone_ids[index]],
+            target_bone(driven_bone_ids[index], "driven bone", index)?,
         ));
         support.copy_from(pose, BASE_TRANSLATION, None)?;
         support.copy_from(pose, BASE_ROTATION, None)?;

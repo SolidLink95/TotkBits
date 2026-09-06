@@ -503,7 +503,10 @@ impl<'a> Reader<'a> {
         self.pointers.get(&(key.section_index, source)).copied()
     }
     fn string_at(&self, target: ObjectKey) -> io::Result<String> {
-        let section = &self.sections[target.section_index];
+        let section = self
+            .sections
+            .get(target.section_index)
+            .ok_or_else(|| invalid("HKRG string pointer names a missing section"))?;
         let start = section.absolute_data_start + target.offset as usize;
         let bytes = self
             .raw
@@ -556,8 +559,13 @@ impl<'a> Reader<'a> {
     }
     /// Size of the object at `key`: up to the next object in its section.
     fn object_size(&self, key: ObjectKey) -> usize {
-        let section = &self.sections[key.section_index];
-        let data_end = (section.local_fixups.start - section.absolute_data_start) as u32;
+        let Some(section) = self.sections.get(key.section_index) else {
+            return 0;
+        };
+        let data_end = section
+            .local_fixups
+            .start
+            .saturating_sub(section.absolute_data_start) as u32;
         let next = self
             .object_starts
             .get(&key.section_index)
@@ -2501,15 +2509,13 @@ fn write_transform_preserving_padding(
 /// Strings live inline in DATA and cannot grow; a replacement must fit the
 /// allocation the original occupied (its length plus terminator).
 fn write_string_in_place(
-    raw: &mut [u8],
-    sections: &[HkclSection],
-    pointer_field: ObjectKey,
+    _raw: &mut [u8],
+    _sections: &[HkclSection],
+    _pointer_field: ObjectKey,
     value: &str,
 ) -> io::Result<()> {
-    let section = &sections[pointer_field.section_index];
     // The pointer field itself is relocated at load; the string it addresses
     // is found through the same fixup the reader used, stored as the target.
-    let _ = section;
     Err(invalid(&format!(
         "renaming to '{value}' is not supported: HKRG strings are relocated inline and cannot be rewritten in place"
     )))
