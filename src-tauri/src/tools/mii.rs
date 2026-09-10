@@ -214,17 +214,13 @@ fn safe_mii_filename(name: &str) -> String {
 #[tauri::command]
 pub fn read_mii_name(app_handle: tauri::AppHandle, documentId: String) -> Result<String, String> {
     let documents = app_handle.state::<crate::DocumentState::DocumentState>();
-    let (enabled, file_type, path, internal_data) = documents.with(&documentId, |app| {
+    let (file_type, path, internal_data) = documents.with(&documentId, |app| {
         (
-            app.zstd.totk_config.mii_renderer,
             app.opened_file.file_type,
             app.opened_file.path.full_path.clone(),
             app.opened_file.mii_data.clone(),
         )
     });
-    if !enabled {
-        return Err("Failed to parse file".into());
-    }
     if file_type != TotkFileType::Mii {
         return Err("active document is not a Mii".into());
     }
@@ -389,18 +385,14 @@ pub fn download_mii_glb(
     databasePath: Option<String>,
 ) -> Result<String, String> {
     let documents = app_handle.state::<crate::DocumentState::DocumentState>();
-    let (enabled, file_type, path, mii_data, parent) = documents.with(&documentId, |app| {
+    let (file_type, path, mii_data, parent) = documents.with(&documentId, |app| {
         (
-            app.zstd.totk_config.mii_renderer,
             app.opened_file.file_type,
             app.opened_file.path.full_path.clone(),
             app.opened_file.mii_data.clone(),
             app.internal_parent.clone(),
         )
     });
-    if !enabled {
-        return Err("Failed to parse file".into());
-    }
     if file_type != TotkFileType::Mii {
         return Err("Download GLB is only available for Mii documents".into());
     }

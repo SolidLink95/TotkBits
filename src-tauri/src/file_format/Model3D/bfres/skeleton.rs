@@ -7,6 +7,10 @@ pub fn parse_skeleton(
     version_major: u8,
 ) -> Result<(Vec<BfresBone>, Vec<u16>), BfresError> {
     let is_v8 = version_major <= 8;
+    // Version 0.9 (Nintendo Switch Sports) uses the version 10 FSKL header
+    // but still stores the older 96-byte bone records, whose scalar and
+    // transform fields sit eight bytes later than in version 10.
+    let legacy_bones = version_major <= 9;
     let pointer_shift = usize::from(is_v8) * 8;
     let scalar_shift = usize::from(is_v8) * 20;
     let bones_offset = u64_at(data, offset + 16 + pointer_shift, endian)? as usize;
@@ -14,10 +18,16 @@ pub fn parse_skeleton(
     let count = u16_at(data, offset + 56 + scalar_shift, endian)? as usize;
     let palette_count = u16_at(data, offset + 58 + scalar_shift, endian)? as usize
         + u16_at(data, offset + 60 + scalar_shift, endian)? as usize;
-    let skeleton_flags = u32_at(data, offset + 48 + scalar_shift, endian)?;
-    let entry_size = if is_v8 { 96 } else { 88 };
-    let bone_scalar_shift = if is_v8 { 8 } else { 0 };
-    let bone_transform_shift = if is_v8 { 8 } else { 0 };
+    let quaternion_rotation = if version_major == 9 {
+        // Version 0.9 keeps the flags right after the signature; rotation mode
+        // lives in bits 12-14 (0 = quaternion, 1 = Euler XYZ).
+        u32_at(data, offset + 4, endian)? & 0x7000 == 0
+    } else {
+        u32_at(data, offset + 48 + scalar_shift, endian)? & 1 != 0
+    };
+    let entry_size = if legacy_bones { 96 } else { 88 };
+    let bone_scalar_shift = if legacy_bones { 8 } else { 0 };
+    let bone_transform_shift = if legacy_bones { 8 } else { 0 };
     let mut bones = Vec::with_capacity(count);
     for index in 0..count {
         let entry = bones_offset + index * entry_size;
@@ -29,7 +39,7 @@ pub fn parse_skeleton(
             rigid_matrix_index: i16_at(data, entry + 38 + bone_scalar_shift, endian)?,
             // Rotation mode belongs to FSKL, not each Bone. BfresLibrary's
             // SkeletonFlagsRotation uses zero for EulerXYZ and one for Quaternion.
-            rotation_mode: if skeleton_flags & 1 != 0 {
+            rotation_mode: if quaternion_rotation {
                 "quaternion".into()
             } else {
                 "euler_xyz".into()

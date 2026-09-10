@@ -215,6 +215,94 @@ const inspectGlbBytes = async (title, bytes) => {
 // model becomes active. These textures intentionally live as long as the model
 // inspection cache and are released when the AOC configuration invalidates it.
 const resolvedTextureCache = new Map();
+
+// Nintendo Switch Sports "insert color": ElsaUber materials ship a near-white
+// albedo plus a *_Tcl mask whose channels pick the runtime tint (R = outfit /
+// variation, G = hair, B = skin). The game fills elsa_insert_color0..2 from
+// these tables: Parameter/PlayerEquipmentColorList/SkinColor and HairColor,
+// and Parameter/NpcVariationColor. Values are linear RGB as stored in-game.
+const SPORTS_TINT_PRESETS = {
+    skin: [[0.9098, 0.75, 0.7804], [1.0, 0.7294, 0.5882], [1.0, 0.6196, 0.4157], [0.6078, 0.3294, 0.2039], [0.3922, 0.1867, 0.1378], [0.1765, 0.098, 0.0824], [0.8941, 0.8941, 0.8941], [0.6118, 0.4745, 0.6353], [0.3843, 0.6196, 0.2902], [0.4471, 0.4745, 0.7373]],
+    hair: [[0.019, 0.0118, 0.0118], [0.0667, 0.0235, 0.0118], [0.4549, 0.4078, 0.1176], [0.3569, 0.3608, 0.3255], [0.498, 0.1686, 0.0588], [0.4157, 0.0941, 0.2471], [0.0941, 0.2471, 0.3843], [0.23, 0.08, 0.4], [0.5, 0.086, 0.086], [0.23, 0.35, 0.09], [0.513, 0.529, 0.29], [0.6875, 0.415, 0.525], [0.3333, 0.498, 0.3961], [0.4235, 0.3, 0.549], [0.2706, 0.3686, 0.4706], [0.5608, 0.4627, 0.3882], [0.2392, 0.1255, 0.0274], [0.0078, 0.1569, 0.0863], [0.125, 0.01, 0.1562], [0.054, 0.054, 0.2]],
+    variation: [[0.3725, 0.3725, 0.749], [0.8588, 0.4275, 0.4275], [0.2902, 0.5804, 0.2902], [0.702, 0.3451, 0.1059], [0.7686, 0.7412, 0.3843], [0.3608, 0.6118, 0.7216], [0.3608, 0.3843, 0.7216], [0.4784, 0.298, 0.6], [0.8784, 0.4392, 0.6588], [0.5843, 0.5843, 0.5843], [0.1882, 0.1686, 0.1686], [0.8392, 0.8235, 0.8235]],
+};
+const SPORTS_TINT_CHANNELS = [
+    { key: 'skin', label: 'Skin', channel: 2 },
+    { key: 'hair', label: 'Hair', channel: 1 },
+    { key: 'variation', label: 'Outfit', channel: 0 },
+];
+
+function linearToHex(color) {
+    if (!color) return 'transparent';
+    return `#${color.map((value) => Math.round(Math.pow(Math.min(Math.max(value, 0), 1), 1 / 2.2) * 255).toString(16).padStart(2, '0')).join('')}`;
+}
+
+const SRGB_TO_LINEAR = Float32Array.from({ length: 256 }, (_, value) => Math.pow(value / 255, 2.2));
+const tintedTextureCache = new Map();
+
+// Multiplies the albedo by the selected tint colours where the *_Tcl mask
+// channel is set, in linear light like the game's shader. Hair (G) wins over
+// skin (B) where both are painted; outfit (R) is applied first.
+function tintedBaseTexture(base, mask, tint) {
+    const image = base?.image;
+    const maskImage = mask?.image;
+    if (!image?.width || !maskImage?.width) return null;
+    const key = `${base.uuid}|${mask.uuid}|${['skin', 'hair', 'variation'].map((name) => (tint[name] || []).join(',')).join('|')}`;
+    const cached = tintedTextureCache.get(key);
+    if (cached) return cached;
+    const { width, height } = image;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, 0, 0, width, height);
+    const pixels = context.getImageData(0, 0, width, height);
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = width;
+    maskCanvas.height = height;
+    const maskContext = maskCanvas.getContext('2d', { willReadFrequently: true });
+    maskContext.drawImage(maskImage, 0, 0, width, height);
+    const maskPixels = maskContext.getImageData(0, 0, width, height).data;
+    const data = pixels.data;
+    const encode = (value) => Math.round(Math.pow(Math.min(Math.max(value, 0), 1), 1 / 2.2) * 255);
+    for (let index = 0; index < data.length; index += 4) {
+        const outfit = maskPixels[index] / 255;
+        const hair = maskPixels[index + 1] / 255;
+        const skin = (maskPixels[index + 2] / 255) * (1 - hair);
+        if (!((tint.variation && outfit > 0) || (tint.hair && hair > 0) || (tint.skin && skin > 0))) continue;
+        let r = SRGB_TO_LINEAR[data[index]];
+        let g = SRGB_TO_LINEAR[data[index + 1]];
+        let b = SRGB_TO_LINEAR[data[index + 2]];
+        const apply = (color, weight) => {
+            if (!color || weight <= 0) return;
+            r += (r * color[0] - r) * weight;
+            g += (g * color[1] - g) * weight;
+            b += (b * color[2] - b) * weight;
+        };
+        apply(tint.variation, outfit);
+        apply(tint.skin, skin);
+        apply(tint.hair, hair);
+        data[index] = encode(r);
+        data[index + 1] = encode(g);
+        data[index + 2] = encode(b);
+    }
+    context.putImageData(pixels, 0, 0);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.name = `${base.name} [tinted]`;
+    texture.flipY = base.flipY;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = base.wrapS;
+    texture.wrapT = base.wrapT;
+    texture.channel = base.channel;
+    texture.needsUpdate = true;
+    if (tintedTextureCache.size >= 48) {
+        const [oldestKey, oldest] = tintedTextureCache.entries().next().value;
+        oldest.dispose();
+        tintedTextureCache.delete(oldestKey);
+    }
+    tintedTextureCache.set(key, texture);
+    return texture;
+}
 const clearModelCaches = () => {
     modelInspectionCache.clear();
     g1aInspectionCache.clear();
@@ -539,6 +627,7 @@ function materialTextures(material, textures, allowTomodachiFallback = true) {
         specularUv: slotFor('Specular')?.uv_layer ?? 0,
         ambientOcclusion: find('AmbientOcclusion'),
         ambientOcclusionUv: slotFor('AmbientOcclusion')?.uv_layer ?? 0,
+        tintMask: find('Tint mask', false),
     };
 }
 
@@ -573,7 +662,12 @@ function buildWeightPreview(render) {
     });
 }
 
-function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, animation, restWorlds, animationWorlds, culling, viewMode, uvIndex, celShading, glow, weightBone, weightPreviewColors, showNormals, onSelect, textures }) {
+function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, animation, restWorlds, animationWorlds, culling, viewMode, uvIndex, celShading, glow, weightBone, weightPreviewColors, showNormals, onSelect, textures: sourceTextures, tint }) {
+    const tintedBase = useMemo(() => (tint?.enabled && sourceTextures.base && sourceTextures.tintMask
+        ? tintedBaseTexture(sourceTextures.base, sourceTextures.tintMask, tint)
+        : null), [sourceTextures.base, sourceTextures.tintMask, tint]);
+    const textures = tintedBase ? { ...sourceTextures, base: tintedBase } : sourceTextures;
+    const tintKey = tintedBase ? `-tint-${tintedBase.uuid}` : '';
     const materialSide = culling ? THREE.FrontSide : THREE.DoubleSide;
     const surfaceColor = !textures.base && !mesh.use_vertex_colors && mesh.material_color
         ? new THREE.Color(mesh.material_color[0], mesh.material_color[1], mesh.material_color[2])
@@ -739,11 +833,11 @@ function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, animation, re
                 : viewMode === 'emissionMap' && textures.emission
                     ? <meshBasicMaterial key={`emission-${uvIndex}`} map={textures.emission} side={materialSide} />
                 : viewMode === 'diffuse' && textures.base
-                    ? <meshBasicMaterial key={`diffuse-${uvIndex}`} map={textures.base} side={materialSide} transparent alphaTest={0.02} />
+                    ? <meshBasicMaterial key={`diffuse-${uvIndex}${tintKey}`} map={textures.base} side={materialSide} transparent alphaTest={0.02} />
                 : celShading && ['default', 'lighting', 'wireframe'].includes(viewMode)
-                    ? <meshToonMaterial key={`cel-${viewMode}-glow-${glow}`} color={surfaceColor} map={textures.base} normalMap={textures.normal} gradientMap={celGradient} alphaMap={textures.mask} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base && mesh.use_vertex_colors} wireframe={viewMode === 'wireframe'} side={materialSide} transparent={Boolean(textures.mask || textures.base) || (mesh.material_opacity ?? 1) < 1} opacity={mesh.material_opacity ?? 1} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
+                    ? <meshToonMaterial key={`cel-${viewMode}-glow-${glow}${tintKey}`} color={surfaceColor} map={textures.base} normalMap={textures.normal} gradientMap={celGradient} alphaMap={textures.mask} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base && mesh.use_vertex_colors} wireframe={viewMode === 'wireframe'} side={materialSide} transparent={Boolean(textures.mask || textures.base) || (mesh.material_opacity ?? 1) < 1} opacity={mesh.material_opacity ?? 1} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
                 : ['default', 'lighting', 'wireframe'].includes(viewMode)
-                    ? <meshPhysicalMaterial key={`${viewMode}-${uvIndex}-glow-${glow}`} color={surfaceColor} map={textures.base} normalMap={textures.normal} roughnessMap={textures.roughness} metalnessMap={textures.metalness} alphaMap={textures.mask} aoMap={textures.ambientOcclusion} aoMapIntensity={0.35} specularColorMap={textures.specular} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base && mesh.use_vertex_colors} wireframe={viewMode === 'wireframe'} roughness={0.72} metalness={viewMode === 'lighting' ? 0 : 0.05} side={materialSide} transparent={Boolean(textures.mask || textures.base) || (mesh.material_opacity ?? 1) < 1} opacity={mesh.material_opacity ?? 1} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
+                    ? <meshPhysicalMaterial key={`${viewMode}-${uvIndex}-glow-${glow}${tintKey}`} color={surfaceColor} map={textures.base} normalMap={textures.normal} roughnessMap={textures.roughness} metalnessMap={textures.metalness} alphaMap={textures.mask} aoMap={textures.ambientOcclusion} aoMapIntensity={0.35} specularColorMap={textures.specular} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base && mesh.use_vertex_colors} wireframe={viewMode === 'wireframe'} roughness={0.72} metalness={viewMode === 'lighting' ? 0 : 0.05} side={materialSide} transparent={Boolean(textures.mask || textures.base) || (mesh.material_opacity ?? 1) < 1} opacity={mesh.material_opacity ?? 1} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
                     : <meshBasicMaterial vertexColors side={materialSide} />}
         </mesh>
         {viewMode === 'default' && weightBone >= 0 && !mesh.hidden && <mesh geometry={geometry} renderOrder={2}>
@@ -897,7 +991,7 @@ function FrontCamera({ render, applyRigidTransform, onReady }) {
     return null;
 }
 
-function ResourceScene({ bfres, render, animation, animationPlaying = true, animationSeek, onAnimationTime, viewMode, uvIndex, brightness, celShading, glow, culling, showSkeleton, showNormals, weightBone, weightPreviewColors, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes, cacheTextures = true, onCameraReady }) {
+function ResourceScene({ bfres, render, animation, animationPlaying = true, animationSeek, onAnimationTime, viewMode, uvIndex, brightness, celShading, glow, culling, showSkeleton, showNormals, weightBone, weightPreviewColors, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes, cacheTextures = true, onCameraReady, tint = null }) {
     const textures = useResolvedTextures(bfres?.resolvedTextures, cacheTextures);
     // G1M and LM3 store vertices already in model space. Baking a bone's world
     // matrix into them (the BFRES rigid-bind path) scatters the geometry.
@@ -913,7 +1007,7 @@ function ResourceScene({ bfres, render, animation, animationPlaying = true, anim
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} zoomSpeed={1.75} />
         <FrontCamera render={render} applyRigidTransform={applyRigidTransform} onReady={onCameraReady} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
-        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} applyRigidTransform={applyRigidTransform} animation={animation} restWorlds={restWorlds} animationWorlds={animationWorlds} culling={culling} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures, bfres?.format !== 'GLB')} />)}</group>
+        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} applyRigidTransform={applyRigidTransform} animation={animation} restWorlds={restWorlds} animationWorlds={animationWorlds} culling={culling} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures, bfres?.format !== 'GLB')} tint={tint} />)}</group>
         {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} animation={animation} animationWorlds={animationWorlds} />}
     </>;
 }
@@ -1048,13 +1142,17 @@ function MaterialInspector({ material, textures }) {
             || texture.aliases?.includes(selectedSlot.name))
         : null;
     return <section className="bfres-selected-detail bfres-special-inspector"><header><strong>{material.name}</strong><small>MATERIAL</small></header>
-        <div className="bfres-form-grid"><label>Name<input value={material.name} readOnly /></label><label className="bfres-check"><input type="checkbox" defaultChecked />Visible</label><label>Shader Archive<input value="material" readOnly /></label><label>Shader Model<input value="material" readOnly /></label><label>Sampler Inputs<input value={material.texture_slots.length} readOnly /></label><label>Attribute Inputs<input value="—" readOnly /></label></div>
+        <div className="bfres-form-grid"><label>Name<input value={material.name} readOnly /></label><label className="bfres-check"><input type="checkbox" defaultChecked />Visible</label><label>Shader Archive<input value={material.shader_archive || 'material'} readOnly /></label><label>Shader Model<input value={material.shading_model || 'material'} readOnly /></label><label>Sampler Inputs<input value={material.texture_slots.length} readOnly /></label><label>Attribute Inputs<input value="—" readOnly /></label></div>
         <InspectorTabs tabs={['Textures', 'Parameters', 'Render Info', 'Shader Options', 'User Data']} active={tab} setActive={setTab} />
         {tab === 'Textures' ? <><table className="bfres-texture-table"><thead><tr><th>Texture</th><th>Type</th><th>Sampler</th></tr></thead><tbody>{material.texture_slots.map((slot) => <tr key={slot.index} className={selectedSlot?.index === slot.index ? 'selected' : ''} onClick={() => setSelectedSlot(slot)}><td>{slot.name}</td><td>{slot.texture_type}</td><td>{slot.sampler || '—'}</td></tr>)}</tbody></table><div className="bfres-action-grid">
             {/* <button type="button">Add</button>
             <button type="button">Remove</button>
             <button type="button">Edit</button> */}
-            </div>{selectedSlot && <div className="bfres-material-texture-preview">{preview?.dataUrl ? <img src={preview.dataUrl} alt={`${selectedSlot.name} preview`} /> : <span>Preview unavailable</span>}</div>}</> : <div className="bfres-empty-detail">No decoded {tab.toLowerCase()} entries.</div>}
+            </div>{selectedSlot && <div className="bfres-material-texture-preview">{preview?.dataUrl ? <img src={preview.dataUrl} alt={`${selectedSlot.name} preview`} /> : <span>Preview unavailable</span>}</div>}</>
+        : tab === 'Parameters' && material.shader_params?.length ? <table className="bfres-texture-table"><thead><tr><th>Parameter</th><th>Type</th><th>Value</th></tr></thead><tbody>{material.shader_params.map((param) => <tr key={param.name} className={/insert_color/.test(param.name) ? 'selected' : ''}><td>{param.name}</td><td>{param.kind}</td><td>{param.values.map((value) => Number(value.toFixed(4))).join(', ')}</td></tr>)}</tbody></table>
+        : tab === 'Render Info' && material.render_info?.length ? <table className="bfres-texture-table"><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>{material.render_info.map((entry) => <tr key={entry.name}><td>{entry.name}</td><td>{entry.value}</td></tr>)}</tbody></table>
+        : tab === 'Shader Options' && (material.shader_options?.length || material.sampler_assign?.length) ? <table className="bfres-texture-table"><thead><tr><th>Option</th><th>Value</th></tr></thead><tbody>{(material.sampler_assign || []).map((entry) => <tr key={`sampler-${entry.name}`}><td>sampler {entry.name}</td><td>{entry.value}</td></tr>)}{(material.shader_options || []).map((entry) => <tr key={entry.name} className={/insert_color/.test(entry.name) ? 'selected' : ''}><td>{entry.name}</td><td>{entry.value}</td></tr>)}</tbody></table>
+        : <div className="bfres-empty-detail">No decoded {tab.toLowerCase()} entries.</div>}
     </section>;
 }
 
@@ -1077,6 +1175,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [celShading, setCelShading] = useState(true);
     const [culling, setCulling] = useState(true);
     const [glow, setGlow] = useState(false);
+    const [tintChoice, setTintChoice] = useState({ skin: 0, hair: 0, variation: 0 });
     const [uvIndex, setUvIndex] = useState(0);
     const [brightness, setBrightness] = useState(1.0);
     const [brightnessLoaded, setBrightnessLoaded] = useState(false);
@@ -1144,6 +1243,15 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 slot.texture_type === 'Emission' && renderableTextures.has(slot.name)));
     }, [bfres]);
     const hasSkeleton = (bfres?.render?.bones?.length || 0) > 0;
+    // Switch Sports characters carry a *_Tcl "insert color" mask; offer the
+    // game's skin/hair/outfit tables so the near-white albedo shows real skin.
+    const hasTintMask = useMemo(() => (bfres?.materials || []).some((material) =>
+        (material.texture_slots || []).some((slot) => slot.texture_type === 'Tint mask')), [bfres]);
+    const tint = useMemo(() => {
+        const pick = (name) => (tintChoice[name] >= 0 ? SPORTS_TINT_PRESETS[name][tintChoice[name]] || null : null);
+        const settings = { skin: pick('skin'), hair: pick('hair'), variation: pick('variation') };
+        return { ...settings, enabled: hasTintMask && Boolean(settings.skin || settings.hair || settings.variation) };
+    }, [hasTintMask, tintChoice]);
     const hasMeshes = (bfres?.render?.meshes?.length || 0) > 0;
 
     useEffect(() => {
@@ -1644,7 +1752,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         {batchActive && <div className="bfres-batch-viewport" aria-hidden="true">
             <Canvas dpr={1} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }}>
                 <BatchViewportCapture captureRef={batchCaptureRef} />
-                {batchModel?.render && <ResourceScene bfres={batchModel} render={batchModel.render} viewMode="default" uvIndex={0} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={-2} weightPreviewColors={null} selectedMesh="" selectedMaterial={null} modelVisible hiddenMeshes={[]} onSelectMesh={() => {}} cacheTextures={false} onCameraReady={signalBatchCameraReady} />}
+                {batchModel?.render && <ResourceScene bfres={batchModel} render={batchModel.render} viewMode="default" uvIndex={0} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={-2} weightPreviewColors={null} selectedMesh="" selectedMaterial={null} modelVisible hiddenMeshes={[]} onSelectMesh={() => {}} cacheTextures={false} onCameraReady={signalBatchCameraReady} tint={tint} />}
             </Canvas>
         </div>}
         <main className="bfres-workspace" aria-hidden={activeTab !== '3D'} style={{ '--bfres-left-width': `${leftWidth}px`, '--bfres-right-width': `${rightWidth}px`, display: activeTab === '3D' ? 'grid' : 'none' }}>
@@ -1685,6 +1793,13 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
 
                 </select>
                 </label>
+                {hasTintMask && SPORTS_TINT_CHANNELS.map(({ key, label }) => <label className="bfres-shading-select" key={key}>{label}:
+                <span className="bfres-tint-swatch" style={{ background: linearToHex(tint[key]) }} />
+                <select value={tintChoice[key]} onChange={(event) => setTintChoice((value) => ({ ...value, [key]: Number(event.target.value) }))}>
+                    <option value={-1}>Off</option>
+                    {SPORTS_TINT_PRESETS[key].map((_, index) => <option value={index} key={index}>{label} {index + 1}</option>)}
+                </select>
+                </label>)}
                 <label className="bfres-shading-select">UV map:
                 <select value={uvIndex} onChange={(event) => setUvIndex(Number(event.target.value))}>
                     {Array.from({ length: Math.max(1, ...(bfres?.render?.meshes || []).map((mesh) => mesh.uv_maps?.length || (mesh.uv0?.length ? 1 : 0))) }, (_, index) => <option value={index} key={index}>UV {index}</option>
@@ -1749,7 +1864,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
                 <Canvas key={viewResetKey} dpr={[1, 2]} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
                     <ViewportCapture captureRef={captureViewportRef} />
-                    {bfres?.render && <ResourceScene key={`animation-scene-${animationResetKey}`} bfres={bfres} render={bfres.render} animation={loadedG1a?.bound} animationPlaying={g1aPlaying} animationSeek={{ time: g1aPosition, revision: g1aSeekRevision }} onAnimationTime={setG1aPosition} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} weightPreviewColors={weightPreviewColors} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
+                    {bfres?.render && <ResourceScene key={`animation-scene-${animationResetKey}`} bfres={bfres} render={bfres.render} animation={loadedG1a?.bound} animationPlaying={g1aPlaying} animationSeek={{ time: g1aPosition, revision: g1aSeekRevision }} onAnimationTime={setG1aPosition} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} weightPreviewColors={weightPreviewColors} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} tint={tint} onSelectMesh={(mesh) => {
                         setSelectedMesh(mesh.name);
                         setSelectedMaterial(null);
                         setWeightBone(-2);

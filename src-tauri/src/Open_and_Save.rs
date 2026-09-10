@@ -555,16 +555,7 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
     let file_name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
     let uncompressed_name = file_name.strip_suffix(".zs").unwrap_or(&file_name);
 
-    if !zstd.totk_config.mii_renderer && crate::tools::mii::is_mii_binary_path(path) {
-        let mut data = SendData::default();
-        data.path = Pathlib::new(path);
-        data.tab = "ERROR".into();
-        data.status_text = "Error: Failed to parse file".into();
-        data.text = data.status_text.clone();
-        return Some((OpenedFile::default(), data));
-    }
-
-    let mii_result = if uncompressed_name.ends_with(".glb") || !zstd.totk_config.mii_renderer {
+    let mii_result = if uncompressed_name.ends_with(".glb") {
         None
     } else {
         crate::tools::mii::open(path)
@@ -679,10 +670,8 @@ fn file_from_bytes_name_guess<'a>(
     let uncompressed_name = file_name.strip_suffix(".zs").unwrap_or(&file_name);
     let path_ref = file_path;
 
-    if zstd.totk_config.mii_renderer {
-        if let Some(result) = crate::tools::mii::open_binary(path_ref, bytes) {
-            return Some(result);
-        }
+    if let Some(result) = crate::tools::mii::open_binary(path_ref, bytes) {
+        return Some(result);
     }
 
     if is_tagproduct(path_ref) {

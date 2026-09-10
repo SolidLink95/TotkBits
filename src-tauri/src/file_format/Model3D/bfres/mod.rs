@@ -1767,6 +1767,54 @@ mod tests {
         assert!(BfresFile::open(&path, zstd).is_some());
     }
 
+    /// Nintendo Switch Sports ships BFRES 0.9: the version 10 FSKL header with
+    /// version 8 bone records, and the 168-byte FMAT whose texture count sits
+    /// at 0x9D. Both broke the viewer (NaN bone transforms, no texture slots).
+    #[test]
+    fn parses_switch_sports_version_9_skeleton_and_materials() {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/sports/Ply_HeadHuman00.bfres");
+        if !path.is_file() {
+            return;
+        }
+        let parsed = BfresFile::from_path(&path)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        assert_eq!(parsed.header.version[2], 9);
+        let bones = &parsed.render.bones;
+        assert_eq!(bones.len(), 15);
+        assert_eq!(bones[0].name, "nw4f_root");
+        assert_eq!(bones[0].parent_index, -1);
+        assert_eq!(bones[1].name, "Face00");
+        assert_eq!(bones[1].parent_index, 0);
+        assert!(bones.iter().all(|bone| {
+            bone.scale
+                .iter()
+                .chain(bone.rotation.iter())
+                .chain(bone.translation.iter())
+                .all(|component| component.is_finite())
+                && bone.rotation_mode == "euler_xyz"
+        }));
+        assert!((bones[1].translation[1] - 0.1846).abs() < 1e-3);
+        let head = parsed
+            .materials
+            .iter()
+            .find(|material| material.name == "mPly_Head")
+            .expect("mPly_Head material");
+        let slot = |sampler: &str| {
+            head.texture_slots
+                .iter()
+                .find(|slot| slot.sampler == sampler)
+                .unwrap_or_else(|| panic!("missing sampler {sampler}"))
+        };
+        assert_eq!(head.texture_slots.len(), 7);
+        assert_eq!(slot("_a0").name, "mPly_Head_Alb");
+        assert_eq!(slot("_a0").texture_type, "Base color");
+        assert_eq!(slot("_n0").texture_type, "Normal");
+        assert_eq!(slot("_rgh0").texture_type, "Roughness");
+        assert_eq!(slot("_tcl0").name, "mPly_Head_Tcl");
+        assert_eq!(parsed.render.meshes.len(), 24);
+    }
+
     #[test]
     #[ignore = "diagnostic comparison of TotkBits and Toolbox BFRES outputs"]
     fn compare_invisible_and_toolbox_bfres_layouts() {

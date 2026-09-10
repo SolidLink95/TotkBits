@@ -8,14 +8,14 @@ use tauri::Manager;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BfresResolvedTexture {
-    name: String,
+    pub(crate) name: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    aliases: Vec<String>,
-    path: String,
-    source: String,
-    data_url: String,
-    width: u32,
-    height: u32,
+    pub(crate) aliases: Vec<String>,
+    pub(crate) path: String,
+    pub(crate) source: String,
+    pub(crate) data_url: String,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
 }
 
 fn tomodachi_textures(

@@ -58,6 +58,7 @@ impl CliCommand {
                 | "lm3_render"
                 | "lm3_render_all"
                 | "lm3_slot_sizes"
+                | "bfres_render"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
         let valid_arguments = if operation == "decompress_dir" {
@@ -66,7 +67,7 @@ impl CliCommand {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -148,6 +149,7 @@ impl CliCommand {
             "lm3_render" => self.lm3_render(),
             "lm3_render_all" => self.lm3_render_all(),
             "lm3_slot_sizes" => self.lm3_slot_sizes(),
+            "bfres_render" => self.bfres_render(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -509,6 +511,140 @@ impl CliCommand {
             name,
         )
         .map_err(|error| error.to_string())
+    }
+
+    /// Headless BFRES preview: resolves the embedded textures, bakes rigid
+    /// bone binds, applies the Switch Sports skin/hair/outfit tint through the
+    /// material's `*_Tcl` mask and rasterizes the model to a PNG.
+    fn bfres_render(&self) -> Result<(), String> {
+        use crate::file_format::Model3D::{SoftRender, SportsTint};
+        use crate::parser::AOC::g1m::{G1mMaterial, G1mTextureSlot, ResolvedG1tTexture};
+        use std::collections::HashMap;
+
+        let tint = SportsTint::TintColors::parse(&self.file_type)?;
+        let zstd = self.zstd().unwrap_or_else(|_| {
+            Arc::new(crate::Zstd::TotkZstd::dictionaryless(
+                Arc::new(TotkConfig::default()),
+                crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+            ))
+        });
+        let (opened, _) =
+            crate::file_format::Model3D::bfres::BfresFile::open(&self.input, zstd.clone())
+                .ok_or_else(|| format!("failed to open BFRES {}", self.input.display()))?;
+        let bfres = opened.bfres.ok_or("BFRES did not parse")?;
+        let romfs = zstd.totk_config.romfs.clone();
+        let tomodachi = zstd.totk_config.tomodachi_path.clone();
+        let resolved = crate::TauriCommands::visuals::resolve_bfres_textures(
+            &bfres,
+            &self.input,
+            opened.bfres_data.as_deref(),
+            Path::new(&romfs),
+            Path::new(&tomodachi),
+            Some(&zstd),
+        );
+        let mut textures: Vec<ResolvedG1tTexture> = resolved
+            .iter()
+            .map(|texture| ResolvedG1tTexture {
+                name: texture.name.clone(),
+                aliases: texture.aliases.clone(),
+                path: texture.path.clone(),
+                source: texture.source.clone(),
+                data_url: texture.data_url.clone(),
+                width: texture.width,
+                height: texture.height,
+                array_count: 1,
+                renderable: true,
+                data_urls: vec![texture.data_url.clone()],
+            })
+            .collect();
+        let png_bytes = |data_url: &str| -> Option<Vec<u8>> {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD
+                .decode(data_url.split_once("base64,")?.1)
+                .ok()
+        };
+        let mut tinted_names: HashMap<(String, String), String> = HashMap::new();
+        let mut materials = Vec::with_capacity(bfres.materials.len());
+        for material in &bfres.materials {
+            let mut slots: Vec<G1mTextureSlot> = material
+                .texture_slots
+                .iter()
+                .map(|slot| G1mTextureSlot {
+                    index: slot.index,
+                    name: slot.name.clone(),
+                    uv_layer: 0,
+                    sampler: slot.sampler.clone(),
+                    texture_type: slot.texture_type.clone(),
+                })
+                .collect();
+            let base_index = slots.iter().position(|slot| {
+                slot.sampler.eq_ignore_ascii_case("_a0") || slot.texture_type == "Base color"
+            });
+            let mask_name = slots
+                .iter()
+                .find(|slot| slot.texture_type == "Tint mask")
+                .map(|slot| slot.name.clone());
+            if let (Some(base_index), Some(mask_name), false) =
+                (base_index, mask_name, tint.is_empty())
+            {
+                let base_name = slots[base_index].name.clone();
+                let key = (base_name.clone(), mask_name.clone());
+                if !tinted_names.contains_key(&key) {
+                    let find = |name: &str| {
+                        textures
+                            .iter()
+                            .find(|texture| {
+                                texture.name == name
+                                    || texture.aliases.iter().any(|alias| alias == name)
+                            })
+                            .cloned()
+                    };
+                    if let (Some(base), Some(mask)) = (find(&base_name), find(&mask_name)) {
+                        if let (Some(base_png), Some(mask_png)) =
+                            (png_bytes(&base.data_url), png_bytes(&mask.data_url))
+                        {
+                            use base64::Engine;
+                            let tinted = SportsTint::tint_albedo_png(&base_png, &mask_png, &tint)?;
+                            let data_url = format!(
+                                "data:image/png;base64,{}",
+                                base64::engine::general_purpose::STANDARD.encode(tinted)
+                            );
+                            let name = format!("{base_name}#tint");
+                            textures.push(ResolvedG1tTexture {
+                                name: name.clone(),
+                                aliases: Vec::new(),
+                                path: base.path.clone(),
+                                source: "tinted".into(),
+                                data_url: data_url.clone(),
+                                width: base.width,
+                                height: base.height,
+                                array_count: 1,
+                                renderable: true,
+                                data_urls: vec![data_url],
+                            });
+                            tinted_names.insert(key.clone(), name);
+                        }
+                    }
+                }
+                if let Some(name) = tinted_names.get(&key) {
+                    slots[base_index].name = name.clone();
+                }
+            }
+            materials.push(G1mMaterial {
+                name: material.name.clone(),
+                offset: material.offset,
+                texture_slots: slots,
+            });
+        }
+        let render = SoftRender::bake_rigid_bind(&bfres.render);
+        let png = SoftRender::render_to_png(
+            &render,
+            &materials,
+            &textures,
+            SoftRender::DEFAULT_SIZE,
+            SoftRender::DEFAULT_SIZE,
+        )?;
+        write_output(&self.output, &png)
     }
 
     fn lm3_render(&self) -> Result<(), String> {

@@ -8,6 +8,7 @@
 .bfres-viewport-toolbar button:hover { background: #303943; }
 .bfres-viewport-toolbar select { flex: 0 0 auto; max-width: 210px; color: #cbd5df; border: 1px solid #394655; background: #171c23; border-radius: 3px; padding: 4px 7px; }
 .bfres-shading-select { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; color: #aeb9c4; font-size: 11px; }
+.bfres-tint-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid #5a6775; flex: 0 0 auto; }
 .bfres-brightness input { width: 78px; accent-color: #4c9ac7; }
 .bfres-brightness span { min-width: 32px; color: #dce3ea; font-variant-numeric: tabular-nums; }
 .bfres-bone-select { margin-left: auto; }

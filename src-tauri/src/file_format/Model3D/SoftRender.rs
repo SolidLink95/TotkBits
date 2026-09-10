@@ -300,6 +300,122 @@ pub fn render_to_png(
     Ok(encoded.into_inner())
 }
 
+/// Bakes the rest pose into one-bone (rigid) BFRES shapes, which are stored
+/// in bone-local space, mirroring the viewport's `applyRigidTransform` path.
+/// Smooth-skinned and unskinned shapes are already in model space.
+pub fn bake_rigid_bind(render: &BfresRenderGraph) -> BfresRenderGraph {
+    let bones = &render.bones;
+    if bones.is_empty() {
+        return render.clone();
+    }
+    let mut worlds: Vec<[[f32; 4]; 4]> = Vec::with_capacity(bones.len());
+    for bone in bones {
+        let local = compose(bone);
+        let world = match usize::try_from(bone.parent_index) {
+            Ok(parent) if parent < worlds.len() => multiply(&worlds[parent], &local),
+            _ => local,
+        };
+        worlds.push(world);
+    }
+    let mut baked = render.clone();
+    for mesh in &mut baked.meshes {
+        if mesh.vertex_skin_count != 1 {
+            continue;
+        }
+        for (index, position) in mesh.positions.iter_mut().enumerate() {
+            let bone = mesh
+                .bone_indices
+                .get(index)
+                .map(|indices| indices[0] as usize)
+                .unwrap_or(mesh.bone_index as usize);
+            let Some(matrix) = worlds.get(bone) else {
+                continue;
+            };
+            *position = transform_point(matrix, position);
+            if let Some(normal) = mesh.normals.get_mut(index) {
+                *normal = normalize(transform_direction(matrix, normal));
+            }
+        }
+    }
+    baked
+}
+
+/// Column-major 4x4 matrix `[column][row]` from a bone's scale, rotation and
+/// translation (`T * R * S`; Euler XYZ rotations apply X first).
+fn compose(bone: &crate::file_format::Model3D::bfres::BfresBone) -> [[f32; 4]; 4] {
+    let [x, y, z, w] = bone.rotation;
+    let rotation: [[f32; 3]; 3] = if bone.rotation_mode == "quaternion" {
+        let length = (x * x + y * y + z * z + w * w).sqrt().max(f32::EPSILON);
+        let (x, y, z, w) = (x / length, y / length, z / length, w / length);
+        [
+            [
+                1.0 - 2.0 * (y * y + z * z),
+                2.0 * (x * y + z * w),
+                2.0 * (x * z - y * w),
+            ],
+            [
+                2.0 * (x * y - z * w),
+                1.0 - 2.0 * (x * x + z * z),
+                2.0 * (y * z + x * w),
+            ],
+            [
+                2.0 * (x * z + y * w),
+                2.0 * (y * z - x * w),
+                1.0 - 2.0 * (x * x + y * y),
+            ],
+        ]
+    } else {
+        let (sx, cx) = x.sin_cos();
+        let (sy, cy) = y.sin_cos();
+        let (sz, cz) = z.sin_cos();
+        // R = Rz * Ry * Rx, stored as columns.
+        [
+            [cz * cy, sz * cy, -sy],
+            [cz * sy * sx - sz * cx, sz * sy * sx + cz * cx, cy * sx],
+            [cz * sy * cx + sz * sx, sz * sy * cx - cz * sx, cy * cx],
+        ]
+    };
+    let mut matrix = [[0.0; 4]; 4];
+    for column in 0..3 {
+        for row in 0..3 {
+            matrix[column][row] = rotation[column][row] * bone.scale[column];
+        }
+    }
+    matrix[3] = [
+        bone.translation[0],
+        bone.translation[1],
+        bone.translation[2],
+        1.0,
+    ];
+    matrix
+}
+
+fn multiply(a: &[[f32; 4]; 4], b: &[[f32; 4]; 4]) -> [[f32; 4]; 4] {
+    let mut result = [[0.0; 4]; 4];
+    for column in 0..4 {
+        for row in 0..4 {
+            result[column][row] = (0..4).map(|k| a[k][row] * b[column][k]).sum();
+        }
+    }
+    result
+}
+
+fn transform_point(m: &[[f32; 4]; 4], p: &[f32; 3]) -> [f32; 3] {
+    [
+        m[0][0] * p[0] + m[1][0] * p[1] + m[2][0] * p[2] + m[3][0],
+        m[0][1] * p[0] + m[1][1] * p[1] + m[2][1] * p[2] + m[3][1],
+        m[0][2] * p[0] + m[1][2] * p[1] + m[2][2] * p[2] + m[3][2],
+    ]
+}
+
+fn transform_direction(m: &[[f32; 4]; 4], d: &[f32; 3]) -> [f32; 3] {
+    [
+        m[0][0] * d[0] + m[1][0] * d[1] + m[2][0] * d[2],
+        m[0][1] * d[0] + m[1][1] * d[1] + m[2][1] * d[2],
+        m[0][2] * d[0] + m[1][2] * d[1] + m[2][2] * d[2],
+    ]
+}
+
 fn edge(a: &[f32; 3], b: &[f32; 3], point: &[f32; 3]) -> f32 {
     (b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0])
 }

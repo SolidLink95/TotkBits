@@ -11,6 +11,7 @@ Never read, write, or execute anything outside `%USERPROFILE%\Desktop\coding\Tot
 Exceptions:
 
 - `E:\TOTK_modding\0100F2C0115B6000\romfs` — **read-only** access is granted (a TOTK RomFS dump, useful as test input). Never write, delete, or move anything there.
+- `E:\Yuzu\dumps\Sports` — **read-only** access is granted (a Nintendo Switch Sports dump, useful as test input). Never write, delete, or move anything there.
 - All writes outside the repo working set — test fixtures, scratch output, copies of RomFS files — are permitted **only inside `./tmp/`**.
 
 ### In-scope paths
