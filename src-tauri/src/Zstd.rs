@@ -650,6 +650,11 @@ impl<'a> TotkZstd<'_> {
     pub fn compress_empty(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
         self.compressor.compress_empty(data)
     }
+    /// Dictionaryless compression at an explicit level instead of the
+    /// configured one (e.g. to match another tool's output).
+    pub fn compress_empty_with_level(&self, data: &[u8], level: i32) -> io::Result<Vec<u8>> {
+        self.compressor.compress_empty_with_level(data, level)
+    }
 }
 
 pub fn preferred_dictionary_for_path(path: impl AsRef<Path>) -> Option<ZstdDictionary> {
@@ -969,6 +974,10 @@ impl<'a> ZstdCompressor<'_> {
     fn compress(&self, data: &[u8], cdict: &EncoderDictionary) -> io::Result<Vec<u8>> {
         let mut buffer: Vec<u8> = Vec::new();
         let mut encoder = Encoder::with_prepared_dictionary(&mut buffer, cdict)?;
+        // The game reads the decompressed size from the frame header, so the
+        // streaming encoder must be told the input length up front.
+        encoder.set_pledged_src_size(Some(data.len() as u64))?;
+        encoder.include_contentsize(true)?;
         encoder.write_all(data)?;
         let compressed_data = encoder.finish()?;
         Ok(compressed_data.to_vec())
@@ -988,6 +997,19 @@ impl<'a> ZstdCompressor<'_> {
 
     pub fn compress_empty(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         ZstdCompressor::compress(&self, &data, &self.empty)
+    }
+
+    pub fn compress_empty_with_level(&self, data: &[u8], level: i32) -> io::Result<Vec<u8>> {
+        if level == self.comp_level {
+            return self.compress_empty(data);
+        }
+        let mut buffer: Vec<u8> = Vec::new();
+        let mut encoder = Encoder::new(&mut buffer, level)?;
+        encoder.set_pledged_src_size(Some(data.len() as u64))?;
+        encoder.include_contentsize(true)?;
+        encoder.write_all(data)?;
+        encoder.finish()?;
+        Ok(buffer)
     }
 
     pub fn find_vanila_file_in_romfs<P: AsRef<Path>>(&self, path: P) -> io::Result<String> {

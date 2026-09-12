@@ -159,7 +159,7 @@ fn list_batch_render_files_with_zstd(
         //     .extension()
         //     .is_some_and(|extension| extension.eq_ignore_ascii_case("glb"));
         if let Ok(meta) = fs::metadata(path) {
-            if meta.len() > MAX_SIZE  {
+            if meta.len() > MAX_SIZE {
                 continue;
             }
         }

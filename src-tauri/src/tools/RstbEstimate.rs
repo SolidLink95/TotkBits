@@ -30,6 +30,12 @@ pub struct RstbEstimator<'a> {
     vanilla_sarc_hashes: Option<Arc<HashMap<String, String>>>,
     pub modified_sarc_entries: HashSet<String>,
     pub entries: HashMap<String, u32>,
+    /// Also emit archive members that are byte-identical to vanilla (TKMM
+    /// re-estimates every member of a shipped archive).
+    pub include_vanilla_sarc_members: bool,
+    /// Reserve a 16-byte EXB header for AINB files that have no EXB section.
+    /// Current TKMM does; releases before June 2026 did not.
+    pub ainb_empty_exb_header: bool,
 }
 
 impl<'a> RstbEstimator<'a> {
@@ -41,6 +47,8 @@ impl<'a> RstbEstimator<'a> {
             vanilla_sarc_hashes: None,
             modified_sarc_entries: HashSet::new(),
             entries: HashMap::new(),
+            include_vanilla_sarc_members: false,
+            ainb_empty_exb_header: true,
         }
     }
 
@@ -52,6 +60,8 @@ impl<'a> RstbEstimator<'a> {
             vanilla_sarc_hashes: None,
             modified_sarc_entries: HashSet::new(),
             entries: HashMap::new(),
+            include_vanilla_sarc_members: false,
+            ainb_empty_exb_header: true,
         }
     }
 
@@ -123,20 +133,27 @@ impl<'a> RstbEstimator<'a> {
                 RstbEstimateError::new(format!("failed to read '{}': {error}", disk_path.display()))
             })?;
             let normalized_path = normalize_path(relative);
-            let effective_data = self.effective_data(relative, &data).map_err(|error| {
+            let estimate_error = |error: RstbEstimateError| {
                 RstbEstimateError::new(format!(
                     "failed to estimate '{}': {error}",
                     disk_path.display()
                 ))
-            })?;
+            };
+            if Magic::is_mcpk(&data) {
+                // MeshCodec models are sized from the container and never
+                // contain archives, so the payload stays compressed.
+                let value = mesh_codec_allocation(&data)
+                    .and_then(|value| self.finish(value))
+                    .map_err(estimate_error)?;
+                insert_estimate(&mut estimated, resource_path, value);
+                continue;
+            }
+            let effective_data = self
+                .effective_data(relative, &data)
+                .map_err(estimate_error)?;
             let value = self
                 .estimate_effective(file_type, &normalized_path, &effective_data)
-                .map_err(|error| {
-                    RstbEstimateError::new(format!(
-                        "failed to estimate '{}': {error}",
-                        disk_path.display()
-                    ))
-                })?;
+                .map_err(estimate_error)?;
             insert_estimate(&mut estimated, resource_path, value);
 
             if !normalized_path.starts_with("mals/") {
@@ -325,16 +342,29 @@ impl<'a> RstbEstimator<'a> {
 
     /// Decompresses an input Zstandard frame when necessary, then calculates
     /// the RESTBL allocation. TotK dictionary selection is delegated to the
-    /// application's existing `TotkZstd` service.
+    /// application's existing `TotkZstd` service. MeshCodec (`MCPK`) models
+    /// are sized from the container itself, see [`mesh_codec_allocation`].
     pub fn estimate_maybe_compressed(
         &self,
         file_type: TotkFileType,
         resource_path: impl AsRef<Path>,
         data: &[u8],
     ) -> Result<u32, RstbEstimateError> {
-        let path_ref = resource_path.as_ref();
-        let path = normalize_path(path_ref);
-        let effective_data = self.effective_data(path_ref, data)?;
+        self.estimate_raw(file_type, resource_path.as_ref(), data)
+    }
+
+    /// Estimates from the bytes as they sit on disk or inside an archive.
+    fn estimate_raw(
+        &self,
+        file_type: TotkFileType,
+        resource_path: &Path,
+        data: &[u8],
+    ) -> Result<u32, RstbEstimateError> {
+        if Magic::is_mcpk(data) {
+            return self.finish(mesh_codec_allocation(data)?);
+        }
+        let path = normalize_path(resource_path);
+        let effective_data = self.effective_data(resource_path, data)?;
         self.estimate_effective(file_type, &path, &effective_data)
     }
 
@@ -344,21 +374,7 @@ impl<'a> RstbEstimator<'a> {
         data: &'b [u8],
     ) -> Result<Cow<'b, [u8]>, RstbEstimateError> {
         let path = normalize_path(resource_path);
-        if Magic::is_mcpk(data) {
-            let decompressed = self.zstd.decompress_mcpk(data).map_err(|error| {
-                RstbEstimateError::new(format!(
-                    "failed to MCPK-decompress '{}': {error}",
-                    resource_path.display()
-                ))
-            })?;
-            if !decompressed.starts_with(b"FRES") {
-                return Err(RstbEstimateError::new(format!(
-                    "MCPK payload is not a raw FRES resource: '{}'",
-                    resource_path.display()
-                )));
-            }
-            Ok(Cow::Owned(decompressed))
-        } else if !path.ends_with(".ta.zs") && Magic::is_zstd(data) {
+        if !path.ends_with(".ta.zs") && Magic::is_zstd(data) {
             let (decompressed, _) = self
                 .zstd
                 .try_decompress_for_path(resource_path, data)
@@ -395,9 +411,10 @@ impl<'a> RstbEstimator<'a> {
             };
             let file_data = file.data();
             let hash = sha256(file_data.to_vec());
-            if vanilla_hashes
-                .get(file_name)
-                .is_some_and(|vanilla_hash| vanilla_hash == &hash)
+            if !self.include_vanilla_sarc_members
+                && vanilla_hashes
+                    .get(file_name)
+                    .is_some_and(|vanilla_hash| vanilla_hash == &hash)
             {
                 continue;
             }
@@ -442,7 +459,7 @@ impl<'a> RstbEstimator<'a> {
         let effective_size = sarc_declared_size(data).unwrap_or(data.len() as u64);
         let aligned_size = align_32(effective_size)?;
         let rule = SizeRule::for_resource(file_type, &effective_path)?;
-        let mut value = rule.calculate(aligned_size, data)?;
+        let mut value = rule.calculate(aligned_size, data, self.ainb_empty_exb_header)?;
 
         if is_shader_archive(&effective_path) {
             value = checked_add(value, 3712, "shader archive overhead")?;
@@ -470,6 +487,29 @@ impl<'a> RstbEstimator<'a> {
         u32::try_from(value)
             .map_err(|_| RstbEstimateError::new("estimated RESTBL value exceeds u32"))
     }
+}
+
+/// Allocation for a MeshCodec (`MCPK`) model, computed the way TKMM sizes
+/// `.bfres.mc` files: the compressed container length (aligned) plus a
+/// model-codec allowance derived from the decompressed size the header
+/// declares (`(flags >> 5) << (flags & 0xF)`), all run through the generic
+/// `(size + 1500) * 4` rule. Only the container is inspected, so the payload
+/// never has to be decompressed.
+fn mesh_codec_allocation(data: &[u8]) -> Result<u64, RstbEstimateError> {
+    let flags = read_u32_le(data, 0x08, "MCPK flags")?;
+    let declared_size = u64::from(flags >> 5) << (flags & 0xF);
+    // TKMM evaluates this in double precision and truncates.
+    let codec_allowance = ((declared_size as f64 * 1.15 + 0x1000 as f64) * 4.0) as u64;
+    let container_size = align_32(data.len() as u64)?;
+    checked_mul(
+        checked_add(
+            checked_add(container_size, codec_allowance, "MeshCodec allowance")?,
+            1500,
+            "generic base overhead",
+        )?,
+        4,
+        "generic multiplier",
+    )
 }
 
 fn sarc_declared_size(data: &[u8]) -> Option<u64> {
@@ -560,7 +600,12 @@ impl SizeRule {
         Ok(rule)
     }
 
-    fn calculate(self, aligned_size: u64, data: &[u8]) -> Result<u64, RstbEstimateError> {
+    fn calculate(
+        self,
+        aligned_size: u64,
+        data: &[u8],
+        ainb_empty_exb_header: bool,
+    ) -> Result<u64, RstbEstimateError> {
         match self {
             Self::Fixed(overhead) => checked_add(aligned_size, overhead, "format overhead"),
             Self::Bgyml => checked_mul(
@@ -600,7 +645,7 @@ impl SizeRule {
                 )
             }
             Self::Ainb => {
-                let exb = exb_allocation(data, 0x44, true, "AINB")?;
+                let exb = exb_allocation(data, 0x44, ainb_empty_exb_header, "AINB")?;
                 checked_add(
                     checked_add(aligned_size, 392, "AINB base overhead")?,
                     exb,
@@ -1173,6 +1218,27 @@ mod tests {
                 &data
             )?,
             416
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn mesh_codec_models_are_sized_from_the_container() -> TestResult {
+        // Weapon_Bow_900.bfres.mc: 29486 compressed bytes declaring a 64 KiB
+        // decompressed model; TKMM records 1395412 for it.
+        let declared: u32 = 65536;
+        let flags = ((declared >> 12) << 5) + 12;
+        let mut data = vec![0; 29486];
+        data[..4].copy_from_slice(b"MCPK");
+        data[8..12].copy_from_slice(&flags.to_le_bytes());
+        let estimator = test_estimator();
+        assert_eq!(
+            estimator.estimate_maybe_compressed(
+                TotkFileType::Bfres,
+                "Model/Weapon_Bow_900.Weapon_Bow_900.bfres.mc",
+                &data
+            )?,
+            1_395_412
         );
         Ok(())
     }

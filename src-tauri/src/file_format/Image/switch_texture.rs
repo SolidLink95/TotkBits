@@ -505,6 +505,11 @@ mod component_selector_tests {
     }
 }
 
+/// `(block width, block height, bytes per block)` of a surface format.
+pub fn block_layout(format: ImageFormat) -> io::Result<(u32, u32, u32)> {
+    format_layout(format)
+}
+
 fn format_layout(format: ImageFormat) -> io::Result<(u32, u32, u32)> {
     use ImageFormat::*;
     match format {

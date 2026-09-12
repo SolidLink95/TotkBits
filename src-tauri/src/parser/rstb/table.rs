@@ -12,8 +12,6 @@ pub struct ResourceSizeTable {
     pub key_size: usize,
     pub hash_table: BTreeMap<u32, u32>,
     pub overflow_table: BTreeMap<String, u32>,
-    hash_order: Vec<u32>,
-    overflow_order: Vec<String>,
 }
 impl ResourceSizeTable {
     pub fn from_bytes(data: &[u8]) -> Result<Self, RstbError> {
@@ -74,14 +72,11 @@ impl ResourceSizeTable {
             });
         }
         let mut hash_table = BTreeMap::new();
-        let mut hash_order = Vec::with_capacity(hc as usize);
         for _ in 0..hc {
             let hash = r.read_u32()?;
             hash_table.insert(hash, r.read_u32()?);
-            hash_order.push(hash);
         }
         let mut overflow_table = BTreeMap::new();
-        let mut overflow_order = Vec::with_capacity(oc as usize);
         for _ in 0..oc {
             let raw = r.read_bytes(header.key_size())?;
             let end = raw.iter().position(|v| *v == 0).unwrap_or(raw.len());
@@ -89,7 +84,6 @@ impl ResourceSizeTable {
                 .map_err(|e| RstbError::InvalidUtf8(e.to_string()))?
                 .to_owned();
             overflow_table.insert(key.clone(), r.read_u32()?);
-            overflow_order.push(key);
         }
         Ok(Self {
             version: if dynamic {
@@ -101,11 +95,35 @@ impl ResourceSizeTable {
             key_size: header.key_size(),
             hash_table,
             overflow_table,
-            hash_order,
-            overflow_order,
         })
     }
+    /// Smallest name-table record that fits every overflow key plus its
+    /// terminator, rounded up to four bytes (what TKMM's RstbLibrary writes).
+    pub fn minimal_key_size(&self) -> usize {
+        self.overflow_table
+            .keys()
+            .map(|k| (k.as_bytes().len() + 1 + 3) & !3)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Serializes keeping the source file's name-table width when it is
+    /// larger than necessary (vanilla TotK uses 160), so unmodified tables
+    /// round-trip byte for byte.
     pub fn to_bytes(&self) -> Result<Vec<u8>, RstbError> {
+        self.to_bytes_with_key_size(self.key_size.max(self.minimal_key_size()))
+    }
+
+    /// Serializes with the smallest possible name-table width, like TKMM's
+    /// generated tables.
+    pub fn to_bytes_compact(&self) -> Result<Vec<u8>, RstbError> {
+        self.to_bytes_with_key_size(self.minimal_key_size())
+    }
+
+    /// Both tables are written sorted (hashes ascending, names in byte
+    /// order): the game binary-searches the hash table, so an appended,
+    /// unsorted entry would never be found.
+    fn to_bytes_with_key_size(&self, key_size: usize) -> Result<Vec<u8>, RstbError> {
         let key_size = match self.version {
             RstbVersion::Fixed => {
                 if self.overflow_table.keys().any(|k| k.as_bytes().len() > 128) {
@@ -113,15 +131,7 @@ impl ResourceSizeTable {
                 }
                 128
             }
-            RstbVersion::Dynamic(_) => {
-                let n = self
-                    .overflow_table
-                    .keys()
-                    .map(|k| k.as_bytes().len() + 1)
-                    .max()
-                    .unwrap_or(0);
-                self.key_size.max(if n == 0 { 0 } else { (n + 1) & !1 })
-            }
+            RstbVersion::Dynamic(_) => key_size,
         };
         let mut w = BinaryWriter::with_endian(self.endian);
         match self.version {
@@ -134,13 +144,12 @@ impl ResourceSizeTable {
         }
         w.write_u32(self.hash_table.len() as u32);
         w.write_u32(self.overflow_table.len() as u32);
-        for h in &self.hash_order {
-            let v = self.hash_table[h];
+        for (h, v) in &self.hash_table {
             w.write_u32(*h);
-            w.write_u32(v)
+            w.write_u32(*v)
         }
-        for k in &self.overflow_order {
-            let v = self.overflow_table[k];
+        for (k, v) in &self.overflow_table {
+            let v = *v;
             w.write_bytes(k.as_bytes());
             w.write_bytes(&vec![0; key_size - k.len()]);
             w.write_u32(v)
@@ -156,20 +165,12 @@ impl ResourceSizeTable {
         if self.overflow_table.contains_key(&key) {
             self.overflow_table.insert(key, value);
         } else {
-            let hash = crc32(&key);
-            if !self.hash_table.contains_key(&hash) {
-                self.hash_order.push(hash);
-            }
-            self.hash_table.insert(hash, value);
+            self.hash_table.insert(crc32(&key), value);
         }
     }
     pub fn remove(&mut self, key: String) {
         if self.overflow_table.remove(&key).is_none() {
-            let hash = crc32(key);
-            self.hash_table.remove(&hash);
-            self.hash_order.retain(|v| *v != hash);
-        } else {
-            self.overflow_order.retain(|v| v != &key);
+            self.hash_table.remove(&crc32(key));
         }
     }
     pub fn replace_entries(
@@ -177,8 +178,6 @@ impl ResourceSizeTable {
         hash_table: BTreeMap<u32, u32>,
         overflow_table: BTreeMap<String, u32>,
     ) {
-        self.hash_order = hash_table.keys().copied().collect();
-        self.overflow_order = overflow_table.keys().cloned().collect();
         self.hash_table = hash_table;
         self.overflow_table = overflow_table;
     }
@@ -198,8 +197,6 @@ mod tests {
             key_size: 0,
             hash_table: BTreeMap::new(),
             overflow_table: BTreeMap::new(),
-            hash_order: Vec::new(),
-            overflow_order: Vec::new(),
         };
         t.set("A/B".into(), 7);
         let b = t.to_bytes().unwrap();

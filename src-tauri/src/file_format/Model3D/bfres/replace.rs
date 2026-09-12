@@ -1022,13 +1022,13 @@ fn attribute_component_count(name: &str) -> usize {
     }
 }
 
-fn encode(
+pub(super) fn encode(
     out: &mut [u8],
     o: usize,
     f: u16,
     v: [f32; 4],
     components: usize,
-) -> Result<(), BfresError> {
+) -> Result<usize, BfresError> {
     let floats = |values: &[f32]| {
         let mut writer = BinaryWriter::new();
         for value in values {
@@ -1121,7 +1121,7 @@ fn encode(
         .get_mut(o..o + bytes.len())
         .ok_or_else(|| error(o, "vertex attribute exceeds stride"))?;
     dst.copy_from_slice(&bytes);
-    Ok(())
+    Ok(bytes.len())
 }
 
 fn f32_to_half(value: f32) -> u16 {

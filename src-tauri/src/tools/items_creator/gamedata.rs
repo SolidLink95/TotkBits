@@ -3,7 +3,7 @@
 use crate::{
     file_format::{
         BinTextFile::{bytes_to_file, BymlFile},
-        GameDataList::GameDataList,
+        GameDataList::{recalculate_save_metadata, GameDataList},
     },
     Zstd::{TotkZstd, ZstdDictionary},
 };
@@ -101,6 +101,8 @@ impl<'a> GameDataListProcessor<'a> {
             request.inventory_flags,
         )?;
         verify_hashes(&file.pio, &hashes)?;
+        // The new flags enlarge the save data; keep the layout metadata in sync.
+        recalculate_save_metadata(&mut file.pio)?;
 
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent)?;
@@ -204,9 +206,10 @@ fn bool_flag(hash: u32, reset: i32) -> Byml {
 
 fn picture_book_state(hash: u32) -> Byml {
     let names = ["Unopened", "TakePhoto", "Buy"];
+    // Enum choices are stored as 64-bit values in the vanilla table.
     let values: Vec<_> = names
         .iter()
-        .map(|name| Byml::U32(murmur3_hash(name)))
+        .map(|name| Byml::U64(u64::from(murmur3_hash(name))))
         .collect();
     let mut flag = roead::byml::Map::default();
     flag.insert("DefaultValue".into(), Byml::U32(murmur3_hash("Unopened")));
@@ -280,9 +283,10 @@ fn upsert_flag(data: &mut roead::byml::Map, kind: &str, flag: Byml) -> io::Resul
     {
         *existing = flag;
     } else {
+        // The vanilla tables are not hash-ordered; new flags go at the end
+        // so the existing layout is left untouched.
         flags.push(flag);
     }
-    flags.sort_by_key(|entry| entry_hash(entry).unwrap_or_default());
     Ok(())
 }
 
@@ -426,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn picture_book_enum_hashes_are_u32() {
+    fn picture_book_enum_hashes_are_u64() {
         let state = picture_book_state(murmur3_hash("PictureBookData.Weapon_Lsword_005.State"));
         let values = state
             .as_map()
@@ -435,7 +439,7 @@ mod tests {
             .unwrap()
             .as_array()
             .unwrap();
-        assert!(values.iter().all(|value| matches!(value, Byml::U32(_))));
+        assert!(values.iter().all(|value| matches!(value, Byml::U64(_))));
     }
 
     #[test]

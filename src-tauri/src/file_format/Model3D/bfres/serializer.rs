@@ -4453,4 +4453,60 @@ mod tests {
             }
         }
     }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "diagnostic: compares canonical copies of tmp/bfres originals with Toolbox resaves"]
+    fn canonical_copies_match_toolbox_resave_corpus() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tmp/_CLAUDE/parity/toolbox_raw");
+        let Ok(entries) = std::fs::read_dir(&root) else {
+            return;
+        };
+        let mut failures = Vec::new();
+        for entry in entries {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_str().unwrap().to_string();
+            let original_name = name.replace(".resave.bfres", ".bfres");
+            let original = std::fs::read(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../tmp/bfres")
+                    .join(&original_name),
+            )
+            .unwrap();
+            let expected = std::fs::read(&path).unwrap();
+            let mut emitted = emit_v10_canonical_copy(&original).unwrap();
+            rebase_v10_relocations(&original, &mut emitted).unwrap();
+            let first = emitted
+                .bytes
+                .iter()
+                .zip(&expected)
+                .position(|(left, right)| left != right);
+            let differing = emitted
+                .bytes
+                .iter()
+                .zip(&expected)
+                .filter(|(left, right)| left != right)
+                .count();
+            eprintln!(
+                "{name}: emitted={} expected={} first_diff={first:?} differing_bytes={differing}",
+                emitted.bytes.len(),
+                expected.len()
+            );
+            std::fs::write(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../tmp/_CLAUDE/parity")
+                    .join(format!("{original_name}.totkbits_canonical.bfres")),
+                &emitted.bytes,
+            )
+            .unwrap();
+            if first.is_some() || emitted.bytes.len() != expected.len() {
+                failures.push(name);
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "canonical copies differ from Toolbox: {failures:?}"
+        );
+    }
 }

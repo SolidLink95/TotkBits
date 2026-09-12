@@ -28,16 +28,34 @@ pub fn generate_weapon_sharp_info(
     };
     let mut file = BymlFile::new(&source, zstd.clone())
         .ok_or_else(|| invalid_data("invalid clean SharpInfo table"))?;
-    let rows = sharp_info_rows_mut(&mut file.pio)?;
-    if find_row(rows, actor_name).is_some() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            format!("SharpInfo already contains {actor_name}"),
-        ));
+    // The table is split per weapon family (SharpInfoList for melee weapons,
+    // SharpInfoBowList, SharpInfoShieldList); the custom row joins the list
+    // that holds its template, or failing that any weapon of the same kind.
+    let kind_prefix = template_actor
+        .rfind('_')
+        .map(|index| &template_actor[..=index])
+        .unwrap_or(template_actor);
+    let list_key = sharp_info_list_key(&file.pio, template_actor, kind_prefix)?;
+    for key in sharp_info_list_keys(&file.pio)? {
+        if find_row(list_rows(&file.pio, &key)?, actor_name).is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("SharpInfo already contains {actor_name}"),
+            ));
+        }
     }
+    let rows = list_rows_mut(&mut file.pio, &list_key)?;
     let mut row = find_row(rows, template_actor)
+        .or_else(|| {
+            rows.iter()
+                .find(|row| row_actor(row).is_some_and(|name| name.starts_with(kind_prefix)))
+        })
         .cloned()
-        .ok_or_else(|| invalid_data(format!("SharpInfo template is missing: {template_actor}")))?;
+        .ok_or_else(|| {
+            invalid_data(format!(
+                "SharpInfo has no row for {template_actor} or any {kind_prefix}* weapon"
+            ))
+        })?;
     let map = row
         .as_mut_map()
         .map_err(|_| invalid_data("SharpInfo template row is not a map"))?;
@@ -62,7 +80,7 @@ pub fn generate_weapon_sharp_info(
     file.save(output.to_string_lossy().into_owned())?;
     let saved = BymlFile::new(&output, zstd)
         .ok_or_else(|| invalid_data("generated SharpInfo cannot be reopened"))?;
-    let saved_rows = sharp_info_rows(&saved.pio)?;
+    let saved_rows = list_rows(&saved.pio, &list_key)?;
     let saved_row = find_row(saved_rows, actor_name)
         .ok_or_else(|| invalid_data("generated SharpInfo row is missing"))?;
     let saved_map = saved_row
@@ -80,22 +98,54 @@ fn find_row<'a>(rows: &'a [Byml], actor_name: &str) -> Option<&'a Byml> {
         .find(|row| row_actor(row).is_some_and(|name| name == actor_name))
 }
 
-fn sharp_info_rows(root: &Byml) -> io::Result<&[Byml]> {
-    root.as_map()
+/// Every top-level array of the table, in file order.
+fn sharp_info_list_keys(root: &Byml) -> io::Result<Vec<String>> {
+    Ok(root
+        .as_map()
         .map_err(|_| invalid_data("SharpInfo root is not a map"))?
-        .get("SharpInfoList")
-        .ok_or_else(|| invalid_data("SharpInfo root has no SharpInfoList"))?
-        .as_array()
-        .map_err(|_| invalid_data("SharpInfoList is not an array"))
+        .iter()
+        .filter(|(_, value)| value.as_array().is_ok())
+        .map(|(key, _)| key.to_string())
+        .collect())
 }
 
-fn sharp_info_rows_mut(root: &mut Byml) -> io::Result<&mut Vec<Byml>> {
+/// The list holding `template_actor`, else the first list with a `kind_prefix` row.
+fn sharp_info_list_key(root: &Byml, template_actor: &str, kind_prefix: &str) -> io::Result<String> {
+    let keys = sharp_info_list_keys(root)?;
+    for key in &keys {
+        if find_row(list_rows(root, key)?, template_actor).is_some() {
+            return Ok(key.clone());
+        }
+    }
+    for key in &keys {
+        if list_rows(root, key)?
+            .iter()
+            .any(|row| row_actor(row).is_some_and(|name| name.starts_with(kind_prefix)))
+        {
+            return Ok(key.clone());
+        }
+    }
+    Err(invalid_data(format!(
+        "SharpInfo has no list containing {template_actor} or any {kind_prefix}* weapon"
+    )))
+}
+
+fn list_rows<'a>(root: &'a Byml, key: &str) -> io::Result<&'a [Byml]> {
+    root.as_map()
+        .map_err(|_| invalid_data("SharpInfo root is not a map"))?
+        .get(key)
+        .ok_or_else(|| invalid_data(format!("SharpInfo root has no {key}")))?
+        .as_array()
+        .map_err(|_| invalid_data(format!("{key} is not an array")))
+}
+
+fn list_rows_mut<'a>(root: &'a mut Byml, key: &str) -> io::Result<&'a mut Vec<Byml>> {
     root.as_mut_map()
         .map_err(|_| invalid_data("SharpInfo root is not a map"))?
-        .get_mut("SharpInfoList")
-        .ok_or_else(|| invalid_data("SharpInfo root has no SharpInfoList"))?
+        .get_mut(key)
+        .ok_or_else(|| invalid_data(format!("SharpInfo root has no {key}")))?
         .as_mut_array()
-        .map_err(|_| invalid_data("SharpInfoList is not an array"))
+        .map_err(|_| invalid_data(format!("{key} is not an array")))
 }
 
 fn row_actor(row: &Byml) -> Option<&str> {

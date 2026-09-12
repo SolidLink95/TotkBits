@@ -9,6 +9,7 @@ mod replace;
 mod serializer;
 mod skeleton;
 pub mod tomodachi;
+pub mod toolbox;
 
 use rfd::{FileDialog, MessageDialog};
 use serde::Serialize;
@@ -114,6 +115,20 @@ pub struct BfresMesh {
     pub bone_weights: Vec<[f32; 4]>,
     pub indices: Vec<u32>,
     pub skin_bones: Vec<u16>,
+}
+
+/// Encodes one vertex attribute value with a BFRES vertex format code
+/// (`0x0515` half4, `0x020E` 10-10-10-2 normals, `0x030B` u8x4 indices, ...)
+/// at `offset` inside `out`. `components` is the meaningful component count
+/// for formats whose width depends on it (`0x0515`). Returns the written width.
+pub(crate) fn encode_vertex_attribute(
+    out: &mut [u8],
+    offset: usize,
+    format: u16,
+    value: [f32; 4],
+    components: usize,
+) -> Result<usize, BfresError> {
+    replace::encode(out, offset, format, value, components)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

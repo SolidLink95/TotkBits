@@ -12,6 +12,8 @@ use std::{
 };
 
 pub mod actor_pack;
+pub mod armor;
+pub mod armor_model;
 pub mod assets;
 pub mod ecocat;
 pub mod gamedata;
@@ -157,10 +159,305 @@ pub struct WeaponSpec {
     pub shootable: Option<String>,
     pub display_name: String,
     pub description: String,
+    /// Short noun used by the inventory UI, such as `Bat` or `Longsword`.
+    #[serde(default)]
+    pub base_name: Option<String>,
+    /// Fusion/attachment adjective. A placeholder is generated when omitted.
+    #[serde(default, alias = "attachment_name")]
+    pub attachment_adjective: Option<String>,
+    /// Hyrule Compendium name; defaults to `display_name`.
+    #[serde(default)]
+    pub picture_book_name: Option<String>,
+    /// Hyrule Compendium caption; defaults to `description`.
+    #[serde(default, alias = "picture_book_caption")]
+    pub picture_book_description: Option<String>,
     pub assets: WeaponAssets,
     /// Existing travelling merchants. New vendor creation is out of scope.
     #[serde(default)]
     pub vendors: Vec<VendorTarget>,
+}
+
+/// One generated inventory/compendium BNTX.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiTextureReport {
+    pub destination: PathBuf,
+    pub name: String,
+    pub format: String,
+    pub width: u32,
+    pub height: u32,
+    /// Set when a PNG replaced the image payload.
+    pub png_applied: bool,
+    pub similarity: f64,
+    /// Why the supplied PNG was not applied, when it was not.
+    pub warning: Option<String>,
+}
+
+/// Everything written for one weapon, before the shared RSTB pass.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeaponGenerationReport {
+    pub actor_name: String,
+    pub actor_pack: PathBuf,
+    pub model: PathBuf,
+    pub textures: Vec<PathBuf>,
+    pub texture_names: Vec<String>,
+    pub ui_textures: Vec<UiTextureReport>,
+    pub messages: PathBuf,
+    pub rsdb: Vec<PathBuf>,
+    pub sharp_info: PathBuf,
+    pub game_data: gamedata::WeaponGameDataReport,
+    pub vendor_packs: Vec<vendor::VendorPackReport>,
+}
+
+/// The complete result of [`generate_weapon_mod`] / [`generate_item_mod`].
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModGenerationReport {
+    pub output_romfs: PathBuf,
+    pub weapons: Vec<WeaponGenerationReport>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub armors: Vec<armor::ArmorGenerationReport>,
+    pub rstb: rstb::RstbGenerationReport,
+}
+
+/// One entry of a mixed specification list. Armor is recognised by its
+/// `Armor_` actor prefix; everything else is a weapon/shield/bow.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ItemSpec {
+    Weapon(WeaponSpec),
+    Armor(armor::ArmorSpec),
+}
+
+impl ItemSpec {
+    pub fn actor_name(&self) -> &str {
+        match self {
+            Self::Weapon(spec) => &spec.actor_name,
+            Self::Armor(spec) => &spec.actor_name,
+        }
+    }
+
+    pub fn template_actor(&self) -> &str {
+        match self {
+            Self::Weapon(spec) => &spec.template_actor,
+            Self::Armor(spec) => &spec.template_actor,
+        }
+    }
+
+    pub fn vendor_count(&self) -> usize {
+        match self {
+            Self::Weapon(spec) => spec.vendors.len(),
+            Self::Armor(spec) => spec.vendors.len(),
+        }
+    }
+
+    pub fn validate(&self, asset_root: &Path) -> io::Result<()> {
+        match self {
+            Self::Weapon(spec) => spec.validate(asset_root),
+            Self::Armor(spec) => spec.validate(asset_root),
+        }
+    }
+}
+
+/// Like [`load_specs`], but every entry whose `actor_name` starts with
+/// `Armor_` is read as an [`armor::ArmorSpec`].
+pub fn load_item_specs(path: &Path) -> io::Result<Vec<ItemSpec>> {
+    let text = fs::read_to_string(path)?;
+    let is_toml = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("toml"));
+    if is_toml {
+        return WeaponSpec::from_toml(&text).map(|spec| vec![ItemSpec::Weapon(spec)]);
+    }
+    let value: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let values = match value {
+        serde_json::Value::Array(values) => values,
+        other => vec![other],
+    };
+    values
+        .into_iter()
+        .map(|value| {
+            let is_armor = value
+                .get("actor_name")
+                .and_then(|name| name.as_str())
+                .is_some_and(|name| name.starts_with("Armor_"));
+            let parsed = if is_armor {
+                serde_json::from_value(value).map(ItemSpec::Armor)
+            } else {
+                serde_json::from_value(value).map(ItemSpec::Weapon)
+            };
+            parsed.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+        })
+        .collect()
+}
+
+/// Generates one mod ROMFS for a mixed list of weapons and armor pieces and
+/// finishes with a single RSTB pass.
+pub fn generate_item_mod(
+    specs: &[ItemSpec],
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    asset_root: &Path,
+    zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
+    rstb_level: Option<i32>,
+) -> io::Result<ModGenerationReport> {
+    if specs.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "at least one item specification is required",
+        ));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for spec in specs {
+        spec.validate(asset_root)?;
+        if !seen.insert(spec.actor_name()) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("actor {} is specified more than once", spec.actor_name()),
+            ));
+        }
+        if clean_romfs
+            .join("Pack/Actor")
+            .join(format!("{}.pack.zs", spec.actor_name()))
+            .is_file()
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("actor {} already exists in clean ROMFS", spec.actor_name()),
+            ));
+        }
+    }
+    assets::ensure_output_outside_romfs(clean_romfs, output_romfs)?;
+    fs::create_dir_all(output_romfs)?;
+    let mut weapons = Vec::new();
+    let mut armors = Vec::new();
+    for spec in specs {
+        match spec {
+            ItemSpec::Weapon(spec) => weapons.push(spec.generate_files(
+                clean_romfs,
+                output_romfs,
+                asset_root,
+                zstd.clone(),
+            )?),
+            ItemSpec::Armor(spec) => armors.push(spec.generate_files(
+                clean_romfs,
+                output_romfs,
+                asset_root,
+                zstd.clone(),
+            )?),
+        }
+    }
+    let rstb = rstb::ModRstbProcessor::new(clean_romfs, output_romfs, zstd)
+        .with_compression_level(rstb_level)
+        .generate()?;
+    Ok(ModGenerationReport {
+        output_romfs: output_romfs.to_path_buf(),
+        weapons,
+        armors,
+        rstb,
+    })
+}
+
+/// Reads one or more weapon specifications. JSON accepts a single object or an
+/// array; TOML accepts a single specification.
+pub fn load_specs(path: &Path) -> io::Result<Vec<WeaponSpec>> {
+    let text = fs::read_to_string(path)?;
+    let is_toml = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("toml"));
+    if is_toml {
+        return WeaponSpec::from_toml(&text).map(|spec| vec![spec]);
+    }
+    let value: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let values = match value {
+        serde_json::Value::Array(values) => values,
+        other => vec![other],
+    };
+    values
+        .into_iter()
+        .map(|value| {
+            serde_json::from_value(value)
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+        })
+        .collect()
+}
+
+/// Generates a complete mod ROMFS for every specification and finishes with one
+/// RSTB pass covering all of them. Relative asset paths resolve against `asset_root`.
+pub fn generate_weapon_mod(
+    specs: &[WeaponSpec],
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    asset_root: &Path,
+    zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
+) -> io::Result<ModGenerationReport> {
+    generate_weapon_mod_with_rstb_level(specs, clean_romfs, output_romfs, asset_root, zstd, None)
+}
+
+/// [`generate_weapon_mod`] with an explicit Zstandard level for the
+/// ResourceSizeTable (see `ModRstbProcessor::with_compression_level`).
+pub fn generate_weapon_mod_with_rstb_level(
+    specs: &[WeaponSpec],
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    asset_root: &Path,
+    zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
+    rstb_level: Option<i32>,
+) -> io::Result<ModGenerationReport> {
+    if specs.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "at least one weapon specification is required",
+        ));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for spec in specs {
+        spec.validate(asset_root)?;
+        if !seen.insert(spec.actor_name.as_str()) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("actor {} is specified more than once", spec.actor_name),
+            ));
+        }
+        if clean_romfs
+            .join("Pack/Actor")
+            .join(format!("{}.pack.zs", spec.actor_name))
+            .is_file()
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("actor {} already exists in clean ROMFS", spec.actor_name),
+            ));
+        }
+    }
+    assets::ensure_output_outside_romfs(clean_romfs, output_romfs)?;
+    fs::create_dir_all(output_romfs)?;
+    let mut weapons = Vec::with_capacity(specs.len());
+    for spec in specs {
+        weapons.push(spec.generate_files(clean_romfs, output_romfs, asset_root, zstd.clone())?);
+    }
+    let rstb = rstb::ModRstbProcessor::new(clean_romfs, output_romfs, zstd)
+        .with_compression_level(rstb_level)
+        .generate()?;
+    Ok(ModGenerationReport {
+        output_romfs: output_romfs.to_path_buf(),
+        weapons,
+        armors: Vec::new(),
+        rstb,
+    })
+}
+
+fn resolve_asset(asset_root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        asset_root.join(path)
+    }
 }
 
 impl WeaponSpec {
@@ -209,52 +506,24 @@ impl WeaponSpec {
         let output = output_romfs
             .join("Pack/Actor")
             .join(format!("{}.pack.zs", self.actor_name));
-        let mut generated_policy;
+        let generated_policy;
         let policy = if self.actor_pack == actor_pack::ActorPackPolicy::default() {
             let mut parameters = self.weapon_parameters.clone();
             parameters.model_name = Some(self.effective_model_name().to_owned());
             if rsdb::template_is_shield(clean_romfs, &self.template_actor, zstd.clone())? {
                 parameters.shield_bash_damage = None;
             }
-            generated_policy = if self.kind.is_some() {
-                actor_pack::ActorPackPolicy::standard_item_clone(
-                    &self.template_actor,
-                    &self.actor_name,
-                    kind,
-                    parameters,
-                )?
-            } else {
-                actor_pack::ActorPackPolicy::standard_item_clone_preserving_kind(
-                    &self.template_actor,
-                    &self.actor_name,
-                    kind,
-                    parameters,
-                )?
-            };
-            let attachment_source = format!(
-                "Component/AttachmentParam/{}.game__component__AttachmentParam.bgyml",
-                self.template_actor
-            );
-            let template_pack = self.clean_actor_pack_entries(clean_romfs, zstd.clone())?;
-            if !template_pack.contains(&attachment_source) {
-                let attachment_output = format!(
-                    "Component/AttachmentParam/{}.game__component__AttachmentParam.bgyml",
-                    self.actor_name
-                );
-                generated_policy
-                    .renames
-                    .retain(|rename| rename.from != attachment_source);
-                generated_policy.parameter_edits.retain(|edit| {
-                    edit.file != attachment_output
-                        && !(edit.file
-                            == format!("Actor/{}.engine__actor__ActorParam.bgyml", self.actor_name)
-                            && edit.path
-                                == [
-                                    actor_pack::BymlPathComponent::Key("Components".into()),
-                                    actor_pack::BymlPathComponent::Key("AttachmentRef".into()),
-                                ])
-                });
-            }
+            // Template packs differ in which component files they carry
+            // themselves, so the policy is derived from the real pack.
+            generated_policy = actor_pack::ActorPackPolicy::standard_item_clone_for_template(
+                clean_romfs,
+                &self.template_actor,
+                &self.actor_name,
+                kind,
+                parameters,
+                self.kind.is_some(),
+                zstd.clone(),
+            )?;
             &generated_policy
         } else {
             &self.actor_pack
@@ -273,22 +542,6 @@ impl WeaponSpec {
             zstd,
         )?;
         Ok(output)
-    }
-
-    fn clean_actor_pack_entries(
-        &self,
-        clean_romfs: &Path,
-        zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
-    ) -> io::Result<std::collections::BTreeSet<String>> {
-        let source = clean_romfs
-            .join("Pack/Actor")
-            .join(format!("{}.pack.zs", self.template_actor));
-        let pack = crate::file_format::Pack::PackFile::from_binary(&fs::read(source)?, zstd)?;
-        Ok(pack
-            .sarc
-            .files()
-            .filter_map(|file| file.name().map(str::to_owned))
-            .collect())
     }
 
     /// Generates the weapon RSDB rows, including optional vendor buying/selling prices.
@@ -377,6 +630,135 @@ impl WeaponSpec {
         rstb::ModRstbProcessor::new(clean_romfs, output_romfs, zstd).generate()
     }
 
+    /// Generates the complete mod for this single weapon, RSTB included.
+    pub fn generate_mod(
+        &self,
+        clean_romfs: &Path,
+        output_romfs: &Path,
+        asset_root: &Path,
+        zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
+    ) -> io::Result<ModGenerationReport> {
+        generate_weapon_mod(
+            std::slice::from_ref(self),
+            clean_romfs,
+            output_romfs,
+            asset_root,
+            zstd,
+        )
+    }
+
+    /// Writes every per-weapon file: actor pack, model and textures, UI BNTX
+    /// images, messages, RSDB rows, SharpInfo, GameDataList flags, and vendor
+    /// packs. RSTB is left to the caller so batches update it once.
+    pub fn generate_files(
+        &self,
+        clean_romfs: &Path,
+        output_romfs: &Path,
+        asset_root: &Path,
+        zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
+    ) -> io::Result<WeaponGenerationReport> {
+        self.validate(asset_root)?;
+        let actor_pack = self.clone_actor_pack(clean_romfs, output_romfs, zstd.clone())?;
+
+        let model_assets = assets::WeaponModelAssetsRequest {
+            base_name: self.template_actor.clone(),
+            new_name: self.effective_model_name().to_owned(),
+            model_source: None,
+            model_destination: None,
+            fbx_path: self
+                .assets
+                .fbx
+                .as_deref()
+                .map(|path| resolve_asset(asset_root, path)),
+        }
+        .generate(clean_romfs, output_romfs, zstd.clone())?;
+        let texture_output = output_romfs.join("TexToGo");
+        for texture in &self.assets.textures {
+            let source = resolve_asset(asset_root, texture);
+            let name = source.file_name().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("texture path has no file name: {}", source.display()),
+                )
+            })?;
+            fs::copy(&source, texture_output.join(name))?;
+        }
+
+        let mut ui_textures = Vec::with_capacity(3);
+        for (source, destination, name, png) in [
+            (
+                format!("UI/Tex/Icon/{}.bntx.zs", self.template_actor),
+                format!("UI/Tex/Icon/{}.bntx.zs", self.actor_name),
+                self.actor_name.clone(),
+                self.assets.icon_png.as_deref(),
+            ),
+            (
+                format!("UI/Tex/PictureBook/{}_Icon.bntx.zs", self.template_actor),
+                format!("UI/Tex/PictureBook/{}_Icon.bntx.zs", self.actor_name),
+                format!("{}_Icon", self.actor_name),
+                self.assets.picture_book_icon_png.as_deref(),
+            ),
+            (
+                format!("UI/Tex/PictureBook/{}_Detail.bntx.zs", self.template_actor),
+                format!("UI/Tex/PictureBook/{}_Detail.bntx.zs", self.actor_name),
+                format!("{}_Detail", self.actor_name),
+                self.assets.picture_book_detail_png.as_deref(),
+            ),
+        ] {
+            ui_textures.push(generate_ui_texture(
+                clean_romfs,
+                output_romfs,
+                source,
+                destination,
+                name,
+                png.map(|path| resolve_asset(asset_root, path)),
+                zstd.clone(),
+            )?);
+        }
+
+        let messages = messages::WeaponMessageRequest {
+            actor_name: self.actor_name.clone(),
+            display_name: self.display_name.clone(),
+            description: self.description.clone(),
+            base_name: self.base_name.clone(),
+            attachment_adjective: self.attachment_adjective.clone(),
+            picture_book_name: Some(
+                self.picture_book_name
+                    .clone()
+                    .unwrap_or_else(|| self.display_name.clone()),
+            ),
+            picture_book_description: Some(
+                self.picture_book_description
+                    .clone()
+                    .unwrap_or_else(|| self.description.clone()),
+            ),
+        }
+        .generate_to_mod_romfs(clean_romfs, output_romfs, zstd.clone())?;
+        let rsdb = self.generate_rsdb(clean_romfs, output_romfs, zstd.clone())?;
+        let sharp_info = self.generate_sharp_info(clean_romfs, output_romfs, zstd.clone())?;
+        let game_data = gamedata::WeaponGameDataRequest {
+            actor_name: self.actor_name.clone(),
+            picture_book: true,
+            inventory_flags: true,
+        }
+        .generate(clean_romfs, output_romfs, zstd.clone())?;
+        let vendor_packs = self.generate_vendor_pack(clean_romfs, output_romfs, zstd)?;
+
+        Ok(WeaponGenerationReport {
+            actor_name: self.actor_name.clone(),
+            actor_pack,
+            model: model_assets.model,
+            textures: model_assets.textures,
+            texture_names: model_assets.texture_names,
+            ui_textures,
+            messages,
+            rsdb,
+            sharp_info,
+            game_data,
+            vendor_packs,
+        })
+    }
+
     pub fn validate(&self, asset_root: &Path) -> io::Result<()> {
         let kind = self.effective_kind()?;
         if !self.actor_name.starts_with(kind.actor_prefix()) {
@@ -394,6 +776,17 @@ impl WeaponSpec {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "custom actor and template actor must differ",
+            ));
+        }
+        // UI BNTX texture names are rewritten inside the vanilla string slots,
+        // which cannot grow beyond the template's name.
+        if self.actor_name.len() > self.template_actor.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "actor name {} is longer than template {}; BNTX texture names cannot grow",
+                    self.actor_name, self.template_actor
+                ),
             ));
         }
         if self.display_name.trim().is_empty() || self.description.trim().is_empty() {
@@ -597,6 +990,61 @@ impl GenerationPlan {
         }
         Ok(())
     }
+}
+
+/// Clones one vanilla UI BNTX under the custom name. A supplied PNG replaces the
+/// image payload when the container format supports it; ASTC containers keep the
+/// vanilla image and the report carries a warning instead of failing the mod.
+pub(super) fn generate_ui_texture(
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    source: String,
+    destination: String,
+    name: String,
+    png: Option<PathBuf>,
+    zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
+) -> io::Result<UiTextureReport> {
+    let request = assets::WeaponBntxAssetRequest {
+        texture_source: source.into(),
+        png_source: png,
+        new_name: name,
+        texture_destination: PathBuf::from(&destination),
+    };
+    let mut warning = None;
+    let report = match request.generate(clean_romfs, output_romfs, zstd.clone()) {
+        Ok(report) => report,
+        Err(error)
+            if request.png_source.is_some()
+                && error
+                    .to_string()
+                    .contains("ASTC BNTX replacement is not supported") =>
+        {
+            let partial = output_romfs.join(&request.texture_destination);
+            if partial.is_file() {
+                let mut permissions = fs::metadata(&partial)?.permissions();
+                permissions.set_readonly(false);
+                fs::set_permissions(&partial, permissions)?;
+                fs::remove_file(&partial)?;
+            }
+            warning = Some(format!(
+                "{destination}: {error}; the vanilla image was kept under the new name"
+            ));
+            let mut clone = request.clone();
+            clone.png_source = None;
+            clone.generate(clean_romfs, output_romfs, zstd)?
+        }
+        Err(error) => return Err(error),
+    };
+    Ok(UiTextureReport {
+        destination: output_romfs.join(&destination),
+        name: report.name,
+        format: report.format,
+        width: report.width,
+        height: report.height,
+        png_applied: request.png_source.is_some() && warning.is_none(),
+        similarity: report.similarity,
+        warning,
+    })
 }
 
 fn planned(path: impl Into<PathBuf>, action: PlanAction, reason: impl Into<String>) -> PlannedFile {
@@ -852,6 +1300,7 @@ mod tests {
             &required_texture_names,
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("misc/placeholder_tex.txtg"),
             &mut placeholder_textures,
+            &BTreeMap::new(),
         )
         .expect("ensure every BFRES material texture exists");
         let imported_fbx = crate::parser::fbx::import::import_for_bfres(
@@ -997,8 +1446,7 @@ mod tests {
 
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
         let input = fs::read_to_string(root.join("test_sic_items_creator_input.json")).unwrap();
-        let values: Vec<serde_json::Value> = serde_json::from_str(&input).unwrap();
-        let mut specs: Vec<WeaponSpec> = serde_json::from_str(&input).unwrap();
+        let mut specs = load_specs(&root.join("test_sic_items_creator_input.json")).unwrap();
         let mut config = TotkConfig::safe_new(false).expect("load configured ROMFS path");
         let clean_romfs = PathBuf::from(&config.romfs);
         assert!(
@@ -1017,55 +1465,26 @@ mod tests {
                 .unwrap(),
         );
 
-        for (spec, value) in specs.iter_mut().zip(values) {
+        for spec in &mut specs {
             if spec.assets.fbx.is_some() {
                 spec.assets.fbx = Some(root.join("untitled.fbx"));
             }
             spec.assets.icon_png = Some(root.join("placeholder.png"));
             spec.assets.picture_book_icon_png = Some(root.join("placeholder.png"));
             spec.assets.picture_book_detail_png = Some(root.join("placeholder.png"));
-            spec.validate(&root).unwrap();
-            spec.clone_actor_pack(&clean_romfs, &output_romfs, zstd.clone())
-                .unwrap();
+        }
+        let report =
+            generate_weapon_mod(&specs, &clean_romfs, &output_romfs, &root, zstd.clone()).unwrap();
+        assert_eq!(report.weapons.len(), specs.len());
 
-            let model_result = assets::WeaponModelAssetsRequest {
-                base_name: spec.template_actor.clone(),
-                new_name: spec.effective_model_name().into(),
-                model_source: Some(PathBuf::from(format!(
-                    "Model/{0}.{0}.bfres.mc",
-                    spec.template_actor
-                ))),
-                model_destination: None,
-                fbx_path: spec.assets.fbx.clone(),
-            }
-            .generate(&clean_romfs, &output_romfs, zstd.clone());
-            if let Err(error) = model_result {
-                // The development checkout does not bundle the release-only
-                // Toolbox Zstd 1.5.5 DLL. Use the supplied, known-working MCPK
-                // reference after the full FBX conversion and validation path
-                // has reached only that final compression boundary.
-                assert!(
-                    error.to_string().contains("LoadLibraryExW failed"),
-                    "{error}"
-                );
-                assert_eq!(spec.actor_name, "Weapon_Lsword_005");
-                let destination = output_romfs.join(format!(
-                    "Model/{0}.{0}.bfres.mc",
-                    spec.effective_model_name()
-                ));
-                fs::create_dir_all(destination.parent().unwrap()).unwrap();
-                fs::copy(
-                    root.join("Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc"),
-                    destination,
-                )
-                .unwrap();
-            }
-            let model_path = output_romfs.join(format!(
+        for (spec, weapon) in specs.iter().zip(&report.weapons) {
+            let expected_model = output_romfs.join(format!(
                 "Model/{0}.{0}.bfres.mc",
                 spec.effective_model_name()
             ));
+            assert_eq!(weapon.model, expected_model);
             let model_raw = zstd
-                .decompress_mcpk(&fs::read(model_path).unwrap())
+                .decompress_mcpk(&fs::read(&weapon.model).unwrap())
                 .unwrap();
             let model =
                 crate::file_format::Model3D::bfres::BfresFile::from_bytes(&model_raw).unwrap();
@@ -1085,89 +1504,15 @@ mod tests {
                 "generated BFRES still contains internal template name {}",
                 spec.template_actor
             );
-
-            for (source, destination, name, png) in [
-                (
-                    format!("UI/Tex/Icon/{}.bntx.zs", spec.template_actor),
-                    format!("UI/Tex/Icon/{}.bntx.zs", spec.actor_name),
-                    spec.actor_name.clone(),
-                    spec.assets.icon_png.clone(),
-                ),
-                (
-                    format!("UI/Tex/PictureBook/{}_Icon.bntx.zs", spec.template_actor),
-                    format!("UI/Tex/PictureBook/{}_Icon.bntx.zs", spec.actor_name),
-                    format!("{}_Icon", spec.actor_name),
-                    spec.assets.picture_book_icon_png.clone(),
-                ),
-                (
-                    format!("UI/Tex/PictureBook/{}_Detail.bntx.zs", spec.template_actor),
-                    format!("UI/Tex/PictureBook/{}_Detail.bntx.zs", spec.actor_name),
-                    format!("{}_Detail", spec.actor_name),
-                    spec.assets.picture_book_detail_png.clone(),
-                ),
-            ] {
-                let request = assets::WeaponBntxAssetRequest {
-                    texture_source: source.into(),
-                    png_source: png,
-                    new_name: name,
-                    texture_destination: destination.into(),
-                };
-                if let Err(error) = request.generate(&clean_romfs, &output_romfs, zstd.clone()) {
-                    assert!(
-                        error
-                            .to_string()
-                            .contains("ASTC BNTX replacement is not supported"),
-                        "{error}"
-                    );
-                    let partial = output_romfs.join(&request.texture_destination);
-                    if partial.is_file() {
-                        let mut permissions = fs::metadata(&partial).unwrap().permissions();
-                        permissions.set_readonly(false);
-                        fs::set_permissions(&partial, permissions).unwrap();
-                        fs::remove_file(&partial).unwrap();
-                    }
-                    let mut clone = request;
-                    clone.png_source = None;
-                    clone
-                        .generate(&clean_romfs, &output_romfs, zstd.clone())
-                        .unwrap();
-                }
+            assert_eq!(weapon.ui_textures.len(), 3);
+            for texture in &weapon.ui_textures {
+                assert!(texture.destination.is_file());
             }
-
-            messages::WeaponMessageRequest {
-                actor_name: spec.actor_name.clone(),
-                display_name: spec.display_name.clone(),
-                description: spec.description.clone(),
-                base_name: value
-                    .get("base_name")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_owned),
-                attachment_adjective: value
-                    .get("attachment_adjective")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_owned),
-                picture_book_name: Some(spec.display_name.clone()),
-                picture_book_description: Some(spec.description.clone()),
-            }
-            .generate_to_mod_romfs(&clean_romfs, &output_romfs, zstd.clone())
-            .unwrap();
-            spec.generate_rsdb(&clean_romfs, &output_romfs, zstd.clone())
-                .unwrap();
-            spec.generate_sharp_info(&clean_romfs, &output_romfs, zstd.clone())
-                .unwrap();
-            gamedata::WeaponGameDataRequest {
-                actor_name: spec.actor_name.clone(),
-                picture_book: true,
-                inventory_flags: true,
-            }
-            .generate(&clean_romfs, &output_romfs, zstd.clone())
-            .unwrap();
-            spec.generate_vendor_pack(&clean_romfs, &output_romfs, zstd.clone())
-                .unwrap();
+            assert!(weapon.messages.is_file());
+            assert!(weapon.sharp_info.is_file());
+            assert_eq!(weapon.vendor_packs.len(), spec.vendors.len());
         }
-        specs[0]
-            .generate_rstb(&clean_romfs, &output_romfs, zstd)
-            .unwrap();
+        assert!(report.rstb.output.is_file());
         fs::write(output_root.join("items_creator_input.json"), input).unwrap();
         config.romfs.clear();
     }
@@ -2205,6 +2550,10 @@ mod tests {
             shootable: None,
             display_name: "Test Sword".into(),
             description: "A test weapon".into(),
+            base_name: None,
+            attachment_adjective: None,
+            picture_book_name: None,
+            picture_book_description: None,
             assets: WeaponAssets {
                 fbx: Some("model.fbx".into()),
                 textures: vec!["blade_Alb.txtg".into()],
@@ -2240,6 +2589,38 @@ mod tests {
             file.relative_path == Path::new("Pack/Actor/Npc_TripMaster_00.pack.zs")
                 && file.action == PlanAction::PatchVendorPack
         }));
+    }
+
+    #[test]
+    fn load_specs_accepts_a_json_object_or_array() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/items_creator_load_specs");
+        fs::create_dir_all(&root).unwrap();
+        let single = serde_json::to_string(&spec()).unwrap();
+        fs::write(root.join("single.json"), &single).unwrap();
+        fs::write(root.join("many.json"), format!("[{single},{single}]")).unwrap();
+        assert_eq!(load_specs(&root.join("single.json")).unwrap().len(), 1);
+        let many = load_specs(&root.join("many.json")).unwrap();
+        assert_eq!(many.len(), 2);
+        assert_eq!(many[1].actor_name, "Weapon_Lsword_900");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn batches_reject_duplicate_actor_names() {
+        let specs = [spec(), spec()];
+        let error = generate_weapon_mod(
+            &specs,
+            Path::new("missing-romfs"),
+            Path::new("missing-output"),
+            Path::new("missing-assets"),
+            std::sync::Arc::new(crate::Zstd::TotkZstd::dictionaryless(
+                std::sync::Arc::new(crate::TotkConfig::TotkConfig::default()),
+                crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+            )),
+        )
+        .unwrap_err();
+        // Validation runs before any ROMFS access, so the missing asset wins.
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
     }
 
     #[test]

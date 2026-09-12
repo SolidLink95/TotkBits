@@ -113,15 +113,36 @@ impl MeshCodec {
 struct BfresZstd155;
 
 impl BfresZstd155 {
+    /// The DLL ships as a bundle resource next to the executable; the source
+    /// tree location keeps `cargo test` and `cargo run` working.
+    #[cfg(windows)]
+    fn dll_path() -> Option<std::path::PathBuf> {
+        let relative = std::path::Path::new("bin/cpp/toolbox_zstd155.dll");
+        let mut candidates = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)];
+        if let Ok(exe_dir) = crate::utils::running_exe_dir() {
+            candidates.push(exe_dir.join(relative));
+            candidates.push(exe_dir.join("cpp/toolbox_zstd155.dll"));
+        }
+        candidates.into_iter().find(|path| path.is_file())
+    }
+
     #[cfg(windows)]
     fn compress(source: &[u8]) -> io::Result<Vec<u8>> {
         type Bound = unsafe extern "C" fn(usize) -> usize;
         type Compress = unsafe extern "C" fn(*const u8, usize, *mut u8, usize) -> isize;
 
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("bin/cpp/toolbox_zstd155.dll");
-        let library = unsafe { libloading::Library::new(path) }
-            .map_err(|error| io::Error::new(io::ErrorKind::NotFound, error))?;
+        let path = Self::dll_path().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "BFRES Zstandard 1.5.5 backend not found (expected bin/cpp/toolbox_zstd155.dll)",
+            )
+        })?;
+        let library = unsafe { libloading::Library::new(&path) }.map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("unable to load {}: {error}", path.display()),
+            )
+        })?;
         unsafe {
             let bound: libloading::Symbol<Bound> = library
                 .get(b"toolbox_zstd155_bound\0")

@@ -51,10 +51,15 @@ impl<'a> VendorProcessor<'a> {
         validate_actor_name(weapon_actor)?;
         validate_vendor(vendor)?;
         super::assets::ensure_output_outside_romfs(&self.clean_romfs, &self.output_romfs)?;
-        let source = self
-            .clean_romfs
-            .join("Pack/Actor")
-            .join(format!("{}.pack.zs", vendor.actor_name));
+        let pack_name = format!("{}.pack.zs", vendor.actor_name);
+        // Several weapons may target the same merchant: keep building on the
+        // pack already written to the output ROMFS so earlier goods survive.
+        let generated = self.output_romfs.join("Pack/Actor").join(&pack_name);
+        let source = if generated.is_file() {
+            generated
+        } else {
+            self.clean_romfs.join("Pack/Actor").join(&pack_name)
+        };
         if !source.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,

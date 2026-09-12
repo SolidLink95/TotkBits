@@ -27,9 +27,10 @@ pub struct WeaponMessageRequest {
     #[serde(default)]
     pub description: String,
     /// Short noun used by the inventory UI, such as `Bat` or `Longsword`.
+    /// Defaults to `display_name`.
     #[serde(default)]
     pub base_name: Option<String>,
-    /// Fusion/attachment adjective. A placeholder is generated when omitted.
+    /// Fusion/attachment adjective. Defaults to `display_name`.
     #[serde(default, alias = "attachment_name")]
     pub attachment_adjective: Option<String>,
     #[serde(default)]
@@ -100,10 +101,22 @@ impl WeaponMessageRequest {
         let pack = PackFile::from_binary(&compressed, zstd.clone())?;
         let mut replacements = BTreeMap::new();
 
+        // The game reads every label below for a pouch item, so omitted texts
+        // fall back to the display name instead of leaving the label out.
+        let base_name = self
+            .base_name
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(&display_name);
+        let attachment_adjective = self
+            .attachment_adjective
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(&display_name);
         let pouch_entries = [
             ("Name", Some(display_name.as_str())),
             ("Caption", Some(description.as_str())),
-            ("BaseName", self.base_name.as_deref()),
+            ("BaseName", Some(base_name)),
         ];
         edit_msbt(
             &pack,
@@ -113,7 +126,7 @@ impl WeaponMessageRequest {
             &pouch_entries,
         )?;
 
-        let attachment_entries = [("Adjective", self.attachment_adjective.as_deref())];
+        let attachment_entries = [("Adjective", Some(attachment_adjective))];
         edit_msbt(
             &pack,
             &mut replacements,
@@ -164,6 +177,75 @@ impl WeaponMessageRequest {
     fn optional_text_or_placeholder(&self, value: &Option<String>, kind: &str) -> String {
         self.text_or_placeholder(value.as_deref().unwrap_or_default(), kind)
     }
+}
+
+/// Adds or replaces only the `<actor>_Name` / `<actor>_Caption` labels of
+/// `ActorMsg/PouchContent.msbt` — everything a pouch-only item such as armor
+/// needs — and writes the versioned US English MALS into the mod ROMFS.
+pub(super) fn generate_pouch_labels(
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    actor_name: &str,
+    display_name: &str,
+    description: &str,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<std::path::PathBuf> {
+    validate_actor_name(actor_name)?;
+    require_text(display_name, "display_name")?;
+    require_text(description, "description")?;
+    let (version, clean_source) = super::version::discover_product_file(
+        &clean_romfs.join("Mals"),
+        US_ENGLISH_MALS_PREFIX,
+        US_ENGLISH_MALS_SUFFIX,
+    )?;
+    let name =
+        super::version::product_name(US_ENGLISH_MALS_PREFIX, &version, US_ENGLISH_MALS_SUFFIX)?;
+    let output = output_romfs.join("Mals").join(name);
+    ensure_output_outside_romfs(clean_romfs, &output)?;
+    let source = if output.is_file() {
+        output.clone()
+    } else {
+        clean_source
+    };
+    let compressed = fs::read(&source)?;
+    let pack = PackFile::from_binary(&compressed, zstd.clone())?;
+    let mut replacements = BTreeMap::new();
+    let entries = [("Name", Some(display_name)), ("Caption", Some(description))];
+    edit_msbt(
+        &pack,
+        &mut replacements,
+        POUCH_CONTENT,
+        actor_name,
+        &entries,
+    )?;
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    if replacements.is_empty() {
+        if source != output {
+            fs::copy(&source, &output)?;
+        }
+        return Ok(output);
+    }
+    let output_bytes = pack.rebuild_replacing_entries(replacements)?;
+    let verification = PackFile::from_binary(&output_bytes, zstd)?;
+    let data = verification
+        .sarc
+        .get_data(POUCH_CONTENT)
+        .ok_or_else(|| invalid_data("generated MALS lost PouchContent.msbt"))?;
+    let msbt = Msbt::from_bytes(data)?;
+    for suffix in ["Name", "Caption"] {
+        let label = format!("{actor_name}_{suffix}");
+        if !msbt
+            .messages
+            .iter()
+            .any(|message| message.label.as_deref() == Some(&label))
+        {
+            return Err(invalid_data(format!("generated label is missing: {label}")));
+        }
+    }
+    fs::write(&output, output_bytes)?;
+    Ok(output)
 }
 
 fn edit_msbt(

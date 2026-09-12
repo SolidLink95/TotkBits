@@ -774,6 +774,153 @@ impl ActorPackPolicy {
         Self::standard_item_clone_impl(template_actor, new_actor, kind, overrides, false)
     }
 
+    /// Like [`Self::standard_item_clone`], but adapted to what the template pack
+    /// really contains. Component files are located through the template's
+    /// ActorParam references (following `$parent`) instead of naming
+    /// conventions, and a component the template only inherits (for example a
+    /// shared `Default` WeaponParam) is inherited by the clone as well instead
+    /// of failing on a missing rename source.
+    pub fn standard_item_clone_for_template(
+        clean_romfs: &Path,
+        template_actor: &str,
+        new_actor: &str,
+        kind: super::WeaponKind,
+        overrides: WeaponParameterOverrides,
+        write_kind: bool,
+        zstd: Arc<TotkZstd<'_>>,
+    ) -> io::Result<Self> {
+        let source = clean_romfs
+            .join("Pack/Actor")
+            .join(format!("{template_actor}.pack.zs"));
+        let bytes = fs::read(&source).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!("template actor pack {}: {error}", source.display()),
+            )
+        })?;
+        let info = load_weapon_actor_info(&bytes, template_actor, zstd.clone())?;
+        let pack = PackFile::from_binary(&bytes, zstd)?;
+        let entries: BTreeSet<String> = pack
+            .sarc
+            .files()
+            .filter_map(|file| file.name().map(str::to_owned))
+            .collect();
+        let locate = |key: &str| -> Option<String> {
+            info.component_refs
+                .get(key)
+                .map(|value| reference_to_internal(value))
+                .filter(|path| entries.contains(path))
+        };
+        let has_overrides = |key: &str| match key {
+            "AttachmentRef" => {
+                overrides.additional_damage.is_some() || overrides.shield_bash_damage.is_some()
+            }
+            "LifeRef" => overrides.max_life.is_some(),
+            "ModelInfoRef" => overrides.model_name.is_some(),
+            _ => overrides.base_attack.is_some() || write_kind,
+        };
+
+        let mut policy = Self::standard_item_clone_impl(
+            template_actor,
+            new_actor,
+            kind,
+            overrides.clone(),
+            write_kind,
+        )?;
+        let actor_file = format!("Actor/{new_actor}.engine__actor__ActorParam.bgyml");
+        let template_model = model_info_actor_name(template_actor);
+        let (parameter_ref, parameter_component) = kind.parameter_component();
+        let conventional = [
+            (
+                "AttachmentRef",
+                format!("Component/AttachmentParam/{template_actor}.game__component__AttachmentParam.bgyml"),
+            ),
+            (
+                "LifeRef",
+                format!("Component/LifeParam/{template_actor}.game__component__LifeParam.bgyml"),
+            ),
+            (
+                "ModelInfoRef",
+                format!("Component/ModelInfo/{template_model}.engine__component__ModelInfo.bgyml"),
+            ),
+            (
+                parameter_ref,
+                format!("Component/{parameter_component}/{template_actor}.game__component__{parameter_component}.bgyml"),
+            ),
+        ];
+        let mut life_param_inherited = false;
+        for (key, conventional_from) in conventional {
+            let Some(index) = policy
+                .renames
+                .iter()
+                .position(|rename| rename.from == conventional_from)
+            else {
+                continue;
+            };
+            match locate(key) {
+                Some(actual) => policy.renames[index].from = actual,
+                None => {
+                    if has_overrides(key) {
+                        return Err(invalid(format!(
+                            "template {template_actor} inherits its {key} component, so it cannot carry custom values for {new_actor}; pick a template with its own file or drop the override"
+                        )));
+                    }
+                    let output = policy.renames.remove(index).to;
+                    let ref_path = [
+                        BymlPathComponent::Key("Components".into()),
+                        BymlPathComponent::Key(key.into()),
+                    ];
+                    policy.parameter_edits.retain(|edit| {
+                        edit.file != output && !(edit.file == actor_file && edit.path == ref_path)
+                    });
+                    if key == "LifeRef" {
+                        life_param_inherited = true;
+                    }
+                }
+            }
+        }
+
+        // LifeParameters hangs off LifeParam rather than ActorParam.
+        let life_from =
+            format!("Life/LifeParameters/{template_actor}.game__life__LifeParameters.bgyml");
+        if let Some(index) = policy
+            .renames
+            .iter()
+            .position(|rename| rename.from == life_from)
+        {
+            let actual = if life_param_inherited {
+                None
+            } else if entries.contains(&life_from) {
+                Some(life_from.clone())
+            } else {
+                locate("LifeRef")
+                    .and_then(|life_param| parse_pack_byml(&pack, &life_param).ok())
+                    .as_ref()
+                    .and_then(as_map)
+                    .and_then(|map| map_string(map, "LifeParameters"))
+                    .map(|value| work_path_to_internal(&value))
+                    .filter(|path| entries.contains(path))
+            };
+            match actual {
+                Some(actual) => policy.renames[index].from = actual,
+                None => {
+                    if overrides.max_life.is_some() {
+                        return Err(invalid(format!(
+                            "template {template_actor} inherits its LifeParameters, so max_life cannot be set for {new_actor}"
+                        )));
+                    }
+                    let output = policy.renames.remove(index).to;
+                    policy.parameter_edits.retain(|edit| {
+                        edit.file != output
+                            && !(edit.path == [BymlPathComponent::Key("LifeParameters".into())]
+                                && edit.file.starts_with("Component/LifeParam/"))
+                    });
+                }
+            }
+        }
+        Ok(policy)
+    }
+
     fn standard_item_clone_impl(
         template_actor: &str,
         new_actor: &str,

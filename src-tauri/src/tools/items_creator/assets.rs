@@ -1,10 +1,14 @@
 //! BFRES and TexToGo asset generation for custom weapons.
 
 use crate::{
+    compression::meshcodec::MeshCodec,
     file_format::{
         BinTextFile::BymlFile,
         Image::{BntxReplacementReport, ImageDocument},
-        Model3D::bfres::BfresFile,
+        Model3D::bfres::{
+            toolbox::{ExternalStrings, ResFile},
+            BfresFile,
+        },
     },
     Zstd::TotkZstd,
 };
@@ -76,10 +80,24 @@ impl WeaponModelAssetsRequest {
         validate_name(&self.base_name, "base_name")?;
         validate_name(&self.new_name, "new_name")?;
         ensure_output_outside_romfs(clean_romfs, output_romfs)?;
-        let source = match &self.model_source {
-            Some(source) => resolve_source(clean_romfs, source)?,
-            None => resolve_vanilla_model_source(clean_romfs, &self.base_name, zstd.clone())?,
+        // Vanilla actors may render a model project named after another actor
+        // (Weapon_Spear_001 uses Weapon_Spear_106's model). The model's own
+        // project name is what its shape and texture names are built from, so
+        // it is the substring to replace when the model comes from ActorInfo.
+        let (source, base_name) = match &self.model_source {
+            Some(source) => (resolve_source(clean_romfs, source)?, self.base_name.clone()),
+            None => {
+                let (source, model_project_name) =
+                    resolve_vanilla_model_source(clean_romfs, &self.base_name, zstd.clone())?;
+                let base_name = if model_project_name.is_empty() {
+                    self.base_name.clone()
+                } else {
+                    model_project_name
+                };
+                (source, base_name)
+            }
         };
+        let base_name = base_name.as_str();
         let source_bytes = fs::read(&source)?;
         let raw = if crate::Settings::Magic::is_bfres(&source_bytes) {
             source_bytes
@@ -113,34 +131,7 @@ impl WeaponModelAssetsRequest {
                 "custom weapon MCPK output requires BFRES version 10",
             ));
         }
-
-        let texture_names: BTreeSet<String> = base_bfres
-            .materials
-            .iter()
-            .flat_map(|material| &material.texture_slots)
-            .map(|slot| slot.name.clone())
-            .collect();
-        let texture_sources = index_textures(&clean_romfs.join("TexToGo"))?;
-        let texture_output = output_romfs.join("TexToGo");
-        fs::create_dir_all(&texture_output)?;
-        let mut copied = Vec::with_capacity(texture_names.len());
-        for old_name in texture_names {
-            let logical = old_name
-                .strip_suffix(".txtg")
-                .unwrap_or(&old_name)
-                .to_ascii_lowercase();
-            let Some(source_texture) = texture_sources.get(&logical) else {
-                continue;
-            };
-            let file_name = source_texture
-                .file_name()
-                .and_then(|value| value.to_str())
-                .ok_or_else(|| invalid("texture filename is not UTF-8"))?;
-            let destination_name = replace_file_stem(file_name, &self.base_name, &self.new_name)?;
-            let destination = texture_output.join(destination_name);
-            fs::copy(source_texture, &destination)?;
-            copied.push(destination);
-        }
+        drop(base_bfres);
 
         let mut customized = raw;
         if let Some(fbx_path) = &self.fbx_path {
@@ -160,66 +151,83 @@ impl WeaponModelAssetsRequest {
                     invalid_data(format!("failed to replace BFRES geometry: {error}"))
                 })?;
         }
-        let container_name = format!("{}.{}", self.new_name, self.new_name);
-        let renamed = BfresFile::rename_first_model_and_container(
-            &customized,
-            &self.new_name,
-            &container_name,
-        )
-        .map_err(|error| {
-            invalid_data(format!("failed to rename BFRES model/container: {error}"))
-        })?;
-        let mut renamed =
-            BfresFile::rename_material_texture_slots(&renamed, &self.base_name, &self.new_name)
-                .map_err(|error| {
-                    invalid_data(format!("failed to rename BFRES texture slots: {error}"))
-                })?;
-        // Actor templates also embed their model name in shape names and other
-        // ResStrings beyond the container, FMDL, and material texture slots.
-        // Actor IDs have equal width, so replacing the remaining occurrences
-        // in place preserves every pointer, string prefix, and relocation.
-        if self.base_name.len() == self.new_name.len() {
-            for offset in 0..=renamed.len().saturating_sub(self.base_name.len()) {
-                if renamed[offset..].starts_with(self.base_name.as_bytes()) {
-                    renamed[offset..offset + self.new_name.len()]
-                        .copy_from_slice(self.new_name.as_bytes());
-                }
-            }
+
+        // From here on the model is edited through the Switch Toolbox compatible
+        // object model so renames rebuild the string pool and dictionaries
+        // instead of patching bytes in place.
+        let external = external_strings_for(clean_romfs, &customized)?;
+        let mut file = ResFile::load(&customized, &external)
+            .map_err(|error| invalid_data(format!("failed to load base BFRES: {error}")))?;
+        if file.model_count() == 0 {
+            return Err(invalid_data("base BFRES contains no model"));
         }
+        let texture_names = model_texture_names(&file);
+        let texture_sources = index_textures(&clean_romfs.join("TexToGo"))?;
+        let texture_output = output_romfs.join("TexToGo");
+        fs::create_dir_all(&texture_output)?;
+        let mut copied = Vec::with_capacity(texture_names.len());
+        for old_name in &texture_names {
+            let logical = old_name
+                .strip_suffix(".txtg")
+                .unwrap_or(old_name)
+                .to_ascii_lowercase();
+            let Some(source_texture) = texture_sources.get(&logical) else {
+                continue;
+            };
+            let file_name = source_texture
+                .file_name()
+                .and_then(|value| value.to_str())
+                .ok_or_else(|| invalid("texture filename is not UTF-8"))?;
+            let destination_name = replace_file_stem(file_name, base_name, &self.new_name)?;
+            if destination_name == file_name {
+                // Shared textures (CmnTex_*) keep pointing at the vanilla file.
+                continue;
+            }
+            let destination = texture_output.join(destination_name);
+            fs::copy(source_texture, &destination)?;
+            copied.push(destination);
+        }
+
+        let container_name = format!("{}.{}", self.new_name, self.new_name);
+        file.set_internal_name(&container_name);
+        file.rename_first_model(&self.new_name)
+            .map_err(|error| invalid_data(format!("failed to rename BFRES model: {error}")))?;
+        file.rename_texture_slots(base_name, &self.new_name);
+        // Actor templates also embed their model name in shape names, so every
+        // remaining model-level string is rewritten as well.
+        file.rename_model_strings(base_name, &self.new_name);
+        let leftovers: Vec<String> = file
+            .strings_containing(base_name)
+            .into_iter()
+            .filter(|(field, _)| field != "original_strings")
+            .map(|(field, value)| format!("{field}={value}"))
+            .collect();
+        if !leftovers.is_empty() {
+            return Err(invalid_data(format!(
+                "generated BFRES still references the base name: {}",
+                leftovers.join(", ")
+            )));
+        }
+        let required_texture_names = model_texture_names(&file);
+        let renamed = file
+            .save_like_toolbox()
+            .map_err(|error| invalid_data(format!("failed to serialize BFRES: {error}")))?;
         let verified = BfresFile::from_bytes(&renamed)
             .map_err(|error| invalid_data(format!("failed to reopen renamed BFRES: {error}")))?;
         validate_bfres_geometry(&verified)?;
-        if verified.materials.iter().any(|material| {
-            material
-                .texture_slots
-                .iter()
-                .any(|slot| slot.name.contains(&self.base_name))
-        }) {
-            return Err(invalid(
-                "generated BFRES still references a base texture name",
-            ));
+        if verified.name.as_deref() != Some(container_name.as_str()) {
+            return Err(invalid_data(format!(
+                "renamed BFRES container is {:?}, expected {container_name}",
+                verified.name
+            )));
         }
-        let required_texture_names: BTreeSet<String> = verified
-            .materials
-            .iter()
-            .flat_map(|material| &material.texture_slots)
-            .map(|slot| slot.name.clone())
-            .collect();
-        let placeholder = Path::new(env!("CARGO_MANIFEST_DIR")).join("misc/placeholder_tex.txtg");
-        if !placeholder.is_file() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!(
-                    "placeholder TexToGo texture is missing: {}",
-                    placeholder.display()
-                ),
-            ));
-        }
+        let placeholder = placeholder_texture_path()?;
         ensure_material_textures(
             &texture_output,
             &required_texture_names,
             &placeholder,
             &mut copied,
+            &texture_sources,
         )?;
 
         let relative_destination =
@@ -229,11 +237,10 @@ impl WeaponModelAssetsRequest {
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)?;
         }
-        // Custom weapon models are always emitted through TotkBits' MeshCodec writer.
-        let compressed = zstd
-            .compress_mcpk(&renamed)
+        // Custom weapon models are always emitted as Toolbox-style MCPK.
+        let compressed = MeshCodec::compress(&renamed)
             .map_err(|error| invalid_data(format!("failed to MCPK-compress BFRES: {error}")))?;
-        let roundtrip = zstd.decompress_mcpk(&compressed).map_err(|error| {
+        let roundtrip = MeshCodec::decompress(&compressed).map_err(|error| {
             invalid_data(format!("generated MCPK does not decompress: {error}"))
         })?;
         let roundtrip_bfres = BfresFile::from_bytes(&roundtrip).map_err(|error| {
@@ -249,11 +256,56 @@ impl WeaponModelAssetsRequest {
     }
 }
 
-fn resolve_vanilla_model_source(
+/// Vanilla TOTK models keep their names in `Shader/ExternalBinaryString.bfres.mc`;
+/// models that carry their own string pool (Toolbox or TotkBits output) do not need it.
+pub(super) fn external_strings_for(clean_romfs: &Path, raw: &[u8]) -> io::Result<ExternalStrings> {
+    let needs_external = raw.get(0xEE).is_some_and(|flags| flags & 0x02 != 0);
+    if !needs_external {
+        return Ok(ExternalStrings::empty());
+    }
+    ExternalStrings::from_romfs(clean_romfs).map_err(|error| {
+        invalid_data(format!(
+            "failed to load TOTK external BFRES strings from {}: {error}",
+            clean_romfs.display()
+        ))
+    })
+}
+
+/// Deduplicated texture names referenced by every material of every model.
+pub(super) fn model_texture_names(file: &ResFile) -> BTreeSet<String> {
+    file.models
+        .iter()
+        .flat_map(|model| &model.materials)
+        .flat_map(|material| &material.texture_refs)
+        .cloned()
+        .collect()
+}
+
+/// The bundled TexToGo stand-in used for material textures the base actor does not ship.
+pub(super) fn placeholder_texture_path() -> io::Result<PathBuf> {
+    let relative = Path::new("misc/placeholder_tex.txtg");
+    let mut candidates = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)];
+    if let Ok(exe_dir) = crate::utils::running_exe_dir() {
+        candidates.push(exe_dir.join(relative));
+    }
+    candidates
+        .into_iter()
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "placeholder TexToGo texture is missing (expected misc/placeholder_tex.txtg)",
+            )
+        })
+}
+
+/// Resolves `Model/<ModelProjectName>.<FmdbName>.bfres.mc` from the vanilla
+/// ActorInfo row and returns it together with the model project name.
+pub(super) fn resolve_vanilla_model_source(
     clean_romfs: &Path,
     actor_name: &str,
     zstd: Arc<TotkZstd<'_>>,
-) -> io::Result<PathBuf> {
+) -> io::Result<(PathBuf, String)> {
     let (_, actor_info_path) = super::version::discover_product_file(
         &clean_romfs.join("RSDB"),
         "ActorInfo.Product.",
@@ -285,13 +337,14 @@ fn resolve_vanilla_model_source(
     };
     let model_project_name = string_field("ModelProjectName")?;
     let fmdb_name = string_field("FmdbName")?;
-    resolve_source(
+    let source = resolve_source(
         clean_romfs,
         &Path::new("Model").join(format!("{model_project_name}.{fmdb_name}.bfres.mc")),
-    )
+    )?;
+    Ok((source, model_project_name))
 }
 
-fn validate_bfres_geometry(file: &BfresFile) -> io::Result<()> {
+pub(super) fn validate_bfres_geometry(file: &BfresFile) -> io::Result<()> {
     if file.render.meshes.is_empty() {
         return Err(invalid_data("generated BFRES contains no meshes"));
     }
@@ -398,7 +451,7 @@ impl WeaponBntxAssetRequest {
     }
 }
 
-fn index_textures(root: &Path) -> io::Result<BTreeMap<String, PathBuf>> {
+pub(super) fn index_textures(root: &Path) -> io::Result<BTreeMap<String, PathBuf>> {
     let mut textures = BTreeMap::new();
     for entry in fs::read_dir(root)? {
         let path = entry?.path();
@@ -419,18 +472,21 @@ fn index_textures(root: &Path) -> io::Result<BTreeMap<String, PathBuf>> {
     Ok(textures)
 }
 
+/// Copies the placeholder for every material texture that exists neither in the
+/// mod's TexToGo nor in `clean_textures` (the vanilla TexToGo index).
 pub(super) fn ensure_material_textures(
     texture_output: &Path,
     required_texture_names: &BTreeSet<String>,
     placeholder: &Path,
     copied: &mut Vec<PathBuf>,
+    clean_textures: &BTreeMap<String, PathBuf>,
 ) -> io::Result<()> {
     let mut available = index_textures(texture_output)?;
     for texture_name in required_texture_names {
         validate_name(texture_name, "BFRES material texture name")?;
         let stem = texture_name.strip_suffix(".txtg").unwrap_or(texture_name);
         let logical = stem.to_ascii_lowercase();
-        if available.contains_key(&logical) {
+        if available.contains_key(&logical) || clean_textures.contains_key(&logical) {
             continue;
         }
         let destination = texture_output.join(format!("{stem}.txtg"));
@@ -565,19 +621,20 @@ mod tests {
         ]);
         let placeholder = Path::new(env!("CARGO_MANIFEST_DIR")).join("misc/placeholder_tex.txtg");
         let mut copied = Vec::new();
-        ensure_material_textures(&root, &required, &placeholder, &mut copied).unwrap();
+        let clean = BTreeMap::from([("missing_spm".to_owned(), PathBuf::from("vanilla"))]);
+        ensure_material_textures(&root, &required, &placeholder, &mut copied, &clean).unwrap();
 
-        assert_eq!(copied.len(), 2);
+        // Missing_Spm exists in vanilla, so only Missing_Nrm needs the placeholder.
+        assert_eq!(copied.len(), 1);
         assert_eq!(
             fs::read(root.join("Existing_Alb.txtg")).unwrap(),
             b"existing"
         );
-        for name in ["Missing_Nrm.txtg", "Missing_Spm.txtg"] {
-            assert_eq!(
-                fs::read(root.join(name)).unwrap(),
-                fs::read(&placeholder).unwrap()
-            );
-        }
+        assert_eq!(
+            fs::read(root.join("Missing_Nrm.txtg")).unwrap(),
+            fs::read(&placeholder).unwrap()
+        );
+        assert!(!root.join("Missing_Spm.txtg").exists());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -671,7 +728,10 @@ mod tests {
         assert!(crate::Settings::Magic::is_mcpk(&compressed));
         let raw = zstd.decompress_mcpk(&compressed).unwrap();
         let bfres = BfresFile::from_bytes(&raw).unwrap();
-        assert_eq!(bfres.name.as_deref(), Some("Weapon_Sword_900"));
+        assert_eq!(
+            bfres.name.as_deref(),
+            Some("Weapon_Sword_900.Weapon_Sword_900")
+        );
         assert!(bfres.materials.iter().all(|material| material
             .texture_slots
             .iter()

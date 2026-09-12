@@ -1,6 +1,10 @@
 //! Whole-mod RESTBL estimation and versioned table generation.
 
-use crate::{parser::rstb::ResourceSizeTable, tools::RstbEstimate::RstbEstimator, Zstd::TotkZstd};
+use crate::{
+    parser::rstb::ResourceSizeTable,
+    tools::RstbEstimate::RstbEstimator,
+    Zstd::{TotkZstd, ZstdDictionary},
+};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -27,6 +31,7 @@ pub struct ModRstbProcessor<'a> {
     clean_romfs: PathBuf,
     output_romfs: PathBuf,
     zstd: Arc<TotkZstd<'a>>,
+    compression_level: Option<i32>,
 }
 
 impl<'a> ModRstbProcessor<'a> {
@@ -35,11 +40,21 @@ impl<'a> ModRstbProcessor<'a> {
             clean_romfs: clean_romfs.to_path_buf(),
             output_romfs: output_romfs.to_path_buf(),
             zstd,
+            compression_level: None,
         }
     }
 
-    /// Estimates every generated resource below mod ROMFS, updates the user's versioned
-    /// ResourceSizeTable, and emits `rstb.yaml` with unhashed resource paths for review.
+    /// Zstandard level for the written table. TKMM compresses with the level
+    /// from its settings (default 7); pass the same value to get its bytes.
+    pub fn with_compression_level(mut self, level: Option<i32>) -> Self {
+        self.compression_level = level;
+        self
+    }
+
+    /// Estimates every resource below the mod ROMFS the way TKMM does (every
+    /// archive member included, vanilla or not), rebuilds the user's versioned
+    /// ResourceSizeTable from the clean one, and emits `rstb.yaml` next to the
+    /// ROMFS folder with unhashed resource paths for review.
     pub fn generate(&self) -> io::Result<RstbGenerationReport> {
         super::assets::ensure_output_outside_romfs(&self.clean_romfs, &self.output_romfs)?;
         if !self.output_romfs.is_dir() {
@@ -61,6 +76,8 @@ impl<'a> ModRstbProcessor<'a> {
 
         let mut estimator = RstbEstimator::new(self.zstd.clone());
         estimator.set_vanilla_romfs(&self.clean_romfs);
+        estimator.include_vanilla_sarc_members = true;
+        estimator.ainb_empty_exb_header = false;
         estimator
             .estimate_folder(&self.output_romfs)
             .map_err(io::Error::other)?;
@@ -104,17 +121,26 @@ impl<'a> ModRstbProcessor<'a> {
             .iter()
             .map(|(path, value)| (path.clone(), *value))
             .collect();
-        let yaml = self.output_romfs.join("rstb.yaml");
+        // The review file must not ship inside the ROMFS (it would get an RSTB
+        // entry of its own), so it goes next to the ROMFS folder.
+        let yaml = self
+            .output_romfs
+            .parent()
+            .unwrap_or(&self.output_romfs)
+            .join("rstb.yaml");
         estimator.save_yaml(&yaml).map_err(io::Error::other)?;
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent)?;
         }
         if needs_rebuild {
-            let rebuilt = table.to_bytes().map_err(io::Error::other)?;
-            fs::write(
-                &output,
-                self.zstd.compress_with_dictionary(&rebuilt, dictionary)?,
-            )?;
+            let rebuilt = table.to_bytes_compact().map_err(io::Error::other)?;
+            let compressed = match self.compression_level {
+                Some(level) if dictionary == ZstdDictionary::Empty => {
+                    self.zstd.compress_empty_with_level(&rebuilt, level)?
+                }
+                _ => self.zstd.compress_with_dictionary(&rebuilt, dictionary)?,
+            };
+            fs::write(&output, compressed)?;
         }
 
         let (verified, _) = self
@@ -299,7 +325,7 @@ mod tests {
             model_parsed.header.file_size
         );
         let generated_yaml: BTreeMap<String, u32> =
-            serde_yaml::from_slice(&fs::read(mod_romfs.join("rstb.yaml")).unwrap()).unwrap();
+            serde_yaml::from_slice(&fs::read(root.join("test_sic/rstb.yaml")).unwrap()).unwrap();
         let mut paths: Vec<_> = generated_yaml.keys().cloned().collect();
         paths.sort();
         let compared = paths.len();

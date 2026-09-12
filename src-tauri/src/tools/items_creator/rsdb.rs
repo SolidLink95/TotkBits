@@ -182,6 +182,7 @@ impl<'a> WeaponRsdbProcessor<'a> {
                 &request.template_actor,
                 &request.actor_name,
                 &overrides,
+                &[],
                 self.zstd.clone(),
             )?;
             outputs.push(destination);
@@ -204,16 +205,17 @@ impl<'a> WeaponRsdbProcessor<'a> {
         Ok(outputs)
     }
 
-    fn versioned_rsdb_name(product: &str, version: &str) -> io::Result<String> {
+    pub(super) fn versioned_rsdb_name(product: &str, version: &str) -> io::Result<String> {
         super::version::product_name(&format!("{product}.Product."), version, PRODUCT_SUFFIX)
     }
 
-    fn clone_rsdb_row(
+    pub(super) fn clone_rsdb_row(
         source: &Path,
         destination: &Path,
         template_actor: &str,
         actor_name: &str,
         overrides: &BTreeMap<String, JsonValue>,
+        removals: &[&str],
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<()> {
         let mut file = BymlFile::new(source, zstd.clone())
@@ -234,6 +236,9 @@ impl<'a> WeaponRsdbProcessor<'a> {
             Self::invalid_data(format!("template row {template_actor} is not a map"))
         })?;
         map.insert("__RowId".into(), Byml::String(actor_name.into()));
+        for key in removals {
+            map.remove(*key);
+        }
         for (key, value) in overrides {
             let converted = if let Some(current) = map.get(key.as_str()) {
                 Self::json_to_matching_byml(value, current, key)?
@@ -275,7 +280,7 @@ impl<'a> WeaponRsdbProcessor<'a> {
         file.save(destination.to_string_lossy().into_owned())
     }
 
-    fn clone_tag_entry(
+    pub(super) fn clone_tag_entry(
         source: &Path,
         destination: &Path,
         template_actor: &str,
