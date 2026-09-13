@@ -592,7 +592,19 @@ fn validate_compatible_skeleton(
                 format!("FBX skeleton is missing BFRES bone {name:?}"),
             ));
         };
-        if actual_parent != required_parent {
+        // Wrapper nodes above or between BFRES bones (a Blender armature
+        // object, an exporter's synthetic root) are transparent: the parent
+        // that counts is the nearest ancestor the BFRES skeleton knows.
+        let mut actual_parent = actual_parent.clone();
+        let mut hops = 0;
+        while let Some(parent) = &actual_parent {
+            if expected_by_name.contains_key(parent) || hops > imported.len() {
+                break;
+            }
+            actual_parent = imported_by_name.get(parent).cloned().flatten();
+            hops += 1;
+        }
+        if &actual_parent != required_parent {
             return Err(error(
                 0,
                 format!(

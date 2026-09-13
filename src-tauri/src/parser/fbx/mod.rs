@@ -1,6 +1,6 @@
-mod binary;
+pub(crate) mod binary;
 mod document;
-mod export;
+pub(crate) mod export;
 pub mod import;
 
 pub use document::FbxFile;

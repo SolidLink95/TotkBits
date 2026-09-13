@@ -112,6 +112,28 @@ pub struct TemplateInfo {
     pub series_name: Option<String>,
     pub buying_price: Option<i32>,
     pub selling_price: Option<i32>,
+    /// Great Fairy ranks of an armor template (rank 2 first); empty for
+    /// weapons and for armor that cannot be upgraded.
+    pub upgrades: Vec<TemplateUpgradeInfo>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct TemplateUpgradeMaterial {
+    pub actor: String,
+    pub count: i32,
+}
+
+/// One vanilla upgrade rank: the actor the piece becomes, its defense and
+/// prices, and what the Great Fairy charges to get there.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct TemplateUpgradeInfo {
+    pub actor: String,
+    pub rank: i32,
+    pub defense: Option<i32>,
+    pub rupees: i32,
+    pub materials: Vec<TemplateUpgradeMaterial>,
+    pub buying_price: Option<i32>,
+    pub selling_price: Option<i32>,
 }
 
 const WEAPON_KINDS: [(WeaponKind, &str); 5] = [
@@ -258,11 +280,120 @@ pub fn template_info(
         info.additional_damage = weapon.attachment.additional_damage;
         info.shield_bash_damage = weapon.attachment.shield_bash_damage;
     }
-    if let Some((buying, selling)) = pouch_prices(clean_romfs, actor, zstd) {
+    if let Some((buying, selling)) = pouch_prices(clean_romfs, actor, zstd.clone()) {
         info.buying_price = buying;
         info.selling_price = selling;
     }
+    if actor.starts_with("Armor_") {
+        info.upgrades = armor_upgrades(clean_romfs, actor, zstd).unwrap_or_default();
+    }
     Ok(info)
+}
+
+/// Follows `ArmorNextRankActor` through PouchActorInfo and pairs every step
+/// with the EnhancementMaterialInfo row of the actor being upgraded.
+pub(super) fn armor_upgrades(
+    clean_romfs: &Path,
+    actor: &str,
+    zstd: Arc<TotkZstd<'_>>,
+) -> Option<Vec<TemplateUpgradeInfo>> {
+    let rsdb = clean_romfs.join("RSDB");
+    let (_, pouch_source) =
+        super::version::discover_product_file(&rsdb, "PouchActorInfo.Product.", ".rstbl.byml.zs")
+            .ok()?;
+    let (_, cost_source) = super::version::discover_product_file(
+        &rsdb,
+        "EnhancementMaterialInfo.Product.",
+        ".rstbl.byml.zs",
+    )
+    .ok()?;
+    let pouch = BymlFile::new(&pouch_source, zstd.clone())?;
+    let costs = BymlFile::new(&cost_source, zstd)?;
+    let row_id = |row: &roead::byml::Byml| -> Option<String> {
+        row.as_map()
+            .ok()?
+            .get("__RowId")?
+            .as_string()
+            .ok()
+            .map(ToString::to_string)
+    };
+    let bare_actor = |path: &str| -> String {
+        path.trim_start_matches("Work/Actor/")
+            .split('.')
+            .next()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let pouch_rows: BTreeMap<String, &roead::byml::Map> = pouch
+        .pio
+        .as_array()
+        .ok()?
+        .iter()
+        .filter_map(|row| Some((row_id(row)?, row.as_map().ok()?)))
+        .collect();
+    let cost_rows: BTreeMap<String, &roead::byml::Map> = costs
+        .pio
+        .as_array()
+        .ok()?
+        .iter()
+        .filter_map(|row| Some((bare_actor(&row_id(row)?), row.as_map().ok()?)))
+        .collect();
+    let mut upgrades = Vec::new();
+    let mut current = actor.to_owned();
+    let mut seen = std::collections::HashSet::new();
+    while upgrades.len() < 8 && seen.insert(current.clone()) {
+        let row = pouch_rows.get(&current)?;
+        let Some(next) = row
+            .get("ArmorNextRankActor")
+            .and_then(|value| value.as_string().ok())
+            .map(|value| bare_actor(value))
+        else {
+            break;
+        };
+        let Some(next_row) = pouch_rows.get(&next) else {
+            break;
+        };
+        let cost = cost_rows.get(&current);
+        let materials = cost
+            .and_then(|cost| cost.get("Items"))
+            .and_then(|items| items.as_array().ok())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| {
+                        let item = item.as_map().ok()?;
+                        Some(TemplateUpgradeMaterial {
+                            actor: bare_actor(item.get("Actor")?.as_string().ok()?),
+                            count: item.get("Number")?.as_i32().ok()?,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        upgrades.push(TemplateUpgradeInfo {
+            actor: next.clone(),
+            rank: next_row
+                .get("ArmorRank")
+                .and_then(|value| value.as_i32().ok())
+                .unwrap_or(upgrades.len() as i32 + 2),
+            defense: next_row
+                .get("EquipmentPerformance")
+                .and_then(|value| value.as_i32().ok()),
+            rupees: cost
+                .and_then(|cost| cost.get("Price"))
+                .and_then(|value| value.as_i32().ok())
+                .unwrap_or(0),
+            materials,
+            buying_price: next_row
+                .get("BuyingPrice")
+                .and_then(|value| value.as_i32().ok()),
+            selling_price: next_row
+                .get("SellingPrice")
+                .and_then(|value| value.as_i32().ok()),
+        });
+        current = next;
+    }
+    Some(upgrades)
 }
 
 /// Base icons cached as `.cache/webp/<actor>.webp`, returned as data URLs.
@@ -521,6 +652,19 @@ mod tests {
         );
         assert!(decayed.iter().any(|t| t.actor == "Weapon_Sword_106"));
         assert!(pristine.iter().any(|t| t.actor == "Weapon_Sword_001"));
+        // Hylian Hood: four Great Fairy ranks, the first paid with 5 Bokoblin horns + 10 rupees.
+        let hylian = template_info(romfs, "Armor_001_Head", zstd.clone()).unwrap();
+        assert_eq!(hylian.upgrades.len(), 4, "{:?}", hylian.upgrades);
+        assert_eq!(hylian.upgrades[0].actor, "Armor_002_Head");
+        assert_eq!(hylian.upgrades[0].rank, 2);
+        assert_eq!(hylian.upgrades[0].defense, Some(5));
+        assert_eq!(hylian.upgrades[0].rupees, 10);
+        assert_eq!(hylian.upgrades[0].materials[0].actor, "Item_Enemy_77");
+        assert_eq!(hylian.upgrades[0].materials[0].count, 5);
+        assert_eq!(hylian.upgrades[3].actor, "Armor_015_Head");
+        assert_eq!(hylian.upgrades[3].rank, 5);
+        let mask = template_info(romfs, "Armor_022_Head", zstd.clone()).unwrap();
+        assert!(mask.upgrades.is_empty());
         assert!(catalog.templates.iter().all(|t| !t.name.contains("{{")));
         for kind in [
             "SmallSword",

@@ -1350,11 +1350,11 @@ fn required_component_path(refs: &BTreeMap<String, String>, key: &str) -> io::Re
         .ok_or_else(|| invalid(format!("ActorParam component reference is missing: {key}")))
 }
 
-fn reference_to_internal(value: &str) -> String {
+pub(super) fn reference_to_internal(value: &str) -> String {
     value.trim_start_matches('?').replace(".gyml", ".bgyml")
 }
 
-fn work_path_to_internal(value: &str) -> String {
+pub(super) fn work_path_to_internal(value: &str) -> String {
     reference_to_internal(value.trim_start_matches("Work/"))
 }
 

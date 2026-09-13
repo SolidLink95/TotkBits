@@ -141,6 +141,57 @@ pub fn merge_imported_bones(
     (old_to_new, report)
 }
 
+/// Bones-only import: after [`merge_imported_bones`] re-ordered the skeleton,
+/// point the existing skinning palette, mirrored-bone table and every shape's
+/// bone references at the new bone indices so the vertex data, which indexes
+/// palette slots, stays valid without any FBX weights. A bone that the
+/// palette or a shape still uses but the import dropped is an error.
+pub fn remap_existing_skinning(
+    model: &mut Model,
+    old_matrix_to_bone: &[u16],
+    old_to_new: &[Option<u16>],
+    old_bone_names: &[String],
+) -> Result<(), String> {
+    let remap = |old: u16, what: &str| -> Result<u16, String> {
+        old_to_new
+            .get(usize::from(old))
+            .copied()
+            .flatten()
+            .ok_or_else(|| {
+                let name = old_bone_names
+                    .get(usize::from(old))
+                    .map(String::as_str)
+                    .unwrap_or("?");
+                format!(
+                    "{what} references bone {old} ({name}), which the imported skeleton dropped"
+                )
+            })
+    };
+    let mut matrix_to_bone = Vec::with_capacity(old_matrix_to_bone.len());
+    for slot in old_matrix_to_bone {
+        matrix_to_bone.push(remap(*slot, "the skinning palette")?);
+    }
+    model.skeleton.matrix_to_bone = matrix_to_bone;
+    let mirrored = std::mem::take(&mut model.skeleton.mirrored_bones);
+    let mut remapped_mirrored = Vec::with_capacity(mirrored.len());
+    for bone in &mirrored {
+        remapped_mirrored.push(remap(*bone, "the mirrored bone table")?);
+    }
+    model.skeleton.mirrored_bones = remapped_mirrored;
+    for shape in &mut model.shapes {
+        let what = format!("shape {}", shape.name);
+        shape.bone_index = remap(shape.bone_index, &what)?;
+        let mut indices = Vec::with_capacity(shape.skin_bone_indices.len());
+        for bone in &shape.skin_bone_indices {
+            indices.push(remap(*bone, &what)?);
+        }
+        indices.sort_unstable();
+        indices.dedup();
+        shape.skin_bone_indices = indices;
+    }
+    Ok(())
+}
+
 /// The palette generation that follows every Toolbox model import: bones
 /// used by single-influence meshes become rigid entries, every other used
 /// bone a smooth entry, both lists sorted by bone index, smooth first.

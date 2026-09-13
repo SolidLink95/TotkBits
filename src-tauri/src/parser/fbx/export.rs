@@ -108,7 +108,7 @@ struct MeshLink {
     clusters: Vec<(i64, usize)>,
 }
 
-const CREATOR: &str = concat!("TotkBits ", env!("CARGO_PKG_VERSION"));
+pub(crate) const CREATOR: &str = concat!("TotkBits ", env!("CARGO_PKG_VERSION"));
 
 pub fn export_g1m(
     models: &[(&G1mFile, &[ResolvedG1tTexture], String)],
@@ -638,7 +638,7 @@ struct ObjectCounts {
     videos: usize,
 }
 
-fn header_extension(document_url: &str) -> Node {
+pub(crate) fn header_extension(document_url: &str) -> Node {
     let (year, month, day, hour, minute, second, millisecond) = utc_now();
     let date_time_gmt =
         format!("{month:02}/{day:02}/{year:04} {hour:02}:{minute:02}:{second:02}.{millisecond:03}");
@@ -698,7 +698,7 @@ fn header_extension(document_url: &str) -> Node {
         )
 }
 
-fn global_settings() -> Node {
+pub(crate) fn global_settings() -> Node {
     Node::new("GlobalSettings")
         .child(Node::leaf("Version", 1000i32))
         .child(properties70([
@@ -778,7 +778,7 @@ fn mesh_template() -> Vec<Node> {
     ]
 }
 
-fn node_template() -> Vec<Node> {
+pub(crate) fn node_template() -> Vec<Node> {
     let mut properties = vec![
         p_enum("QuaternionInterpolate", 0),
         p_vector("RotationOffset", [0.0; 3]),

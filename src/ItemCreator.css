@@ -103,6 +103,13 @@
 .item-creator-form .item-creator-check { display: flex; align-items: center; gap: 8px; }
 .item-creator-form .item-creator-hint { color: #888; font-size: 12px; }
 .item-creator-form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.item-creator-upgrades { display: flex; flex-direction: column; gap: 6px; }
+.item-creator-upgrade { display: grid; grid-template-columns: 52px 80px 80px minmax(0, 1fr) 28px; gap: 6px; align-items: center; }
+.item-creator-upgrade-rank { color: #d9b74a; font-size: 13px; letter-spacing: 1px; }
+.item-creator-upgrade-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.item-creator-physics { display: flex; flex-direction: column; gap: 6px; }
+.item-creator-physics-entry { display: grid; grid-template-columns: minmax(0, 1fr) 28px 28px; gap: 6px; align-items: center; }
+.item-creator-physics-entry button[hidden] { display: none; }
 
 /* Template picker */
 .item-creator-picker { position: relative; }

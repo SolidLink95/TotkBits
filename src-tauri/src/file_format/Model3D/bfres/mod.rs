@@ -5,6 +5,7 @@
 //! the result to TotkBits' document/YAML representation.
 
 mod material;
+pub mod material_anim;
 mod replace;
 mod serializer;
 mod skeleton;

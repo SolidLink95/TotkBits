@@ -194,6 +194,57 @@ impl ResFile {
         self.apply_fbx_skinning_like_toolbox(fbx, true)
     }
 
+    /// Imports only the bones of an FBX (a merged skeleton, for example):
+    /// the hierarchy, order and transforms follow the FBX like "Import
+    /// Bones", but the model's existing skinning palette, shape bone lists
+    /// and vertex skin indices are kept and re-pointed at the new bone
+    /// indices instead of being regenerated from FBX weights, which a
+    /// bones-only FBX does not carry. Dropping a bone the model still skins
+    /// to is an error.
+    pub fn import_skeleton_bones_only(
+        &mut self,
+        fbx: &[u8],
+    ) -> Result<SkeletonImportReport, BfresError> {
+        let imported = crate::parser::fbx::toolbox_skeleton::import_skeleton_like_toolbox(fbx)
+            .map_err(|error| BfresError::new(0, error.to_string()))?;
+        if imported.bones.is_empty() {
+            return Err(BfresError::new(0, "the FBX contains no skeleton nodes"));
+        }
+        let model = self
+            .models
+            .first_mut()
+            .ok_or_else(|| BfresError::new(0, "BFRES contains no model"))?;
+        let old_matrix_to_bone = model.skeleton.matrix_to_bone.clone();
+        let old_bone_names: Vec<String> = model
+            .skeleton
+            .bones
+            .iter()
+            .map(|bone| bone.name.clone())
+            .collect();
+        let (old_to_new, mut report) =
+            skeleton_import::merge_imported_bones(model, &imported.bones);
+        skeleton_import::remap_existing_skinning(
+            model,
+            &old_matrix_to_bone,
+            &old_to_new,
+            &old_bone_names,
+        )
+        .map_err(|error| BfresError::new(0, error))?;
+        report.smooth_count = model
+            .skeleton
+            .bones
+            .iter()
+            .filter(|bone| bone.smooth_matrix_index != -1)
+            .count();
+        report.rigid_count = model
+            .skeleton
+            .bones
+            .iter()
+            .filter(|bone| bone.rigid_matrix_index != -1)
+            .count();
+        Ok(report)
+    }
+
     /// What every Toolbox model import does to the skeleton even without
     /// "Import Bones": the skinning palette and each shape's skin count and
     /// bone list are regenerated from the FBX weights; bones stay as they are.

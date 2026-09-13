@@ -154,9 +154,7 @@ impl WeaponModelAssetsRequest {
             }
             let bytes = fs::read(fbx_path)?;
             customized =
-                BfresFile::replace_geometry_from_fbx(&customized, &bytes).map_err(|error| {
-                    invalid_data(format!("failed to replace BFRES geometry: {error}"))
-                })?;
+                replace_geometry_from_fbx(clean_romfs, &customized, &bytes, self.replace_bones)?;
             fbx_bytes = Some(bytes);
         }
 
@@ -271,6 +269,63 @@ impl WeaponModelAssetsRequest {
 
 /// Vanilla TOTK models keep their names in `Shader/ExternalBinaryString.bfres.mc`;
 /// models that carry their own string pool (Toolbox or TotkBits output) do not need it.
+/// Native geometry replacement. When the bones are to be replaced as well
+/// and the FBX skins to bones the template does not have (a merged armor
+/// skeleton carrying cape bones, for example), the FBX skeleton is imported
+/// Toolbox-style first so the replacement can address those bones; the
+/// replacement can only map weights onto bones the BFRES already has.
+/// Otherwise it runs on the template as it is and the caller imports the
+/// skeleton afterwards, exactly as before.
+pub(super) fn replace_geometry_from_fbx(
+    clean_romfs: &Path,
+    raw: &[u8],
+    fbx: &[u8],
+    replace_bones: bool,
+) -> io::Result<Vec<u8>> {
+    let mut source = std::borrow::Cow::Borrowed(raw);
+    if replace_bones && fbx_skins_to_new_bones(raw, fbx)? {
+        let external = external_strings_for(clean_romfs, raw)?;
+        let mut file = ResFile::load(raw, &external)
+            .map_err(|error| invalid_data(format!("failed to load template BFRES: {error}")))?;
+        file.import_skeleton_like_toolbox(fbx)
+            .map_err(|error| invalid_data(format!("failed to import the FBX skeleton: {error}")))?;
+        source = std::borrow::Cow::Owned(file.save_like_toolbox().map_err(|error| {
+            invalid_data(format!(
+                "failed to save the BFRES with the imported skeleton: {error}"
+            ))
+        })?);
+    }
+    BfresFile::replace_geometry_from_fbx(&source, fbx)
+        .map_err(|error| invalid_data(format!("failed to replace BFRES geometry: {error}")))
+}
+
+/// Whether any weighted FBX bone is missing from the BFRES skeleton.
+fn fbx_skins_to_new_bones(raw: &[u8], fbx: &[u8]) -> io::Result<bool> {
+    let imported = crate::parser::fbx::import::import_for_bfres(fbx)?;
+    let parsed = BfresFile::from_bytes(raw)
+        .map_err(|error| invalid_data(format!("failed to parse template BFRES: {error}")))?;
+    let known: std::collections::HashSet<&str> = parsed
+        .render
+        .bones
+        .iter()
+        .map(|bone| bone.name.as_str())
+        .collect();
+    Ok(imported.meshes.iter().any(|mesh| {
+        mesh.bone_indices
+            .iter()
+            .zip(&mesh.bone_weights)
+            .any(|(joints, weights)| {
+                joints.iter().zip(weights).any(|(&joint, &weight)| {
+                    weight > 0.0
+                        && imported
+                            .bones
+                            .get(usize::from(joint))
+                            .is_some_and(|(name, _)| !known.contains(name.as_str()))
+                })
+            })
+    }))
+}
+
 pub(super) fn external_strings_for(clean_romfs: &Path, raw: &[u8]) -> io::Result<ExternalStrings> {
     let needs_external = raw.get(0xEE).is_some_and(|flags| flags & 0x02 != 0);
     if !needs_external {
@@ -361,9 +416,16 @@ pub(super) fn validate_bfres_geometry(file: &BfresFile) -> io::Result<()> {
     if file.render.meshes.is_empty() {
         return Err(invalid_data("generated BFRES contains no meshes"));
     }
+    let mut drawn = 0;
     for mesh in &file.render.meshes {
         let vertex_count = mesh.positions.len();
-        if vertex_count == 0 || mesh.indices.is_empty() || mesh.indices.len() % 3 != 0 {
+        if mesh.indices.is_empty() {
+            // A template shape the FBX supplied no mesh for keeps its vertex
+            // stream with an emptied index list (`assign_meshes_to_shapes`).
+            continue;
+        }
+        drawn += 1;
+        if vertex_count == 0 || mesh.indices.len() % 3 != 0 {
             return Err(invalid_data(format!(
                 "generated BFRES mesh {} has invalid triangles",
                 mesh.name
@@ -417,6 +479,9 @@ pub(super) fn validate_bfres_geometry(file: &BfresFile) -> io::Result<()> {
             )));
         }
     }
+    if drawn == 0 {
+        return Err(invalid_data("generated BFRES draws no triangles"));
+    }
     Ok(())
 }
 
@@ -468,14 +533,78 @@ impl WeaponBntxAssetRequest {
                     other => other,
                 }
             }
-            None => ImageDocument::clone_single_bntx_with_name(
-                source,
-                destination,
+            None => match ImageDocument::clone_single_bntx_with_name(
+                &source,
+                &destination,
                 &self.new_name,
                 &zstd,
-            ),
+            ) {
+                // The in-place rename keeps the vanilla bytes but cannot grow
+                // the string slot; longer names (upgrade ranks such as
+                // `Armor_900_Head_1`) go through the Toolbox saver, which
+                // rebuilds the string pool.
+                Err(error)
+                    if error.kind() == io::ErrorKind::InvalidInput
+                        && error.to_string().contains("too long") =>
+                {
+                    clone_bntx_like_toolbox(&source, &destination, &self.new_name, &zstd)
+                }
+                other => other,
+            },
         }
     }
+}
+
+/// Clones a single-texture BNTX under a new texture name of any length by
+/// re-saving it the way Switch Toolbox does.
+fn clone_bntx_like_toolbox(
+    source: &Path,
+    destination: &Path,
+    new_name: &str,
+    zstd: &TotkZstd<'_>,
+) -> io::Result<BntxReplacementReport> {
+    use crate::parser::bntx::BntxFile;
+    let bytes = fs::read(source)?;
+    let raw = if crate::Settings::Magic::is_bntx(&bytes) {
+        bytes
+    } else {
+        zstd.try_decompress_for_path(source, &bytes)?.0
+    };
+    let mut file = BntxFile::parse(&raw).map_err(|error| invalid_data(error.to_string()))?;
+    if file.textures.len() != 1 {
+        return Err(invalid(format!(
+            "icon BNTX must contain exactly one texture, found {}",
+            file.textures.len()
+        )));
+    }
+    let old_name = file.textures[0].name.clone();
+    if file.name == old_name {
+        file.set_internal_name(new_name);
+    }
+    file.rename_texture(0, new_name)
+        .map_err(|error| invalid_data(error.to_string()))?;
+    let is_zs = destination
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("zs"));
+    let output = if is_zs {
+        file.save_like_toolbox_zs()
+    } else {
+        file.save_like_toolbox()
+    }
+    .map_err(|error| invalid_data(error.to_string()))?;
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(destination, output)?;
+    let texture = &file.textures[0];
+    Ok(BntxReplacementReport {
+        name: texture.name.clone(),
+        width: texture.width,
+        height: texture.height,
+        format: format!("0x{:08X}", texture.format),
+        similarity: 1.0,
+    })
 }
 
 /// Replaces the single texture of an ASTC BNTX from a picture the way the
@@ -708,6 +837,50 @@ fn invalid_data(message: impl Into<String>) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Diagnostic, not a check: prints every mesh of a BFRES (.bfres or
+    /// .bfres.mc) with the bones it skins to.
+    /// `TOTKBITS_BFRES=<file> cargo test dump_model_skinning -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn dump_model_skinning() {
+        use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
+        let Ok(path) = std::env::var("TOTKBITS_BFRES") else {
+            return;
+        };
+        let bytes = fs::read(&path).unwrap();
+        let raw = if crate::Settings::Magic::is_bfres(&bytes) {
+            bytes
+        } else {
+            let zstd = TotkZstd::dictionaryless(
+                Arc::new(TotkConfig::default()),
+                TOTK_ZSTD_COMPRESSION_LEVEL,
+            );
+            zstd.decompress_mcpk(&bytes).unwrap()
+        };
+        let file = BfresFile::from_bytes(&raw).unwrap();
+        println!("{} bones", file.render.bones.len());
+        for mesh in &file.render.meshes {
+            let names: Vec<&str> = mesh
+                .skin_bones
+                .iter()
+                .filter_map(|&bone| file.render.bones.get(usize::from(bone)))
+                .map(|bone| bone.name.as_str())
+                .collect();
+            let material = file
+                .materials
+                .get(usize::from(mesh.material_index))
+                .map(|material| material.name.as_str())
+                .unwrap_or("?");
+            println!(
+                "{} [{material}]: {} vertices, {} triangles, skin bones {:?}",
+                mesh.name,
+                mesh.positions.len(),
+                mesh.indices.len() / 3,
+                names
+            );
+        }
+    }
     use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
 
     #[test]

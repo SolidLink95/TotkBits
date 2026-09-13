@@ -14,4 +14,5 @@ pub mod msbt;
 pub mod physics;
 pub mod ptcl;
 pub mod rstb;
+pub mod skeleton;
 pub mod textogo;

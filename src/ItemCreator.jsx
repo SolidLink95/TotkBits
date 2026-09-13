@@ -35,14 +35,42 @@ const emptyForm = (tab) => ({
     quantity: '1',
     fbx: '',
     iconPng: '',
-    physics: '',
+    physics: tab === 'armor' ? [''] : '',
     replaceBones: false,
     cube: false,
     cubeSize: '0.24,0.24,0.24',
     cubeBone: 'Head',
     cubeOffset: '0,0.09,0',
     cubeWeights: 'Head:0.9,Skl_Root:0.05,Root:0.05',
+    upgrades: [],
+    upgradesEnabled: true,
+    dyeable: false,
 });
+
+const MAX_UPGRADES = 4;
+/** Physics donor actors of a form or spec (string or list) without blanks. */
+const physicsDonors = (value) => (Array.isArray(value) ? value : [value])
+    .map((entry) => String(entry ?? '').trim())
+    .filter(Boolean);
+const emptyUpgrade = () => ({ defense: '', rupees: '', materials: '' });
+/** "Item_Enemy_77:5, Item_Ore_F:20" -> [{ actor, count }]; null when malformed. */
+const parseMaterials = (value) => {
+    const materials = [];
+    for (const entry of String(value ?? '').split(',')) {
+        const text = entry.trim();
+        if (!text) continue;
+        const [actor, count = '1'] = text.split(':').map((part) => part.trim());
+        const number = Number(count);
+        if (!/^[A-Za-z0-9_]+$/.test(actor) || !Number.isInteger(number) || number < 1) return null;
+        materials.push({ actor, count: number });
+    }
+    return materials;
+};
+const formatMaterials = (materials) => (materials || [])
+    .map((material) => Array.isArray(material)
+        ? `${material[0]}:${material[1]}`
+        : `${material.actor ?? material.name}:${material.count ?? material.number ?? 1}`)
+    .join(', ');
 
 const toInt = (value) => {
     const text = String(value ?? '').trim();
@@ -85,8 +113,18 @@ function buildSpec(tab, form, vendor) {
         };
         if (toInt(form.defense) !== undefined) spec.defense = toInt(form.defense);
         if (form.seriesName.trim()) spec.series_name = form.seriesName.trim();
-        if (form.physics.trim()) spec.physics = form.physics.trim();
+        const donors = physicsDonors(form.physics);
+        if (donors.length) spec.physics = donors;
         if (form.fbx && form.replaceBones) spec.replace_bones = true;
+        spec.upgrades_enabled = Boolean(form.upgradesEnabled);
+        if (form.dyeable) spec.dyeable = true;
+        if (form.upgradesEnabled && form.upgrades.length) {
+            spec.upgrades = form.upgrades.map((upgrade) => ({
+                defense: toInt(upgrade.defense) ?? 0,
+                rupees: toInt(upgrade.rupees) ?? 0,
+                materials: parseMaterials(upgrade.materials) || [],
+            }));
+        }
         if (form.cube && !form.fbx) {
             spec.cube = {
                 size: toVector(form.cubeSize, [0.25, 0.25, 0.25]),
@@ -135,12 +173,20 @@ function formFromSpec(spec) {
     form.quantity = String(vendor?.quantity ?? 1);
     form.iconPng = spec.assets?.icon_png || '';
     form.fbx = spec.assets?.fbx || '';
-    form.physics = spec.physics || spec.physics_actor || '';
+    const donors = physicsDonors(spec.physics ?? spec.physics_actor);
+    form.physics = isArmor ? (donors.length ? donors : ['']) : (donors[0] || '');
     form.replaceBones = Boolean(spec.replace_bones || spec.import_skeleton);
     if (isArmor) {
         form.kind = ARMOR_SLOTS.find((slot) => spec.actor_name.endsWith(slot.suffix))?.id || 'Head';
         form.defense = spec.defense ?? '';
         form.seriesName = spec.series_name || '';
+        form.upgradesEnabled = spec.upgrades_enabled ?? spec.enable_upgrades ?? true;
+        form.dyeable = Boolean(spec.dyeable || spec.make_dyeable);
+        form.upgrades = (spec.upgrades || []).map((upgrade) => ({
+            defense: upgrade.defense ?? '',
+            rupees: upgrade.rupees ?? upgrade.price ?? '',
+            materials: formatMaterials(upgrade.materials || upgrade.items),
+        }));
         const cube = spec.cube || spec.model;
         form.cube = Boolean(cube);
         if (cube) {
@@ -215,6 +261,7 @@ function ItemCreator({ activeTab, setStatusText }) {
     const [tab, setTab] = useState('weapon');
     const [form, setForm] = useState(() => emptyForm('weapon'));
     const [placeholders, setPlaceholders] = useState({ name: '', description: '' });
+    const [templateUpgrades, setTemplateUpgrades] = useState([]);
     const [items, setItems] = useState([]);
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [editingIndex, setEditingIndex] = useState(-1);
@@ -298,6 +345,7 @@ function ItemCreator({ activeTab, setStatusText }) {
         invoke('item_creator_template_info', { actor })
             .then((info) => {
                 setPlaceholders({ name: info.name || '', description: info.description || '' });
+                setTemplateUpgrades(info.upgrades || []);
                 setForm((current) => current.template === actor ? {
                     ...current,
                     baseAttack: info.baseAttack ?? '',
@@ -312,6 +360,13 @@ function ItemCreator({ activeTab, setStatusText }) {
             })
             .catch((reason) => setStatusText(`ERROR: ${reason}`));
     };
+
+    const updateUpgrade = (index, patch) => update({
+        upgrades: form.upgrades.map((upgrade, position) => position === index ? { ...upgrade, ...patch } : upgrade),
+    });
+    const updatePhysics = (index, value) => update({
+        physics: form.physics.map((donor, position) => position === index ? value : donor),
+    });
 
     const pickFile = async (field, filters) => {
         const selected = await open({ multiple: false, directory: false, filters });
@@ -342,6 +397,17 @@ function ItemCreator({ activeTab, setStatusText }) {
         if (!form.displayName.trim()) return 'Enter a name.';
         if (!form.description.trim()) return 'Enter a description.';
         if (tab === 'armor' && form.cube && Object.keys(toWeights(form.cubeWeights)).length === 0) return 'Cube weights must look like Head:0.9,Root:0.1.';
+        if (tab === 'armor' && form.upgradesEnabled) {
+            if (form.upgrades.length > MAX_UPGRADES) return `At most ${MAX_UPGRADES} upgrade ranks are possible.`;
+            for (const [index, upgrade] of form.upgrades.entries()) {
+                const rank = index + 2;
+                const defense = toInt(upgrade.defense);
+                if (defense === undefined || defense < 0) return `Rank ${rank}: enter a defense value.`;
+                const rupees = toInt(upgrade.rupees);
+                if (rupees === undefined || rupees < 0) return `Rank ${rank}: enter the rupee cost (0 is allowed).`;
+                if (parseMaterials(upgrade.materials) === null) return `Rank ${rank}: materials must look like Item_Enemy_77:5, Item_Ore_F:20.`;
+            }
+        }
         return '';
     };
 
@@ -541,7 +607,55 @@ function ItemCreator({ activeTab, setStatusText }) {
                             <label>Series</label>
                             <input type="text" value={form.seriesName} placeholder="Armor set key, e.g. Hylia" onChange={(event) => update({ seriesName: event.target.value })} />
                             <label>Physics</label>
-                            <input type="text" value={form.physics} placeholder="Vanilla actor whose Phive / Physics files are copied (optional)" onChange={(event) => update({ physics: event.target.value })} />
+                            <div className="item-creator-physics">
+                                {form.physics.map((donor, index) => (
+                                    <div className="item-creator-physics-entry" key={index}>
+                                        <input type="text" value={donor} placeholder={index === 0 ? 'Vanilla actor whose Phive / Physics files are copied (optional)' : 'Another vanilla actor to merge physics from'}
+                                            onChange={(event) => updatePhysics(index, event.target.value)} />
+                                        <button type="button" title="Remove this physics donor" disabled={form.physics.length <= 1}
+                                            onClick={() => update({ physics: form.physics.filter((_, position) => position !== index) })}>−</button>
+                                        <button type="button" title="Add another physics donor" hidden={index !== form.physics.length - 1}
+                                            onClick={() => update({ physics: [...form.physics, ''] })}>+</button>
+                                    </div>
+                                ))}
+                                <span className="item-creator-hint">{form.physics.filter((entry) => entry.trim()).length > 1
+                                    ? 'Two or more donors: their cloths, skeletons and collidables are merged into one bphcl named after the actor.'
+                                    : 'One donor copies its Phive / Physics files as they are.'}</span>
+                            </div>
+                            <label>Dye</label>
+                            <div className="item-creator-check">
+                                <input id="item-creator-dyeable" type="checkbox" checked={form.dyeable} onChange={(event) => update({ dyeable: event.target.checked })} />
+                                <label htmlFor="item-creator-dyeable" className="item-creator-hint">Make dyeable (adds the ColorVariation component, sixteen albedo slices, the dye animation and the fifteen icon variants when the template is not dyeable already)</label>
+                            </div>
+                            <div className="item-creator-section">Great Fairy upgrades</div>
+                            <label>Upgrades</label>
+                            <div className="item-creator-check">
+                                <input id="item-creator-upgrades-enabled" type="checkbox" checked={form.upgradesEnabled} onChange={(event) => update({ upgradesEnabled: event.target.checked })} />
+                                <label htmlFor="item-creator-upgrades-enabled" className="item-creator-hint">Enable upgrades: rank actors {form.actorName.trim() || 'Armor_900_Head'}_1 … _4; an empty list inherits the template's chain (Hylian Hood values when it has none)</label>
+                            </div>
+                            {form.upgradesEnabled && <>
+                            <label>Ranks</label>
+                            <div className="item-creator-upgrades">
+                                {form.upgrades.map((upgrade, index) => (
+                                    <div className="item-creator-upgrade" key={index}>
+                                        <span className="item-creator-upgrade-rank">{'★'.repeat(index + 1)}</span>
+                                        <input type="number" value={upgrade.defense} placeholder="Defense" title="Defense at this rank"
+                                            onChange={(event) => updateUpgrade(index, { defense: event.target.value })} />
+                                        <input type="number" value={upgrade.rupees} placeholder="Rupees" title="Rupees the Great Fairy charges for this step"
+                                            onChange={(event) => updateUpgrade(index, { rupees: event.target.value })} />
+                                        <input type="text" value={upgrade.materials} placeholder="Item_Enemy_77:5, Item_Ore_F:20" title="Materials for this step, actor:count"
+                                            onChange={(event) => updateUpgrade(index, { materials: event.target.value })} />
+                                        <button type="button" title="Remove this rank and the ones after it" onClick={() => update({ upgrades: form.upgrades.slice(0, index) })}>×</button>
+                                    </div>
+                                ))}
+                                <div className="item-creator-upgrade-actions">
+                                    <button type="button" disabled={form.upgrades.length >= MAX_UPGRADES} onClick={() => update({ upgrades: [...form.upgrades, emptyUpgrade()] })}>Add rank</button>
+                                    <button type="button" disabled={templateUpgrades.length === 0} title="Copy the template's Great Fairy chain (defense, rupees and materials per rank)"
+                                        onClick={() => update({ upgrades: templateUpgrades.slice(0, MAX_UPGRADES).map((entry) => ({ defense: entry.defense ?? '', rupees: entry.rupees ?? '', materials: formatMaterials(entry.materials) })) })}>Use template's upgrades</button>
+                                    <span className="item-creator-hint">{form.upgrades.length ? `${form.upgrades.length} custom rank(s) (the rest of the chain is dropped)` : 'Empty: the four ranks are derived from the template.'}</span>
+                                </div>
+                            </div>
+                            </>}
                             {/* <div className="item-creator-section">Model</div> */}
                             {/* <label>Placeholder cube</label>
                             <div className="item-creator-check">

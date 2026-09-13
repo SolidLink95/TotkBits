@@ -95,6 +95,7 @@ tauri-plugin-process = "2.3.1"
 tauri-plugin-http = "2.5.9"
 tauri-plugin-os = "2.3.2"
 texture2ddecoder = "0.1.2"
+quick-xml = "0.31"
 
 [dev-dependencies]
 windows = "0.58.0"

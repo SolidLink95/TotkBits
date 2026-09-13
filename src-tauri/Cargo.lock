@@ -26,6 +26,7 @@ dependencies = [
  "miow",
  "native-dialog",
  "natord",
+ "quick-xml 0.31.0",
  "regex",
  "reqwest 0.12.12",
  "rfd 0.17.2",

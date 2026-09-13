@@ -55,6 +55,16 @@ pub struct WeaponRsdbRequest {
     pub overrides: WeaponRsdbOverrides,
 }
 
+/// The Great Fairy cost stored on an armor actor: what it takes to reach the
+/// next rank.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnhancementRow {
+    pub actor: String,
+    /// `(material actor, count)`.
+    pub materials: Vec<(String, i32)>,
+    pub price: i32,
+}
+
 /// Stateful processor for version discovery and weapon-related RSDB generation.
 pub struct WeaponRsdbProcessor<'a> {
     clean_romfs: PathBuf,
@@ -240,17 +250,13 @@ impl<'a> WeaponRsdbProcessor<'a> {
             map.remove(*key);
         }
         for (key, value) in overrides {
+            // Fields the template row lacks (ArmorNextRankActor on a rank-1
+            // template, prices on a free item, ...) take their BYML type from
+            // the JSON value.
             let converted = if let Some(current) = map.get(key.as_str()) {
                 Self::json_to_matching_byml(value, current, key)?
-            } else if matches!(key.as_str(), "BuyingPrice" | "SellingPrice") {
-                Byml::I32(
-                    value
-                        .as_i64()
-                        .and_then(|value| value.try_into().ok())
-                        .ok_or_else(|| Self::invalid(format!("{key} must be a 32-bit integer")))?,
-                )
             } else {
-                return Err(Self::invalid(format!("template row has no field {key}")));
+                Self::json_to_new_byml(value, key)?
             };
             map.insert(key.clone().into(), converted);
         }
@@ -350,6 +356,97 @@ impl<'a> WeaponRsdbProcessor<'a> {
             .and_then(|row| row.get("PouchCategory"))
             .and_then(|value| value.as_string().ok())
             .map(ToString::to_string))
+    }
+
+    /// BYML value for a field the template row does not carry: strings,
+    /// booleans, 32-bit integers (64-bit when they do not fit) and floats.
+    fn json_to_new_byml(value: &JsonValue, path: &str) -> io::Result<Byml> {
+        if let Some(text) = value.as_str() {
+            return Ok(Byml::String(text.into()));
+        }
+        if let Some(flag) = value.as_bool() {
+            return Ok(Byml::Bool(flag));
+        }
+        if let Some(number) = value.as_i64() {
+            return Ok(match i32::try_from(number) {
+                Ok(small) => Byml::I32(small),
+                Err(_) => Byml::I64(number),
+            });
+        }
+        if let Some(number) = value.as_f64() {
+            return Ok(Byml::Float(number as f32));
+        }
+        Err(Self::invalid(format!(
+            "template row has no field {path} and the JSON value is not a string, bool or number"
+        )))
+    }
+
+    /// One EnhancementMaterialInfo row: the Great Fairy cost to upgrade
+    /// `actor` to its next rank.
+    pub(super) fn upsert_enhancement_material_rows(
+        source: &Path,
+        destination: &Path,
+        rows: &[EnhancementRow],
+        zstd: Arc<TotkZstd<'_>>,
+    ) -> io::Result<()> {
+        let mut file = BymlFile::new(source, zstd.clone())
+            .ok_or_else(|| Self::invalid_data(format!("failed to parse {}", source.display())))?;
+        let table = file.pio.as_mut_array().map_err(|_| {
+            Self::invalid_data(format!("RSDB root is not an array: {}", source.display()))
+        })?;
+        for row in rows {
+            let row_id = format!("Work/Actor/{}.engine__actor__ActorParam.gyml", row.actor);
+            let items = row
+                .materials
+                .iter()
+                .map(|(material, count)| {
+                    let mut item = roead::byml::Map::default();
+                    item.insert(
+                        "Actor".into(),
+                        Byml::String(
+                            format!("Work/Actor/{material}.engine__actor__ActorParam.gyml").into(),
+                        ),
+                    );
+                    item.insert("Number".into(), Byml::I32(*count));
+                    Byml::Map(item)
+                })
+                .collect();
+            let mut map = roead::byml::Map::default();
+            map.insert("Items".into(), Byml::Array(items));
+            map.insert("Price".into(), Byml::I32(row.price));
+            map.insert("__RowId".into(), Byml::String(row_id.as_str().into()));
+            let entry = Byml::Map(map);
+            match table
+                .iter()
+                .position(|candidate| Self::row_id(candidate).as_deref() == Some(row_id.as_str()))
+            {
+                Some(index) => {
+                    if let Some(existing) = table.get_mut(index) {
+                        *existing = entry;
+                    }
+                }
+                None => table.push(entry),
+            }
+        }
+        table.sort_by_key(|candidate| Self::row_id(candidate).unwrap_or_default());
+        let rebuilt = file.to_binary_preserving_header()?;
+        let reparsed = BymlFile::from_binary(&rebuilt, zstd, destination)?;
+        let saved_rows = reparsed
+            .pio
+            .as_array()
+            .map_err(|_| Self::invalid_data("generated EnhancementMaterialInfo is not an array"))?;
+        for row in rows {
+            let row_id = format!("Work/Actor/{}.engine__actor__ActorParam.gyml", row.actor);
+            if !saved_rows
+                .iter()
+                .any(|candidate| Self::row_id(candidate).as_deref() == Some(row_id.as_str()))
+            {
+                return Err(Self::invalid_data(format!(
+                    "generated EnhancementMaterialInfo row is missing: {row_id}"
+                )));
+            }
+        }
+        file.save(destination.to_string_lossy().into_owned())
     }
 
     fn json_to_matching_byml(value: &JsonValue, template: &Byml, path: &str) -> io::Result<Byml> {

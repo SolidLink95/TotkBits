@@ -19,6 +19,7 @@ pub mod catalog;
 pub mod ecocat;
 pub mod gamedata;
 pub mod messages;
+pub mod physics;
 pub mod rsdb;
 pub mod rstb;
 pub mod sharp_info;

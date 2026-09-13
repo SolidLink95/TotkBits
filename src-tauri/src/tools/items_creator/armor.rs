@@ -15,9 +15,17 @@ use super::{
 use crate::{
     compression::meshcodec::MeshCodec,
     file_format::{
-        Model3D::bfres::{toolbox::ResFile, BfresFile},
+        BinTextFile::BymlFile,
+        Model3D::bfres::{
+            material_anim::{
+                write_material_anim_bfres, TexturePatternAnim, TexturePatternMaterial,
+            },
+            toolbox::ResFile,
+            BfresFile,
+        },
         Pack::PackFile,
     },
+    parser::textogo::{writer as textogo_writer, TexToGoFile},
     Zstd::{TotkZstd, ZstdDictionary},
 };
 use roead::byml::Byml;
@@ -66,6 +74,92 @@ pub struct ArmorAssets {
     pub fbx: Option<PathBuf>,
 }
 
+fn one() -> i32 {
+    1
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// `"physics": "Armor_005_Head"`, `["Armor_005_Head", "Armor_180_Upper"]`
+/// or `null`.
+fn physics_donors<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Donors {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match Option::<Donors>::deserialize(deserializer)? {
+        None => Vec::new(),
+        Some(Donors::One(actor)) => vec![actor],
+        Some(Donors::Many(actors)) => actors,
+    })
+}
+
+/// The fifteen dye colours in the order of the `<Slot>_ftp` animation
+/// frames 1..15 and of the vanilla `_<Color>` icon variants, with the tint
+/// used when a piece is made dyeable from a single-colour template.
+pub const DYE_COLORS: [(&str, [u8; 3]); 15] = [
+    ("Blue", [60, 90, 200]),
+    ("Red", [190, 40, 40]),
+    ("Yellow", [230, 200, 50]),
+    ("White", [235, 235, 235]),
+    ("Black", [35, 35, 35]),
+    ("Purple", [120, 60, 160]),
+    ("Green", [60, 150, 70]),
+    ("LightBlue", [120, 190, 230]),
+    ("Navy", [30, 45, 110]),
+    ("Orange", [230, 130, 40]),
+    ("Pink", [235, 130, 180]),
+    ("Crimson", [150, 20, 50]),
+    ("LightYellow", [245, 235, 160]),
+    ("Brown", [120, 80, 50]),
+    ("Gray", [128, 128, 128]),
+];
+
+/// Hylian Hood defense gain per rank over rank 1 (3 → 5 → 8 → 12 → 20),
+/// used when a template has no upgrade chain of its own.
+const HYLIAN_DEFENSE_DELTAS: [i32; 4] = [2, 5, 9, 17];
+
+/// One material the Great Fairy asks for.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ArmorUpgradeMaterial {
+    /// Vanilla item actor, for example `Item_Enemy_77`.
+    #[serde(alias = "name")]
+    pub actor: String,
+    #[serde(default = "one", alias = "number")]
+    pub count: i32,
+}
+
+/// One Great Fairy step; `upgrades[0]` is rank 2 (★). At most four.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ArmorUpgradeSpec {
+    /// `BaseDefense` / `EquipmentPerformance` at this rank.
+    pub defense: i32,
+    /// Rupees the Great Fairy charges for this step.
+    #[serde(default, alias = "price")]
+    pub rupees: i32,
+    #[serde(default, alias = "items")]
+    pub materials: Vec<ArmorUpgradeMaterial>,
+    /// Rank actor name. Defaults to the base name followed by the step
+    /// (`Armor_900_Head` → `Armor_900_Head_1`, `Armor_900_Head_2`, ...).
+    #[serde(default)]
+    pub actor_name: Option<String>,
+    /// Shop prices of the rank actor; default to the base piece's prices.
+    #[serde(default)]
+    pub buying_price: Option<i32>,
+    #[serde(default)]
+    pub selling_price: Option<i32>,
+    /// `ActivateSetBonus` in ArmorParam (vanilla sets it from rank 3 on
+    /// series with a set bonus).
+    #[serde(default)]
+    pub activate_set_bonus: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ArmorSpec {
     /// `Armor_<id>_<Head|Upper|Lower>`.
@@ -83,12 +177,16 @@ pub struct ArmorSpec {
     /// Placeholder geometry. When omitted the template mesh is kept.
     #[serde(default, alias = "cube")]
     pub model: Option<CubeModelSpec>,
-    /// Existing vanilla actor whose `Phive/*` and `Component/Physics/*`
-    /// entries are transferred into the clone (cloth, helper bones, ...).
-    /// Empty, malformed or non-existent actors are ignored and the template's
-    /// own physics entries are preserved.
-    #[serde(default, alias = "physics_actor")]
-    pub physics: Option<String>,
+    /// Vanilla actors whose `Phive/*` and `Component/Physics/*` entries are
+    /// transferred into the clone (cloth, helper bones, ...); a single string
+    /// is accepted too. One usable donor is copied verbatim. Two or more are
+    /// merged into one bundle named after the actor: every cloth (with its
+    /// skeleton) and collidable of their BPHCL files, their ClothParams,
+    /// cloth reactions and helper-bone files. Empty, malformed or
+    /// non-existent actors are ignored, and the template's own physics
+    /// entries are preserved when no donor is usable.
+    #[serde(default, alias = "physics_actor", deserialize_with = "physics_donors")]
+    pub physics: Vec<String>,
     /// With a custom FBX: replace the bones with the FBX skeleton (Toolbox
     /// "Import Bones") instead of keeping the template skeleton.
     #[serde(default, alias = "import_skeleton")]
@@ -97,6 +195,34 @@ pub struct ArmorSpec {
     pub assets: ArmorAssets,
     #[serde(default)]
     pub vendors: Vec<VendorTarget>,
+    /// Great Fairy upgrade ranks (★ to ★★★★), each a rank actor of its own.
+    /// Empty with `upgrades_enabled` means "copy the template's vanilla
+    /// chain" (see [`ArmorSpec::effective_upgrades`]).
+    #[serde(default)]
+    pub upgrades: Vec<ArmorUpgradeSpec>,
+    /// Whether the Great Fairies can upgrade this piece at all.
+    #[serde(default = "default_true", alias = "enable_upgrades")]
+    pub upgrades_enabled: bool,
+    /// Make the piece dyeable at the dye shop even when its template is
+    /// not: adds the colour-variation component, sixteen tinted albedo
+    /// slices, the `<Slot>_ftp` animation and the fifteen icon variants.
+    /// A dyeable template stays dyeable either way.
+    #[serde(default, alias = "make_dyeable")]
+    pub dyeable: bool,
+}
+
+/// Everything written for one upgrade rank actor.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArmorUpgradeReport {
+    pub actor_name: String,
+    pub rank: u8,
+    pub defense: i32,
+    pub actor_pack: PathBuf,
+    pub ui_textures: Vec<UiTextureReport>,
+    pub messages: PathBuf,
+    pub rsdb: Vec<PathBuf>,
+    pub game_data: gamedata::WeaponGameDataReport,
 }
 
 /// Everything written for one armor piece, before the shared RSTB pass.
@@ -116,6 +242,9 @@ pub struct ArmorGenerationReport {
     pub rsdb: Vec<PathBuf>,
     pub game_data: gamedata::WeaponGameDataReport,
     pub vendor_packs: Vec<vendor::VendorPackReport>,
+    pub upgrades: Vec<ArmorUpgradeReport>,
+    /// Whether the generated piece can be dyed (template dyeable or made so).
+    pub dyeable: bool,
 }
 
 impl ArmorSpec {
@@ -132,6 +261,97 @@ impl ArmorSpec {
     pub fn project(&self) -> io::Result<String> {
         let slot = self.slot()?;
         Ok(self.actor_name[..self.actor_name.len() - slot.suffix().len()].to_owned())
+    }
+
+    /// Actor names of the explicit upgrade ranks (rank 2 first).
+    pub fn rank_actor_names(&self) -> Vec<String> {
+        Self::rank_actor_names_for(&self.actor_name, &self.upgrades)
+    }
+
+    /// Rank actor names for `upgrades`: an explicit `actor_name`, otherwise
+    /// `<base>_<step>` (`Armor_900_Head_1` for rank 2 and so on).
+    pub fn rank_actor_names_for(base: &str, upgrades: &[ArmorUpgradeSpec]) -> Vec<String> {
+        upgrades
+            .iter()
+            .enumerate()
+            .map(|(index, upgrade)| match &upgrade.actor_name {
+                Some(name) if !name.trim().is_empty() => name.trim().to_owned(),
+                _ => format!("{base}_{}", index + 1),
+            })
+            .collect()
+    }
+
+    /// The upgrade ranks the generator writes: none when upgrades are
+    /// disabled, the explicit list when given, otherwise the template's
+    /// vanilla chain (defense, prices, materials and rupees per rank). A
+    /// template without a chain gets the Hylian Hood chain of the same slot
+    /// with the defense rebuilt from this piece's own value plus the Hylian
+    /// per-rank gains.
+    pub fn effective_upgrades(
+        &self,
+        clean_romfs: &Path,
+        zstd: Arc<TotkZstd<'_>>,
+    ) -> io::Result<Vec<ArmorUpgradeSpec>> {
+        if !self.upgrades_enabled {
+            return Ok(Vec::new());
+        }
+        if !self.upgrades.is_empty() {
+            return Ok(self.upgrades.clone());
+        }
+        let slot = self.slot()?;
+        let from_template =
+            super::catalog::armor_upgrades(clean_romfs, &self.template_actor, zstd.clone())
+                .unwrap_or_default();
+        let base_defense = match self.defense {
+            Some(value) => Some(value),
+            None => {
+                TemplateArmor::load(clean_romfs, &self.template_actor, zstd.clone())?.base_defense
+            }
+        };
+        let (chain, defenses): (Vec<_>, Vec<Option<i32>>) = if from_template.is_empty() {
+            let hylian = format!("Armor_001{}", slot.suffix());
+            let chain = super::catalog::armor_upgrades(clean_romfs, &hylian, zstd)
+                .filter(|chain| !chain.is_empty())
+                .ok_or_else(|| {
+                    invalid_data(format!(
+                        "neither {} nor {hylian} has an upgrade chain in the RomFS",
+                        self.template_actor
+                    ))
+                })?;
+            let base = base_defense.unwrap_or(3);
+            let defenses = HYLIAN_DEFENSE_DELTAS
+                .iter()
+                .map(|delta| Some(base + delta))
+                .collect();
+            (chain, defenses)
+        } else {
+            let defenses = from_template.iter().map(|rank| rank.defense).collect();
+            (from_template, defenses)
+        };
+        Ok(chain
+            .into_iter()
+            .zip(defenses)
+            .take(4)
+            .enumerate()
+            .map(|(index, (rank, defense))| ArmorUpgradeSpec {
+                defense: defense.or(rank.defense).unwrap_or_else(|| {
+                    base_defense.unwrap_or(3) + HYLIAN_DEFENSE_DELTAS[index.min(3)]
+                }),
+                rupees: rank.rupees.max(0),
+                materials: rank
+                    .materials
+                    .into_iter()
+                    .map(|material| ArmorUpgradeMaterial {
+                        actor: material.actor,
+                        count: material.count.max(1),
+                    })
+                    .collect(),
+                actor_name: None,
+                buying_price: rank.buying_price,
+                selling_price: rank.selling_price,
+                activate_set_bonus: false,
+            })
+            .collect())
     }
 
     fn template_project(&self) -> io::Result<String> {
@@ -185,6 +405,44 @@ impl ArmorSpec {
         if self.defense.is_some_and(|value| value < 0) {
             return Err(invalid("defense cannot be negative"));
         }
+        if self.upgrades.len() > 4 {
+            return Err(invalid(
+                "armor supports at most four upgrade ranks (★ to ★★★★)",
+            ));
+        }
+        let rank_names = self.rank_actor_names();
+        for (index, (upgrade, name)) in self.upgrades.iter().zip(&rank_names).enumerate() {
+            let rank = index + 2;
+            if upgrade.defense < 0 {
+                return Err(invalid(format!("rank {rank} defense cannot be negative")));
+            }
+            if upgrade.rupees < 0 {
+                return Err(invalid(format!("rank {rank} rupees cannot be negative")));
+            }
+            if upgrade.buying_price.is_some_and(|price| price < 0)
+                || upgrade.selling_price.is_some_and(|price| price < 0)
+            {
+                return Err(invalid(format!("rank {rank} prices cannot be negative")));
+            }
+            for material in &upgrade.materials {
+                validate_actor_name(&material.actor)?;
+                if material.count < 1 {
+                    return Err(invalid(format!(
+                        "rank {rank} material {} needs a count of at least one",
+                        material.actor
+                    )));
+                }
+            }
+            validate_actor_name(name)?;
+            if *name == self.actor_name || *name == self.template_actor {
+                return Err(invalid(format!(
+                    "rank {rank} actor {name} must differ from the base and template actors"
+                )));
+            }
+            if rank_names[..index].contains(name) {
+                return Err(invalid(format!("rank actor {name} is used twice")));
+            }
+        }
         if let Some(model) = &self.model {
             if model.weights.is_empty() || model.weights.len() > 4 {
                 return Err(invalid("cube weights must name one to four bones"));
@@ -224,8 +482,8 @@ impl ArmorSpec {
                 "choose either a custom FBX or the placeholder cube, not both",
             ));
         }
-        // `physics` is not validated: an unusable donor falls back to the
-        // template's own physics files instead of failing the build.
+        // `physics` is not validated: unusable donors are skipped and the
+        // template's own physics files stay when none is usable.
         Ok(())
     }
 
@@ -245,36 +503,55 @@ impl ArmorSpec {
         let project = self.project()?;
         let template_project = self.template_project()?;
         let template = TemplateArmor::load(clean_romfs, &self.template_actor, zstd.clone())?;
+        let upgrades = self.effective_upgrades(clean_romfs, zstd.clone())?;
+        // A dyeable template stays dyeable; `dyeable` only adds what a
+        // single-colour template lacks.
+        let make_dyeable = self.dyeable && !template.dyeable;
+        if make_dyeable && !dye_assets_supported() {
+            return Err(invalid(
+                "this build cannot write the dye textures and animation (TexToGo / FMAA writers unavailable)",
+            ));
+        }
 
-        let actor_pack =
-            self.clone_actor_pack(clean_romfs, output_romfs, &template, zstd.clone())?;
+        let actor_pack = self.clone_actor_pack(
+            clean_romfs,
+            output_romfs,
+            &template,
+            &upgrades,
+            make_dyeable,
+            zstd.clone(),
+        )?;
         let model = self.generate_model(
             clean_romfs,
             output_romfs,
             asset_root,
             &template,
+            make_dyeable,
             zstd.clone(),
         )?;
-        let model_anim = clone_project_anim(
-            clean_romfs,
-            output_romfs,
-            &template_project,
-            &project,
-            zstd.clone(),
-        )?;
+        let model_anim = match model.anim.clone() {
+            Some(anim) => Some(anim),
+            None => clone_project_anim(
+                clean_romfs,
+                output_romfs,
+                &template_project,
+                &project,
+                zstd.clone(),
+            )?,
+        };
 
+        let custom_icon = self
+            .assets
+            .icon_png
+            .as_deref()
+            .map(|path| super::resolve_asset(asset_root, path));
         let mut ui_textures = Vec::new();
         for (source, destination, name) in
             icon_variants(clean_romfs, &self.template_actor, &self.actor_name)?
         {
-            let png = if name == self.actor_name {
-                self.assets
-                    .icon_png
-                    .as_deref()
-                    .map(|path| super::resolve_asset(asset_root, path))
-            } else {
-                None
-            };
+            let png = (name == self.actor_name)
+                .then(|| custom_icon.clone())
+                .flatten();
             ui_textures.push(super::generate_ui_texture(
                 clean_romfs,
                 output_romfs,
@@ -282,6 +559,16 @@ impl ArmorSpec {
                 destination,
                 name,
                 png,
+                zstd.clone(),
+            )?);
+        }
+        if make_dyeable {
+            ui_textures.extend(generate_dye_icons(
+                clean_romfs,
+                output_romfs,
+                &self.template_actor,
+                &self.actor_name,
+                custom_icon.as_deref(),
                 zstd.clone(),
             )?);
         }
@@ -294,13 +581,29 @@ impl ArmorSpec {
             &self.description,
             zstd.clone(),
         )?;
-        let rsdb = self.generate_rsdb(clean_romfs, output_romfs, &template, zstd.clone())?;
+        let mut rsdb = self.generate_rsdb(
+            clean_romfs,
+            output_romfs,
+            &template,
+            &upgrades,
+            make_dyeable,
+            zstd.clone(),
+        )?;
         let game_data = gamedata::WeaponGameDataRequest {
             actor_name: self.actor_name.clone(),
             picture_book: false,
             inventory_flags: true,
         }
         .generate(clean_romfs, output_romfs, zstd.clone())?;
+        let upgrades = self.generate_upgrade_files(
+            clean_romfs,
+            output_romfs,
+            asset_root,
+            &upgrades,
+            make_dyeable,
+            &mut rsdb,
+            zstd.clone(),
+        )?;
         let processor = vendor::VendorProcessor::new(clean_romfs, output_romfs, zstd);
         let vendor_packs = self
             .vendors
@@ -322,6 +625,8 @@ impl ArmorSpec {
             rsdb,
             game_data,
             vendor_packs,
+            upgrades,
+            dyeable: template.dyeable || make_dyeable,
         })
     }
 
@@ -334,12 +639,24 @@ impl ArmorSpec {
         clean_romfs: &Path,
         output_romfs: &Path,
         template: &TemplateArmor,
+        upgrades: &[ArmorUpgradeSpec],
+        make_dyeable: bool,
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<PathBuf> {
         let project = self.project()?;
+        let slot = self.slot()?;
         let template_project = self.template_project()?;
+        let rank_names = Self::rank_actor_names_for(&self.actor_name, upgrades);
         let pack = PackFile::from_binary(&template.pack_bytes, zstd.clone())?;
         let actor_file = format!("Actor/{}.engine__actor__ActorParam.bgyml", self.actor_name);
+        let model_info_file = format!(
+            "Component/ModelInfo/{}.engine__component__ModelInfo.bgyml",
+            self.actor_name
+        );
+        let color_variation_file = format!(
+            "Component/ColorVariationParam/Armor{}.game__component__ColorVariationParam.bgyml",
+            slot.suffix()
+        );
         let armor_file = format!(
             "Component/ArmorParam/{}.game__component__ArmorParam.bgyml",
             self.actor_name
@@ -354,11 +671,12 @@ impl ArmorSpec {
         // Physics: with a usable donor actor its Phive/Physics entries replace
         // the template's; otherwise the template's own physics files and its
         // PhysicsRef are preserved (renamed with the rest of the pack).
-        let physics = actor_pack::optional_physics_entries(
+        let physics = super::physics::merged_physics_entries(
             clean_romfs,
-            self.physics.as_deref(),
+            &self.physics,
+            &self.actor_name,
             zstd.clone(),
-        );
+        )?;
         let replace_physics = physics.is_some();
         let physics_ref = physics.as_ref().map(|(reference, _)| reference.clone());
         let mut entries: Vec<(String, Vec<u8>)> = physics
@@ -393,6 +711,35 @@ impl ArmorSpec {
                         Byml::String(physics_ref.as_str().into()),
                     );
                 }
+                if make_dyeable {
+                    let components = map_child_mut(&mut document.pio, "Components")?;
+                    components.insert(
+                        "ColorVariationRef".into(),
+                        byml_string(format!("?{color_variation_file}")),
+                    );
+                }
+            } else if new_name == model_info_file && make_dyeable {
+                // The dye animations of the project, listed for every slot
+                // exactly as vanilla dyeable pieces do.
+                let map = document
+                    .pio
+                    .as_mut_map()
+                    .map_err(|_| invalid_data("ModelInfo root is not a map"))?;
+                let anims = ["Head_ftp", "Upper_ftp", "Lower_ftp"]
+                    .iter()
+                    .map(|anim| {
+                        let mut entry = roead::byml::Map::default();
+                        entry.insert(
+                            "Fmab".into(),
+                            byml_string(format!(
+                                "Work/Model/Player/Armor/{project}/output/{anim}.fmab"
+                            )),
+                        );
+                        entry.insert("Frame".into(), Byml::Float(-1.0));
+                        Byml::Map(entry)
+                    })
+                    .collect();
+                map.insert("ModelVariationAnims".into(), Byml::Array(anims));
             } else if new_name == armor_file {
                 let map = document
                     .pio
@@ -412,6 +759,13 @@ impl ArmorSpec {
                     "HasSoundCloth",
                 ] {
                     map.remove(key);
+                }
+                // The upgrade chain starts here: rank 2 is the next actor.
+                if let Some(next) = rank_names.first() {
+                    map.insert(
+                        "NextRankActor".into(),
+                        Byml::String(actor_param_work_path(next).into()),
+                    );
                 }
                 // `HideMaterialGroupNameList` names the material groups of
                 // Link's body model (`G_Upper` torso/arm skin, `G_Lower` legs,
@@ -450,6 +804,21 @@ impl ArmorSpec {
                 "cloned pack has no {actor_file}; template project {template_project} was not found in the entry names"
             )));
         }
+        if let Some(first) = upgrades.first() {
+            set_enhancement_cost(&mut entries, &actor_file, first, zstd.clone())?;
+        }
+        if make_dyeable
+            && !entries
+                .iter()
+                .any(|(name, _)| *name == color_variation_file)
+        {
+            entries.push(color_variation_entry(
+                clean_romfs,
+                slot,
+                &color_variation_file,
+                zstd.clone(),
+            )?);
+        }
         let output_bytes = pack.rebuild_binary(entries)?;
         let output = output_romfs
             .join("Pack/Actor")
@@ -484,9 +853,11 @@ impl ArmorSpec {
         output_romfs: &Path,
         asset_root: &Path,
         template: &TemplateArmor,
+        make_dyeable: bool,
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<GeneratedArmorModel> {
         let project = self.project()?;
+        let slot = self.slot()?;
         let template_project = self.template_project()?;
         let source = clean_romfs.join("Model").join(format!(
             "{}.{}.bfres.mc",
@@ -522,10 +893,12 @@ impl ArmorSpec {
         let raw = match &self.assets.fbx {
             Some(fbx) => {
                 let bytes = fs::read(super::resolve_asset(asset_root, fbx))?;
-                let replaced =
-                    BfresFile::replace_geometry_from_fbx(&raw, &bytes).map_err(|error| {
-                        invalid_data(format!("failed to replace BFRES geometry: {error}"))
-                    })?;
+                let replaced = assets::replace_geometry_from_fbx(
+                    clean_romfs,
+                    &raw,
+                    &bytes,
+                    self.replace_bones,
+                )?;
                 fbx_bytes = Some(bytes);
                 replaced
             }
@@ -558,7 +931,24 @@ impl ArmorSpec {
         let texture_output = output_romfs.join("TexToGo");
         fs::create_dir_all(&texture_output)?;
         let mut copied = Vec::new();
+        // Making a single-colour template dyeable: every `_Alb` texture
+        // becomes a sixteen-slice array (slice 0 untinted) and the material
+        // points at slice 0, like vanilla dyeable pieces.
+        let mut dye_materials: Vec<(String, String, String)> = Vec::new();
+        if make_dyeable {
+            dye_materials = write_dye_slices(
+                &mut file,
+                &texture_sources,
+                &texture_output,
+                &template_project,
+                &project,
+                &mut copied,
+            )?;
+        }
         for old_name in &texture_names {
+            if make_dyeable && old_name.ends_with("_Alb") {
+                continue;
+            }
             let logical = old_name
                 .strip_suffix(".txtg")
                 .unwrap_or(old_name)
@@ -639,45 +1029,53 @@ impl ArmorSpec {
             invalid_data(format!("round-tripped BFRES cannot be parsed: {error}"))
         })?;
         fs::write(&destination, compressed)?;
+        let anim = if make_dyeable {
+            // Material names were renamed with the project above; the slice
+            // names carry the project already.
+            let materials = dye_materials
+                .into_iter()
+                .map(|(material, sampler, albedo)| {
+                    (
+                        replace_project(&material, &template_project, &project),
+                        sampler,
+                        albedo,
+                    )
+                })
+                .collect::<Vec<_>>();
+            Some(write_dye_anim(
+                clean_romfs,
+                output_romfs,
+                &project,
+                slot,
+                &materials,
+                zstd,
+            )?)
+        } else {
+            None
+        };
         Ok(GeneratedArmorModel {
             model: destination,
             cube,
             textures: copied,
             texture_names: required_texture_names.into_iter().collect(),
+            anim,
         })
     }
 
     /// ActorInfo, GameActorInfo, PouchActorInfo rows and the Tag entry. Armor
-    /// has no AttachmentActorInfo row; the EnhancementMaterialInfo upgrade row
-    /// is skipped because the clone is not upgradable.
+    /// has no AttachmentActorInfo row. With upgrades the pouch row keeps its
+    /// `ArmorNextRankActor`, now pointing at the rank-2 actor.
     fn generate_rsdb(
         &self,
         clean_romfs: &Path,
         output_romfs: &Path,
         template: &TemplateArmor,
+        upgrades: &[ArmorUpgradeSpec],
+        make_dyeable: bool,
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<Vec<PathBuf>> {
         let project = self.project()?;
         let template_project = self.template_project()?;
-        let clean_rsdb = clean_romfs.join("RSDB");
-        let output_rsdb = output_romfs.join("RSDB");
-        fs::create_dir_all(&output_rsdb)?;
-        let (version, actor_info_source) = super::version::discover_product_file(
-            &clean_rsdb,
-            "ActorInfo.Product.",
-            ".rstbl.byml.zs",
-        )?;
-        let actor_info = actor_info_source
-            .file_name()
-            .and_then(|value| value.to_str())
-            .ok_or_else(|| invalid_data("ActorInfo filename is not UTF-8"))?
-            .to_owned();
-        let game_actor_info =
-            rsdb::WeaponRsdbProcessor::versioned_rsdb_name("GameActorInfo", &version)?;
-        let pouch_actor_info =
-            rsdb::WeaponRsdbProcessor::versioned_rsdb_name("PouchActorInfo", &version)?;
-        let tag_product = rsdb::WeaponRsdbProcessor::versioned_rsdb_name("Tag", &version)?;
-
         let mut actor: BTreeMap<String, JsonValue> = BTreeMap::new();
         actor.insert(
             "ActorName".into(),
@@ -705,52 +1103,556 @@ impl ArmorSpec {
         if let Some(value) = self.vendors.first().and_then(|vendor| vendor.selling_price) {
             pouch.insert("SellingPrice".into(), value.into());
         }
-        let tables: [(String, BTreeMap<String, JsonValue>, &[&str]); 3] = [
-            (actor_info, actor, &[]),
-            (game_actor_info, BTreeMap::new(), &[]),
-            (
-                pouch_actor_info,
-                pouch,
-                &["ArmorNextRankActor", "ArmorHeadSwapActor"],
-            ),
-        ];
-        let mut outputs = Vec::with_capacity(4);
-        for (name, overrides, removals) in tables {
-            let destination = output_rsdb.join(&name);
-            let clean_source = clean_rsdb.join(&name);
-            let source = if destination.is_file() {
-                destination.clone()
-            } else {
-                clean_source
-            };
-            rsdb::WeaponRsdbProcessor::clone_rsdb_row(
-                &source,
-                &destination,
-                &self.template_actor,
-                &self.actor_name,
-                &overrides,
-                removals,
-                zstd.clone(),
-            )?;
-            outputs.push(destination);
+        if let Some(next) = Self::rank_actor_names_for(&self.actor_name, upgrades).first() {
+            pouch.insert("ArmorRank".into(), 1.into());
+            pouch.insert(
+                "ArmorNextRankActor".into(),
+                JsonValue::String(actor_param_work_path(next)),
+            );
         }
-        let tag_output = output_rsdb.join(&tag_product);
-        let clean_tag = clean_rsdb.join(&tag_product);
-        let tag_source = if tag_output.is_file() {
-            tag_output.clone()
-        } else {
-            clean_tag
-        };
-        rsdb::WeaponRsdbProcessor::clone_tag_entry(
-            &tag_source,
-            &tag_output,
+        if make_dyeable {
+            pouch.insert(
+                "ColorVariationType".into(),
+                JsonValue::String("ArmorDye".into()),
+            );
+        }
+        clone_armor_rsdb_rows(
+            clean_romfs,
+            output_romfs,
             &self.template_actor,
             &self.actor_name,
+            &actor,
+            &pouch,
+            &["ArmorNextRankActor", "ArmorHeadSwapActor"],
+            zstd,
+        )
+    }
+
+    /// Writes one actor pack, RSDB rows, GameData flags, pouch labels and
+    /// icons per upgrade rank, plus the EnhancementMaterialInfo rows that
+    /// price every step. Rank packs are the base pack plus rank-scoped
+    /// ActorParam / ArmorParam / GameParameterTable / EnhancementMaterial /
+    /// PriceParam documents that `$parent` the base ones, exactly like
+    /// `Armor_002_Head` sits on `Armor_001_Head`.
+    fn generate_upgrade_files(
+        &self,
+        clean_romfs: &Path,
+        output_romfs: &Path,
+        asset_root: &Path,
+        upgrades: &[ArmorUpgradeSpec],
+        make_dyeable: bool,
+        rsdb_outputs: &mut Vec<PathBuf>,
+        zstd: Arc<TotkZstd<'_>>,
+    ) -> io::Result<Vec<ArmorUpgradeReport>> {
+        let Some(first_upgrade) = upgrades.first() else {
+            return Ok(Vec::new());
+        };
+        let names = Self::rank_actor_names_for(&self.actor_name, upgrades);
+        let vanilla_packs = clean_romfs.join("Pack/Actor");
+        for name in &names {
+            if vanilla_packs.join(format!("{name}.pack.zs")).is_file() {
+                return Err(invalid(format!(
+                    "rank actor {name} already exists in the vanilla RomFS; choose another actor_name"
+                )));
+            }
+        }
+        for material in upgrades.iter().flat_map(|upgrade| &upgrade.materials) {
+            if !vanilla_packs
+                .join(format!("{}.pack.zs", material.actor))
+                .is_file()
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!(
+                        "upgrade material {} is not a vanilla actor (no Pack/Actor/{}.pack.zs)",
+                        material.actor, material.actor
+                    ),
+                ));
+            }
+        }
+
+        let base_pack_path = output_romfs
+            .join("Pack/Actor")
+            .join(format!("{}.pack.zs", self.actor_name));
+        let base_bytes = fs::read(&base_pack_path)?;
+        let pack = PackFile::from_binary(&base_bytes, zstd.clone())?;
+        let mut base_entries: Vec<(String, Vec<u8>)> = Vec::new();
+        for file in pack.sarc.files() {
+            let name = file
+                .name()
+                .ok_or_else(|| invalid_data("generated armor pack contains an unnamed entry"))?;
+            base_entries.push((name.to_owned(), file.data().to_vec()));
+        }
+        let actor_file = format!("Actor/{}.engine__actor__ActorParam.bgyml", self.actor_name);
+        let base_armor_file = format!(
+            "Component/ArmorParam/{}.game__component__ArmorParam.bgyml",
+            self.actor_name
+        );
+        let actor_doc = pack.byml_file(&actor_file)?;
+        let table_path = component_ref(&actor_doc.pio, "GameParameterTableRef")?;
+        let table_doc = pack.byml_file(&table_path)?;
+        let base_price_path = component_ref(&table_doc.pio, "PriceParam")?;
+        let base_price = pack.byml_file(&base_price_path)?;
+        let base_price_map = base_price
+            .pio
+            .as_map()
+            .map_err(|_| invalid_data("base PriceParam is not a map"))?;
+        let base_buying = base_price_map
+            .get("BuyingPrice")
+            .and_then(|value| value.as_i32().ok())
+            .unwrap_or(0);
+        let base_selling = base_price_map
+            .get("SellingPrice")
+            .and_then(|value| value.as_i32().ok())
+            .unwrap_or(0);
+        let like = pack
+            .sarc
+            .get_data(&base_armor_file)
+            .ok_or_else(|| invalid_data(format!("generated pack has no {base_armor_file}")))?
+            .to_vec();
+        let mut table_template = table_doc
+            .pio
+            .as_map()
+            .map_err(|_| invalid_data("base GameParameterTable is not a map"))?
+            .clone();
+        table_template.remove("$parent");
+
+        let custom_icon = self
+            .assets
+            .icon_png
+            .as_deref()
+            .map(|path| super::resolve_asset(asset_root, path));
+        let mut reports = Vec::with_capacity(upgrades.len());
+        let mut enhancement_rows = vec![rsdb::EnhancementRow {
+            actor: self.actor_name.clone(),
+            materials: material_pairs(first_upgrade),
+            price: first_upgrade.rupees,
+        }];
+        for (index, upgrade) in upgrades.iter().enumerate() {
+            let rank = index + 2;
+            let name = names
+                .get(index)
+                .ok_or_else(|| invalid_data("rank actor name list is too short"))?;
+            let previous = index
+                .checked_sub(1)
+                .and_then(|i| names.get(i))
+                .unwrap_or(&self.actor_name);
+            let next = names.get(index + 1);
+            let buying = upgrade.buying_price.unwrap_or(base_buying);
+            let selling = upgrade.selling_price.unwrap_or(base_selling);
+
+            let rank_actor_file = format!("Actor/{name}.engine__actor__ActorParam.bgyml");
+            let rank_armor_file =
+                format!("Component/ArmorParam/{name}.game__component__ArmorParam.bgyml");
+            let rank_table_file = format!(
+                "GameParameter/GameParameterTable/{name}.engine__actor__GameParameterTable.bgyml"
+            );
+            let rank_cost_file = format!(
+                "GameParameter/EnhancementMaterial/{name}.game__pouchcontent__EnhancementMaterial.bgyml"
+            );
+            let rank_price_file =
+                format!("GameParameter/PriceParam/{name}.game__pouchcontent__PriceParam.bgyml");
+
+            let mut components = roead::byml::Map::default();
+            components.insert(
+                "ActorNameRef".into(),
+                byml_string(format!(
+                    "?ActorSystem/ActorName/{name}.engine__actor__ActorName.bgyml"
+                )),
+            );
+            components.insert(
+                "ArmorRef".into(),
+                byml_string(format!("?{rank_armor_file}")),
+            );
+            components.insert(
+                "GameParameterTableRef".into(),
+                byml_string(format!("?{rank_table_file}")),
+            );
+            components.insert(
+                "PouchContentRef".into(),
+                byml_string(
+                    "?Component/PouchContentParam/ArmorGetTypeMedium.game__component__PouchContentParam.bgyml",
+                ),
+            );
+            let mut actor_map = roead::byml::Map::default();
+            actor_map.insert(
+                "$parent".into(),
+                byml_string(actor_param_work_path(&self.actor_name)),
+            );
+            actor_map.insert("Components".into(), Byml::Map(components));
+
+            let mut armor_map = roead::byml::Map::default();
+            armor_map.insert(
+                "$parent".into(),
+                byml_string(format!(
+                    "Work/Component/ArmorParam/{previous}.game__component__ArmorParam.gyml"
+                )),
+            );
+            armor_map.insert("BaseDefense".into(), Byml::I32(upgrade.defense));
+            armor_map.insert("Rank".into(), Byml::I32(rank as i32));
+            if let Some(next) = next {
+                armor_map.insert(
+                    "NextRankActor".into(),
+                    byml_string(actor_param_work_path(next)),
+                );
+            }
+            if upgrade.activate_set_bonus {
+                armor_map.insert("ActivateSetBonus".into(), Byml::Bool(true));
+            }
+
+            let mut table_map = table_template.clone();
+            let mut table_components = table_map
+                .get("Components")
+                .and_then(|value| value.as_map().ok())
+                .cloned()
+                .unwrap_or_default();
+            table_components.insert(
+                "PriceParam".into(),
+                byml_string(format!("?{rank_price_file}")),
+            );
+            if next.is_some() {
+                table_components.insert(
+                    "EnhancementMaterial".into(),
+                    byml_string(format!("?{rank_cost_file}")),
+                );
+            } else {
+                table_components.remove("EnhancementMaterial");
+            }
+            table_map.insert("Components".into(), Byml::Map(table_components));
+
+            let mut price_map = roead::byml::Map::default();
+            price_map.insert("BuyingPrice".into(), Byml::I32(buying));
+            price_map.insert("CreatingPrice".into(), Byml::I32(0));
+            price_map.insert("SaleRevivalCount".into(), Byml::I32(-1));
+            price_map.insert("SellingPrice".into(), Byml::I32(selling));
+
+            let mut entries = base_entries.clone();
+            entries.push((
+                rank_actor_file.clone(),
+                byml_bytes_like(Byml::Map(actor_map), &like, zstd.clone())?,
+            ));
+            entries.push((
+                rank_armor_file.clone(),
+                byml_bytes_like(Byml::Map(armor_map), &like, zstd.clone())?,
+            ));
+            entries.push((
+                rank_table_file,
+                byml_bytes_like(Byml::Map(table_map), &like, zstd.clone())?,
+            ));
+            entries.push((
+                rank_price_file,
+                byml_bytes_like(Byml::Map(price_map), &like, zstd.clone())?,
+            ));
+            if let Some(next_upgrade) = upgrades.get(index + 1) {
+                entries.push((
+                    rank_cost_file,
+                    byml_bytes_like(enhancement_cost_byml(next_upgrade), &like, zstd.clone())?,
+                ));
+                enhancement_rows.push(rsdb::EnhancementRow {
+                    actor: name.clone(),
+                    materials: material_pairs(next_upgrade),
+                    price: next_upgrade.rupees,
+                });
+            }
+            let output_bytes = pack.rebuild_binary(entries)?;
+            let actor_pack = output_romfs
+                .join("Pack/Actor")
+                .join(format!("{name}.pack.zs"));
+            fs::write(&actor_pack, &output_bytes)?;
+            let verification = PackFile::from_binary(&output_bytes, zstd.clone())?;
+            verification.byml_file(&rank_actor_file)?;
+            verification.byml_file(&rank_armor_file)?;
+
+            let mut actor: BTreeMap<String, JsonValue> = BTreeMap::new();
+            actor.insert("ActorName".into(), JsonValue::String(name.clone()));
+            let mut pouch: BTreeMap<String, JsonValue> = BTreeMap::new();
+            pouch.insert("ArmorRank".into(), (rank as i32).into());
+            pouch.insert("EquipmentPerformance".into(), upgrade.defense.into());
+            pouch.insert("BuyingPrice".into(), buying.into());
+            pouch.insert("SellingPrice".into(), selling.into());
+            pouch.insert("PouchGetType".into(), JsonValue::String("Medium".into()));
+            if let Some(next) = next {
+                pouch.insert(
+                    "ArmorNextRankActor".into(),
+                    JsonValue::String(actor_param_work_path(next)),
+                );
+            }
+            if make_dyeable {
+                pouch.insert(
+                    "ColorVariationType".into(),
+                    JsonValue::String("ArmorDye".into()),
+                );
+            }
+            let rsdb = clone_armor_rsdb_rows(
+                clean_romfs,
+                output_romfs,
+                &self.actor_name,
+                name,
+                &actor,
+                &pouch,
+                &["ArmorNextRankActor"],
+                zstd.clone(),
+            )?;
+            let game_data = gamedata::WeaponGameDataRequest {
+                actor_name: name.clone(),
+                picture_book: false,
+                inventory_flags: true,
+            }
+            .generate(clean_romfs, output_romfs, zstd.clone())?;
+            let messages = messages::generate_pouch_labels(
+                clean_romfs,
+                output_romfs,
+                name,
+                &self.display_name,
+                &self.description,
+                zstd.clone(),
+            )?;
+            let mut ui_textures = Vec::new();
+            for (source, destination, texture_name) in
+                icon_variants(clean_romfs, &self.template_actor, name)?
+            {
+                let png = (texture_name == *name)
+                    .then(|| custom_icon.clone())
+                    .flatten();
+                ui_textures.push(super::generate_ui_texture(
+                    clean_romfs,
+                    output_romfs,
+                    source,
+                    destination,
+                    texture_name,
+                    png,
+                    zstd.clone(),
+                )?);
+            }
+            if make_dyeable {
+                ui_textures.extend(generate_dye_icons(
+                    clean_romfs,
+                    output_romfs,
+                    &self.template_actor,
+                    name,
+                    custom_icon.as_deref(),
+                    zstd.clone(),
+                )?);
+            }
+            reports.push(ArmorUpgradeReport {
+                actor_name: name.clone(),
+                rank: rank as u8,
+                defense: upgrade.defense,
+                actor_pack,
+                ui_textures,
+                messages,
+                rsdb,
+                game_data,
+            });
+        }
+
+        let clean_rsdb = clean_romfs.join("RSDB");
+        let output_rsdb = output_romfs.join("RSDB");
+        let (version, _) = super::version::discover_product_file(
+            &clean_rsdb,
+            "ActorInfo.Product.",
+            ".rstbl.byml.zs",
+        )?;
+        let table =
+            rsdb::WeaponRsdbProcessor::versioned_rsdb_name("EnhancementMaterialInfo", &version)?;
+        let destination = output_rsdb.join(&table);
+        let source = if destination.is_file() {
+            destination.clone()
+        } else {
+            clean_rsdb.join(&table)
+        };
+        rsdb::WeaponRsdbProcessor::upsert_enhancement_material_rows(
+            &source,
+            &destination,
+            &enhancement_rows,
             zstd,
         )?;
-        outputs.push(tag_output);
-        Ok(outputs)
+        if !rsdb_outputs.contains(&destination) {
+            rsdb_outputs.push(destination);
+        }
+        Ok(reports)
     }
+}
+
+/// ActorInfo, GameActorInfo and PouchActorInfo rows plus the Tag entry,
+/// cloned from `template_actor`'s rows (vanilla or already generated).
+#[allow(clippy::too_many_arguments)]
+fn clone_armor_rsdb_rows(
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    template_actor: &str,
+    actor_name: &str,
+    actor_overrides: &BTreeMap<String, JsonValue>,
+    pouch_overrides: &BTreeMap<String, JsonValue>,
+    pouch_removals: &[&str],
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<Vec<PathBuf>> {
+    let clean_rsdb = clean_romfs.join("RSDB");
+    let output_rsdb = output_romfs.join("RSDB");
+    fs::create_dir_all(&output_rsdb)?;
+    let (version, actor_info_source) =
+        super::version::discover_product_file(&clean_rsdb, "ActorInfo.Product.", ".rstbl.byml.zs")?;
+    let actor_info = actor_info_source
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| invalid_data("ActorInfo filename is not UTF-8"))?
+        .to_owned();
+    let game_actor_info =
+        rsdb::WeaponRsdbProcessor::versioned_rsdb_name("GameActorInfo", &version)?;
+    let pouch_actor_info =
+        rsdb::WeaponRsdbProcessor::versioned_rsdb_name("PouchActorInfo", &version)?;
+    let tag_product = rsdb::WeaponRsdbProcessor::versioned_rsdb_name("Tag", &version)?;
+    let tables: [(String, &BTreeMap<String, JsonValue>, &[&str]); 3] = [
+        (actor_info, actor_overrides, &[]),
+        (game_actor_info, &BTreeMap::new(), &[]),
+        (pouch_actor_info, pouch_overrides, pouch_removals),
+    ];
+    let mut outputs = Vec::with_capacity(4);
+    for (name, overrides, removals) in tables {
+        let destination = output_rsdb.join(&name);
+        let clean_source = clean_rsdb.join(&name);
+        let source = if destination.is_file() {
+            destination.clone()
+        } else {
+            clean_source
+        };
+        rsdb::WeaponRsdbProcessor::clone_rsdb_row(
+            &source,
+            &destination,
+            template_actor,
+            actor_name,
+            overrides,
+            removals,
+            zstd.clone(),
+        )?;
+        outputs.push(destination);
+    }
+    let tag_output = output_rsdb.join(&tag_product);
+    let clean_tag = clean_rsdb.join(&tag_product);
+    let tag_source = if tag_output.is_file() {
+        tag_output.clone()
+    } else {
+        clean_tag
+    };
+    rsdb::WeaponRsdbProcessor::clone_tag_entry(
+        &tag_source,
+        &tag_output,
+        template_actor,
+        actor_name,
+        zstd,
+    )?;
+    outputs.push(tag_output);
+    Ok(outputs)
+}
+
+/// `Work/Actor/<actor>.engine__actor__ActorParam.gyml`, the form NextRankActor
+/// and RSDB references use.
+pub(crate) fn actor_param_work_path(actor: &str) -> String {
+    format!("Work/Actor/{actor}.engine__actor__ActorParam.gyml")
+}
+
+fn byml_string(value: impl Into<String>) -> Byml {
+    let value: String = value.into();
+    Byml::String(value.as_str().into())
+}
+
+/// `Components.<key>` of an ActorParam / GameParameterTable document with
+/// the leading `?` removed, as a pack-internal path.
+fn component_ref(document: &Byml, key: &str) -> io::Result<String> {
+    document
+        .as_map()
+        .ok()
+        .and_then(|map| map.get("Components"))
+        .and_then(|components| components.as_map().ok())
+        .and_then(|components| components.get(key))
+        .and_then(|value| value.as_string().ok())
+        .map(|value| value.trim_start_matches('?').to_owned())
+        .ok_or_else(|| invalid_data(format!("document has no Components.{key} reference")))
+}
+
+/// `{Items: [{Actor, Number}], Price}` for one Great Fairy step.
+fn enhancement_cost_byml(upgrade: &ArmorUpgradeSpec) -> Byml {
+    let items = upgrade
+        .materials
+        .iter()
+        .map(|material| {
+            let mut item = roead::byml::Map::default();
+            item.insert(
+                "Actor".into(),
+                byml_string(actor_param_work_path(&material.actor)),
+            );
+            item.insert("Number".into(), Byml::I32(material.count));
+            Byml::Map(item)
+        })
+        .collect();
+    let mut map = roead::byml::Map::default();
+    map.insert("Items".into(), Byml::Array(items));
+    map.insert("Price".into(), Byml::I32(upgrade.rupees));
+    Byml::Map(map)
+}
+
+fn material_pairs(upgrade: &ArmorUpgradeSpec) -> Vec<(String, i32)> {
+    upgrade
+        .materials
+        .iter()
+        .map(|material| (material.actor.clone(), material.count))
+        .collect()
+}
+
+/// Serializes `value` with the endian and BYML version of `like`.
+fn byml_bytes_like(value: Byml, like: &[u8], zstd: Arc<TotkZstd<'_>>) -> io::Result<Vec<u8>> {
+    let mut document = BymlFile::from_binary(like, zstd, "generated.bgyml")?;
+    document.pio = value;
+    document.to_binary_preserving_header()
+}
+
+/// Makes the base pack's EnhancementMaterial hold the rank-2 cost: the file
+/// the base GameParameterTable references is rewritten, or added together
+/// with its component when the template had none.
+fn set_enhancement_cost(
+    entries: &mut Vec<(String, Vec<u8>)>,
+    actor_file: &str,
+    upgrade: &ArmorUpgradeSpec,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<()> {
+    let entry_index = |entries: &Vec<(String, Vec<u8>)>, name: &str| {
+        entries.iter().position(|(entry, _)| entry == name)
+    };
+    let actor_index = entry_index(entries, actor_file)
+        .ok_or_else(|| invalid_data(format!("cloned pack has no {actor_file}")))?;
+    let actor_doc = BymlFile::from_binary(&entries[actor_index].1, zstd.clone(), actor_file)?;
+    let table_path = component_ref(&actor_doc.pio, "GameParameterTableRef")?;
+    let table_index = entry_index(entries, &table_path)
+        .ok_or_else(|| invalid_data(format!("cloned pack has no {table_path}")))?;
+    let mut table_doc = BymlFile::from_binary(&entries[table_index].1, zstd.clone(), &table_path)?;
+    let actor_name = actor_file
+        .trim_start_matches("Actor/")
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_owned();
+    let cost_path = match component_ref(&table_doc.pio, "EnhancementMaterial") {
+        Ok(path) => path,
+        Err(_) => {
+            let path = format!(
+                "GameParameter/EnhancementMaterial/{actor_name}.game__pouchcontent__EnhancementMaterial.bgyml"
+            );
+            let components = map_child_mut(&mut table_doc.pio, "Components")?;
+            components.insert(
+                "EnhancementMaterial".into(),
+                byml_string(format!("?{path}")),
+            );
+            entries[table_index].1 = table_doc.to_binary_preserving_header()?;
+            path
+        }
+    };
+    let like = entries[table_index].1.clone();
+    let cost = byml_bytes_like(enhancement_cost_byml(upgrade), &like, zstd)?;
+    match entry_index(entries, &cost_path) {
+        Some(index) => entries[index].1 = cost,
+        None => entries.push((cost_path, cost)),
+    }
+    Ok(())
 }
 
 struct GeneratedArmorModel {
@@ -758,6 +1660,8 @@ struct GeneratedArmorModel {
     cube: Option<CubeModelReport>,
     textures: Vec<PathBuf>,
     texture_names: Vec<String>,
+    /// `Model/<project>.anim.bfres.zs` written for a piece made dyeable.
+    anim: Option<PathBuf>,
 }
 
 /// What the generator needs to know about the vanilla base actor.
@@ -765,6 +1669,10 @@ struct TemplateArmor {
     pack_bytes: Vec<u8>,
     model_project: String,
     fmdb_name: String,
+    /// ArmorParam `BaseDefense`, when the template states one itself.
+    base_defense: Option<i32>,
+    /// The template ActorParam has a `ColorVariationRef` (dye shop support).
+    dyeable: bool,
 }
 
 impl TemplateArmor {
@@ -798,6 +1706,16 @@ impl TemplateArmor {
                 "base actor {template_actor} has ActorParam Category {category:?}, expected \"Armor\""
             )));
         }
+        let dyeable = actor_map
+            .get("Components")
+            .and_then(|components| components.as_map().ok())
+            .is_some_and(|components| components.contains_key("ColorVariationRef"));
+        let base_defense = pack
+            .byml_file(&format!(
+                "Component/ArmorParam/{template_actor}.game__component__ArmorParam.bgyml"
+            ))
+            .ok()
+            .and_then(|armor| armor.pio.as_map().ok()?.get("BaseDefense")?.as_i32().ok());
         let model_info_path =
             format!("Component/ModelInfo/{template_actor}.engine__component__ModelInfo.bgyml");
         let model_info = pack.byml_file(&model_info_path)?;
@@ -816,8 +1734,288 @@ impl TemplateArmor {
             fmdb_name: string("FmdbName")?,
             model_project: string("ModelProjectName")?,
             pack_bytes,
+            base_defense,
+            dyeable,
         })
     }
+}
+
+/// Whether the TexToGo and material-animation writers this build carries can
+/// produce the dye assets (they are stubs until the FMAA work lands).
+pub fn dye_assets_supported() -> bool {
+    let probe = TexturePatternAnim::texture_per_frame(
+        "Head_ftp",
+        vec![TexturePatternMaterial {
+            material: "Mt_Probe".into(),
+            sampler: "_a0".into(),
+            textures: (0..16).map(|i| format!("Probe_Alb.{i}")).collect(),
+        }],
+    );
+    let anim_ready = match write_material_anim_bfres("Probe.anim", &[probe]) {
+        Ok(_) => true,
+        Err(error) => !error.to_string().contains("not implemented"),
+    };
+    let empty = TexToGoFile {
+        header: crate::parser::textogo::TexToGoHeader {
+            header_size: 0,
+            version: 0,
+            width: 0,
+            height: 0,
+            depth: 0,
+            mip_count: 0,
+            format_flag: 0,
+            format_setting: 0,
+            component_selectors: [0; 4],
+            hash: [0; 32],
+            format: 0,
+            texture_settings: [0; 4],
+        },
+        surfaces: Vec::new(),
+    };
+    let textures_ready = match textogo_writer::to_rgba(&empty) {
+        Ok(_) => true,
+        Err(error) => !error.to_string().contains("not implemented"),
+    };
+    anim_ready && textures_ready
+}
+
+/// Luminance-preserving tint: the pixel's brightness drives the dye colour,
+/// blended with a little of the original so detail survives.
+fn tint_rgba(image: &image::RgbaImage, tint: [u8; 3]) -> image::RgbaImage {
+    let mut tinted = image.clone();
+    for pixel in tinted.pixels_mut() {
+        let [r, g, b, a] = pixel.0;
+        let luminance =
+            (0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b)) / 255.0;
+        let mix = |original: u8, channel: u8| -> u8 {
+            let dyed = luminance * f32::from(channel);
+            (0.15 * f32::from(original) + 0.85 * dyed)
+                .round()
+                .clamp(0.0, 255.0) as u8
+        };
+        pixel.0 = [mix(r, tint[0]), mix(g, tint[1]), mix(b, tint[2]), a];
+    }
+    tinted
+}
+
+/// The fifteen `<actor>_<Color>` icons for a piece whose template ships only
+/// the undyed icon: the base picture (the custom PNG or the template's icon)
+/// is tinted per dye colour and pushed through the normal icon path.
+fn generate_dye_icons(
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    template_actor: &str,
+    actor_name: &str,
+    custom_icon: Option<&Path>,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<Vec<UiTextureReport>> {
+    let source = format!("UI/Tex/Icon/{template_actor}.bntx.zs");
+    let base = match custom_icon {
+        Some(png) => image::open(png)
+            .map_err(|error| invalid_data(format!("{}: {error}", png.display())))?
+            .to_rgba8(),
+        None => {
+            let path = clean_romfs.join(&source);
+            let bytes = fs::read(&path)?;
+            let raw = if crate::Settings::Magic::is_bntx(&bytes) {
+                bytes
+            } else {
+                zstd.try_decompress_for_path(&path, &bytes)?.0
+            };
+            let bntx = crate::parser::bntx::BntxFile::parse(&raw)
+                .map_err(|error| invalid_data(error.to_string()))?;
+            bntx.decode_texture(0)
+                .map_err(|error| invalid_data(error.to_string()))?
+        }
+    };
+    let scratch = output_romfs
+        .parent()
+        .unwrap_or(output_romfs)
+        .join("_dye_tmp")
+        .join(actor_name);
+    fs::create_dir_all(&scratch)?;
+    let mut reports = Vec::with_capacity(DYE_COLORS.len());
+    let result = (|| -> io::Result<()> {
+        for (color, tint) in DYE_COLORS {
+            let name = format!("{actor_name}_{color}");
+            let png = scratch.join(format!("{name}.png"));
+            tint_rgba(&base, tint)
+                .save(&png)
+                .map_err(|error| invalid_data(format!("{}: {error}", png.display())))?;
+            reports.push(super::generate_ui_texture(
+                clean_romfs,
+                output_romfs,
+                source.clone(),
+                format!("UI/Tex/Icon/{name}.bntx.zs"),
+                name,
+                Some(png),
+                zstd.clone(),
+            )?);
+        }
+        Ok(())
+    })();
+    let _ = fs::remove_dir_all(&scratch);
+    // Drop the shared `_dye_tmp` parent too once the last actor is done with it.
+    if let Some(parent) = scratch.parent() {
+        let _ = fs::remove_dir(parent);
+    }
+    result?;
+    Ok(reports)
+}
+
+/// The shared per-slot `ColorVariationParam` document, taken from the
+/// vanilla Hylian piece of the same slot and checked to name `<Slot>_ftp`.
+fn color_variation_entry(
+    clean_romfs: &Path,
+    slot: ArmorSlot,
+    entry_name: &str,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<(String, Vec<u8>)> {
+    let donor = format!("Armor_001{}", slot.suffix());
+    let path = clean_romfs
+        .join("Pack/Actor")
+        .join(format!("{donor}.pack.zs"));
+    let pack = PackFile::from_binary(&fs::read(&path)?, zstd)?;
+    let data = pack
+        .sarc
+        .get_data(entry_name)
+        .ok_or_else(|| invalid_data(format!("{donor} pack has no {entry_name}")))?
+        .to_vec();
+    let document = pack.byml_file(entry_name)?;
+    let expected = format!("{}_ftp", slot.suffix().trim_start_matches('_'));
+    let anim = document
+        .pio
+        .as_map()
+        .ok()
+        .and_then(|map| map.get("VariationAnim"))
+        .and_then(|value| value.as_array().ok())
+        .and_then(|values| values.first())
+        .and_then(|value| value.as_string().ok())
+        .map(ToString::to_string);
+    if anim.as_deref() != Some(expected.as_str()) {
+        return Err(invalid_data(format!(
+            "{donor}'s ColorVariationParam plays {anim:?}, expected {expected}"
+        )));
+    }
+    Ok((entry_name.to_owned(), data))
+}
+
+/// Writes `<name>_Alb.0`..`.15` for every `_Alb` texture the model's
+/// materials reference (slice 0 untinted) and points the materials at slice
+/// 0. Returns `(material, albedo sampler, renamed albedo base)` per material.
+fn write_dye_slices(
+    file: &mut ResFile,
+    texture_sources: &BTreeMap<String, PathBuf>,
+    texture_output: &Path,
+    template_project: &str,
+    project: &str,
+    copied: &mut Vec<PathBuf>,
+) -> io::Result<Vec<(String, String, String)>> {
+    let mut written: BTreeMap<String, ()> = BTreeMap::new();
+    let mut materials = Vec::new();
+    for model in &mut file.models {
+        for material in &mut model.materials {
+            for (index, texture) in material.texture_refs.iter_mut().enumerate() {
+                if !texture.ends_with("_Alb") {
+                    continue;
+                }
+                let old = texture.clone();
+                let new_base = replace_project(&old, template_project, project);
+                if !written.contains_key(&old) {
+                    let source =
+                        texture_sources
+                            .get(&old.to_ascii_lowercase())
+                            .ok_or_else(|| {
+                                io::Error::new(
+                                    io::ErrorKind::NotFound,
+                                    format!("albedo texture {old}.txtg is missing from TexToGo"),
+                                )
+                            })?;
+                    let bytes = fs::read(source)?;
+                    let parsed = TexToGoFile::parse(&bytes)
+                        .map_err(|error| invalid_data(format!("{old}: {error}")))?;
+                    let picture = textogo_writer::to_rgba(&parsed)
+                        .map_err(|error| invalid_data(format!("{old}: {error}")))?;
+                    for (slice, tint) in std::iter::once(None)
+                        .chain(DYE_COLORS.iter().map(|(_, tint)| Some(*tint)))
+                        .enumerate()
+                    {
+                        let image = match tint {
+                            Some(tint) => tint_rgba(&picture, tint),
+                            None => picture.clone(),
+                        };
+                        let encoded = textogo_writer::from_rgba(&image, &parsed)
+                            .and_then(|slice_file| textogo_writer::write(&slice_file))
+                            .map_err(|error| invalid_data(format!("{old}.{slice}: {error}")))?;
+                        let destination = texture_output.join(format!("{new_base}.{slice}.txtg"));
+                        fs::write(&destination, encoded)?;
+                        copied.push(destination);
+                    }
+                    written.insert(old.clone(), ());
+                }
+                *texture = format!("{old}.0");
+                let sampler = material
+                    .samplers
+                    .get(index)
+                    .map(|sampler| sampler.name.clone())
+                    .unwrap_or_else(|| "_a0".to_owned());
+                materials.push((material.name.clone(), sampler, new_base));
+            }
+        }
+    }
+    if materials.is_empty() {
+        return Err(invalid(
+            "the template model references no _Alb texture, so it cannot be made dyeable",
+        ));
+    }
+    Ok(materials)
+}
+
+/// `Model/<project>.anim.bfres.zs` with the `<Slot>_ftp` texture-pattern
+/// animation that steps every dyed material through its sixteen slices.
+fn write_dye_anim(
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    project: &str,
+    slot: ArmorSlot,
+    materials: &[(String, String, String)],
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<PathBuf> {
+    // `FrameCount` stores the last frame index (15 for sixteen slices), exactly
+    // like the vanilla `<Slot>_ftp` animations.
+    let anim = TexturePatternAnim::texture_per_frame(
+        format!("{}_ftp", slot.suffix().trim_start_matches('_')),
+        materials
+            .iter()
+            .map(|(material, sampler, albedo)| TexturePatternMaterial {
+                material: material.clone(),
+                sampler: sampler.clone(),
+                textures: (0..16).map(|slice| format!("{albedo}.{slice}")).collect(),
+            })
+            .collect(),
+    );
+    let raw = write_material_anim_bfres(&format!("{project}.anim"), &[anim])
+        .map_err(|error| invalid_data(format!("failed to write the dye animation: {error}")))?;
+    // Same container settings as the vanilla project animations.
+    let reference = clean_romfs.join("Model/Armor_001.anim.bfres.zs");
+    let dictionary = fs::read(&reference)
+        .ok()
+        .and_then(|bytes| zstd.try_decompress_for_path(&reference, &bytes).ok())
+        .map(|(_, dictionary)| dictionary)
+        .unwrap_or(ZstdDictionary::Zs);
+    let output = match dictionary {
+        ZstdDictionary::None => raw,
+        ZstdDictionary::Yaz0 => TotkZstd::compress_yaz0_with_alignment(&raw, 0)?,
+        other => zstd.compress_with_dictionary(&raw, other)?,
+    };
+    let destination = output_romfs
+        .join("Model")
+        .join(format!("{project}.anim.bfres.zs"));
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&destination, output)?;
+    Ok(destination)
 }
 
 /// `Model/<project>.anim.bfres.zs` holds the dye material animations shared by
@@ -998,4 +2196,607 @@ fn invalid(message: impl Into<String>) -> io::Error {
 
 fn invalid_data(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spec(upgrades: Vec<ArmorUpgradeSpec>) -> ArmorSpec {
+        ArmorSpec {
+            actor_name: "Armor_950_Head".into(),
+            template_actor: "Armor_005_Head".into(),
+            display_name: "Test Cap".into(),
+            description: "A cap for tests.".into(),
+            defense: Some(4),
+            series_name: None,
+            model: None,
+            physics: Vec::new(),
+            replace_bones: false,
+            assets: ArmorAssets::default(),
+            vendors: Vec::new(),
+            upgrades,
+            upgrades_enabled: true,
+            dyeable: false,
+        }
+    }
+
+    fn romfs_zstd() -> Option<(&'static Path, Arc<TotkZstd<'static>>)> {
+        use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        if !clean_romfs.is_dir() {
+            return None;
+        }
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL).ok()?);
+        Some((clean_romfs, zstd))
+    }
+
+    fn upgrade(defense: i32) -> ArmorUpgradeSpec {
+        ArmorUpgradeSpec {
+            defense,
+            rupees: 10,
+            materials: vec![ArmorUpgradeMaterial {
+                actor: "Item_Fruit_K".into(),
+                count: 3,
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn physics_accepts_a_string_a_list_or_null() {
+        let parse = |physics: &str| -> Vec<String> {
+            let text = format!(
+                r#"{{"actor_name":"Armor_950_Head","template_actor":"Armor_005_Head","display_name":"x","description":"y","physics":{physics}}}"#
+            );
+            serde_json::from_str::<ArmorSpec>(&text).unwrap().physics
+        };
+        assert_eq!(parse(r#""Armor_005_Head""#), ["Armor_005_Head"]);
+        assert_eq!(
+            parse(r#"["Armor_005_Head","Armor_180_Upper"]"#),
+            ["Armor_005_Head", "Armor_180_Upper"]
+        );
+        assert!(parse("null").is_empty());
+        assert!(spec(Vec::new()).physics.is_empty());
+    }
+
+    #[test]
+    fn rank_names_append_the_step_or_use_explicit_names() {
+        let mut spec = spec(vec![upgrade(5), upgrade(8), upgrade(12)]);
+        assert_eq!(
+            spec.rank_actor_names(),
+            ["Armor_950_Head_1", "Armor_950_Head_2", "Armor_950_Head_3"]
+        );
+        spec.upgrades[1].actor_name = Some("Armor_960_Head".into());
+        assert_eq!(
+            spec.rank_actor_names(),
+            ["Armor_950_Head_1", "Armor_960_Head", "Armor_950_Head_3"]
+        );
+        spec.actor_name = "Armor_Custom_Head".into();
+        assert_eq!(
+            spec.rank_actor_names(),
+            [
+                "Armor_Custom_Head_1",
+                "Armor_960_Head",
+                "Armor_Custom_Head_3"
+            ]
+        );
+        // Long rank names and names without the slot suffix are fine.
+        let mut long = spec.clone();
+        long.actor_name = "Armor_950_Head".into();
+        long.upgrades[0].actor_name = Some("Armor_950_Head_Rank2_Long".into());
+        long.upgrades[2].actor_name = Some("Armor_950_Star4".into());
+        assert!(long.validate(Path::new(".")).is_ok());
+    }
+
+    #[test]
+    fn disabled_upgrades_yield_no_ranks_and_explicit_ones_pass_through() {
+        let Some((clean_romfs, zstd)) = romfs_zstd() else {
+            return;
+        };
+        let mut explicit = spec(vec![upgrade(5), upgrade(8)]);
+        assert_eq!(
+            explicit
+                .effective_upgrades(clean_romfs, zstd.clone())
+                .unwrap(),
+            explicit.upgrades
+        );
+        explicit.upgrades_enabled = false;
+        assert!(explicit
+            .effective_upgrades(clean_romfs, zstd.clone())
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn default_upgrades_copy_the_template_chain_or_the_hylian_one() {
+        let Some((clean_romfs, zstd)) = romfs_zstd() else {
+            return;
+        };
+        // Armor_005_Head → Armor_035_Head → ... : the template's own chain.
+        let korok = spec(Vec::new());
+        let derived = korok.effective_upgrades(clean_romfs, zstd.clone()).unwrap();
+        assert_eq!(derived.len(), 4, "{derived:?}");
+        assert!(derived.iter().all(|rank| !rank.materials.is_empty()));
+        assert!(derived
+            .windows(2)
+            .all(|pair| pair[0].defense < pair[1].defense));
+        assert_eq!(derived[0].rupees, 10);
+        assert_eq!(derived[0].materials[0].actor, "Item_Fruit_K");
+        // Armor_022_Head has no chain: Hylian materials, defense 3 + deltas.
+        let mut mask = spec(Vec::new());
+        mask.template_actor = "Armor_022_Head".into();
+        mask.defense = Some(3);
+        let derived = mask.effective_upgrades(clean_romfs, zstd).unwrap();
+        assert_eq!(
+            derived.iter().map(|rank| rank.defense).collect::<Vec<_>>(),
+            [5, 8, 12, 20]
+        );
+        assert_eq!(derived[0].materials[0].actor, "Item_Enemy_77");
+        assert_eq!(derived[0].materials[0].count, 5);
+        assert_eq!(derived[0].rupees, 10);
+        assert_eq!(derived[3].rupees, 500);
+    }
+
+    #[test]
+    fn upgrade_validation_rejects_bad_ranks() {
+        let root = Path::new(".");
+        assert!(spec(vec![upgrade(5), upgrade(8)]).validate(root).is_ok());
+        assert!(spec(vec![upgrade(1); 5]).validate(root).is_err());
+        let mut negative = spec(vec![upgrade(-1)]);
+        assert!(negative.validate(root).is_err());
+        negative.upgrades[0].defense = 5;
+        negative.upgrades[0].rupees = -5;
+        assert!(negative.validate(root).is_err());
+        let mut count = spec(vec![upgrade(5)]);
+        count.upgrades[0].materials[0].count = 0;
+        assert!(count.validate(root).is_err());
+        let mut same = spec(vec![upgrade(5)]);
+        same.upgrades[0].actor_name = Some("Armor_950_Head".into());
+        assert!(same.validate(root).is_err());
+        let mut twice = spec(vec![upgrade(5), upgrade(8)]);
+        twice.upgrades[1].actor_name = Some("Armor_950_Head_1".into());
+        assert!(twice.validate(root).is_err());
+    }
+
+    #[test]
+    fn enhancement_cost_document_matches_the_vanilla_shape() {
+        let byml = enhancement_cost_byml(&upgrade(5));
+        let map = byml.as_map().unwrap();
+        assert_eq!(map.get("Price").unwrap().as_i32().unwrap(), 10);
+        let items = map.get("Items").unwrap().as_array().unwrap();
+        let item = items[0].as_map().unwrap();
+        assert_eq!(
+            item.get("Actor").unwrap().as_string().unwrap().as_str(),
+            "Work/Actor/Item_Fruit_K.engine__actor__ActorParam.gyml"
+        );
+        assert_eq!(item.get("Number").unwrap().as_i32().unwrap(), 3);
+    }
+
+    /// Generates a Korok-mask clone with two Great Fairy ranks from the real
+    /// RomFS and checks the rank chain across packs, PouchActorInfo and
+    /// EnhancementMaterialInfo.
+    #[test]
+    #[ignore = "needs the TOTK dump"]
+    fn generates_upgrade_rank_actors_from_romfs() {
+        let Some((clean_romfs, zstd)) = romfs_zstd() else {
+            return;
+        };
+        let output_root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_CLAUDE/armor_upgrade_test");
+        if output_root.is_dir() {
+            fs::remove_dir_all(&output_root).unwrap();
+        }
+        let output_romfs = output_root.join("romfs");
+        fs::create_dir_all(&output_romfs).unwrap();
+
+        let mut rank2 = upgrade(6);
+        rank2.rupees = 25;
+        rank2.materials.push(ArmorUpgradeMaterial {
+            actor: "Item_Enemy_53".into(),
+            count: 2,
+        });
+        let mut rank3 = upgrade(9);
+        rank3.rupees = 100;
+        rank3.activate_set_bonus = true;
+        let spec = spec(vec![rank2, rank3]);
+        let report = spec
+            .generate_files(clean_romfs, &output_romfs, &output_root, zstd.clone())
+            .unwrap();
+        assert_eq!(report.upgrades.len(), 2);
+        let base = "Armor_950_Head";
+        let ranks = ["Armor_950_Head_1", "Armor_950_Head_2"];
+
+        let read_pack = |actor: &str| {
+            let path = output_romfs
+                .join("Pack/Actor")
+                .join(format!("{actor}.pack.zs"));
+            assert!(path.is_file(), "{}", path.display());
+            PackFile::from_binary(&fs::read(&path).unwrap(), zstd.clone()).unwrap()
+        };
+        let armor_of = |pack: &PackFile<'_>, actor: &str| {
+            pack.byml_file(&format!(
+                "Component/ArmorParam/{actor}.game__component__ArmorParam.bgyml"
+            ))
+            .unwrap()
+            .pio
+        };
+        let string_of = |value: &Byml, key: &str| -> Option<String> {
+            value
+                .as_map()
+                .ok()?
+                .get(key)?
+                .as_string()
+                .ok()
+                .map(ToString::to_string)
+        };
+
+        let base_pack = read_pack(base);
+        let base_armor = armor_of(&base_pack, base);
+        assert_eq!(
+            string_of(&base_armor, "NextRankActor").as_deref(),
+            Some("Work/Actor/Armor_950_Head_1.engine__actor__ActorParam.gyml")
+        );
+        let rank2_pack = read_pack(ranks[0]);
+        assert!(rank2_pack
+            .sarc
+            .get_data(&format!("Actor/{base}.engine__actor__ActorParam.bgyml"))
+            .is_some());
+        let rank2_armor = armor_of(&rank2_pack, ranks[0]);
+        assert_eq!(
+            string_of(&rank2_armor, "$parent").as_deref(),
+            Some("Work/Component/ArmorParam/Armor_950_Head.game__component__ArmorParam.gyml")
+        );
+        assert_eq!(
+            rank2_armor
+                .as_map()
+                .unwrap()
+                .get("Rank")
+                .unwrap()
+                .as_i32()
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            rank2_armor
+                .as_map()
+                .unwrap()
+                .get("BaseDefense")
+                .unwrap()
+                .as_i32()
+                .unwrap(),
+            6
+        );
+        assert_eq!(
+            string_of(&rank2_armor, "NextRankActor").as_deref(),
+            Some("Work/Actor/Armor_950_Head_2.engine__actor__ActorParam.gyml")
+        );
+        let rank2_actor = rank2_pack
+            .byml_file(&format!(
+                "Actor/{}.engine__actor__ActorParam.bgyml",
+                ranks[0]
+            ))
+            .unwrap()
+            .pio;
+        assert_eq!(
+            string_of(&rank2_actor, "$parent").as_deref(),
+            Some("Work/Actor/Armor_950_Head.engine__actor__ActorParam.gyml")
+        );
+        let rank3_pack = read_pack(ranks[1]);
+        let rank3_armor = armor_of(&rank3_pack, ranks[1]);
+        assert!(string_of(&rank3_armor, "NextRankActor").is_none());
+        assert_eq!(
+            rank3_armor
+                .as_map()
+                .unwrap()
+                .get("Rank")
+                .unwrap()
+                .as_i32()
+                .unwrap(),
+            3
+        );
+        assert!(rank3_pack
+            .sarc
+            .get_data(&format!(
+                "GameParameter/EnhancementMaterial/{}.game__pouchcontent__EnhancementMaterial.bgyml",
+                ranks[1]
+            ))
+            .is_none());
+        let rank2_cost = rank2_pack
+            .byml_file(&format!(
+                "GameParameter/EnhancementMaterial/{}.game__pouchcontent__EnhancementMaterial.bgyml",
+                ranks[0]
+            ))
+            .unwrap()
+            .pio;
+        assert_eq!(
+            rank2_cost
+                .as_map()
+                .unwrap()
+                .get("Price")
+                .unwrap()
+                .as_i32()
+                .unwrap(),
+            100
+        );
+
+        let (version, _) = super::super::version::discover_product_file(
+            &clean_romfs.join("RSDB"),
+            "ActorInfo.Product.",
+            ".rstbl.byml.zs",
+        )
+        .unwrap();
+        let rows = |product: &str| {
+            let name = rsdb::WeaponRsdbProcessor::versioned_rsdb_name(product, &version).unwrap();
+            BymlFile::new(output_romfs.join("RSDB").join(name), zstd.clone())
+                .unwrap()
+                .pio
+        };
+        let pouch = rows("PouchActorInfo");
+        let pouch_row = |actor: &str| -> roead::byml::Map {
+            pouch
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| string_of(row, "__RowId").as_deref() == Some(actor))
+                .unwrap()
+                .as_map()
+                .unwrap()
+                .clone()
+        };
+        for (actor, rank, next) in [
+            (base, 1, Some(ranks[0])),
+            (ranks[0], 2, Some(ranks[1])),
+            (ranks[1], 3, None),
+        ] {
+            let row = pouch_row(actor);
+            assert_eq!(
+                row.get("ArmorRank").unwrap().as_i32().unwrap(),
+                rank,
+                "{actor}"
+            );
+            let next_ref = row
+                .get("ArmorNextRankActor")
+                .map(|value| value.as_string().unwrap().to_string());
+            assert_eq!(next_ref, next.map(actor_param_work_path), "{actor}");
+        }
+        assert_eq!(
+            pouch_row(ranks[0])
+                .get("EquipmentPerformance")
+                .unwrap()
+                .as_i32()
+                .unwrap(),
+            6
+        );
+        let enhancement = rows("EnhancementMaterialInfo");
+        let cost_row = |actor: &str| {
+            enhancement
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| {
+                    string_of(row, "__RowId").as_deref()
+                        == Some(actor_param_work_path(actor).as_str())
+                })
+                .cloned()
+        };
+        let base_cost = cost_row(base).unwrap();
+        assert_eq!(
+            base_cost
+                .as_map()
+                .unwrap()
+                .get("Price")
+                .unwrap()
+                .as_i32()
+                .unwrap(),
+            25
+        );
+        assert_eq!(
+            base_cost
+                .as_map()
+                .unwrap()
+                .get("Items")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let rank2_row = cost_row(ranks[0]).unwrap();
+        assert_eq!(
+            rank2_row
+                .as_map()
+                .unwrap()
+                .get("Price")
+                .unwrap()
+                .as_i32()
+                .unwrap(),
+            100
+        );
+        assert!(cost_row(ranks[1]).is_none());
+        for actor in ranks {
+            assert!(output_romfs
+                .join("UI/Tex/Icon")
+                .join(format!("{actor}.bntx.zs"))
+                .is_file());
+            assert!(output_romfs
+                .join("UI/Tex/Icon")
+                .join(format!("{actor}_Blue.bntx.zs"))
+                .is_file());
+        }
+    }
+
+    /// A Bokoblin-mask clone (single-colour template, no upgrade chain) made
+    /// dyeable with the default four ranks.
+    #[test]
+    #[ignore = "needs the TOTK dump"]
+    fn makes_a_single_colour_template_dyeable_with_default_ranks() {
+        let Some((clean_romfs, zstd)) = romfs_zstd() else {
+            return;
+        };
+        let output_root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_CLAUDE/armor_dye_test");
+        if output_root.is_dir() {
+            fs::remove_dir_all(&output_root).unwrap();
+        }
+        let output_romfs = output_root.join("romfs");
+        fs::create_dir_all(&output_romfs).unwrap();
+        let supported = dye_assets_supported();
+        let mut spec = spec(Vec::new());
+        spec.template_actor = "Armor_022_Head".into();
+        spec.defense = Some(3);
+        spec.dyeable = true;
+        if !supported {
+            println!("dye asset writers are not available: generating without dye textures");
+            spec.dyeable = false;
+        }
+        let report = spec
+            .generate_files(clean_romfs, &output_romfs, &output_root, zstd.clone())
+            .unwrap();
+        let ranks = [
+            "Armor_950_Head_1",
+            "Armor_950_Head_2",
+            "Armor_950_Head_3",
+            "Armor_950_Head_4",
+        ];
+        assert_eq!(
+            report
+                .upgrades
+                .iter()
+                .map(|rank| rank.actor_name.as_str())
+                .collect::<Vec<_>>(),
+            ranks
+        );
+        assert_eq!(
+            report
+                .upgrades
+                .iter()
+                .map(|rank| rank.defense)
+                .collect::<Vec<_>>(),
+            [5, 8, 12, 20]
+        );
+        for actor in ranks {
+            assert!(output_romfs
+                .join("Pack/Actor")
+                .join(format!("{actor}.pack.zs"))
+                .is_file());
+        }
+        if !supported {
+            return;
+        }
+        assert!(report.dyeable);
+        let pack = PackFile::from_binary(
+            &fs::read(output_romfs.join("Pack/Actor/Armor_950_Head.pack.zs")).unwrap(),
+            zstd.clone(),
+        )
+        .unwrap();
+        let actor = pack
+            .byml_file("Actor/Armor_950_Head.engine__actor__ActorParam.bgyml")
+            .unwrap()
+            .pio;
+        assert_eq!(
+            component_ref(&actor, "ColorVariationRef").unwrap(),
+            "Component/ColorVariationParam/Armor_Head.game__component__ColorVariationParam.bgyml"
+        );
+        assert!(pack
+            .sarc
+            .get_data("Component/ColorVariationParam/Armor_Head.game__component__ColorVariationParam.bgyml")
+            .is_some());
+        let model_info = pack
+            .byml_file("Component/ModelInfo/Armor_950_Head.engine__component__ModelInfo.bgyml")
+            .unwrap()
+            .pio;
+        let anims = model_info
+            .as_map()
+            .unwrap()
+            .get("ModelVariationAnims")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .clone();
+        assert_eq!(anims.len(), 3);
+        assert_eq!(
+            anims[0]
+                .as_map()
+                .unwrap()
+                .get("Fmab")
+                .unwrap()
+                .as_string()
+                .unwrap()
+                .as_str(),
+            "Work/Model/Player/Armor/Armor_950/output/Head_ftp.fmab"
+        );
+        let (version, _) = super::super::version::discover_product_file(
+            &clean_romfs.join("RSDB"),
+            "ActorInfo.Product.",
+            ".rstbl.byml.zs",
+        )
+        .unwrap();
+        let pouch_name =
+            rsdb::WeaponRsdbProcessor::versioned_rsdb_name("PouchActorInfo", &version).unwrap();
+        let pouch = BymlFile::new(output_romfs.join("RSDB").join(pouch_name), zstd.clone())
+            .unwrap()
+            .pio;
+        for actor in ["Armor_950_Head", "Armor_950_Head_1", "Armor_950_Head_4"] {
+            let row = pouch
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| {
+                    row.as_map()
+                        .ok()
+                        .and_then(|map| map.get("__RowId"))
+                        .and_then(|value| value.as_string().ok())
+                        .map(|value| value.as_str())
+                        == Some(actor)
+                })
+                .unwrap();
+            assert_eq!(
+                row.as_map()
+                    .unwrap()
+                    .get("ColorVariationType")
+                    .unwrap()
+                    .as_string()
+                    .unwrap()
+                    .as_str(),
+                "ArmorDye",
+                "{actor}"
+            );
+        }
+        for (color, _) in DYE_COLORS {
+            assert!(output_romfs
+                .join("UI/Tex/Icon")
+                .join(format!("Armor_950_Head_{color}.bntx.zs"))
+                .is_file());
+        }
+        for slice in 0..16 {
+            assert!(output_romfs
+                .join("TexToGo")
+                .join(format!("Armor_950_Head_Alb.{slice}.txtg"))
+                .is_file());
+        }
+        let anim_path = output_romfs.join("Model/Armor_950.anim.bfres.zs");
+        assert!(anim_path.is_file());
+        assert_eq!(report.model_anim.as_deref(), Some(anim_path.as_path()));
+        let compressed = fs::read(&anim_path).unwrap();
+        let (raw, _) = zstd
+            .try_decompress_for_path(&anim_path, &compressed)
+            .unwrap();
+        let (_, anims) =
+            crate::file_format::Model3D::bfres::material_anim::read_material_anim_bfres(&raw)
+                .unwrap();
+        assert_eq!(anims.len(), 1);
+        assert_eq!(anims[0].name, "Head_ftp");
+        assert_eq!(anims[0].frame_count, 15);
+        assert!(anims[0]
+            .materials
+            .iter()
+            .all(|material| material.textures.len() == 16
+                && material.textures[0].ends_with("_Alb.0")));
+        assert!(
+            !fs::read_dir(output_root.join("_dye_tmp")).is_ok_and(|mut dir| dir.next().is_some())
+        );
+    }
 }

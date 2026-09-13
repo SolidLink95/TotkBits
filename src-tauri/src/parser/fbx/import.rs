@@ -60,21 +60,50 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
     if strict_g1m && bone_names.is_empty() {
         return Err(invalid("FBX contains no armature bones"));
     }
+    // Joints no skin references (`Root`/`Skl_Root` of a merged skeleton, a
+    // Blender armature object, ...) are exported as `Null` nodes; every one
+    // with a limb below it is part of the skeleton too.
+    if !strict_g1m {
+        let limbs: Vec<_> = bone_names.iter().map(|(id, _)| *id).collect();
+        for id in limbs {
+            let Some(object) = document.objects().find(|object| object.object_id() == id) else {
+                continue;
+            };
+            let TypedObjectHandle::Model(mut model) = object.get_typed() else {
+                continue;
+            };
+            while let Some(parent) = model.parent_model() {
+                if let TypedModelHandle::Null(null) = &parent {
+                    let name = null.name().unwrap_or("").to_string();
+                    if !name.is_empty() && !bone_by_id.contains_key(&parent.object_id()) {
+                        bone_by_id.insert(parent.object_id(), bone_names.len() as u16);
+                        bone_names.push((parent.object_id(), name));
+                    }
+                }
+                model = parent;
+            }
+        }
+    }
     let bones = bone_names
         .iter()
         .map(|(id, name)| {
-            let parent = document
+            // The nearest ancestor that is a bone itself.
+            let mut parent = document
                 .objects()
                 .find(|object| object.object_id() == *id)
                 .and_then(|object| match object.get_typed() {
                     TypedObjectHandle::Model(model) => model.parent_model(),
                     _ => None,
-                })
-                .and_then(|parent| match parent {
-                    TypedModelHandle::LimbNode(parent) => parent.name().map(str::to_owned),
-                    _ => None,
                 });
-            (name.clone(), parent)
+            let mut parent_name = None;
+            while let Some(model) = parent {
+                if bone_by_id.contains_key(&model.object_id()) {
+                    parent_name = model.name().map(str::to_owned);
+                    break;
+                }
+                parent = model.parent_model();
+            }
+            (name.clone(), parent_name)
         })
         .collect();
 

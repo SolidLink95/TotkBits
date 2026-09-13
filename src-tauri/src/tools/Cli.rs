@@ -95,20 +95,21 @@ impl CliCommand {
                 | "bfres_edit"
                 | "bntx_edit"
                 | "create_weapon"
+                | "merge_skeletons"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
         let valid_arguments = if operation == "decompress_dir" {
             arguments.len() == 7
         } else if matches!(
             operation.as_str(),
-            "bfres_edit" | "bntx_edit" | "create_weapon"
+            "bfres_edit" | "bntx_edit" | "create_weapon" | "merge_skeletons"
         ) {
             arguments.len() >= 3
         } else {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -129,7 +130,7 @@ impl CliCommand {
         };
         if matches!(
             operation.as_str(),
-            "bfres_edit" | "bntx_edit" | "create_weapon"
+            "bfres_edit" | "bntx_edit" | "create_weapon" | "merge_skeletons"
         ) {
             return Some(Self {
                 operation,
@@ -200,6 +201,7 @@ impl CliCommand {
         match self.operation.as_str() {
             "bfres_edit" => return self.bfres_edit(),
             "bntx_edit" => return self.bntx_edit(),
+            "merge_skeletons" => return self.merge_skeletons(),
             _ => {}
         }
         let result = match self.operation.as_str() {
@@ -570,6 +572,7 @@ impl CliCommand {
         let mut model_name = None;
         let mut fbx = None;
         let mut import_skeleton = false;
+        let mut skeleton_files: Vec<String> = Vec::new();
         let mut totk_path = None;
         let mut renames: Vec<(String, String)> = Vec::new();
         let args = &self.extra;
@@ -594,6 +597,7 @@ impl CliCommand {
                 "--swap_model_name" => model_name = Some(take(&mut i)?),
                 "--fbx" => fbx = Some(take(&mut i)?),
                 "--import_skeleton" => import_skeleton = true,
+                "--skeleton" => skeleton_files.push(take(&mut i)?),
                 "--totk_path" => totk_path = Some(take(&mut i)?),
                 "--rename_tex" => {
                     let from = take(&mut i)?;
@@ -674,7 +678,9 @@ impl CliCommand {
                 ),
             ));
         }
-        if (model_name.is_some() || fbx.is_some()) && file.model_count() == 0 {
+        if (model_name.is_some() || fbx.is_some() || !skeleton_files.is_empty())
+            && file.model_count() == 0
+        {
             return Err(fail(3, "the file has no models to edit; nothing written"));
         }
 
@@ -726,6 +732,39 @@ impl CliCommand {
                 }
             }
         }
+        if !skeleton_files.is_empty() {
+            // Bones only: the merged skeleton replaces the bone hierarchy while
+            // the model's own skinning stays bound by bone name.
+            let (merged, report) = load_and_merge_skeletons(&skeleton_files)?;
+            for (source, added) in skeleton_files.iter().zip(&report.added) {
+                println!("skeleton {source}: {} new bone(s)", added.len());
+            }
+            let bytes = crate::parser::skeleton::fbx_writer::write(&merged, "merged_skeleton")
+                .map_err(|e| fail(3, e.to_string()))?;
+            let report = file
+                .import_skeleton_bones_only(&bytes)
+                .map_err(|e| fail(3, e.to_string()))?;
+            println!(
+                "imported merged skeleton ({} bones): bones {} -> {} (added {}, removed {}, transforms updated {}; palette {} smooth + {} rigid)",
+                merged.bones.len(),
+                report.bones_before,
+                report.bones_after,
+                report.added.len(),
+                report.removed.len(),
+                report.transforms_updated.len(),
+                report.smooth_count,
+                report.rigid_count
+            );
+            for (label, names) in [
+                ("added", &report.added),
+                ("removed", &report.removed),
+                ("updated", &report.transforms_updated),
+            ] {
+                if !names.is_empty() {
+                    println!("  {label}: {}", names.join(", "));
+                }
+            }
+        }
         if let Some(name) = internal_name {
             println!("internal name: {} -> {name}", file.name);
             file.set_internal_name(&name);
@@ -753,6 +792,102 @@ impl CliCommand {
             .map_err(|e| fail(3, e.to_string()))?;
         write_output(output, &compressed).map_err(|e| fail(3, e))?;
         println!("saved {} ({} bytes)", output.display(), compressed.len());
+        Ok(())
+    }
+
+    /// Merges the bone hierarchies of two or more `.dae` / `.fbx` files
+    /// (union by bone name, first file's order first) into a bones-only FBX
+    /// 7400. `--compare` reports skeleton parity against a reference FBX
+    /// (names, order, hierarchy, LimbNode/Null, transforms within
+    /// tolerance); a mismatch exits with code 3.
+    fn merge_skeletons(&self) -> Result<(), CliError> {
+        use crate::parser::skeleton::{compare, fbx_writer, Skeleton};
+
+        let mut output = None;
+        let mut inputs = Vec::new();
+        let mut reference = None;
+        let mut tolerance = compare::Tolerance::default();
+        let args = &self.extra;
+        let mut i = 0;
+        while i < args.len() {
+            let take = |i: &mut usize| -> Result<String, CliError> {
+                *i += 1;
+                args.get(*i).cloned().ok_or_else(|| {
+                    CliError::new(
+                        1,
+                        format!(
+                            "{} requires a value",
+                            args.get(*i - 1).map(String::as_str).unwrap_or_default()
+                        ),
+                    )
+                })
+            };
+            match args[i].as_str() {
+                "-o" => output = Some(take(&mut i)?),
+                "--compare" => reference = Some(take(&mut i)?),
+                "--tolerance" => {
+                    let value = take(&mut i)?;
+                    let parsed: f32 = value
+                        .parse()
+                        .map_err(|_| CliError::new(1, format!("invalid --tolerance {value}")))?;
+                    tolerance.translation = parsed;
+                    tolerance.scale = parsed;
+                }
+                "--rotation_tolerance" => {
+                    let value = take(&mut i)?;
+                    tolerance.rotation_degrees = value.parse().map_err(|_| {
+                        CliError::new(1, format!("invalid --rotation_tolerance {value}"))
+                    })?;
+                }
+                other if other.starts_with('-') && other.len() > 1 => {
+                    return Err(CliError::new(1, format!("unknown argument {other}")));
+                }
+                input => inputs.push(input.to_owned()),
+            }
+            i += 1;
+        }
+        let Some(output) = output else {
+            return Err(CliError::new(1, "-o <output fbx> is required"));
+        };
+        if inputs.is_empty() {
+            return Err(CliError::new(
+                1,
+                "at least one input .dae or .fbx is required",
+            ));
+        }
+        let (merged, report) = load_and_merge_skeletons(&inputs)?;
+        for (source, added) in inputs.iter().zip(&report.added) {
+            println!("{source}: {} bone(s) contributed", added.len());
+            if !added.is_empty() && added.len() < merged.bones.len() {
+                println!("  {}", added.join(", "));
+            }
+        }
+        let limb = merged.bones.iter().filter(|bone| bone.skinned).count();
+        println!(
+            "merged skeleton: {} bones ({limb} LimbNode, {} Null)",
+            merged.bones.len(),
+            merged.bones.len() - limb
+        );
+        let bytes = fbx_writer::write(&merged, Path::new(&output).to_string_lossy().as_ref())
+            .map_err(|e| CliError::new(3, e.to_string()))?;
+        write_output(Path::new(&output), &bytes).map_err(|e| CliError::new(3, e))?;
+        println!("saved {output} ({} bytes)", bytes.len());
+        if let Some(reference) = reference {
+            let expected =
+                Skeleton::from_path(&reference).map_err(|e| CliError::new(3, e.to_string()))?;
+            let diff = compare::compare(&merged, &expected, tolerance);
+            println!("{}", diff.summary());
+            if !diff.is_match() {
+                return Err(CliError::new(
+                    3,
+                    format!(
+                        "skeleton differs from {reference}: {} mismatch(es)",
+                        diff.mismatches.len()
+                    ),
+                ));
+            }
+            println!("skeleton matches {reference}");
+        }
         Ok(())
     }
 
@@ -1792,6 +1927,26 @@ fn paths_are_equal(left: &Path, right: &Path) -> Result<bool, String> {
 fn safe_destination(root: &Path, name: &str) -> Result<PathBuf, String> {
     crate::file_format::Archive::validate_entry_path(name)?;
     Ok(root.join(name))
+}
+
+/// Reads every skeleton file and merges them in argument order.
+fn load_and_merge_skeletons(
+    inputs: &[String],
+) -> Result<
+    (
+        crate::parser::skeleton::Skeleton,
+        crate::parser::skeleton::MergeReport,
+    ),
+    CliError,
+> {
+    let mut skeletons = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let skeleton = crate::parser::skeleton::Skeleton::from_path(input)
+            .map_err(|e| CliError::new(1, e.to_string()))?;
+        println!("loaded {input}: {} bone(s)", skeleton.bones.len());
+        skeletons.push(skeleton);
+    }
+    crate::parser::skeleton::merge(&skeletons).map_err(|e| CliError::new(3, e.to_string()))
 }
 
 fn write_output(path: &Path, data: &[u8]) -> Result<(), String> {
