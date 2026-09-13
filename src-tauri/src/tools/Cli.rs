@@ -714,7 +714,7 @@ impl CliCommand {
     /// The output is zstd compressed only when `-o` ends with `.zs`, and
     /// matches Toolbox's bytes in both cases.
     fn bntx_edit(&self) -> Result<(), String> {
-        use crate::file_format::Image::bntx_toolbox::{find_astc_encoder, format_name, BntxFile};
+        use crate::parser::bntx::{find_astc_encoder, format_name, BntxFile};
 
         fn fail(code: i32, message: String) -> ! {
             eprintln!("error: {message}");
@@ -804,7 +804,7 @@ impl CliCommand {
         if !crate::Settings::Magic::is_bntx(&raw) {
             fail(1, format!("{} is not a bntx file", input.display()));
         }
-        let mut file = BntxFile::load(&raw).unwrap_or_else(|e| fail(3, e.to_string()));
+        let mut file = BntxFile::parse(&raw).unwrap_or_else(|e| fail(3, e.to_string()));
         let file_name = input
             .file_name()
             .and_then(|n| n.to_str())

@@ -1,7 +1,5 @@
 mod document;
 mod error;
-mod texture;
 
-pub use document::BntxFile;
+pub use document::{find_astc_encoder, format_name, BntxFile, BntxTexture};
 pub use error::BntxError;
-pub use texture::BntxTexture;

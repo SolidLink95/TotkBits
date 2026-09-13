@@ -14,9 +14,7 @@ mod saver;
 mod skeleton_import;
 mod strings;
 
-pub use model::{
-    Bone, Material, Mesh, Model, ResFile, Shape, Skeleton, VertexAttrib, VertexBuffer, VertexData,
-};
+pub use model::{Bone, Material, Mesh, ResFile, Shape, VertexAttrib, VertexBuffer, VertexData};
 pub use skeleton_import::SkeletonImportReport;
 pub use strings::ExternalStrings;
 
@@ -258,11 +256,6 @@ pub fn bone_world_position(bones: &[Bone], index: usize) -> [f32; 3] {
     [world.m41, world.m42, world.m43]
 }
 
-/// Convenience: load, optionally edit, and save like Toolbox.
-pub fn resave_like_toolbox(data: &[u8], external: &ExternalStrings) -> Result<Vec<u8>, BfresError> {
-    ResFile::load(data, external)?.save_like_toolbox()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,7 +291,9 @@ mod tests {
             )
             .unwrap();
             let expected = std::fs::read(&path).unwrap();
-            let actual = match resave_like_toolbox(&original, &external) {
+            let actual = match ResFile::load(&original, &external)
+                .and_then(|file| file.save_like_toolbox())
+            {
                 Ok(bytes) => bytes,
                 Err(error) => {
                     eprintln!("{name}: {error}");

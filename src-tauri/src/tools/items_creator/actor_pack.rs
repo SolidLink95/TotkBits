@@ -195,9 +195,9 @@ pub enum LinkParameterSource {
 }
 
 #[derive(Clone, Debug)]
-struct InjectedPackEntry {
-    path: String,
-    data: Vec<u8>,
+pub(super) struct InjectedPackEntry {
+    pub(super) path: String,
+    pub(super) data: Vec<u8>,
 }
 
 impl WeaponPackRequest {
@@ -587,7 +587,9 @@ fn validate_saved_actor_name(
     Ok(())
 }
 
-fn prepare_physics_entries(
+/// Collects `Phive/*` and `Component/Physics/*` of a vanilla actor together
+/// with the `PhysicsRef` value that binds them.
+pub(super) fn prepare_physics_entries(
     clean_romfs: &Path,
     actor_name: &str,
     zstd: Arc<TotkZstd<'_>>,
@@ -1368,9 +1370,13 @@ fn specialize_actor_pack_with_entries(
     }
     for entry in injected {
         validate_internal_path(&entry.path)?;
-        BymlFile::from_binary(&entry.data, zstd.clone(), &entry.path).map_err(|error| {
-            invalid(format!("injected BYML {} is invalid: {error}", entry.path))
-        })?;
+        // Only BYML entries can be validated; Havok cloth (`.bphcl`), helper
+        // bone (`.bphhb`) and similar binaries are copied as they are.
+        if entry.path.ends_with(".bgyml") || entry.path.ends_with(".byml") {
+            BymlFile::from_binary(&entry.data, zstd.clone(), &entry.path).map_err(|error| {
+                invalid(format!("injected BYML {} is invalid: {error}", entry.path))
+            })?;
+        }
     }
     let pack = PackFile::from_binary(source_bytes, zstd.clone())?;
     let mut edits: BTreeMap<&str, Vec<&BymlParameterEdit>> = BTreeMap::new();

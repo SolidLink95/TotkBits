@@ -5,7 +5,7 @@ import "./Comparer.css";
 import { debounce } from "lodash"; // or any other method/utility to debounce
 import React, { useEffect } from "react";
 import * as monaco from "monaco-editor";
-import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
+import { getDocumentsSnapshot, invoke as invokeDocument, subscribeDocuments } from './DocumentState';
 import { useSyncExternalStore } from 'react';
 // import ReactDiffViewer from 'react-diff-viewer-continued';
 import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
@@ -27,6 +27,7 @@ import AmtaView from './AmtaView';
 import ImageView from './ImageView';
 import AudioView from './AudioView';
 import ModelBrowserView from './ModelBrowserView';
+import ItemCreator from './ItemCreator';
 
 
 let triggered = false
@@ -36,6 +37,13 @@ function App() {
   const [comparingFile, setComparingFile] = React.useState('');
   const [audioProcessing, setAudioProcessing] = React.useState('');
   const [loadingModel, setLoadingModel] = React.useState(null);
+  const [itemCreatorTask, setItemCreatorTask] = React.useState('');
+
+  useEffect(() => {
+    const receive = (event) => setItemCreatorTask(event.detail || '');
+    window.addEventListener('totkbits:items-creator', receive);
+    return () => window.removeEventListener('totkbits:items-creator', receive);
+  }, []);
 
   useEffect(() => {
     const receive = (event) => setAudioProcessing(event.detail || '');
@@ -79,6 +87,53 @@ function App() {
 
   const rightDocument = documents.find((document) => document.id === rightDocumentId);
   const rightSnapshot = rightDocumentId ? documentSnapshots.current.get(rightDocumentId) : null;
+
+  // Ctrl + mouse wheel zooms the whole UI (the "UI scale" setting); Ctrl + 0
+  // resets it. The new value is written back to the config after a pause.
+  useEffect(() => {
+    const clamp = (value) => Math.min(3, Math.max(0.2, Number(value) || 1));
+    let persistTimer = null;
+    const persist = (scale) => {
+      clearTimeout(persistTimer);
+      persistTimer = setTimeout(async () => {
+        try {
+          const config = await invokeDocument('get_toml_config');
+          await invokeDocument('update_toml_config', { newConfig: { ...config, 'UI scale': scale } });
+        } catch (error) {
+          console.error('Unable to persist the UI scale:', error);
+        }
+      }, 600);
+    };
+    const applyScale = (compute) => {
+      setSettings((current) => {
+        const base = clamp(current.uiScale);
+        const next = Math.round(clamp(compute(base)) * 100) / 100;
+        if (next === base) return current;
+        persist(next);
+        setStatusText(`UI scale ${Math.round(next * 100)}%`);
+        return { ...current, uiScale: next };
+      });
+    };
+    const onWheel = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.deltaY === 0) return;
+      event.preventDefault();
+      applyScale((base) => base * (event.deltaY < 0 ? 1.1 : 1 / 1.1));
+    };
+    const onKeyDown = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      if (event.key === '0' || event.code === 'Digit0' || event.code === 'Numpad0') {
+        event.preventDefault();
+        applyScale(() => 1);
+      }
+    };
+    window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('wheel', onWheel, { capture: true });
+      window.removeEventListener('keydown', onKeyDown, true);
+      clearTimeout(persistTimer);
+    };
+  }, [setSettings, setStatusText]);
 
   useEffect(() => {
     if (!rightDocumentId || !rightEditorContainerRef.current) return undefined;
@@ -266,6 +321,14 @@ function App() {
           </div>
         </div>
       )}
+      {itemCreatorTask && (
+        <div className="parsing-overlay" role="status" aria-live="polite">
+          <div className="parsing-content">
+            <div className="loading-swirl" aria-hidden="true"></div>
+            <div>{itemCreatorTask}</div>
+          </div>
+        </div>
+      )}
       {comparingFile && (
         <div className="parsing-overlay" role="status" aria-live="polite">
           <div className="parsing-content">
@@ -333,6 +396,7 @@ function App() {
       <AudioView activeTab={activeTab} setActiveTab={setActiveTab} setStatusText={setStatusText} setpaths={setpaths} />
       <AmtaView activeTab={activeTab} setActiveTab={setActiveTab} />
       <ModelBrowserView activeTab={activeTab} />
+      <ItemCreator activeTab={activeTab} setStatusText={setStatusText} />
       
 
       {activeTab === 'YAML' && readOnly && <div className="physics-yaml-preview-banner" role="status">

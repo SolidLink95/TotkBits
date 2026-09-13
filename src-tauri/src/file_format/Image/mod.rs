@@ -1,6 +1,5 @@
 #![allow(non_snake_case)]
 
-pub mod bntx_toolbox;
 pub mod dds;
 mod document;
 pub mod png;

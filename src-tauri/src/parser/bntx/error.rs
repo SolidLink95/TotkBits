@@ -22,3 +22,15 @@ impl fmt::Display for BntxError {
 }
 
 impl std::error::Error for BntxError {}
+
+impl From<std::io::Error> for BntxError {
+    fn from(error: std::io::Error) -> Self {
+        Self::new(0, error.to_string())
+    }
+}
+
+impl From<BntxError> for std::io::Error {
+    fn from(error: BntxError) -> Self {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string())
+    }
+}

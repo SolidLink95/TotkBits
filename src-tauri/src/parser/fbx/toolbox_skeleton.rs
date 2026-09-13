@@ -8,7 +8,7 @@
 use fbxcel::tree::v7400::NodeHandle;
 use fbxcel_dom::{
     any::AnyDocument,
-    v7400::object::{geometry::TypedGeometryHandle, model::TypedModelHandle, TypedObjectHandle},
+    v7400::object::{geometry::TypedGeometryHandle, TypedObjectHandle},
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -506,7 +506,7 @@ fn normalized(v: [f32; 3]) -> [f32; 3] {
 
 /// OpenTK 3 `Matrix4.ExtractRotation(row_normalise: true)`.
 fn extract_rotation(row0: [f32; 3], row1: [f32; 3], row2: [f32; 3]) -> [f32; 4] {
-    let (mut x, mut y, mut z, mut w) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+    let (x, y, z, w): (f32, f32, f32, f32);
     let trace = 0.25 * (f64::from(row0[0] + row1[1] + row2[2]) + 1.0);
     if trace > 0.0 {
         let mut sq = trace.sqrt();

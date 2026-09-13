@@ -40,6 +40,11 @@ pub struct WeaponModelAssetsRequest {
     /// and non-mesh objects are ignored; the BFRES first material is retained.
     #[serde(default, alias = "fbx")]
     pub fbx_path: Option<PathBuf>,
+    /// With an FBX: merge its skeleton into the model like Toolbox's
+    /// "Import Bones" ("Replace bones" in the UI) instead of keeping the
+    /// template bones.
+    #[serde(default, alias = "import_skeleton")]
+    pub replace_bones: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -134,6 +139,7 @@ impl WeaponModelAssetsRequest {
         drop(base_bfres);
 
         let mut customized = raw;
+        let mut fbx_bytes = None;
         if let Some(fbx_path) = &self.fbx_path {
             let fbx_path = if fbx_path.is_absolute() {
                 fbx_path.clone()
@@ -146,10 +152,12 @@ impl WeaponModelAssetsRequest {
                     format!("custom FBX is missing: {}", fbx_path.display()),
                 ));
             }
-            customized = BfresFile::replace_geometry_from_fbx(&customized, &fs::read(fbx_path)?)
-                .map_err(|error| {
+            let bytes = fs::read(fbx_path)?;
+            customized =
+                BfresFile::replace_geometry_from_fbx(&customized, &bytes).map_err(|error| {
                     invalid_data(format!("failed to replace BFRES geometry: {error}"))
                 })?;
+            fbx_bytes = Some(bytes);
         }
 
         // From here on the model is edited through the Switch Toolbox compatible
@@ -160,6 +168,11 @@ impl WeaponModelAssetsRequest {
             .map_err(|error| invalid_data(format!("failed to load base BFRES: {error}")))?;
         if file.model_count() == 0 {
             return Err(invalid_data("base BFRES contains no model"));
+        }
+        if let (true, Some(bytes)) = (self.replace_bones, &fbx_bytes) {
+            file.import_skeleton_like_toolbox(bytes).map_err(|error| {
+                invalid_data(format!("failed to import the FBX skeleton: {error}"))
+            })?;
         }
         let texture_names = model_texture_names(&file);
         let texture_sources = index_textures(&clean_romfs.join("TexToGo"))?;
@@ -433,13 +446,27 @@ impl WeaponBntxAssetRequest {
                         format!("custom PNG is missing: {}", png.display()),
                     ));
                 }
-                ImageDocument::replace_single_bntx_from_png(
-                    source,
-                    destination,
+                match ImageDocument::replace_single_bntx_from_png(
+                    &source,
+                    &destination,
                     png,
                     &self.new_name,
                     &zstd,
-                )
+                ) {
+                    // Vanilla inventory icons are ASTC: the native replacer
+                    // has no ASTC encoder, so they go through the Toolbox
+                    // importer, which drives the bundled astcenc.
+                    Err(error) if error.kind() == io::ErrorKind::Unsupported => {
+                        replace_astc_bntx_like_toolbox(
+                            &source,
+                            &destination,
+                            png,
+                            &self.new_name,
+                            &zstd,
+                        )
+                    }
+                    other => other,
+                }
             }
             None => ImageDocument::clone_single_bntx_with_name(
                 source,
@@ -449,6 +476,84 @@ impl WeaponBntxAssetRequest {
             ),
         }
     }
+}
+
+/// Replaces the single texture of an ASTC BNTX from a picture the way the
+/// Toolbox CLI does (`--replace_tex`): same surface format and mip count,
+/// blocks encoded by `bin/cpp/astcenc-*.exe`, saved as Toolbox would.
+fn replace_astc_bntx_like_toolbox(
+    source: &Path,
+    destination: &Path,
+    png: &Path,
+    new_name: &str,
+    zstd: &TotkZstd<'_>,
+) -> io::Result<BntxReplacementReport> {
+    use crate::parser::bntx::{find_astc_encoder, BntxFile};
+    let bytes = fs::read(source)?;
+    let raw = if crate::Settings::Magic::is_bntx(&bytes) {
+        bytes
+    } else {
+        zstd.try_decompress_for_path(source, &bytes)?.0
+    };
+    let mut file = BntxFile::parse(&raw).map_err(|error| invalid_data(error.to_string()))?;
+    if file.textures.len() != 1 {
+        return Err(invalid(format!(
+            "icon BNTX must contain exactly one texture, found {}",
+            file.textures.len()
+        )));
+    }
+    let encoder = find_astc_encoder(None).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "no astcenc executable found: put astcenc-avx2.exe into bin/cpp or set ASTCENC",
+        )
+    })?;
+    let old_name = file.textures[0].name.clone();
+    if file.name == old_name {
+        file.set_internal_name(new_name);
+    }
+    file.rename_texture(0, new_name)
+        .map_err(|error| invalid_data(error.to_string()))?;
+    // Icons keep the vanilla dimensions; the picture is resized like the
+    // native replacer does for uncompressed formats.
+    let (width, height) = (file.textures[0].width, file.textures[0].height);
+    let supplied = image::open(png)
+        .map_err(|error| invalid_data(format!("{}: {error}", png.display())))?
+        .to_rgba8();
+    let picture = if supplied.dimensions() == (width, height) {
+        supplied
+    } else {
+        image::imageops::resize(
+            &supplied,
+            width,
+            height,
+            image::imageops::FilterType::Lanczos3,
+        )
+    };
+    file.replace_texture_from_rgba(0, &picture, Some(&encoder))
+        .map_err(|error| invalid_data(error.to_string()))?;
+    let is_zs = destination
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("zs"));
+    let output = if is_zs {
+        file.save_like_toolbox_zs()
+    } else {
+        file.save_like_toolbox()
+    }
+    .map_err(|error| invalid_data(error.to_string()))?;
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(destination, output)?;
+    let texture = &file.textures[0];
+    Ok(BntxReplacementReport {
+        name: texture.name.clone(),
+        width: texture.width,
+        height: texture.height,
+        format: format!("0x{:08X}", texture.format),
+        similarity: 1.0,
+    })
 }
 
 pub(super) fn index_textures(root: &Path) -> io::Result<BTreeMap<String, PathBuf>> {
@@ -719,6 +824,7 @@ mod tests {
             model_source: Some(model),
             model_destination: Some("Model/Weapon_Sword_900.Weapon_Sword_900.bfres.mc".into()),
             fbx_path: None,
+            replace_bones: false,
         };
         let generated = request
             .generate(clean_romfs, &output, zstd.clone())
@@ -762,6 +868,7 @@ mod tests {
             model_source: Some(model),
             model_destination: Some("Model/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc".into()),
             fbx_path: Some(fbx.clone()),
+            replace_bones: false,
         };
         let imported =
             crate::parser::fbx::import::import_for_bfres(&fs::read(fbx).unwrap()).unwrap();

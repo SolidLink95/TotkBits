@@ -71,6 +71,8 @@ mod audio;
 mod files;
 #[path = "commands/general.rs"]
 mod general;
+#[path = "commands/items_creator.rs"]
+mod items_creator;
 #[path = "commands/physics.rs"]
 mod physics;
 #[path = "commands/rstb.rs"]
@@ -84,6 +86,7 @@ pub use archives::*;
 pub use audio::*;
 pub use files::*;
 pub use general::*;
+pub use items_creator::*;
 pub use physics::*;
 pub use rstb::*;
 pub use settings::*;

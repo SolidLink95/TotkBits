@@ -8,13 +8,13 @@
 //! geometry has nothing to simulate) and severs the upgrade / hood-swap links.
 
 use super::{
+    actor_pack,
     armor_model::{self, CubeModelReport, CubeModelSpec},
     assets, gamedata, messages, rsdb, vendor, UiTextureReport, VendorTarget,
 };
 use crate::{
     compression::meshcodec::MeshCodec,
     file_format::{
-        BinTextFile::BymlFile,
         Model3D::bfres::{toolbox::ResFile, BfresFile},
         Pack::PackFile,
     },
@@ -61,6 +61,9 @@ pub struct ArmorAssets {
     /// Replacement for the undyed inventory icon.
     #[serde(default)]
     pub icon_png: Option<PathBuf>,
+    /// Custom mesh replacing the template's shapes (skinned to its bones).
+    #[serde(default)]
+    pub fbx: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -80,6 +83,15 @@ pub struct ArmorSpec {
     /// Placeholder geometry. When omitted the template mesh is kept.
     #[serde(default, alias = "cube")]
     pub model: Option<CubeModelSpec>,
+    /// Existing vanilla actor whose `Phive/*` and `Component/Physics/*`
+    /// entries are transferred into the clone (cloth, helper bones, ...).
+    /// Without it the clone binds the dummy physics component.
+    #[serde(default, alias = "physics_actor")]
+    pub physics: Option<String>,
+    /// With a custom FBX: replace the bones with the FBX skeleton (Toolbox
+    /// "Import Bones") instead of keeping the template skeleton.
+    #[serde(default, alias = "import_skeleton")]
+    pub replace_bones: bool,
     #[serde(default)]
     pub assets: ArmorAssets,
     #[serde(default)]
@@ -194,14 +206,25 @@ impl ArmorSpec {
                 ));
             }
         }
-        if let Some(icon) = &self.assets.icon_png {
-            let resolved = super::resolve_asset(asset_root, icon);
+        for asset in [&self.assets.icon_png, &self.assets.fbx]
+            .into_iter()
+            .flatten()
+        {
+            let resolved = super::resolve_asset(asset_root, asset);
             if !resolved.is_file() {
                 return Err(io::Error::new(
                     io::ErrorKind::NotFound,
                     format!("required source asset is missing: {}", resolved.display()),
                 ));
             }
+        }
+        if self.assets.fbx.is_some() && self.model.is_some() {
+            return Err(invalid(
+                "choose either a custom FBX or the placeholder cube, not both",
+            ));
+        }
+        if let Some(actor) = &self.physics {
+            validate_actor_name(actor)?;
         }
         Ok(())
     }
@@ -225,7 +248,13 @@ impl ArmorSpec {
 
         let actor_pack =
             self.clone_actor_pack(clean_romfs, output_romfs, &template, zstd.clone())?;
-        let model = self.generate_model(clean_romfs, output_romfs, &template, zstd.clone())?;
+        let model = self.generate_model(
+            clean_romfs,
+            output_romfs,
+            asset_root,
+            &template,
+            zstd.clone(),
+        )?;
         let model_anim = clone_project_anim(
             clean_romfs,
             output_romfs,
@@ -321,13 +350,35 @@ impl ArmorSpec {
         let buying = self.vendors.first().and_then(|vendor| vendor.buying_price);
         let selling = self.vendors.first().and_then(|vendor| vendor.selling_price);
 
-        let mut entries = Vec::new();
+        // Physics: the template's own cloth is dropped (it belongs to the mesh
+        // being replaced); an explicit donor actor's Phive/Physics entries are
+        // transferred instead, otherwise the dummy component is bound.
+        let physics = match &self.physics {
+            Some(actor) => Some(actor_pack::prepare_physics_entries(
+                clean_romfs,
+                actor,
+                zstd.clone(),
+            )?),
+            None => None,
+        };
+        let physics_ref = physics
+            .as_ref()
+            .map(|(reference, _)| reference.clone())
+            .unwrap_or_else(|| {
+                "?Component/Physics/Dummy.engine__component__PhysicsParam.bgyml".to_owned()
+            });
+        let mut entries: Vec<(String, Vec<u8>)> = physics
+            .map(|(_, injected)| {
+                injected
+                    .into_iter()
+                    .map(|entry| (entry.path, entry.data))
+                    .collect()
+            })
+            .unwrap_or_default();
         for file in pack.sarc.files() {
             let name = file
                 .name()
                 .ok_or_else(|| invalid_data("template armor pack contains an unnamed entry"))?;
-            // The placeholder cube carries no cloth; Havok assets and the
-            // physics component that binds them are left out.
             if name.starts_with("Phive/") || name.starts_with("Component/Physics/") {
                 continue;
             }
@@ -342,9 +393,7 @@ impl ArmorSpec {
                 let components = map_child_mut(&mut document.pio, "Components")?;
                 components.insert(
                     "PhysicsRef".into(),
-                    Byml::String(
-                        "?Component/Physics/Dummy.engine__component__PhysicsParam.bgyml".into(),
-                    ),
+                    Byml::String(physics_ref.as_str().into()),
                 );
             } else if new_name == armor_file {
                 let map = document
@@ -435,6 +484,7 @@ impl ArmorSpec {
         &self,
         clean_romfs: &Path,
         output_romfs: &Path,
+        asset_root: &Path,
         template: &TemplateArmor,
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<GeneratedArmorModel> {
@@ -468,11 +518,31 @@ impl ArmorSpec {
                 ))
             })?
         };
+        // Custom FBX: same native geometry replacement as weapons, then the
+        // optional Toolbox-style skeleton import.
+        let mut fbx_bytes = None;
+        let raw = match &self.assets.fbx {
+            Some(fbx) => {
+                let bytes = fs::read(super::resolve_asset(asset_root, fbx))?;
+                let replaced =
+                    BfresFile::replace_geometry_from_fbx(&raw, &bytes).map_err(|error| {
+                        invalid_data(format!("failed to replace BFRES geometry: {error}"))
+                    })?;
+                fbx_bytes = Some(bytes);
+                replaced
+            }
+            None => raw,
+        };
         let external = assets::external_strings_for(clean_romfs, &raw)?;
         let mut file = ResFile::load(&raw, &external)
             .map_err(|error| invalid_data(format!("failed to load template BFRES: {error}")))?;
         if file.model_count() == 0 {
             return Err(invalid_data("template BFRES contains no model"));
+        }
+        if let (true, Some(bytes)) = (self.replace_bones, &fbx_bytes) {
+            file.import_skeleton_like_toolbox(bytes).map_err(|error| {
+                invalid_data(format!("failed to import the FBX skeleton: {error}"))
+            })?;
         }
         let cube = match &self.model {
             Some(spec) => Some(armor_model::replace_with_skinned_cube(

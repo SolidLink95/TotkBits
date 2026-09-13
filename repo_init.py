@@ -35,6 +35,30 @@ def download_files():
     print(f"[+] Downloaded {len(files.keys())} files")
 
 
+ASTCENC_ZIP_URL = "https://github.com/ARM-software/astc-encoder/releases/download/5.7.0/astcenc-5.7.0-windows-x64.zip"
+
+
+def install_astcenc(bin_path):
+    """ASTC textures (inventory icons) are encoded with ARM's astcenc, kept as
+    bin/cpp/astcenc-*.exe so the app finds them next to the executable."""
+    import zipfile
+    cpp_dir = Path(bin_path) / "cpp"
+    cpp_dir.mkdir(parents=True, exist_ok=True)
+    if any(cpp_dir.glob("astcenc-*.exe")):
+        print("[+] astcenc already present in bin/cpp")
+        return
+    archive = cpp_dir / "astcenc.zip"
+    print("[+] Downloading astcenc")
+    download_file(ASTCENC_ZIP_URL, archive)
+    with zipfile.ZipFile(archive) as bundle:
+        for member in bundle.namelist():
+            name = Path(member).name
+            if name.startswith("astcenc-") and name.endswith(".exe"):
+                (cpp_dir / name).write_bytes(bundle.read(member))
+                print(f"[+] Extracted {name} -> bin/cpp")
+    archive.unlink()
+
+
 def remove_file(file):
     x = Path(file)
     if not x.is_file(): return
@@ -140,6 +164,7 @@ def repo_init():
 
     # Download dlls
     download_files()
+    install_astcenc(bin_path)
 
     print(
         "\n[+] Totkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file"

@@ -45,6 +45,11 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
     let template_has_skin = shapes.iter().any(|shape| {
         read_u16(&shape_reader, shape.offset as usize + 88).is_ok_and(|count| count != 0)
     });
+    // Empty FBX meshes (no faces or no vertices) cannot fill a shape slot;
+    // drop them instead of failing the whole replacement.
+    imported
+        .meshes
+        .retain(|mesh| !mesh.positions.is_empty() && !mesh.indices.is_empty());
     if imported.meshes.len() > shapes.len() {
         return Err(error(
             0,
@@ -66,10 +71,10 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
             )
         })?;
     }
-    order_meshes_for_shapes(&mut imported.meshes, &shapes);
     if imported.meshes.is_empty() || shapes.is_empty() {
         return Err(error(0, "model contains no replaceable meshes"));
     }
+    let mut slots = assign_meshes_to_shapes(std::mem::take(&mut imported.meshes), &shapes);
     let material_names: Vec<_> = parsed
         .materials
         .iter()
@@ -118,7 +123,7 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
         })
         .collect();
 
-    for mesh in &mut imported.meshes {
+    for mesh in slots.iter_mut().flatten() {
         remap_weights(mesh, &imported_to_bfres, root)?;
         if !template_has_skin {
             for joints in &mut mesh.bone_indices {
@@ -137,7 +142,7 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
     for (shape_index, shape) in shapes.iter().enumerate() {
         let shape_offset = shape.offset as usize;
         let stream_offset = read_u64(&reader, shape_offset + 16)? as usize;
-        if !used_streams.insert(stream_offset) && shape_index < imported.meshes.len() {
+        if !used_streams.insert(stream_offset) && slots[shape_index].is_some() {
             return Err(error(
                 shape_offset,
                 "multiple BFRES shapes share one vertex stream",
@@ -145,15 +150,16 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
         }
         let mesh_offset = read_u64(&reader, shape_offset + 24)? as usize;
         let mesh_entry = mesh_offset;
-        if shape_index >= imported.meshes.len() {
+        let Some(mesh) = slots[shape_index].as_mut() else {
+            // No FBX mesh for this shape slot: keep the template vertex
+            // stream but draw nothing from it.
             put_u32(&mut writer, mesh_entry + 44, 0);
             continue;
-        }
+        };
         let mut skin_offset = read_u64(&reader, shape_offset + 32)? as usize;
         let mut skin_capacity = read_u16(&reader, shape_offset + 88)
             .map_err(|e| error(e.offset, format!("FSHP skin count: {e}")))?
             as usize;
-        let mesh = &mut imported.meshes[shape_index];
         let has_active_skin = mesh
             .bone_weights
             .iter()
@@ -358,12 +364,22 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
     let output = writer.into_inner();
     let reparsed = BfresFile::from_bytes(&output)
         .map_err(|e| error(e.offset, format!("while reopening rebuilt BFRES: {e}")))?;
-    let expected_vertices: usize = imported
-        .meshes
-        .iter()
-        .map(|mesh| mesh.positions.len())
-        .sum();
-    let expected_indices: usize = imported.meshes.iter().map(|mesh| mesh.indices.len()).sum();
+    // Shape slots without an imported mesh keep the template vertex stream
+    // (with an emptied index list), so their vertices still count.
+    let mut expected_vertices = 0usize;
+    let mut expected_indices = 0usize;
+    for (shape, slot) in shapes.iter().zip(&slots) {
+        match slot {
+            Some(mesh) => {
+                expected_vertices += mesh.positions.len();
+                expected_indices += mesh.indices.len();
+            }
+            None => {
+                let stream_offset = read_u64(&reader, shape.offset as usize + 16)? as usize;
+                expected_vertices += read_u32(&reader, stream_offset + 80)? as usize;
+            }
+        }
+    }
     let actual_vertices = reparsed
         .render
         .meshes
@@ -619,19 +635,34 @@ fn validate_compatible_skeleton(
 /// Aligns FBX meshes with BFRES shape slots by semantic role before falling
 /// back to their stable source order. Weapon files commonly store the hidden
 /// blade shape before the main shape while FBX exporters emit the reverse.
-fn order_meshes_for_shapes(meshes: &mut Vec<ImportedMesh>, shapes: &[BfresSection]) {
-    let mut remaining = std::mem::take(meshes);
-    let mut ordered = Vec::with_capacity(remaining.len());
-    for shape in shapes.iter().take(remaining.len()) {
+/// Pairs every BFRES shape slot with at most one imported mesh. Blade-hide
+/// meshes go to blade-hide shapes first; whatever is left fills the remaining
+/// empty slots in shape order. Slots without a mesh stay `None`, so an FBX
+/// with fewer meshes than the template never pushes a body mesh into the
+/// hidden-blade slot.
+fn assign_meshes_to_shapes(
+    meshes: Vec<ImportedMesh>,
+    shapes: &[BfresSection],
+) -> Vec<Option<ImportedMesh>> {
+    let mut remaining: Vec<Option<ImportedMesh>> = meshes.into_iter().map(Some).collect();
+    let mut slots: Vec<Option<ImportedMesh>> = (0..shapes.len()).map(|_| None).collect();
+    for (slot, shape) in slots.iter_mut().zip(shapes) {
         let shape_is_blade = shape.name.as_deref().is_some_and(contains_blade_hide);
-        let matching = remaining
-            .iter()
-            .position(|mesh| contains_blade_hide(&mesh.name) == shape_is_blade);
-        let index = matching.unwrap_or(0);
-        ordered.push(remaining.remove(index));
+        if let Some(mesh) = remaining.iter_mut().find(|mesh| {
+            mesh.as_ref()
+                .is_some_and(|mesh| contains_blade_hide(&mesh.name) == shape_is_blade)
+        }) {
+            *slot = mesh.take();
+        }
     }
-    ordered.append(&mut remaining);
-    *meshes = ordered;
+    let mut leftovers = remaining.into_iter().flatten();
+    for slot in slots.iter_mut().filter(|slot| slot.is_none()) {
+        match leftovers.next() {
+            Some(mesh) => *slot = Some(mesh),
+            None => break,
+        }
+    }
+    slots
 }
 
 fn contains_blade_hide(name: &str) -> bool {
@@ -1234,9 +1265,19 @@ mod tests {
                 name: Some("Weapon_Main".into()),
             },
         ];
-        order_meshes_for_shapes(&mut meshes, &shapes);
-        assert_eq!(meshes[0].name, "BLADE_HIDE");
-        assert_eq!(meshes[1].name, "Main");
+        let slots = assign_meshes_to_shapes(std::mem::take(&mut meshes), &shapes);
+        assert_eq!(slots[0].as_ref().unwrap().name, "BLADE_HIDE");
+        assert_eq!(slots[1].as_ref().unwrap().name, "Main");
+
+        // A single body mesh must not land in the hidden-blade slot.
+        let slots = assign_meshes_to_shapes(vec![imported_mesh("Main")], &shapes);
+        assert!(slots[0].is_none());
+        assert_eq!(slots[1].as_ref().unwrap().name, "Main");
+
+        // A lone blade mesh fills the blade slot and leaves the body empty.
+        let slots = assign_meshes_to_shapes(vec![imported_mesh("BLADE_HIDE")], &shapes);
+        assert_eq!(slots[0].as_ref().unwrap().name, "BLADE_HIDE");
+        assert!(slots[1].is_none());
     }
 
     #[test]

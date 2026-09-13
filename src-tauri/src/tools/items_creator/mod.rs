@@ -15,6 +15,7 @@ pub mod actor_pack;
 pub mod armor;
 pub mod armor_model;
 pub mod assets;
+pub mod catalog;
 pub mod ecocat;
 pub mod gamedata;
 pub mod messages;
@@ -151,6 +152,10 @@ pub struct WeaponSpec {
     /// Existing vanilla actor whose Phive and Physics entries should be reused.
     #[serde(default, alias = "physics_actor")]
     pub physics: Option<String>,
+    /// With a custom FBX: replace the model's bones with the FBX skeleton
+    /// (Toolbox "Import Bones") instead of keeping the template skeleton.
+    #[serde(default, alias = "import_skeleton")]
+    pub replace_bones: bool,
     /// Existing vanilla actor whose Chemical entries should be reused.
     #[serde(default, alias = "chemical_actor")]
     pub chemical: Option<String>,
@@ -670,6 +675,7 @@ impl WeaponSpec {
                 .fbx
                 .as_deref()
                 .map(|path| resolve_asset(asset_root, path)),
+            replace_bones: self.replace_bones,
         }
         .generate(clean_romfs, output_romfs, zstd.clone())?;
         let texture_output = output_romfs.join("TexToGo");
@@ -1015,9 +1021,7 @@ pub(super) fn generate_ui_texture(
         Ok(report) => report,
         Err(error)
             if request.png_source.is_some()
-                && error
-                    .to_string()
-                    .contains("ASTC BNTX replacement is not supported") =>
+                && error.to_string().contains("no astcenc executable found") =>
         {
             let partial = output_romfs.join(&request.texture_destination);
             if partial.is_file() {
@@ -1645,6 +1649,7 @@ mod tests {
                 model_source: None,
                 model_destination: None,
                 fbx_path: None,
+                replace_bones: false,
             }
             .generate(clean_romfs, &output_romfs, zstd.clone())
             .expect("generate per-item BFRES and TexToGo assets");
@@ -2546,6 +2551,7 @@ mod tests {
             sound: None,
             effect: None,
             physics: None,
+            replace_bones: false,
             chemical: None,
             shootable: None,
             display_name: "Test Sword".into(),

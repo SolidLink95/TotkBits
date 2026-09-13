@@ -236,6 +236,11 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
             return Err(invalid(format!("mesh {name} has no FBX UV layer")));
         }
         let corner_count = triangles.len();
+        if corner_count == 0 {
+            // Meshes without polygons (empty objects, stray control points)
+            // have nothing to replace a BFRES shape with.
+            continue;
+        }
         let mut positions = Vec::with_capacity(corner_count);
         let mut normals = Vec::with_capacity(corner_count);
         let mut uv_maps = vec![Vec::with_capacity(corner_count); uv_layers.len()];
@@ -355,6 +360,9 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
             indices,
         };
         deduplicate_vertices(&mut mesh, &source_control_indices);
+        if mesh.positions.is_empty() || mesh.indices.is_empty() {
+            continue;
+        }
         calculate_tangents(&mut mesh)?;
         meshes.push(mesh);
     }

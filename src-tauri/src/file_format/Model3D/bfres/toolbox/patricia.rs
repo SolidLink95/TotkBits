@@ -155,7 +155,7 @@ impl Tree {
             return Self::ROOT;
         }
         let mut node = self.nodes[Self::ROOT].child[0];
-        let mut prev_node = node;
+        let mut prev_node;
         loop {
             prev_node = node;
             let n = &self.nodes[node];
@@ -174,7 +174,7 @@ impl Tree {
     fn insert(&mut self, name: &str) {
         let data = Big::from_key(name);
         let mut current = self.search(&data, true);
-        let mut bit_idx = self.nodes[current].data.bit_mismatch(&data);
+        let bit_idx = self.nodes[current].data.bit_mismatch(&data);
         while bit_idx < self.nodes[self.nodes[current].parent].bit_index {
             current = self.nodes[current].parent;
         }

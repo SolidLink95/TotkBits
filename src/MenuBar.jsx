@@ -266,6 +266,15 @@ function MenuBarDisplay({ updateButton = null }) {
     console.log("Config options open: ", isOptionsOpen);
   }
 
+  const handleItemCreator = async (event) => {
+    event.stopPropagation();
+    closeMenu();
+    const { created } = openUtilityDocument('Item creator', 'ITEM_CREATOR');
+    if (created) await new Promise((resolve) => requestAnimationFrame(resolve));
+    setActiveTab('ITEM_CREATOR');
+    setStatusText('Item creator: clone weapons and armor into a standalone mod');
+  };
+
   const handlePhysicsMerge = async (event) => {
     event.stopPropagation();
     closeMenu();
@@ -399,6 +408,7 @@ function MenuBarDisplay({ updateButton = null }) {
     { label: 'Download GLB', onClick: handleDownloadMiiGlb, icon: blankIcon, shortcut: '', condition: activeDocument?.fileType === 'MII' },
     { label: 'Batch render', onClick: handleBatchRender, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Physics merge', onClick: handlePhysicsMerge, icon: blankIcon, shortcut: '', condition: true },
+    { label: 'Item creator', onClick: handleItemCreator, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.webp', shortcut: '', condition: isSarcOpened },
     { label: 'Add folder', onClick: handleAddFolderClick, icon: 'menu/add_folder.webp', shortcut: '', condition: isSarcOpened },
     { label: 'Extract sarc contents', onClick: handleExtractOpenedSarc, icon: 'context_menu/extract_all.webp', shortcut: '', condition: isSarcOpened },
