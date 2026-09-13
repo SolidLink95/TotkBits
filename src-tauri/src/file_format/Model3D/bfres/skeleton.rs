@@ -28,7 +28,7 @@ pub fn parse_skeleton(
     let entry_size = if legacy_bones { 96 } else { 88 };
     let bone_scalar_shift = if legacy_bones { 8 } else { 0 };
     let bone_transform_shift = if legacy_bones { 8 } else { 0 };
-    let mut bones = Vec::with_capacity(count);
+    let mut bones = Vec::new();
     for index in 0..count {
         let entry = bones_offset + index * entry_size;
         bones.push(BfresBone {

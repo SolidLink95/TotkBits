@@ -39,12 +39,12 @@ impl Baev {
 
         let return_position = reader.position();
         reader.seek(event_info_array.offset()?)?;
-        let mut event_info = Vec::with_capacity(event_info_array.count as usize);
+        let mut event_info = Vec::new();
         for _ in 0..event_info_array.count {
             event_info.push(BaevEventInfo::read(&mut reader)?);
         }
         reader.seek(node_array.offset()?)?;
-        let mut nodes = Vec::with_capacity(node_array.count as usize);
+        let mut nodes = Vec::new();
         for _ in 0..node_array.count {
             nodes.push(BaevNode::read(&mut reader)?);
         }

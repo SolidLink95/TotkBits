@@ -30,7 +30,7 @@ impl AnimationSlot {
         let unknown = reader.read_u16()?;
         let partial_1 = pool.read_c_string_at(reader.read_u32()? as usize)?;
         let partial_2 = pool.read_c_string_at(reader.read_u32()? as usize)?;
-        let mut entries = Vec::with_capacity(count as usize);
+        let mut entries = Vec::new();
         for _ in 0..count {
             entries.push(AnimationSlotEntry {
                 bone: pool.read_c_string_at(reader.read_u32()? as usize)?,

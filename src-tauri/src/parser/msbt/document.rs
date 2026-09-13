@@ -31,7 +31,10 @@ impl Msbt {
     pub fn from_bytes(data: &[u8]) -> io::Result<Self> {
         let header = Header::read(data)?;
         let limit = header.file_size as usize;
-        let mut r = BinaryReader::with_endian(&data[..limit], header.endian);
+        let bounded = data
+            .get(..limit)
+            .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "invalid MSBT file size"))?;
+        let mut r = BinaryReader::with_endian(bounded, header.endian);
         r.seek(32)?;
         let mut sections = Vec::new();
         for _ in 0..header.section_count {
@@ -354,7 +357,7 @@ impl Msbt {
         sections
             .iter_mut()
             .find(|section| &section.magic == b"TXT2")
-            .expect("TXT2 was checked above")
+            .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "missing TXT2"))?
             .data = txt_writer.into_inner();
 
         let mut writer = BinaryWriter::with_endian(self.header.endian);

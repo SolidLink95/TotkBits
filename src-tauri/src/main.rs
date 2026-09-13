@@ -53,7 +53,18 @@ use crate::TauriCommands::{
     validate_bphcl_merge_documents, validate_physics_merge_request,
 };
 
-fn main() -> io::Result<()> {
+fn main() -> std::process::ExitCode {
+    match run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("error: {}", error.message);
+            let code = error.code.clamp(1, 255) as u8;
+            std::process::ExitCode::from(code)
+        }
+    }
+}
+
+fn run() -> Result<(), tools::Cli::CliError> {
     // texture2ddecoder panics on malformed game textures; those panics are
     // caught and reported as skipped textures, so the default hook's trace
     // for them is pure console noise. Every other panic keeps its trace.
@@ -68,14 +79,14 @@ fn main() -> io::Result<()> {
     }));
     let cli = tools::Cli::CliCommand::from_env();
     if let Some(command) = cli {
-        return command.execute().map_err(std::io::Error::other);
+        return command.execute();
     }
-    main_initialization()?;
+    main_initialization().map_err(|error| error.to_string())?;
     // test_case()?;
     // return Ok(());
-    let startup = StartupData::new()?;
+    let startup = StartupData::new().map_err(|error| error.to_string())?;
     Settings::launch_weapon_icon_cache(&startup.config);
-    let startup_data = startup.to_json()?;
+    let startup_data = startup.to_json().map_err(|error| error.to_string())?;
     // println!("{:?}", startup_data);
     let documents = Documents::default();
     if let Err(err) = tauri::Builder::default()

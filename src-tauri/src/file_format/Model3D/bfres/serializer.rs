@@ -6,7 +6,7 @@
 //! testable against files emitted by Toolbox.
 
 use super::{align_up, BfresError};
-use crate::parser::binary::{BinaryReader, BinaryWriter, Endian as BinaryEndian};
+use crate::parser::binary::{BinaryPatcher, BinaryReader, BinaryWriter, Endian as BinaryEndian};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -104,7 +104,7 @@ impl V10ResourceGraph {
         let model_array = read_u64(data, 0x28)? as usize;
         let buffer_info = read_u64(data, 0xb0)? as usize;
         let external_array = read_u64(data, 0xb8)? as usize;
-        let mut models = Vec::with_capacity(model_count);
+        let mut models = Vec::new();
         for index in 0..model_count {
             let header = model_array
                 .checked_add(index * 120)
@@ -548,7 +548,7 @@ pub(super) fn emit_v10_model_core_phase(
             patch_u16_at(&mut phase.bytes, output_skeleton + 60, 1)?;
         }
         for matrix in &model.skeleton.inverse_matrices {
-            if matrix == model.skeleton.inverse_matrices.first().unwrap() {
+            if Some(matrix) == model.skeleton.inverse_matrices.first() {
                 align_output(&mut phase.bytes, 8);
             }
             append_mapped_block(
@@ -1368,22 +1368,37 @@ pub(super) fn rebase_v10_relocations(
             }
         }
         let output_entries = output_rlt + (entries_start - source_rlt) + entry_index * 8;
-        let mut records = phase.bytes[output_entries..output_entries + entry_count * 8]
-            .chunks_exact(8)
-            .map(<[u8]>::to_vec)
-            .collect::<Vec<_>>();
-        for record in &mut records {
-            if BinaryReader::new(record).read_u16_at(4).unwrap() == 8 && record[6] == 6 {
-                let mut writer = BinaryWriter::from_vec(record.clone(), BinaryEndian::Little);
-                writer.write_u16_at(4, 1);
-                *record = writer.into_inner();
-                record[6] = 8;
+        let entries_end = output_entries
+            .checked_add(entry_count * 8)
+            .ok_or_else(|| error(output_entries, "relocation entry table overflow"))?;
+        let raw_records = phase
+            .bytes
+            .get(output_entries..entries_end)
+            .ok_or_else(|| error(output_entries, "relocation entries lie outside output"))?;
+        let truncated = || error(output_entries, "truncated relocation entry");
+        let mut records = Vec::with_capacity(entry_count);
+        for raw in raw_records.chunks_exact(8) {
+            let mut record = raw.to_vec();
+            let reader = BinaryReader::new(&record);
+            let struct_count = reader.read_u16_at(4).map_err(|_| truncated())?;
+            let offset_count = reader.read_u8_at(6).map_err(|_| truncated())?;
+            if struct_count == 8 && offset_count == 6 {
+                let mut patcher = BinaryPatcher::new(&mut record);
+                patcher
+                    .write_u16_at(4, 1)
+                    .and_then(|_| patcher.write_u8_at(6, 8))
+                    .map_err(|_| truncated())?;
             }
+            let key = BinaryReader::new(&record)
+                .read_u32_at(0)
+                .map_err(|_| truncated())?;
+            records.push((key, record));
         }
-        records.sort_by_key(|record| BinaryReader::new(record).read_u32_at(0).unwrap());
-        for (index, record) in records.into_iter().enumerate() {
-            phase.bytes[output_entries + index * 8..output_entries + (index + 1) * 8]
-                .copy_from_slice(&record);
+        records.sort_by_key(|(key, _)| *key);
+        for (index, (_, record)) in records.into_iter().enumerate() {
+            BinaryPatcher::new(&mut phase.bytes)
+                .write_bytes_at(output_entries + index * 8, &record)
+                .map_err(|_| error(output_entries, "relocation entries lie outside output"))?;
         }
     }
     // ResFileSwitchSaver describes all pointer fields in the v10 root header.
@@ -1473,13 +1488,9 @@ fn translate_source_offset(phase: &V10FixedPhase, source: usize) -> Result<usize
 }
 
 fn patch_u32_at(output: &mut [u8], offset: usize, value: u32) -> Result<(), BfresError> {
-    if offset.checked_add(4).is_none_or(|end| end > output.len()) {
-        return Err(error(offset, "BFRES u32 field lies outside output"));
-    }
-    let mut writer = BinaryWriter::from_vec(output.to_vec(), BinaryEndian::Little);
-    writer.write_u32_at(offset, value);
-    output.copy_from_slice(&writer.into_inner());
-    Ok(())
+    BinaryPatcher::new(output)
+        .write_u32_at(offset, value)
+        .map_err(|_| error(offset, "BFRES u32 field lies outside output"))
 }
 
 fn append_optional_range(
@@ -2480,7 +2491,7 @@ pub(super) fn read_dictionary(
         return Ok(Vec::new());
     }
     let count = read_u32(data, offset + 4)? as usize;
-    let mut nodes = Vec::with_capacity(count + 1);
+    let mut nodes = Vec::new();
     for index in 0..=count {
         let entry = offset + 8 + index * 16;
         let key_offset = read_u64(data, entry + 8)? as usize;
@@ -2865,25 +2876,19 @@ pub(super) fn write_relocation_table(
 }
 
 fn put_u16(output: &mut Vec<u8>, value: u16) {
-    let len = output.len();
-    let mut writer = BinaryWriter::from_vec(std::mem::take(output), BinaryEndian::Little);
-    writer.seek(len);
+    let mut writer = BinaryWriter::appending(std::mem::take(output), BinaryEndian::Little);
     writer.write_u16(value);
     *output = writer.into_inner();
 }
 
 fn put_i16(output: &mut Vec<u8>, value: i16) {
-    let len = output.len();
-    let mut writer = BinaryWriter::from_vec(std::mem::take(output), BinaryEndian::Little);
-    writer.seek(len);
+    let mut writer = BinaryWriter::appending(std::mem::take(output), BinaryEndian::Little);
     writer.write_i16(value);
     *output = writer.into_inner();
 }
 
 fn put_f32(output: &mut Vec<u8>, value: f32) {
-    let len = output.len();
-    let mut writer = BinaryWriter::from_vec(std::mem::take(output), BinaryEndian::Little);
-    writer.seek(len);
+    let mut writer = BinaryWriter::appending(std::mem::take(output), BinaryEndian::Little);
     writer.write_f32(value);
     *output = writer.into_inner();
 }
@@ -2895,47 +2900,33 @@ fn reserve(output: &mut Vec<u8>, size: usize) -> usize {
 }
 
 fn put_u32(output: &mut Vec<u8>, value: u32) {
-    let len = output.len();
-    let mut writer = BinaryWriter::from_vec(std::mem::take(output), BinaryEndian::Little);
-    writer.seek(len);
+    let mut writer = BinaryWriter::appending(std::mem::take(output), BinaryEndian::Little);
     writer.write_u32(value);
     *output = writer.into_inner();
 }
 
 fn put_u64(output: &mut Vec<u8>, value: u64) {
-    let len = output.len();
-    let mut writer = BinaryWriter::from_vec(std::mem::take(output), BinaryEndian::Little);
-    writer.seek(len);
+    let mut writer = BinaryWriter::appending(std::mem::take(output), BinaryEndian::Little);
     writer.write_u64(value);
     *output = writer.into_inner();
 }
 
 fn put_u16_be(output: &mut Vec<u8>, value: u16) {
-    let len = output.len();
-    let mut writer = BinaryWriter::from_vec(std::mem::take(output), BinaryEndian::Big);
-    writer.seek(len);
+    let mut writer = BinaryWriter::appending(std::mem::take(output), BinaryEndian::Big);
     writer.write_u16(value);
     *output = writer.into_inner();
 }
 
 fn patch_u16_at(output: &mut [u8], offset: usize, value: u16) -> Result<(), BfresError> {
-    if offset.checked_add(2).is_none_or(|end| end > output.len()) {
-        return Err(error(offset, "BFRES u16 field lies outside output"));
-    }
-    let mut writer = BinaryWriter::from_vec(output.to_vec(), BinaryEndian::Little);
-    writer.write_u16_at(offset, value);
-    output.copy_from_slice(&writer.into_inner());
-    Ok(())
+    BinaryPatcher::new(output)
+        .write_u16_at(offset, value)
+        .map_err(|_| error(offset, "BFRES u16 field lies outside output"))
 }
 
 fn patch_u64(output: &mut [u8], offset: usize, value: u64) -> Result<(), BfresError> {
-    if offset.checked_add(8).is_none_or(|end| end > output.len()) {
-        return Err(error(offset, "BFRES pointer field lies outside output"));
-    }
-    let mut writer = BinaryWriter::from_vec(output.to_vec(), BinaryEndian::Little);
-    writer.write_u64_at(offset, value);
-    output.copy_from_slice(&writer.into_inner());
-    Ok(())
+    BinaryPatcher::new(output)
+        .write_u64_at(offset, value)
+        .map_err(|_| error(offset, "BFRES pointer field lies outside output"))
 }
 
 fn read_u16(data: &[u8], offset: usize) -> Result<u16, BfresError> {

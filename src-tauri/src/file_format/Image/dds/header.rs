@@ -1,3 +1,4 @@
+use crate::parser::binary::BinaryReader;
 use std::io;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,15 +16,16 @@ impl DdsHeader {
                 "invalid DDS header",
             ));
         }
+        let reader = BinaryReader::new(data);
         let read = |offset: usize| {
-            let mut value = [0; 4];
-            value.copy_from_slice(&data[offset..offset + 4]);
-            u32::from_le_bytes(value)
+            reader
+                .read_u32_at(offset)
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid DDS header"))
         };
         Ok(Self {
-            height: read(12),
-            width: read(16),
-            mipmap_count: read(28).max(1),
+            height: read(12)?,
+            width: read(16)?,
+            mipmap_count: read(28)?.max(1),
         })
     }
 }

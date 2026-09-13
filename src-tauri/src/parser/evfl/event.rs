@@ -113,7 +113,7 @@ impl Event {
                 let cases_ptr = r.read_u64()?;
                 let mut cr = BinaryReader::new(data);
                 cr.seek(cases_ptr as usize)?;
-                let mut switch_cases = Vec::with_capacity(count);
+                let mut switch_cases = Vec::new();
                 for _ in 0..count {
                     switch_cases.push(SwitchCase {
                         value: cr.read_i32()?,

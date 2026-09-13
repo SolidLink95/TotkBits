@@ -146,7 +146,10 @@ impl<'a> SmoSaveFile<'a> {
             .pio
             .as_mut_map()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        let header_array: [u8; SMO_HEADER_SIZE] = self.header[..SMO_HEADER_SIZE]
+        let header_array: [u8; SMO_HEADER_SIZE] = self
+            .header
+            .get(..SMO_HEADER_SIZE)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Header size mismatch"))?
             .try_into()
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Header size mismatch"))?;
         let header_hex_str = bytes_to_hex_uppercase(&header_array);
@@ -264,10 +267,10 @@ fn bytes_to_hex_uppercase(bytes: &[u8; SMO_HEADER_SIZE]) -> String {
 }
 
 fn hex_to_bytes(hex: &str) -> io::Result<[u8; SMO_HEADER_SIZE]> {
-    if hex.len() != 32 {
+    if hex.len() != 32 || !hex.is_ascii() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "Hex string must be 32 characters long",
+            "Hex string must be 32 ASCII characters long",
         ));
     }
 

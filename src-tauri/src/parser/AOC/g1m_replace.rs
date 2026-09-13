@@ -139,7 +139,10 @@ fn replace_imported_meshes(
         }
     }
     let chunk_offset = read_u32(g1m, 12, endian)? as usize;
-    let mut output = g1m[..chunk_offset].to_vec();
+    let mut output = g1m
+        .get(..chunk_offset)
+        .ok_or_else(|| invalid("G1M chunk offset exceeds the file"))?
+        .to_vec();
     output.extend_from_slice(&body);
     let output_len = output.len() as u32;
     put_u32(&mut output, 8, output_len, endian)?;
@@ -386,7 +389,7 @@ fn parse_chunks(data: &[u8], endian: Endian) -> io::Result<Vec<Chunk<'_>>> {
     let offset = reader.read_u32_at(12)? as usize;
     let count = reader.read_u32_at(20)? as usize;
     reader.seek(offset)?;
-    let mut chunks = Vec::with_capacity(count);
+    let mut chunks = Vec::new();
     for _ in 0..count {
         let start = reader.position();
         let mut signature = [0; 4];
@@ -428,7 +431,7 @@ fn parse_geometry(data: &[u8], endian: Endian) -> io::Result<Geometry<'_>> {
         *value = reader.read_f32()?;
     }
     let count = reader.read_u32()? as usize;
-    let mut sections = Vec::with_capacity(count);
+    let mut sections = Vec::new();
     let mut vertex_buffers = Vec::new();
     let mut attrs = Vec::new();
     let mut index_buffers = Vec::new();
@@ -473,7 +476,7 @@ fn parse_geometry(data: &[u8], endian: Endian) -> io::Result<Geometry<'_>> {
                         .map(|_| reader.read_u32().map(|v| v as usize))
                         .collect::<io::Result<_>>()?;
                     let n = reader.read_u32()? as usize;
-                    let mut list = Vec::with_capacity(n);
+                    let mut list = Vec::new();
                     for _ in 0..n {
                         list.push(Attr {
                             buffer: reader.read_u16()? as usize,
@@ -493,8 +496,8 @@ fn parse_geometry(data: &[u8], endian: Endian) -> io::Result<Geometry<'_>> {
             0x0001_0006 => {
                 for _ in 0..item_count {
                     let n = reader.read_u32()? as usize;
-                    let mut raw = Vec::with_capacity(n);
-                    let mut joints = Vec::with_capacity(n);
+                    let mut raw = Vec::new();
+                    let mut joints = Vec::new();
                     for _ in 0..n {
                         let v = [reader.read_u32()?, reader.read_u32()?, reader.read_u32()?];
                         joints.push(v[2] & 0x7fff_ffff);
@@ -764,7 +767,8 @@ fn build_vertex_section(
                         continue;
                     }
                     write_attribute(
-                        &mut body[start + attr.offset..],
+                        body.get_mut(start + attr.offset..)
+                            .ok_or_else(|| invalid("vertex attribute offset exceeds stride"))?,
                         attr,
                         mesh,
                         vertex,
@@ -794,7 +798,12 @@ fn write_attribute(
         }
         1 => {
             let start = attr.layer as usize * 4;
-            value.copy_from_slice(&mesh.bone_weights[vertex][start..start + 4]);
+            let weights = mesh
+                .bone_weights
+                .get(vertex)
+                .and_then(|weights| weights.get(start..start + 4))
+                .ok_or_else(|| invalid("bone weight layer exceeds the imported mesh"))?;
+            value.copy_from_slice(weights);
         }
         2 => {
             let joints = mesh.bone_indices[vertex];

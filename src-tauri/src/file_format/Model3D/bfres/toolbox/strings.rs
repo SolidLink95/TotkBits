@@ -4,6 +4,7 @@
 //! static `StringCache` and resolves every string pointer through it first.
 
 use super::super::BfresError;
+use crate::parser::binary::BinaryReader;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, Default)]
@@ -31,7 +32,7 @@ impl ExternalStrings {
             ));
         }
         let count = read_u32(data, dict + 4)? as usize;
-        let mut map = HashMap::with_capacity(count);
+        let mut map = HashMap::new();
         for index in 0..count {
             let node = dict + 8 + (index + 1) * 16;
             let name_pointer = read_u64(data, node + 8)? as usize;
@@ -59,21 +60,21 @@ impl ExternalStrings {
 }
 
 pub(super) fn read_u16(data: &[u8], offset: usize) -> Result<u16, BfresError> {
-    data.get(offset..offset + 2)
-        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
-        .ok_or_else(|| BfresError::new(offset, "truncated u16"))
+    BinaryReader::new(data)
+        .read_u16_at(offset)
+        .map_err(|_| BfresError::new(offset, "truncated u16"))
 }
 
 pub(super) fn read_u32(data: &[u8], offset: usize) -> Result<u32, BfresError> {
-    data.get(offset..offset + 4)
-        .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()))
-        .ok_or_else(|| BfresError::new(offset, "truncated u32"))
+    BinaryReader::new(data)
+        .read_u32_at(offset)
+        .map_err(|_| BfresError::new(offset, "truncated u32"))
 }
 
 pub(super) fn read_u64(data: &[u8], offset: usize) -> Result<u64, BfresError> {
-    data.get(offset..offset + 8)
-        .map(|bytes| u64::from_le_bytes(bytes.try_into().unwrap()))
-        .ok_or_else(|| BfresError::new(offset, "truncated u64"))
+    BinaryReader::new(data)
+        .read_u64_at(offset)
+        .map_err(|_| BfresError::new(offset, "truncated u64"))
 }
 
 pub(super) fn read_f32(data: &[u8], offset: usize) -> Result<f32, BfresError> {

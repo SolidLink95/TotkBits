@@ -36,7 +36,7 @@ impl TexToGoFile {
         let count = usize::from(header.depth)
             .checked_mul(usize::from(header.mip_count))
             .ok_or_else(|| TexToGoError::new(12, "surface count overflow"))?;
-        let mut surfaces = Vec::with_capacity(count);
+        let mut surfaces = Vec::new();
         let descriptors = usize::from(header.header_size);
         let descriptor_bytes = count
             .checked_mul(4)

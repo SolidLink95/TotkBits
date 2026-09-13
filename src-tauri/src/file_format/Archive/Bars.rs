@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::{ArchiveCodec, ArchiveResult};
+use crate::parser::binary::{BinaryReader, BinaryWriter};
 
 #[derive(Clone, Debug)]
 struct BarsAsset {
@@ -17,19 +18,15 @@ pub struct BarsFile {
 }
 
 fn u16_at(data: &[u8], offset: usize) -> ArchiveResult<u16> {
-    data.get(offset..offset + 2)
-        .map(|v| u16::from_le_bytes([v[0], v[1]]))
-        .ok_or_else(|| "truncated BARS header".into())
+    BinaryReader::new(data)
+        .read_u16_at(offset)
+        .map_err(|_| "truncated BARS header".into())
 }
 
 fn u32_at(data: &[u8], offset: usize) -> ArchiveResult<u32> {
-    data.get(offset..offset + 4)
-        .map(|v| u32::from_le_bytes([v[0], v[1], v[2], v[3]]))
-        .ok_or_else(|| "truncated BARS table".into())
-}
-
-fn align(output: &mut Vec<u8>, boundary: usize) {
-    output.resize((output.len() + boundary - 1) & !(boundary - 1), 0);
+    BinaryReader::new(data)
+        .read_u32_at(offset)
+        .map_err(|_| "truncated BARS table".into())
 }
 
 fn safe_name(value: &str, index: usize) -> String {
@@ -50,39 +47,52 @@ fn safe_name(value: &str, index: usize) -> String {
     }
 }
 
+/// Reads the NUL-terminated string starting at `start` and ending no later
+/// than `limit`; `None` when the range lies outside `data`.
+fn c_string_bounded(data: &[u8], start: usize, limit: usize) -> Option<String> {
+    let window = BinaryReader::new(data)
+        .slice(start, limit.min(data.len()))
+        .ok()?;
+    let end = window.iter().position(|&v| v == 0).unwrap_or(window.len());
+    Some(String::from_utf8_lossy(&window[..end]).into_owned())
+}
+
 fn amta_name(data: &[u8], index: usize) -> String {
+    let fallback = || format!("asset_{index:04}");
     if !crate::Settings::Magic::is_amta(data) || data.len() < 0x1c {
-        return format!("asset_{index:04}");
+        return fallback();
     }
-    if data.get(7) == Some(&5) && data.len() >= 0x28 {
-        let declared = u32::from_le_bytes([data[8], data[9], data[10], data[11]]) as usize;
-        let limit = declared.min(data.len());
-        let string_table_offset =
-            u32::from_le_bytes([data[0x24], data[0x25], data[0x26], data[0x27]]) as usize;
-        let name_start = string_table_offset.checked_add(0x24);
+    let reader = BinaryReader::new(data);
+    if reader.read_u8_at(7).ok() == Some(5) && data.len() >= 0x28 {
+        let Ok(declared) = reader.read_u32_at(8) else {
+            return fallback();
+        };
+        let limit = (declared as usize).min(data.len());
+        let Ok(string_table_offset) = reader.read_u32_at(0x24) else {
+            return fallback();
+        };
+        let name_start = (string_table_offset as usize).checked_add(0x24);
         if let Some(name_start) = name_start.filter(|&offset| offset < limit) {
-            let end = data[name_start..limit]
-                .iter()
-                .position(|&v| v == 0)
-                .map(|v| name_start + v)
-                .unwrap_or(limit);
-            return safe_name(&String::from_utf8_lossy(&data[name_start..end]), index);
+            return match c_string_bounded(data, name_start, limit) {
+                Some(name) => safe_name(&name, index),
+                None => fallback(),
+            };
         }
     }
-    let offset = u32::from_le_bytes([data[0x18], data[0x19], data[0x1a], data[0x1b]]) as usize;
-    let chunk = offset.checked_add(8).filter(|&v| v <= data.len());
-    let Some(start) = chunk else {
-        return format!("asset_{index:04}");
+    let Ok(offset) = reader.read_u32_at(0x18) else {
+        return fallback();
     };
-    if data.get(offset..offset + 4) != Some(b"STRG") {
-        return format!("asset_{index:04}");
+    let offset = offset as usize;
+    let Some(start) = offset.checked_add(8).filter(|&v| v <= data.len()) else {
+        return fallback();
+    };
+    if reader.read_bytes_at(offset, 4).ok() != Some(b"STRG") {
+        return fallback();
     }
-    let end = data[start..]
-        .iter()
-        .position(|&v| v == 0)
-        .map(|v| start + v)
-        .unwrap_or(data.len());
-    safe_name(&String::from_utf8_lossy(&data[start..end]), index)
+    match c_string_bounded(data, start, data.len()) {
+        Some(name) => safe_name(&name, index),
+        None => fallback(),
+    }
 }
 
 fn audio_extension(data: &[u8]) -> &'static str {
@@ -118,6 +128,7 @@ impl ArchiveCodec for BarsFile {
         {
             return Err("truncated BARS asset table".into());
         }
+        // `count` is bounded by the declared size checked above.
         let mut raw = Vec::with_capacity(count);
         let mut boundaries = vec![declared];
         for i in 0..count {
@@ -143,19 +154,29 @@ impl ArchiveCodec for BarsFile {
                 .find(|&v| v > start)
                 .unwrap_or(declared)
         };
+        let reader = BinaryReader::new(data);
         let mut entries = BTreeMap::new();
         let mut assets = Vec::with_capacity(count);
         for (index, (hash, metadata_at, audio_at)) in raw.into_iter().enumerate() {
-            let metadata = data[metadata_at..end_for(metadata_at)].to_vec();
+            let metadata = reader
+                .slice(metadata_at, end_for(metadata_at))
+                .map_err(|_| format!("BARS asset {index} metadata lies outside the file"))?
+                .to_vec();
             let name = amta_name(&metadata, index);
             let metadata_path = format!("Meta Data/{name}.amta");
             entries.insert(metadata_path.clone(), metadata);
-            let audio_path = audio_at.map(|offset| {
-                let audio = data[offset..end_for(offset)].to_vec();
-                let path = format!("Audio/{name}.{}", audio_extension(&audio));
-                entries.insert(path.clone(), audio);
-                path
-            });
+            let audio_path = match audio_at {
+                Some(offset) => {
+                    let audio = reader
+                        .slice(offset, end_for(offset))
+                        .map_err(|_| format!("BARS asset {index} audio lies outside the file"))?
+                        .to_vec();
+                    let path = format!("Audio/{name}.{}", audio_extension(&audio));
+                    entries.insert(path.clone(), audio);
+                    Some(path)
+                }
+                None => None,
+            };
             assets.push(BarsAsset {
                 hash,
                 metadata_path,
@@ -172,28 +193,32 @@ impl ArchiveCodec for BarsFile {
     fn to_bytes(&self) -> ArchiveResult<Vec<u8>> {
         let count = self.assets.len();
         let table_size = count.checked_mul(12).ok_or("BARS count overflow")?;
-        let header_size = 0x10usize
+        0x10usize
             .checked_add(table_size)
             .ok_or("BARS count overflow")?;
         if count > u32::MAX as usize {
             return Err("too many BARS assets".into());
         }
-        let mut output = vec![0; header_size];
-        output[..4].copy_from_slice(b"BARS");
-        output[8..10].copy_from_slice(&0xfeffu16.to_le_bytes());
-        output[10..12].copy_from_slice(&self.version.to_le_bytes());
-        output[12..16].copy_from_slice(&(count as u32).to_le_bytes());
+        let mut output = BinaryWriter::new();
+        output.write_bytes(b"BARS");
+        output.write_u32(0); // file size, patched at the end
+        output.write_u16(0xfeff);
+        output.write_u16(self.version);
+        output.write_u32(count as u32);
+        for asset in &self.assets {
+            output.write_u32(asset.hash);
+        }
+        let offset_table_at = output.position();
+        output.write_zeros(count * 8);
         let mut offsets = Vec::with_capacity(count);
         for asset in &self.assets {
-            output[0x10 + offsets.len() * 4..0x14 + offsets.len() * 4]
-                .copy_from_slice(&asset.hash.to_le_bytes());
             let metadata = self
                 .entries
                 .get(&asset.metadata_path)
                 .ok_or_else(|| format!("missing {}", asset.metadata_path))?;
-            align(&mut output, 4);
-            let metadata_at = u32::try_from(output.len()).map_err(|_| "BARS exceeds 4 GiB")?;
-            output.extend_from_slice(metadata);
+            output.align(4).map_err(|e| e.to_string())?;
+            let metadata_at = u32::try_from(output.position()).map_err(|_| "BARS exceeds 4 GiB")?;
+            output.write_bytes(metadata);
             offsets.push((metadata_at, u32::MAX));
         }
         for (index, asset) in self.assets.iter().enumerate() {
@@ -202,19 +227,20 @@ impl ArchiveCodec for BarsFile {
                     .entries
                     .get(path)
                     .ok_or_else(|| format!("missing {path}"))?;
-                align(&mut output, 0x40);
-                offsets[index].1 = u32::try_from(output.len()).map_err(|_| "BARS exceeds 4 GiB")?;
-                output.extend_from_slice(audio);
+                output.align(0x40).map_err(|e| e.to_string())?;
+                offsets[index].1 =
+                    u32::try_from(output.position()).map_err(|_| "BARS exceeds 4 GiB")?;
+                output.write_bytes(audio);
             }
         }
         for (index, (metadata, audio)) in offsets.into_iter().enumerate() {
-            let at = 0x10 + count * 4 + index * 8;
-            output[at..at + 4].copy_from_slice(&metadata.to_le_bytes());
-            output[at + 4..at + 8].copy_from_slice(&audio.to_le_bytes());
+            let at = offset_table_at + index * 8;
+            output.write_u32_at(at, metadata);
+            output.write_u32_at(at + 4, audio);
         }
         let size = u32::try_from(output.len()).map_err(|_| "BARS exceeds 4 GiB")?;
-        output[4..8].copy_from_slice(&size.to_le_bytes());
-        Ok(output)
+        output.write_u32_at(4, size);
+        Ok(output.into_inner())
     }
 
     fn entries(&self) -> &BTreeMap<String, Vec<u8>> {

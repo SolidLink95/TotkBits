@@ -8,12 +8,18 @@ pub fn search_in_sarc(
     documentId: String,
     query: String,
 ) -> Option<SendData> {
-    with_document_mut!(app_handle, documentId, app, app.search_in_sarc(query))
+    crate::Settings::catch_panic_with(
+        move || with_document_mut!(app_handle, documentId, app, app.search_in_sarc(query)),
+        |message| Some(crate::Open_and_Save::SendData::panicked(message)),
+    )
 }
 
 #[tauri::command]
 pub fn clear_search_in_sarc(app_handle: tauri::AppHandle, documentId: String) -> Option<SendData> {
-    with_document_mut!(app_handle, documentId, app, app.clear_search_in_sarc())
+    crate::Settings::catch_panic_with(
+        move || with_document_mut!(app_handle, documentId, app, app.clear_search_in_sarc()),
+        |message| Some(crate::Open_and_Save::SendData::panicked(message)),
+    )
 }
 
 //COMPARE stuff
@@ -23,7 +29,10 @@ pub fn compare_files(
     documentId: String,
     isFromDisk: bool,
 ) -> Option<SendData> {
-    with_document!(app_handle, documentId, app, app.compare_files(isFromDisk))
+    crate::Settings::catch_panic_with(
+        move || with_document!(app_handle, documentId, app, app.compare_files(isFromDisk)),
+        |message| Some(crate::Open_and_Save::SendData::panicked(message)),
+    )
 }
 
 #[tauri::command]
@@ -33,41 +42,51 @@ pub fn compare_internal_file_with_vanila(
     internal_path: String,
     is_from_sarc: bool,
 ) -> Option<SendData> {
-    app_handle.state::<DocumentState>().compare_internal_file(
-        &documentId,
-        internal_path,
-        is_from_sarc,
+    crate::Settings::catch_panic_with(
+        move || {
+            app_handle.state::<DocumentState>().compare_internal_file(
+                &documentId,
+                internal_path,
+                is_from_sarc,
+            )
+        },
+        |message| Some(crate::Open_and_Save::SendData::panicked(message)),
     )
 }
 
 #[tauri::command]
 pub fn check_if_update_needed() -> String {
-    let repo_owner = "SolidLink95".to_string();
-    let repo_name = "TotkBits".to_string();
-    let url = format!(
-        "https://api.github.com/repos/{}/{}/releases/latest",
-        repo_owner, repo_name
-    );
-    println!("Checking for updates...");
-    let client = Client::new();
-    let response = client.get(&url).header("User-Agent", "MyAppName").send();
+    crate::Settings::catch_panic_with(
+        move || {
+            let repo_owner = "SolidLink95".to_string();
+            let repo_name = "TotkBits".to_string();
+            let url = format!(
+                "https://api.github.com/repos/{}/{}/releases/latest",
+                repo_owner, repo_name
+            );
+            println!("Checking for updates...");
+            let client = Client::new();
+            let response = client.get(&url).header("User-Agent", "MyAppName").send();
 
-    if let Ok(response) = response {
-        // println!("Response: {:?}", response);
+            if let Ok(response) = response {
+                // println!("Response: {:?}", response);
 
-        if let Ok(json_value) = response.json::<serde_json::Value>() {
-            // println!("\n\nJson value: {:?}", json_value);
-            if let Some(release_info) = json_value["tag_name"].as_str() {
-                // println!("\n\nRelease info: {}", release_info);
-                let installed_ver = parse_release_version(env!("CARGO_PKG_VERSION"));
-                let latest_ver = parse_release_version(release_info);
-                if latest_ver.is_some() && latest_ver > installed_ver {
-                    return release_info.to_string();
+                if let Ok(json_value) = response.json::<serde_json::Value>() {
+                    // println!("\n\nJson value: {:?}", json_value);
+                    if let Some(release_info) = json_value["tag_name"].as_str() {
+                        // println!("\n\nRelease info: {}", release_info);
+                        let installed_ver = parse_release_version(env!("CARGO_PKG_VERSION"));
+                        let latest_ver = parse_release_version(release_info);
+                        if latest_ver.is_some() && latest_ver > installed_ver {
+                            return release_info.to_string();
+                        }
+                    }
                 }
             }
-        }
-    }
-    String::new()
+            String::new()
+        },
+        |message| format!("error: {message}"),
+    )
 }
 
 fn parse_release_version(version: &str) -> Option<(u32, u32, u32)> {

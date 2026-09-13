@@ -304,7 +304,9 @@ impl ExpressionModule {
             version,
             expressions,
             parameter_table_size: Some((pool - param_table) as u32),
-            parameter_table_bytes: data[param_table..pool]
+            parameter_table_bytes: data
+                .get(param_table..pool)
+                .ok_or_else(|| invalid("EXB parameter table lies outside the file"))?
                 .iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect(),
@@ -483,10 +485,12 @@ fn count_until_end(instructions: &[Instruction], base: i32) -> usize {
     if base < 0 {
         return 0;
     }
-    instructions[base as usize..]
-        .iter()
+    let Some(tail) = instructions.get(base as usize..) else {
+        return 0;
+    };
+    tail.iter()
         .position(|instruction| matches!(instruction, Instruction::End))
-        .map_or(instructions.len() - base as usize, |index| index + 1)
+        .map_or(tail.len(), |index| index + 1)
 }
 
 fn instruction_strings(
@@ -769,13 +773,16 @@ fn parse_operand(text: &str) -> io::Result<Operand> {
             vector_offset,
         });
     }
-    let (datatype, value) = if argument.starts_with('"') && argument.ends_with('"') {
-        (
-            DataType::String,
-            OperandValue::String(argument[1..argument.len() - 1].to_owned()),
-        )
-    } else if argument.starts_with('(') && argument.ends_with(')') {
-        let values = argument[1..argument.len() - 1]
+    let quoted = argument
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'));
+    let vector = argument
+        .strip_prefix('(')
+        .and_then(|value| value.strip_suffix(')'));
+    let (datatype, value) = if let Some(text) = quoted {
+        (DataType::String, OperandValue::String(text.to_owned()))
+    } else if let Some(text) = vector {
+        let values = text
             .split(',')
             .map(|value| {
                 value

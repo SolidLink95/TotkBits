@@ -37,7 +37,10 @@ pub fn open_bfwav_node(
     documentId: String,
     path: String,
 ) -> Result<BfwavPreview, String> {
-    with_document!(app_handle, documentId, app, app.open_bfwav_node(&path))
+    crate::Settings::catch_panic_with(
+        move || with_document!(app_handle, documentId, app, app.open_bfwav_node(&path)),
+        Err,
+    )
 }
 
 #[tauri::command]
@@ -47,11 +50,16 @@ pub fn replace_bfwav_node(
     path: String,
     sourcePath: String,
 ) -> Result<BfwavReplacement, String> {
-    with_document_mut!(
-        app_handle,
-        documentId,
-        app,
-        app.replace_bfwav_node(&path, Path::new(&sourcePath), false, None, false)
+    crate::Settings::catch_panic_with(
+        move || {
+            with_document_mut!(
+                app_handle,
+                documentId,
+                app,
+                app.replace_bfwav_node(&path, Path::new(&sourcePath), false, None, false)
+            )
+        },
+        Err,
     )
 }
 
@@ -61,9 +69,14 @@ pub fn replace_bars_audio_from_folder(
     documentId: String,
     folderPath: String,
 ) -> Result<BarsFolderReplacement, String> {
-    with_document_mut!(app_handle, documentId, app, {
-        app.replace_bars_audio_from_folder(Path::new(&folderPath), false, false)
-    })
+    crate::Settings::catch_panic_with(
+        move || {
+            with_document_mut!(app_handle, documentId, app, {
+                app.replace_bars_audio_from_folder(Path::new(&folderPath), false, false)
+            })
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
@@ -73,17 +86,27 @@ pub fn open_amta_node(
     parentDocumentId: String,
     path: String,
 ) -> Result<SendData, String> {
-    app_handle
-        .state::<DocumentState>()
-        .open_amta_node(&parentDocumentId, &documentId, path)
+    crate::Settings::catch_panic_with(
+        move || {
+            app_handle
+                .state::<DocumentState>()
+                .open_amta_node(&parentDocumentId, &documentId, path)
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
 pub fn open_audio_file_dialog() -> Option<String> {
-    rfd::FileDialog::new()
-        .add_filter("Audio", &["wav", "mp3"])
-        .pick_file()
-        .map(|path| path.to_string_lossy().into_owned())
+    crate::Settings::catch_panic_with(
+        move || {
+            rfd::FileDialog::new()
+                .add_filter("Audio", &["wav", "mp3"])
+                .pick_file()
+                .map(|path| path.to_string_lossy().into_owned())
+        },
+        |_| None,
+    )
 }
 
 #[tauri::command]
@@ -93,34 +116,40 @@ pub fn export_bfwav_node(
     path: String,
     format: String,
 ) -> Result<Option<String>, String> {
-    let format = format.to_ascii_lowercase();
-    if format != "wav" && format != "mp3" {
-        return Err("audio export format must be WAV or MP3".into());
-    }
-    let encoded = with_document!(app_handle, documentId, app, {
-        let bytes = app
-            .archive
-            .as_ref()
-            .and_then(|archive| archive.get(&path))
-            .ok_or_else(|| format!("archive entry not found: {path}"))?;
-        if format == "wav" {
-            crate::file_format::Audio::to_wav(bytes)
-        } else {
-            crate::file_format::Audio::to_mp3(bytes)
-        }
-    })?;
-    let stem = Path::new(&path)
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.is_empty())
-        .unwrap_or("audio");
-    let Some(output) = rfd::FileDialog::new()
-        .add_filter(format.to_ascii_uppercase(), &[format.as_str()])
-        .set_file_name(format!("{stem}.{format}"))
-        .save_file()
-    else {
-        return Ok(None);
-    };
-    fs::write(&output, encoded).map_err(|error| format!("failed to export audio: {error}"))?;
-    Ok(Some(output.to_string_lossy().into_owned()))
+    crate::Settings::catch_panic_with(
+        move || {
+            let format = format.to_ascii_lowercase();
+            if format != "wav" && format != "mp3" {
+                return Err("audio export format must be WAV or MP3".into());
+            }
+            let encoded = with_document!(app_handle, documentId, app, {
+                let bytes = app
+                    .archive
+                    .as_ref()
+                    .and_then(|archive| archive.get(&path))
+                    .ok_or_else(|| format!("archive entry not found: {path}"))?;
+                if format == "wav" {
+                    crate::file_format::Audio::to_wav(bytes)
+                } else {
+                    crate::file_format::Audio::to_mp3(bytes)
+                }
+            })?;
+            let stem = Path::new(&path)
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .filter(|value| !value.is_empty())
+                .unwrap_or("audio");
+            let Some(output) = rfd::FileDialog::new()
+                .add_filter(format.to_ascii_uppercase(), &[format.as_str()])
+                .set_file_name(format!("{stem}.{format}"))
+                .save_file()
+            else {
+                return Ok(None);
+            };
+            fs::write(&output, encoded)
+                .map_err(|error| format!("failed to export audio: {error}"))?;
+            Ok(Some(output.to_string_lossy().into_owned()))
+        },
+        Err,
+    )
 }

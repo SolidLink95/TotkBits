@@ -172,6 +172,8 @@ pub struct WeaponPackRequest {
     #[serde(default)]
     pub effect: Option<LinkParameterSource>,
     /// Existing vanilla actor whose complete physics bundle should be reused.
+    /// Empty, malformed or non-existent actors are ignored and the template's
+    /// own `Phive/*` and `Component/Physics/*` entries are kept.
     #[serde(default, alias = "physics_actor")]
     pub physics: Option<String>,
     /// Actor assigned to the first ShootableActorSettings entry.
@@ -365,9 +367,10 @@ pub fn clone_vanilla_actor_pack_with_links(
         injected.push(InjectedPackEntry { path, data });
     }
     let mut replaced_prefixes = Vec::new();
-    if let Some(source_actor) = physics_actor {
-        let (physics_ref, entries) =
-            prepare_physics_entries(clean_romfs, source_actor, zstd.clone())?;
+    // Without a usable donor the template's own physics files stay in place.
+    if let Some((physics_ref, entries)) =
+        optional_physics_entries(clean_romfs, physics_actor, zstd.clone())
+    {
         policy.parameter_edits.push(string_edit_insert(
             &actor_file,
             &["Components", "PhysicsRef"],
@@ -636,6 +639,41 @@ pub(super) fn prepare_physics_entries(
         )));
     }
     Ok((physics_ref, entries))
+}
+
+/// Resolves an optional physics donor. `None`, an empty or blank name, a
+/// malformed name and an actor without a vanilla pack all yield `None`: the
+/// generated item then keeps the template's own `Phive/*` and
+/// `Component/Physics/*` entries instead of replacing them.
+pub(super) fn resolve_physics_donor(clean_romfs: &Path, physics: Option<&str>) -> Option<String> {
+    let actor = physics?.trim();
+    if actor.is_empty() || validate_actor_name(actor).is_err() {
+        return None;
+    }
+    let pack = clean_romfs
+        .join("Pack/Actor")
+        .join(format!("{actor}.pack.zs"));
+    pack.is_file().then(|| actor.to_owned())
+}
+
+/// The donor physics bundle to inject, or `None` when the template's own
+/// physics files must be preserved (no donor, or a donor whose pack cannot
+/// supply a complete bundle).
+pub(super) fn optional_physics_entries(
+    clean_romfs: &Path,
+    physics: Option<&str>,
+    zstd: Arc<TotkZstd<'_>>,
+) -> Option<(String, Vec<InjectedPackEntry>)> {
+    let actor = resolve_physics_donor(clean_romfs, physics)?;
+    match prepare_physics_entries(clean_romfs, &actor, zstd) {
+        Ok(bundle) => Some(bundle),
+        Err(error) => {
+            eprintln!(
+                "[items creator] physics donor {actor} is unusable ({error}); keeping the template's own physics files"
+            );
+            None
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -2256,16 +2294,36 @@ mod tests {
             shootable: None,
             extra_edits: Vec::new(),
         };
+        // A donor without a vanilla pack is ignored: the template's own
+        // physics bundle and PhysicsRef survive instead of failing the build.
+        let physics_entries = |pack: &PackFile<'_>| -> BTreeMap<String, Vec<u8>> {
+            pack.sarc
+                .files()
+                .filter_map(|file| {
+                    let path = file.name()?;
+                    (path.starts_with("Phive/") || path.starts_with("Component/Physics/"))
+                        .then(|| (path.to_owned(), file.data().to_vec()))
+                })
+                .collect()
+        };
+        let template = PackFile::from_binary(
+            &fs::read(romfs.join("Pack/Actor/Weapon_Lsword_108.pack.zs")).unwrap(),
+            zstd.clone(),
+        )
+        .unwrap();
         let mut missing_physics = request.clone();
         missing_physics.physics = Some("Weapon_Lsword_DoesNotExist".into());
         let missing_output = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../tmp/Weapon_Lsword_902.missing-physics.pack.zs");
         assert!(!missing_output.exists());
-        let error = missing_physics
+        missing_physics
             .generate_pack(romfs, &missing_output, zstd.clone())
-            .unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::NotFound);
-        assert!(!missing_output.exists());
+            .unwrap();
+        let fallback =
+            PackFile::from_binary(&fs::read(&missing_output).unwrap(), zstd.clone()).unwrap();
+        let _ = fs::remove_file(&missing_output);
+        assert_eq!(physics_entries(&fallback), physics_entries(&template));
+        assert!(!physics_entries(&fallback).is_empty());
 
         request.generate_pack(romfs, &output, zstd.clone()).unwrap();
 

@@ -47,7 +47,7 @@ impl BaevEventInfo {
         let array = BaevArray::read(reader)?;
         let return_position = reader.position();
         reader.seek(array.offset()?)?;
-        let mut node_indices = Vec::with_capacity(array.count as usize);
+        let mut node_indices = Vec::new();
         for _ in 0..array.count {
             node_indices.push(reader.read_u32()?);
         }

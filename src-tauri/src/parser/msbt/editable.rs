@@ -201,11 +201,8 @@ pub fn deserialize(template: &Msbt, s: &str) -> io::Result<Msbt> {
             } else if let Some(x) = l.strip_prefix("styleIndex: ") {
                 m.style = x.parse().ok()
             } else if let Some(x) = l.strip_prefix("attribute: ") {
-                m.attribute = (0..x.len())
-                    .step_by(2)
-                    .map(|i| u8::from_str_radix(&x[i..i + 2], 16))
-                    .collect::<Result<_, _>>()
-                    .map_err(|_| io::Error::new(ErrorKind::InvalidData, "bad attribute hex"))?
+                m.attribute = parse_hex_bytes(x)
+                    .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "bad attribute hex"))?
             }
         }
         let body = body
@@ -241,11 +238,8 @@ fn parse_parts(s: &str, endian: crate::parser::binary::Endian) -> io::Result<Vec
                 if h.len() % 2 != 0 {
                     return Err(io::Error::new(ErrorKind::InvalidData, "odd tag hex"));
                 }
-                let args = (0..h.len())
-                    .step_by(2)
-                    .map(|j| u8::from_str_radix(&h[j..j + 2], 16))
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(|_| io::Error::new(ErrorKind::InvalidData, "bad tag hex"))?;
+                let args = parse_hex_bytes(h)
+                    .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "bad tag hex"))?;
                 v.push(TextPart::Start {
                     group: g
                         .parse()
@@ -291,6 +285,23 @@ fn parse_parts(s: &str, endian: crate::parser::binary::Endian) -> io::Result<Vec
     Ok(v)
 }
 
+/// Decodes an even-length ASCII hex string; `None` for anything else, so a
+/// stray multi-byte character can never split a slice mid-codepoint.
+fn parse_hex_bytes(value: &str) -> Option<Vec<u8>> {
+    if value.len() % 2 != 0 || !value.is_ascii() {
+        return None;
+    }
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            std::str::from_utf8(pair)
+                .ok()
+                .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+        })
+        .collect()
+}
+
 fn parse_numeric_id(value: &str) -> Option<(u16, u16)> {
     let (group, kind) = value.split_once(':')?;
     Some((group.parse().ok()?, kind.parse().ok()?))
@@ -304,13 +315,7 @@ fn parse_default_tag(value: &str) -> Option<(u16, u16, Vec<u8>)> {
         return Some((group, kind, Vec::new()));
     }
     let hex = rest.strip_prefix("arg=\"0x")?.strip_suffix('"')?;
-    if hex.len() % 2 != 0 {
-        return None;
-    }
-    let args = (0..hex.len())
-        .step_by(2)
-        .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).ok())
-        .collect::<Option<Vec<_>>>()?;
+    let args = parse_hex_bytes(hex)?;
     Some((group, kind, args))
 }
 

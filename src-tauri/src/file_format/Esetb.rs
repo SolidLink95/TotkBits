@@ -239,8 +239,12 @@ pub(crate) fn serialize_preserving_original(
                         .filter_map(|(offset, bytes)| (bytes == original_ptcl).then_some(offset));
                     if let (Some(offset), None) = (matches.next(), matches.next()) {
                         let mut patched = original.to_vec();
-                        patched[offset..offset + replacement.len()].copy_from_slice(replacement);
-                        return patched;
+                        if crate::parser::binary::BinaryPatcher::new(&mut patched)
+                            .write_bytes_at(offset, replacement)
+                            .is_ok()
+                        {
+                            return patched;
+                        }
                     }
                 }
             }

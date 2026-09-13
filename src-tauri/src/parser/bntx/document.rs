@@ -12,7 +12,7 @@
 use super::BntxError;
 use crate::file_format::Image::switch_texture;
 use crate::file_format::Model3D::bfres::toolbox::patricia;
-use crate::parser::binary::BinaryReader;
+use crate::parser::binary::{BinaryPatcher, BinaryReader, BinaryWriter};
 use image::RgbaImage;
 use image_dds::ImageFormat;
 use serde::Serialize;
@@ -484,7 +484,10 @@ fn load(data: &[u8]) -> Result<BntxFile> {
     if file_size as usize > data.len() {
         return err("declared file size exceeds input");
     }
-    let target_bytes: [u8; 4] = reader.bytes(0x20, 4)?.try_into().unwrap();
+    let target_bytes: [u8; 4] = reader
+        .bytes(0x20, 4)?
+        .try_into()
+        .map_err(|_| BntxError::new(0x20, "target platform field is not 4 bytes"))?;
     let texture_count = reader.i32(0x24)?;
     if texture_count < 0 {
         return err("negative texture count");
@@ -494,7 +497,10 @@ fn load(data: &[u8]) -> Result<BntxFile> {
     if rlt_offset > data.len() {
         return err("relocation table offset past end of file");
     }
-    let original_rlt_chunk = data[rlt_offset..].to_vec();
+    let original_rlt_chunk = data
+        .get(rlt_offset..)
+        .ok_or_else(|| BntxError::new(rlt_offset, "relocation table offset past end of file"))?
+        .to_vec();
 
     let mut textures = Vec::with_capacity(texture_count as usize);
     for index in 0..texture_count as usize {
@@ -673,78 +679,80 @@ const SECTION_2: u32 = 2;
 /// `BinaryDataWriter` over a `MemoryStream`: writing past the end grows the
 /// buffer with zeros, seeking past the end does not.
 struct Writer {
-    buf: Vec<u8>,
-    pos: usize,
+    inner: BinaryWriter,
 }
 
 impl Writer {
     fn new() -> Self {
         Writer {
-            buf: Vec::new(),
-            pos: 0,
+            inner: BinaryWriter::new(),
         }
+    }
+
+    fn into_inner(self) -> Vec<u8> {
+        self.inner.into_inner()
+    }
+
+    fn position(&self) -> usize {
+        self.inner.position()
+    }
+
+    /// Moves the cursor without growing the buffer.
+    fn set_position(&mut self, position: usize) {
+        self.inner.set_position(position);
     }
 
     fn write(&mut self, bytes: &[u8]) {
-        let end = self.pos + bytes.len();
-        if end > self.buf.len() {
-            self.buf.resize(end, 0);
-        }
-        self.buf[self.pos..end].copy_from_slice(bytes);
-        self.pos = end;
+        self.inner.write_bytes(bytes);
     }
 
     fn u8(&mut self, value: u8) {
-        self.write(&[value]);
+        self.inner.write_u8(value);
     }
 
     fn u16(&mut self, value: u16) {
-        self.write(&value.to_le_bytes());
+        self.inner.write_u16(value);
     }
 
     fn i16(&mut self, value: i16) {
-        self.write(&value.to_le_bytes());
+        self.inner.write_i16(value);
     }
 
     fn u32(&mut self, value: u32) {
-        self.write(&value.to_le_bytes());
+        self.inner.write_u32(value);
     }
 
     fn i32(&mut self, value: i32) {
-        self.write(&value.to_le_bytes());
+        self.inner.write_i32(value);
     }
 
     fn i64(&mut self, value: i64) {
-        self.write(&value.to_le_bytes());
+        self.inner.write_i64(value);
     }
 
     fn u64(&mut self, value: u64) {
-        self.write(&value.to_le_bytes());
+        self.inner.write_u64(value);
     }
 
     fn zeros(&mut self, count: usize) {
-        let end = self.pos + count;
-        if end > self.buf.len() {
-            self.buf.resize(end, 0);
-        }
-        self.buf[self.pos..end].fill(0);
-        self.pos = end;
+        self.inner.write_zeros(count);
     }
 
     fn align(&mut self, alignment: usize) {
-        self.pos = self.pos.div_ceil(alignment) * alignment;
+        let position = self.inner.position().div_ceil(alignment) * alignment;
+        self.inner.set_position(position);
     }
 
     fn at<T>(&mut self, position: usize, f: impl FnOnce(&mut Writer) -> T) -> T {
-        let saved = self.pos;
-        self.pos = position;
+        let saved = self.inner.position();
+        self.inner.set_position(position);
         let result = f(self);
-        self.pos = saved;
+        self.inner.set_position(saved);
         result
     }
 
     fn len(&self) -> usize {
-        self.buf.len()
+        self.inner.len()
     }
 }
 
@@ -824,12 +832,12 @@ fn save(file: &BntxFile) -> Result<Vec<u8>> {
         texture_dict_offset: 0,
     };
     saver.execute()?;
-    Ok(saver.w.buf)
+    Ok(saver.w.into_inner())
 }
 
 impl<'a> Saver<'a> {
     fn position(&self) -> i64 {
-        self.w.pos as i64
+        self.w.position() as i64
     }
 
     // ----- helpers mirroring the C# saver ---------------------------------
@@ -950,11 +958,13 @@ impl<'a> Saver<'a> {
         self.section1_size = self.position() as u32;
         // Seek(16, Current) then move the BRTD header right in front of the
         // aligned data block.
-        self.w.pos += 16;
+        let position = self.w.position() + 16;
+        self.w.set_position(position);
         let data_alignment = self.file.data_alignment() as i32;
         let padding = round_up_i32(self.position() as i32, data_alignment) - self.position() as i32;
         if padding > 0 {
-            self.w.pos = (self.position() + (padding - 16) as i64) as usize;
+            let position = (self.position() + (padding - 16) as i64) as usize;
+            self.w.set_position(position);
         }
         self.data_block_position = self.position();
         self.write_texture_block();
@@ -964,16 +974,16 @@ impl<'a> Saver<'a> {
 
         let string_pool = self.ofs_string_pool as usize;
         {
-            let saved = self.w.pos;
-            self.w.pos = string_pool;
+            let saved = self.w.position();
+            self.w.set_position(string_pool);
             self.write_strings();
-            self.w.pos = saved;
+            self.w.set_position(saved);
         }
 
         let count = self.header_block_positions.len();
         for index in 0..count {
             let block = self.header_block_positions[index];
-            self.w.pos = block as usize;
+            self.w.set_position(block as usize);
             if index == 0 {
                 let value = (self.header_block_positions[1] - 4) as u16;
                 self.w.u16(value);
@@ -987,11 +997,11 @@ impl<'a> Saver<'a> {
             }
         }
 
-        self.w.pos = self.ofs_texture_data_block as usize;
+        self.w.set_position(self.ofs_texture_data_block as usize);
         let data_block_position = self.data_block_position;
         self.w.i64(data_block_position);
 
-        self.w.pos = self.ofs_file_size as usize;
+        self.w.set_position(self.ofs_file_size as usize);
         let length = self.w.len() as u32;
         self.w.u32(length);
         Ok(())
@@ -1459,18 +1469,21 @@ fn encode_astc_level(
         ));
     }
     let file = std::fs::read(&astc)?;
-    if file.len() < 16 || file[..4] != [0x13, 0xAB, 0xA1, 0x5C] {
+    if file.len() < 16 || file.get(..4) != Some(&[0x13, 0xAB, 0xA1, 0x5C][..]) {
         return err(format!(
             "astcenc produced an unexpected file for mip {level}"
         ));
     }
-    if file[4] as u32 != block_width || file[5] as u32 != block_height {
+    let (file_block_width, file_block_height) = (
+        file.get(4).copied().unwrap_or_default(),
+        file.get(5).copied().unwrap_or_default(),
+    );
+    if u32::from(file_block_width) != block_width || u32::from(file_block_height) != block_height {
         return err(format!(
-            "astcenc produced {}x{} blocks instead of {block_width}x{block_height}",
-            file[4], file[5]
+            "astcenc produced {file_block_width}x{file_block_height} blocks instead of {block_width}x{block_height}"
         ));
     }
-    Ok(file[16..].to_vec())
+    Ok(file.get(16..).unwrap_or_default().to_vec())
 }
 
 /// Encodes a mip chain to linear (untiled) block data, mip levels packed
@@ -1572,7 +1585,9 @@ fn swizzle_level(
                         let source = data
                             .get(pos_..pos_ + bpp as usize)
                             .ok_or_else(|| BntxError::new(0, "linear surface data is too short"))?;
-                        result[pos..pos + bpp as usize].copy_from_slice(source);
+                        BinaryPatcher::new(&mut result)
+                            .write_bytes_at(pos, source)
+                            .map_err(|_| BntxError::new(0, "linear surface is too small"))?;
                     }
                 }
             }
@@ -1584,9 +1599,13 @@ fn swizzle_level(
     let tegra_block_height = BlockHeight::new(block_height_mip0)
         .ok_or_else(|| BntxError::new(0, "invalid Tegra block height"))?;
     let mut block_dim = BlockDim::uncompressed();
-    block_dim.width = NonZeroUsize::new(block_width as usize).unwrap();
-    block_dim.height = NonZeroUsize::new(block_height as usize).unwrap();
-    block_dim.depth = NonZeroUsize::new(block_depth as usize).unwrap();
+    let non_zero = |value: u32| {
+        NonZeroUsize::new(value as usize)
+            .ok_or_else(|| BntxError::new(0, "block dimension cannot be zero"))
+    };
+    block_dim.width = non_zero(block_width)?;
+    block_dim.height = non_zero(block_height)?;
+    block_dim.depth = non_zero(block_depth)?;
     let surface_size = tegra_swizzle::surface::swizzled_surface_size(
         width as usize,
         height as usize,
@@ -1606,9 +1625,8 @@ fn swizzle_level(
         bpp as usize,
     )
     .map_err(|error| BntxError::new(0, error.to_string()))?;
-    let mut output = vec![0u8; surface_size];
-    let copied = swizzled.len().min(surface_size);
-    output[..copied].copy_from_slice(&swizzled[..copied]);
+    let mut output = swizzled;
+    output.resize(surface_size, 0);
     Ok(output)
 }
 

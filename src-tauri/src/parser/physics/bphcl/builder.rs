@@ -20,7 +20,11 @@ impl<'a> BphclBuilder<'a> {
             .ok_or_else(|| invalid("BPHCL has no DATA section"))?;
         Ok(Self {
             document,
-            data: document.raw[section.payload_offset..section.payload_end()].to_vec(),
+            data: document
+                .raw
+                .get(section.payload_offset..section.payload_end())
+                .ok_or_else(|| invalid("BPHCL DATA section exceeds the file"))?
+                .to_vec(),
             items: document.items.clone(),
             patches: document.patches.clone(),
             replacement_aamp: None,
@@ -200,9 +204,19 @@ fn rebuild(
             .try_into()
             .map_err(|_| invalid("BPHCL size overflow"))?,
     );
-    output.extend_from_slice(&document.raw[..document.tag.offset]);
+    output.extend_from_slice(
+        document
+            .raw
+            .get(..document.tag.offset)
+            .ok_or_else(|| invalid("BPHCL TAG0 offset exceeds the file"))?,
+    );
     output.extend_from_slice(&rebuilt_tag);
-    output.extend_from_slice(&document.raw[old_tag_end..]);
+    output.extend_from_slice(
+        document
+            .raw
+            .get(old_tag_end..)
+            .ok_or_else(|| invalid("BPHCL TAG0 end exceeds the file"))?,
+    );
 
     write_adjusted_u32(&mut output, 24, document.header.tag_size, delta)?;
     adjust_offset_after(&mut output, 16, old_tag_end, delta)?;

@@ -518,7 +518,7 @@ impl<'a> GraphReader<'a> {
         };
         let (bone_storage, bone_count) = self.array(key, bones_field)?;
         let bone_stride = self.pointer_size * 2;
-        let mut bones = Vec::with_capacity(bone_count);
+        let mut bones = Vec::new();
         if let Some(storage) = bone_storage {
             for index in 0..bone_count {
                 let bone = ObjectKey {
@@ -582,7 +582,7 @@ impl<'a> GraphReader<'a> {
             .map(|pose| self.vector4_array(pose, self.referenced_size() + self.pointer_size))
             .transpose()?
             .unwrap_or_default();
-        let mut particles = Vec::with_capacity(particle_count);
+        let mut particles = Vec::new();
         if let Some(storage) = particle_storage {
             for index in 0..particle_count {
                 let field = index * 16;

@@ -8,7 +8,7 @@ impl NumericLabelSection {
     pub fn read(data: &[u8], endian: Endian) -> io::Result<Self> {
         let mut reader = BinaryReader::with_endian(data, endian);
         let count = reader.read_u32()? as usize;
-        let mut entries = Vec::with_capacity(count);
+        let mut entries = Vec::new();
         for _ in 0..count {
             entries.push((reader.read_u32()?, reader.read_u32()?));
         }

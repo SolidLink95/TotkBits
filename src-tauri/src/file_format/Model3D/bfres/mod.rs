@@ -15,7 +15,7 @@ use rfd::{FileDialog, MessageDialog};
 use serde::Serialize;
 use std::{fmt, fs, io, path::Path, sync::Arc};
 
-use crate::parser::binary::{BinaryReader, BinaryWriter, Endian as BinaryEndian};
+use crate::parser::binary::{BinaryPatcher, BinaryReader, BinaryWriter, Endian as BinaryEndian};
 use crate::Zstd::{TotkZstd, ZstdDictionary};
 
 fn binary_endian(endian: Endian) -> BinaryEndian {
@@ -627,13 +627,13 @@ impl BfresFile {
         if data.len() < 0x30 {
             return Err(BfresError::new(0, "header is truncated"));
         }
-        if &data[..4] != b"FRES" {
+        if data.get(..4) != Some(b"FRES".as_slice()) {
             return Err(BfresError::new(0, "invalid FRES signature"));
         }
 
-        let endian = match &data[0x0C..0x0E] {
-            [0xFF, 0xFE] => Endian::Little,
-            [0xFE, 0xFF] => Endian::Big,
+        let endian = match data.get(0x0C..0x0E) {
+            Some([0xFF, 0xFE]) => Endian::Little,
+            Some([0xFE, 0xFF]) => Endian::Big,
             _ => return Err(BfresError::new(0x0C, "invalid byte-order mark")),
         };
         let read_u16 = |offset| u16_at(data, offset, endian);
@@ -1291,9 +1291,9 @@ pub(super) fn read_string(data: &[u8], offset: u64) -> Option<String> {
             }
         }
     }
-    let tail = &data[offset..];
+    let tail = data.get(offset..)?;
     let end = tail.iter().position(|byte| *byte == 0)?;
-    let bytes = &tail[..end];
+    let bytes = tail.get(..end)?;
     if bytes.is_empty()
         || bytes.len() > 0x1000
         || bytes.iter().any(|byte| *byte < 0x20 && *byte != b'\t')
@@ -1341,10 +1341,11 @@ fn write_res_string_in_place(
         .get_mut(offset..end)
         .ok_or_else(|| BfresError::new(offset, "truncated ResString destination"))?;
     destination.fill(0);
-    let mut writer = BinaryWriter::from_vec(destination.to_vec(), BinaryEndian::Little);
-    writer.write_u16_at(0, value.len() as u16);
-    destination.copy_from_slice(&writer.into_inner());
-    destination[2..2 + value.len()].copy_from_slice(value.as_bytes());
+    let mut patcher = BinaryPatcher::new(destination);
+    patcher
+        .write_u16_at(0, value.len() as u16)
+        .and_then(|_| patcher.write_bytes_at(2, value.as_bytes()))
+        .map_err(|_| BfresError::new(offset, "truncated ResString destination"))?;
     Ok(())
 }
 
@@ -1497,10 +1498,16 @@ fn replace_res_string(
     replacement_writer.write_u16(new_value.len() as u16);
     replacement_writer.write_bytes(new_value.as_bytes());
     let replacement = replacement_writer.into_inner();
-    let mut output = Vec::with_capacity((data.len() as i64 + delta) as usize);
-    output.extend_from_slice(&data[..slot]);
+    let head = data
+        .get(..slot)
+        .ok_or_else(|| BfresError::new(slot, "ResString slot lies outside the file"))?;
+    let tail = data
+        .get(old_end..)
+        .ok_or_else(|| BfresError::new(old_end, "ResString end lies outside the file"))?;
+    let mut output = Vec::with_capacity(head.len() + replacement.len() + tail.len());
+    output.extend_from_slice(head);
     output.extend_from_slice(&replacement);
-    output.extend_from_slice(&data[old_end..]);
+    output.extend_from_slice(tail);
 
     for (old_field, value) in pointer_updates {
         let field = shifted_position(old_field, old_end, delta)?;
@@ -1728,23 +1735,15 @@ fn shifted_u32(value: u32, delta: i64, offset: usize) -> Result<u32, BfresError>
 }
 
 fn write_u32(data: &mut [u8], offset: usize, value: u32, endian: Endian) -> Result<(), BfresError> {
-    if offset.checked_add(4).is_none_or(|end| end > data.len()) {
-        return Err(BfresError::new(offset, "truncated u32 destination"));
-    }
-    let mut writer = BinaryWriter::from_vec(data.to_vec(), binary_endian(endian));
-    writer.write_u32_at(offset, value);
-    data.copy_from_slice(&writer.into_inner());
-    Ok(())
+    BinaryPatcher::with_endian(data, binary_endian(endian))
+        .write_u32_at(offset, value)
+        .map_err(|_| BfresError::new(offset, "truncated u32 destination"))
 }
 
 fn write_u64(data: &mut [u8], offset: usize, value: u64, endian: Endian) -> Result<(), BfresError> {
-    if offset.checked_add(8).is_none_or(|end| end > data.len()) {
-        return Err(BfresError::new(offset, "truncated u64 destination"));
-    }
-    let mut writer = BinaryWriter::from_vec(data.to_vec(), binary_endian(endian));
-    writer.write_u64_at(offset, value);
-    data.copy_from_slice(&writer.into_inner());
-    Ok(())
+    BinaryPatcher::with_endian(data, binary_endian(endian))
+        .write_u64_at(offset, value)
+        .map_err(|_| BfresError::new(offset, "truncated u64 destination"))
 }
 
 #[cfg(test)]

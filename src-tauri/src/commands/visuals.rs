@@ -80,20 +80,25 @@ pub fn load_tomodachi_texture_set(
     textureSet: String,
     textureVariant: u8,
 ) -> Result<Vec<BfresResolvedTexture>, String> {
-    require_experimental_visuals()?;
-    let documents = app_handle.state::<DocumentState>();
-    documents.with(&documentId, |app| {
-        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(&path)
-            .map_err(|error| error.to_string())?;
-        Ok(tomodachi_textures(
-            &bfres,
-            Path::new(&path),
-            &textureSet,
-            textureVariant,
-            Some(Path::new(&app.zstd.totk_config.tomodachi_path)),
-            Some(&app.zstd),
-        ))
-    })
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            let documents = app_handle.state::<DocumentState>();
+            documents.with(&documentId, |app| {
+                let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(&path)
+                    .map_err(|error| error.to_string())?;
+                Ok(tomodachi_textures(
+                    &bfres,
+                    Path::new(&path),
+                    &textureSet,
+                    textureVariant,
+                    Some(Path::new(&app.zstd.totk_config.tomodachi_path)),
+                    Some(&app.zstd),
+                ))
+            })
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
@@ -111,16 +116,21 @@ pub fn inspect_bfres(
 pub fn list_g1a_animations(
     modelHash: String,
 ) -> Result<Vec<crate::file_format::Animation::g1a::AvailableG1aAnimation>, String> {
-    require_experimental_visuals()?;
-    let config =
-        crate::TotkConfig::TotkConfig::safe_new(false).map_err(|error| error.to_string())?;
-    if config.aoc_path.is_empty() {
-        return Ok(Vec::new());
-    }
-    Ok(crate::file_format::Animation::g1a::available_animations(
-        &modelHash,
-        Path::new(&config.aoc_path),
-    ))
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            let config = crate::TotkConfig::TotkConfig::safe_new(false)
+                .map_err(|error| error.to_string())?;
+            if config.aoc_path.is_empty() {
+                return Ok(Vec::new());
+            }
+            Ok(crate::file_format::Animation::g1a::available_animations(
+                &modelHash,
+                Path::new(&config.aoc_path),
+            ))
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
@@ -315,56 +325,62 @@ pub fn export_g1m_fbx(
     output: String,
     texture_format: String,
 ) -> Result<String, String> {
-    require_experimental_visuals()?;
-    if source_paths.is_empty() {
-        return Err("no G1M source paths were supplied".into());
-    }
-    let documents = app_handle.state::<DocumentState>();
-    let aoc_path = documents.with(&documentId, |app| app.zstd.totk_config.aoc_path.clone());
-    let mut parsed = Vec::with_capacity(source_paths.len());
-    for source in &source_paths {
-        let path = Path::new(source);
-        let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
-        let model = crate::parser::AOC::g1m::G1mFile::parse_for_export(
-            &bytes,
-            path.file_stem()
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            if source_paths.is_empty() {
+                return Err("no G1M source paths were supplied".into());
+            }
+            let documents = app_handle.state::<DocumentState>();
+            let aoc_path = documents.with(&documentId, |app| app.zstd.totk_config.aoc_path.clone());
+            let mut parsed = Vec::with_capacity(source_paths.len());
+            for source in &source_paths {
+                let path = Path::new(source);
+                let bytes =
+                    fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+                let model = crate::parser::AOC::g1m::G1mFile::parse_for_export(
+                    &bytes,
+                    path.file_stem()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("G1M"),
+                )
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+                let textures = model
+                    .resolve_textures_for_export(path, Path::new(&aoc_path))
+                    .textures;
+                let prefix = if source_paths.len() > 1 {
+                    format!(
+                        "{}: ",
+                        path.file_stem()
+                            .and_then(|value| value.to_str())
+                            .unwrap_or("model")
+                    )
+                } else {
+                    String::new()
+                };
+                parsed.push((model, textures, prefix));
+            }
+            let borrowed: Vec<_> = parsed
+                .iter()
+                .map(|(model, textures, prefix)| (model, textures.as_slice(), prefix.clone()))
+                .collect();
+            let armature_name = Path::new(&source_paths[0])
+                .file_stem()
                 .and_then(|value| value.to_str())
-                .unwrap_or("G1M"),
-        )
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-        let textures = model
-            .resolve_textures_for_export(path, Path::new(&aoc_path))
-            .textures;
-        let prefix = if source_paths.len() > 1 {
-            format!(
-                "{}: ",
-                path.file_stem()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("model")
+                .filter(|value| !value.is_empty())
+                .unwrap_or("G1M");
+            crate::parser::fbx::export_g1m(
+                &borrowed,
+                Path::new(&output),
+                crate::parser::fbx::TextureExportFormat::parse(&texture_format)
+                    .map_err(|error| error.to_string())?,
+                armature_name,
             )
-        } else {
-            String::new()
-        };
-        parsed.push((model, textures, prefix));
-    }
-    let borrowed: Vec<_> = parsed
-        .iter()
-        .map(|(model, textures, prefix)| (model, textures.as_slice(), prefix.clone()))
-        .collect();
-    let armature_name = Path::new(&source_paths[0])
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.is_empty())
-        .unwrap_or("G1M");
-    crate::parser::fbx::export_g1m(
-        &borrowed,
-        Path::new(&output),
-        crate::parser::fbx::TextureExportFormat::parse(&texture_format)
-            .map_err(|error| error.to_string())?,
-        armature_name,
+            .map_err(|error| error.to_string())?;
+            Ok(output)
+        },
+        Err,
     )
-    .map_err(|error| error.to_string())?;
-    Ok(output)
 }
 
 #[tauri::command]
@@ -373,52 +389,62 @@ pub fn replace_g1m_meshes(
     documentId: String,
     fbx: String,
 ) -> Result<serde_json::Value, String> {
-    require_experimental_visuals()?;
-    let documents = app_handle.state::<DocumentState>();
-    let (source, aoc_path) = documents.with(&documentId, |app| {
-        (
-            app.opened_file.path.full_path.clone(),
-            app.zstd.totk_config.aoc_path.clone(),
-        )
-    });
-    let source_path = Path::new(&source);
-    let fbx_path = Path::new(&fbx);
-    let source_data =
-        fs::read(source_path).map_err(|error| format!("{}: {error}", source_path.display()))?;
-    let fbx_data =
-        fs::read(fbx_path).map_err(|error| format!("{}: {error}", fbx_path.display()))?;
-    let name = source_path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("G1M");
-    let rebuilt =
-        crate::parser::AOC::g1m_replace::replace_meshes_from_fbx(&source_data, &fbx_data, name)
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            let documents = app_handle.state::<DocumentState>();
+            let (source, aoc_path) = documents.with(&documentId, |app| {
+                (
+                    app.opened_file.path.full_path.clone(),
+                    app.zstd.totk_config.aoc_path.clone(),
+                )
+            });
+            let source_path = Path::new(&source);
+            let fbx_path = Path::new(&fbx);
+            let source_data = fs::read(source_path)
+                .map_err(|error| format!("{}: {error}", source_path.display()))?;
+            let fbx_data =
+                fs::read(fbx_path).map_err(|error| format!("{}: {error}", fbx_path.display()))?;
+            let name = source_path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("G1M");
+            let rebuilt = crate::parser::AOC::g1m_replace::replace_meshes_from_fbx(
+                &source_data,
+                &fbx_data,
+                name,
+            )
             .map_err(|error| error.to_string())?;
-    let (model, texture_resolution) = crate::parser::AOC::g1m::G1mFile::parse_with_textures(
-        &rebuilt,
-        name,
-        source_path,
-        Path::new(&aoc_path),
+            let (model, texture_resolution) =
+                crate::parser::AOC::g1m::G1mFile::parse_with_textures(
+                    &rebuilt,
+                    name,
+                    source_path,
+                    Path::new(&aoc_path),
+                )
+                .map_err(|error| error.to_string())?;
+            let mut value = serde_json::to_value(model).map_err(|error| error.to_string())?;
+            if let Some(object) = value.as_object_mut() {
+                object.insert(
+                    "resolvedTextures".into(),
+                    serde_json::to_value(texture_resolution.textures)
+                        .map_err(|error| error.to_string())?,
+                );
+                object.insert(
+                    "textureStats".into(),
+                    serde_json::json!({
+                        "total": texture_resolution.total,
+                        "skipped": texture_resolution.skipped,
+                    }),
+                );
+            }
+            documents.with_mut(&documentId, |app| {
+                app.opened_file.custom_g1m = Some(rebuilt)
+            });
+            Ok(value)
+        },
+        Err,
     )
-    .map_err(|error| error.to_string())?;
-    let mut value = serde_json::to_value(model).map_err(|error| error.to_string())?;
-    if let Some(object) = value.as_object_mut() {
-        object.insert(
-            "resolvedTextures".into(),
-            serde_json::to_value(texture_resolution.textures).map_err(|error| error.to_string())?,
-        );
-        object.insert(
-            "textureStats".into(),
-            serde_json::json!({
-                "total": texture_resolution.total,
-                "skipped": texture_resolution.skipped,
-            }),
-        );
-    }
-    documents.with_mut(&documentId, |app| {
-        app.opened_file.custom_g1m = Some(rebuilt)
-    });
-    Ok(value)
 }
 
 #[tauri::command]
@@ -428,45 +454,51 @@ pub fn export_g1m_glb(
     source_paths: Vec<String>,
     output: String,
 ) -> Result<String, String> {
-    require_experimental_visuals()?;
-    if source_paths.is_empty() {
-        return Err("no G1M source paths were supplied".into());
-    }
-    let documents = app_handle.state::<DocumentState>();
-    let aoc_path = documents.with(&documentId, |app| app.zstd.totk_config.aoc_path.clone());
-    let mut parsed = Vec::with_capacity(source_paths.len());
-    for source in &source_paths {
-        let path = Path::new(source);
-        let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
-        let model = crate::parser::AOC::g1m::G1mFile::parse_for_export(
-            &bytes,
-            path.file_stem()
-                .and_then(|value| value.to_str())
-                .unwrap_or("G1M"),
-        )
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-        let textures = model
-            .resolve_textures_for_export(path, Path::new(&aoc_path))
-            .textures;
-        let prefix = if source_paths.len() > 1 {
-            format!(
-                "{}: ",
-                path.file_stem()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("model")
-            )
-        } else {
-            String::new()
-        };
-        parsed.push((model, textures, prefix));
-    }
-    let borrowed: Vec<_> = parsed
-        .iter()
-        .map(|(model, textures, prefix)| (model, textures.as_slice(), prefix.clone()))
-        .collect();
-    crate::parser::glb::export_g1m(&borrowed, Path::new(&output))
-        .map_err(|error| error.to_string())?;
-    Ok(output)
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            if source_paths.is_empty() {
+                return Err("no G1M source paths were supplied".into());
+            }
+            let documents = app_handle.state::<DocumentState>();
+            let aoc_path = documents.with(&documentId, |app| app.zstd.totk_config.aoc_path.clone());
+            let mut parsed = Vec::with_capacity(source_paths.len());
+            for source in &source_paths {
+                let path = Path::new(source);
+                let bytes =
+                    fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+                let model = crate::parser::AOC::g1m::G1mFile::parse_for_export(
+                    &bytes,
+                    path.file_stem()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("G1M"),
+                )
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+                let textures = model
+                    .resolve_textures_for_export(path, Path::new(&aoc_path))
+                    .textures;
+                let prefix = if source_paths.len() > 1 {
+                    format!(
+                        "{}: ",
+                        path.file_stem()
+                            .and_then(|value| value.to_str())
+                            .unwrap_or("model")
+                    )
+                } else {
+                    String::new()
+                };
+                parsed.push((model, textures, prefix));
+            }
+            let borrowed: Vec<_> = parsed
+                .iter()
+                .map(|(model, textures, prefix)| (model, textures.as_slice(), prefix.clone()))
+                .collect();
+            crate::parser::glb::export_g1m(&borrowed, Path::new(&output))
+                .map_err(|error| error.to_string())?;
+            Ok(output)
+        },
+        Err,
+    )
 }
 
 /// Exports the LM3 slot shown in the viewer (`sourcePath` is its
@@ -479,18 +511,23 @@ pub fn export_lm3_fbx(
     output: String,
     texture_format: String,
 ) -> Result<String, String> {
-    require_experimental_visuals()?;
-    let documents = app_handle.state::<DocumentState>();
-    let (model, textures) = load_lm3_slot(&documents, &documentId, &source_path)?;
-    crate::parser::fbx::export_models(
-        &[(model.export_model(), textures.as_slice(), String::new())],
-        Path::new(&output),
-        crate::parser::fbx::TextureExportFormat::parse(&texture_format)
-            .map_err(|error| error.to_string())?,
-        &model.name,
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            let documents = app_handle.state::<DocumentState>();
+            let (model, textures) = load_lm3_slot(&documents, &documentId, &source_path)?;
+            crate::parser::fbx::export_models(
+                &[(model.export_model(), textures.as_slice(), String::new())],
+                Path::new(&output),
+                crate::parser::fbx::TextureExportFormat::parse(&texture_format)
+                    .map_err(|error| error.to_string())?,
+                &model.name,
+            )
+            .map_err(|error| error.to_string())?;
+            Ok(output)
+        },
+        Err,
     )
-    .map_err(|error| error.to_string())?;
-    Ok(output)
 }
 
 /// Exports the LM3 slot shown in the viewer as a self-contained binary glTF.
@@ -501,35 +538,45 @@ pub fn export_lm3_glb(
     source_path: String,
     output: String,
 ) -> Result<String, String> {
-    require_experimental_visuals()?;
-    let documents = app_handle.state::<DocumentState>();
-    let (model, textures) = load_lm3_slot(&documents, &documentId, &source_path)?;
-    crate::parser::glb::export_models(
-        &[(model.export_model(), textures.as_slice(), String::new())],
-        Path::new(&output),
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            let documents = app_handle.state::<DocumentState>();
+            let (model, textures) = load_lm3_slot(&documents, &documentId, &source_path)?;
+            crate::parser::glb::export_models(
+                &[(model.export_model(), textures.as_slice(), String::new())],
+                Path::new(&output),
+            )
+            .map_err(|error| error.to_string())?;
+            Ok(output)
+        },
+        Err,
     )
-    .map_err(|error| error.to_string())?;
-    Ok(output)
 }
 
 #[tauri::command]
 pub fn export_viewport_png(output: String, data_url: String) -> Result<String, String> {
-    use base64::Engine;
+    crate::Settings::catch_panic_with(
+        move || {
+            use base64::Engine;
 
-    let encoded = data_url
-        .strip_prefix("data:image/png;base64,")
-        .ok_or_else(|| "invalid viewport PNG data URL".to_string())?;
-    let png = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|error| error.to_string())?;
-    if !crate::Settings::Magic::is_png(&png) {
-        return Err("viewport render did not produce a PNG".into());
-    }
-    if let Some(parent) = Path::new(&output).parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    fs::write(&output, png).map_err(|error| error.to_string())?;
-    Ok(output)
+            let encoded = data_url
+                .strip_prefix("data:image/png;base64,")
+                .ok_or_else(|| "invalid viewport PNG data URL".to_string())?;
+            let png = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .map_err(|error| error.to_string())?;
+            if !crate::Settings::Magic::is_png(&png) {
+                return Err("viewport render did not produce a PNG".into());
+            }
+            if let Some(parent) = Path::new(&output).parent() {
+                fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            }
+            fs::write(&output, png).map_err(|error| error.to_string())?;
+            Ok(output)
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
@@ -548,13 +595,18 @@ pub fn list_batch_render_files(
     existing_png: String,
     model_kind: String,
 ) -> Result<Vec<crate::file_format::Model3D::BatchRender::BatchRenderFile>, String> {
-    crate::file_format::Model3D::BatchRender::list_batch_render_files(
-        app_handle,
-        documentId,
-        source_root,
-        output_root,
-        existing_png,
-        model_kind,
+    crate::Settings::catch_panic_with(
+        move || {
+            crate::file_format::Model3D::BatchRender::list_batch_render_files(
+                app_handle,
+                documentId,
+                source_root,
+                output_root,
+                existing_png,
+                model_kind,
+            )
+        },
+        Err,
     )
 }
 
@@ -752,33 +804,40 @@ pub fn render_image(
     array_index: Option<u32>,
     mip_index: Option<u32>,
 ) -> Result<crate::file_format::Image::RenderedImage, String> {
-    require_experimental_visuals()?;
-    let documents = app_handle.state::<DocumentState>();
-    documents.with(&documentId, |app| {
-        let texture_index = texture_index.unwrap_or(0);
-        let array_index = array_index.unwrap_or(0);
-        let mip_index = mip_index.unwrap_or(0);
-        match app.opened_file.visual_data.as_deref() {
-            Some(data) => {
-                crate::file_format::Image::ImageDocument::render_bytes_selection_with_zstd(
-                    data,
-                    &path,
-                    texture_index,
-                    array_index,
-                    mip_index,
-                    Some(&app.zstd),
-                )
-            }
-            None => crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
-                path,
-                texture_index,
-                array_index,
-                mip_index,
-                Some(&app.zstd),
-            ),
-        }
-        .map_err(|error| error.to_string())
-    })
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            let documents = app_handle.state::<DocumentState>();
+            documents.with(&documentId, |app| {
+                let texture_index = texture_index.unwrap_or(0);
+                let array_index = array_index.unwrap_or(0);
+                let mip_index = mip_index.unwrap_or(0);
+                match app.opened_file.visual_data.as_deref() {
+                    Some(data) => {
+                        crate::file_format::Image::ImageDocument::render_bytes_selection_with_zstd(
+                            data,
+                            &path,
+                            texture_index,
+                            array_index,
+                            mip_index,
+                            Some(&app.zstd),
+                        )
+                    }
+                    None => {
+                        crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
+                            path,
+                            texture_index,
+                            array_index,
+                            mip_index,
+                            Some(&app.zstd),
+                        )
+                    }
+                }
+                .map_err(|error| error.to_string())
+            })
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
@@ -791,20 +850,26 @@ pub fn export_image_png(
     array_index: Option<u32>,
     mip_index: Option<u32>,
 ) -> Result<(), String> {
-    require_experimental_visuals()?;
-    let documents = app_handle.state::<DocumentState>();
-    documents.with(&documentId, |app| {
-        let rendered = crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
-            source,
-            texture_index.unwrap_or(0),
-            array_index.unwrap_or(0),
-            mip_index.unwrap_or(0),
-            Some(&app.zstd),
-        )
-        .map_err(|error| error.to_string())?;
-        crate::file_format::Image::ImageDocument::export_rendered_png(&rendered, output)
-            .map_err(|error| error.to_string())
-    })
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            let documents = app_handle.state::<DocumentState>();
+            documents.with(&documentId, |app| {
+                let rendered =
+                    crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
+                        source,
+                        texture_index.unwrap_or(0),
+                        array_index.unwrap_or(0),
+                        mip_index.unwrap_or(0),
+                        Some(&app.zstd),
+                    )
+                    .map_err(|error| error.to_string())?;
+                crate::file_format::Image::ImageDocument::export_rendered_png(&rendered, output)
+                    .map_err(|error| error.to_string())
+            })
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
@@ -818,27 +883,32 @@ pub fn replace_dds_image(
     mip_index: Option<u32>,
     replacement_format: Option<String>,
 ) -> Result<(), String> {
-    require_experimental_visuals()?;
-    let _ = (ddsType, mipCount);
-    let source = std::fs::read(&target).map_err(|error| error.to_string())?;
-    if crate::Settings::Magic::is_g1t(&source) {
-        return crate::file_format::Image::ImageDocument::replace_g1t_surface(
-            target,
-            png,
-            texture_index.unwrap_or(0),
-            array_index.unwrap_or(0),
-            mip_index.unwrap_or(0),
-        )
-        .map_err(|error| error.to_string());
-    }
-    crate::file_format::Image::ImageDocument::replace_dds_surface(
-        target,
-        png,
-        array_index.unwrap_or(0),
-        mip_index.unwrap_or(0),
-        replacement_format.as_deref(),
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            let _ = (ddsType, mipCount);
+            let source = std::fs::read(&target).map_err(|error| error.to_string())?;
+            if crate::Settings::Magic::is_g1t(&source) {
+                return crate::file_format::Image::ImageDocument::replace_g1t_surface(
+                    target,
+                    png,
+                    texture_index.unwrap_or(0),
+                    array_index.unwrap_or(0),
+                    mip_index.unwrap_or(0),
+                )
+                .map_err(|error| error.to_string());
+            }
+            crate::file_format::Image::ImageDocument::replace_dds_surface(
+                target,
+                png,
+                array_index.unwrap_or(0),
+                mip_index.unwrap_or(0),
+                replacement_format.as_deref(),
+            )
+            .map_err(|error| error.to_string())
+        },
+        Err,
     )
-    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -849,17 +919,22 @@ pub fn rename_bntx_texture(
     texture_index: usize,
     new_name: String,
 ) -> Result<(), String> {
-    require_experimental_visuals()?;
-    let documents = app_handle.state::<DocumentState>();
-    documents.with(&documentId, |app| {
-        crate::file_format::Image::ImageDocument::rename_bntx_texture(
-            path,
-            texture_index,
-            &new_name,
-            &app.zstd,
-        )
-        .map_err(|error| error.to_string())
-    })
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            let documents = app_handle.state::<DocumentState>();
+            documents.with(&documentId, |app| {
+                crate::file_format::Image::ImageDocument::rename_bntx_texture(
+                    path,
+                    texture_index,
+                    &new_name,
+                    &app.zstd,
+                )
+                .map_err(|error| error.to_string())
+            })
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
@@ -873,20 +948,25 @@ pub fn replace_bntx_image(
     mip_index: u32,
     replacement_format: Option<String>,
 ) -> Result<(), String> {
-    require_experimental_visuals()?;
-    let documents = app_handle.state::<DocumentState>();
-    documents.with(&documentId, |app| {
-        crate::file_format::Image::ImageDocument::replace_bntx_surface(
-            target,
-            png,
-            texture_index,
-            array_index,
-            mip_index,
-            replacement_format.as_deref(),
-            &app.zstd,
-        )
-        .map_err(|error| error.to_string())
-    })
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            let documents = app_handle.state::<DocumentState>();
+            documents.with(&documentId, |app| {
+                crate::file_format::Image::ImageDocument::replace_bntx_surface(
+                    target,
+                    png,
+                    texture_index,
+                    array_index,
+                    mip_index,
+                    replacement_format.as_deref(),
+                    &app.zstd,
+                )
+                .map_err(|error| error.to_string())
+            })
+        },
+        Err,
+    )
 }
 
 fn require_experimental_visuals() -> Result<(), String> {

@@ -1,10 +1,12 @@
 use super::{Bfwav, Bfwav::DecodedAudio};
+use crate::parser::binary::{BinaryPatcher, BinaryReader, BinaryWriter};
 
 const INFO_SIZE: usize = 0x4c;
 
 fn u16_at(data: &[u8], at: usize) -> Result<u16, String> {
-    let value = data.get(at..at + 2).ok_or("truncated BWAV")?;
-    Ok(u16::from_le_bytes([value[0], value[1]]))
+    BinaryReader::new(data)
+        .read_u16_at(at)
+        .map_err(|_| "truncated BWAV".into())
 }
 
 fn i16_at(data: &[u8], at: usize) -> Result<i16, String> {
@@ -12,22 +14,27 @@ fn i16_at(data: &[u8], at: usize) -> Result<i16, String> {
 }
 
 fn u32_at(data: &[u8], at: usize) -> Result<u32, String> {
-    let value = data.get(at..at + 4).ok_or("truncated BWAV")?;
-    Ok(u32::from_le_bytes([value[0], value[1], value[2], value[3]]))
+    BinaryReader::new(data)
+        .read_u32_at(at)
+        .map_err(|_| "truncated BWAV".into())
 }
 
 fn put_u16(data: &mut [u8], at: usize, value: u16) -> Result<(), String> {
-    data.get_mut(at..at + 2)
-        .ok_or("truncated BWAV output")?
-        .copy_from_slice(&value.to_le_bytes());
-    Ok(())
+    BinaryPatcher::new(data)
+        .write_u16_at(at, value)
+        .map_err(|_| "truncated BWAV output".into())
 }
 
 fn put_u32(data: &mut [u8], at: usize, value: u32) -> Result<(), String> {
-    data.get_mut(at..at + 4)
-        .ok_or("truncated BWAV output")?
-        .copy_from_slice(&value.to_le_bytes());
-    Ok(())
+    BinaryPatcher::new(data)
+        .write_u32_at(at, value)
+        .map_err(|_| "truncated BWAV output".into())
+}
+
+fn put_bytes(data: &mut [u8], at: usize, value: &[u8]) -> Result<(), String> {
+    BinaryPatcher::new(data)
+        .write_bytes_at(at, value)
+        .map_err(|_| "truncated BWAV output".into())
 }
 
 fn align(value: usize, boundary: usize) -> usize {
@@ -134,10 +141,16 @@ pub fn decode(data: &[u8]) -> Result<DecodedAudio, String> {
             .get(offset..offset + encoded_size)
             .ok_or_else(|| format!("truncated BWAV channel {channel}"))?;
         let values = if codec == 0 {
-            encoded
-                .chunks_exact(2)
-                .map(|v| i16::from_le_bytes([v[0], v[1]]))
-                .collect()
+            let mut reader = BinaryReader::new(encoded);
+            let mut values = Vec::with_capacity(sample_count);
+            while reader.remaining() >= 2 {
+                values.push(
+                    reader
+                        .read_i16()
+                        .map_err(|_| format!("truncated BWAV channel {channel}"))?,
+                );
+            }
+            values
         } else {
             decode_channel(
                 encoded,
@@ -231,10 +244,13 @@ pub fn encode_like(target: &[u8], source: &DecodedAudio) -> Result<Vec<u8>, Stri
     for channel in 0..target_channels {
         let codec = u16_at(target, 0x10 + channel * INFO_SIZE)?;
         encoded.push(match codec {
-            0 => source.channels[channel]
-                .iter()
-                .flat_map(|v| v.to_le_bytes())
-                .collect(),
+            0 => {
+                let mut writer = BinaryWriter::new();
+                for value in &source.channels[channel] {
+                    writer.write_i16(*value);
+                }
+                writer.into_inner()
+            }
             1 => encode_channel(&source.channels[channel], &coefficients(target, channel)?),
             _ => return Err(format!("unsupported BWAV codec {codec}")),
         });
@@ -250,8 +266,11 @@ pub fn encode_like(target: &[u8], source: &DecodedAudio) -> Result<Vec<u8>, Stri
     let channel_stride = align(encoded_len, 0x40);
     let total = header_size + channel_stride * target_channels;
     let mut output = vec![0u8; total];
-    output[..0x10 + target_channels * INFO_SIZE]
-        .copy_from_slice(&target[..0x10 + target_channels * INFO_SIZE]);
+    let header_len = 0x10 + target_channels * INFO_SIZE;
+    let target_header = BinaryReader::new(target)
+        .read_bytes_at(0, header_len)
+        .map_err(|_| "truncated BWAV")?;
+    put_bytes(&mut output, 0, target_header)?;
     put_u32(&mut output, 8, crc32(&encoded))?;
     put_u16(&mut output, 0x0c, 0)?;
     for channel in 0..target_channels {
@@ -268,7 +287,7 @@ pub fn encode_like(target: &[u8], source: &DecodedAudio) -> Result<Vec<u8>, Stri
         put_u16(&mut output, info + 0x44, 0)?;
         put_u16(&mut output, info + 0x46, 0)?;
         put_u16(&mut output, info + 0x48, 0)?;
-        output[offset..offset + encoded[channel].len()].copy_from_slice(&encoded[channel]);
+        put_bytes(&mut output, offset, &encoded[channel])?;
     }
     Ok(output)
 }

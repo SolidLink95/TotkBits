@@ -769,7 +769,12 @@ impl ZsDic {
             ));
         }
         for (name, dictionary, expected_sha256) in Self::CACHE_FILES {
-            let data = dictionary(self).unwrap();
+            let data = dictionary(self).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("{name} dictionary is missing"),
+                )
+            })?;
             if !data.starts_with(&ZSTD_DICTIONARY_MAGIC) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -801,7 +806,12 @@ impl ZsDic {
         self.validate()?;
         fs::create_dir_all(directory)?;
         for (name, dictionary, _) in Self::CACHE_FILES {
-            let data = dictionary(self).unwrap();
+            let data = dictionary(self).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("{name} dictionary is missing"),
+                )
+            })?;
             fs::write(directory.join(name), data)?;
         }
         Ok(())

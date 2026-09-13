@@ -313,7 +313,7 @@ pub fn rebind_geometry(
             if !attribute.name.starts_with("_i") {
                 continue;
             }
-            let width = match u16::from_be_bytes(attribute.format) {
+            let width = match crate::parser::binary::Endian::Big.u16_from_bytes(attribute.format) {
                 0x030B => 4,
                 0x0309 => 2,
                 0x0302 => 1,

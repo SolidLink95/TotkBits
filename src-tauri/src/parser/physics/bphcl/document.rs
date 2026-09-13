@@ -116,7 +116,9 @@ impl BphclDocument {
         let Some(ns) = tag.find("TNA1").or_else(|| tag.find("TNAM")) else {
             return Ok(vec![]);
         };
-        let strings = data[ss.payload_offset..ss.payload_end()]
+        let strings = data
+            .get(ss.payload_offset..ss.payload_end())
+            .ok_or_else(|| invalid("BPHCL type string section exceeds the file"))?
             .split(|b| *b == 0)
             .map(|b| String::from_utf8_lossy(b).into_owned())
             .collect::<Vec<_>>();
@@ -152,9 +154,10 @@ impl BphclDocument {
         let i = self.referenced(offset)?;
         let item = self.items.get(i)?;
         let data = self.tag.find("DATA")?;
-        let o = data.payload_offset + item.data_offset as usize;
-        let end = self.raw[o..].iter().position(|b| *b == 0)?;
-        String::from_utf8(self.raw[o..o + end].to_vec()).ok()
+        let o = data.payload_offset.checked_add(item.data_offset as usize)?;
+        let tail = self.raw.get(o..)?;
+        let end = tail.iter().position(|b| *b == 0)?;
+        String::from_utf8(tail[..end].to_vec()).ok()
     }
     fn reference_array(&self, field: u32) -> Vec<usize> {
         let Some(storage) = self.referenced(field) else {

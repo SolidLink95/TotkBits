@@ -11,6 +11,7 @@ use super::super::BfresError;
 use super::model::*;
 use super::patricia::build_nodes;
 use super::prepare::{prepare, Prepared, PreparedModel, ShaderInfoV10};
+use crate::parser::binary::{BinaryWriter, Endian};
 use std::collections::HashMap;
 
 const SECTION_COUNT: usize = 5;
@@ -98,8 +99,7 @@ struct RelocSection {
 
 struct Saver<'a> {
     p: &'a Prepared,
-    out: Vec<u8>,
-    pos: usize,
+    w: BinaryWriter,
     items: Vec<Item>,
     strings: Vec<StringEntry>,
     header_blocks: Vec<usize>,
@@ -182,15 +182,14 @@ pub fn save(file: &ResFile) -> Result<Vec<u8>, BfresError> {
     let prepared = prepare(file)?;
     let mut saver = Saver::new(&prepared);
     saver.execute()?;
-    Ok(saver.out)
+    Ok(saver.w.into_inner())
 }
 
 impl<'a> Saver<'a> {
     fn new(p: &'a Prepared) -> Self {
         Saver {
             p,
-            out: Vec::new(),
-            pos: 0,
+            w: BinaryWriter::with_endian(Endian::Little),
             items: Vec::new(),
             strings: Vec::new(),
             header_blocks: Vec::new(),
@@ -225,81 +224,80 @@ impl<'a> Saver<'a> {
     // ---- low level writer --------------------------------------------------
 
     fn write(&mut self, bytes: &[u8]) {
-        let end = self.pos + bytes.len();
-        if self.out.len() < end {
-            self.out.resize(end, 0);
-        }
-        self.out[self.pos..end].copy_from_slice(bytes);
-        self.pos = end;
+        self.w.write_bytes(bytes);
     }
     fn u8(&mut self, v: u8) {
-        self.write(&[v]);
+        self.w.write_u8(v);
     }
     fn u16(&mut self, v: u16) {
-        self.write(&v.to_le_bytes());
+        self.w.write_u16(v);
     }
     fn i16(&mut self, v: i16) {
-        self.write(&v.to_le_bytes());
+        self.w.write_i16(v);
     }
     fn u32(&mut self, v: u32) {
-        self.write(&v.to_le_bytes());
+        self.w.write_u32(v);
     }
     fn i32(&mut self, v: i32) {
-        self.write(&v.to_le_bytes());
+        self.w.write_i32(v);
     }
     fn u64(&mut self, v: u64) {
-        self.write(&v.to_le_bytes());
+        self.w.write_u64(v);
     }
     fn f32(&mut self, v: f32) {
-        self.write(&v.to_le_bytes());
+        self.w.write_f32(v);
     }
+    /// Reserves `count` bytes: grows the buffer when needed but, like the
+    /// C# `Seek`, never overwrites bytes that are already there.
     fn zeros(&mut self, count: usize) {
-        let end = self.pos + count;
-        if self.out.len() < end {
-            self.out.resize(end, 0);
+        let end = self.w.position() + count;
+        if self.w.len() < end {
+            self.w.seek(end);
         }
-        self.pos = end;
+        self.w.set_position(end);
     }
     fn seek(&mut self, count: usize) {
-        self.pos += count;
+        let position = self.w.position() + count;
+        self.w.set_position(position);
     }
     fn align(&mut self, alignment: usize) {
         if alignment > 1 {
-            self.pos = self.pos.div_ceil(alignment) * alignment;
+            let position = self.w.position().div_ceil(alignment) * alignment;
+            self.w.set_position(position);
         }
     }
     fn write_u64_at(&mut self, offset: usize, value: u64) {
-        let saved = self.pos;
-        self.pos = offset;
+        let saved = self.w.position();
+        self.w.set_position(offset);
         self.u64(value);
-        self.pos = saved;
+        self.w.set_position(saved);
     }
     fn write_u32_at(&mut self, offset: usize, value: u32) {
-        let saved = self.pos;
-        self.pos = offset;
+        let saved = self.w.position();
+        self.w.set_position(offset);
         self.u32(value);
-        self.pos = saved;
+        self.w.set_position(saved);
     }
     fn write_u16_at(&mut self, offset: usize, value: u16) {
-        let saved = self.pos;
-        self.pos = offset;
+        let saved = self.w.position();
+        self.w.set_position(offset);
         self.u16(value);
-        self.pos = saved;
+        self.w.set_position(saved);
     }
     fn length(&self) -> usize {
-        self.out.len().max(self.pos)
+        self.w.len().max(self.w.position())
     }
 
     // ---- saver primitives ---------------------------------------------------
 
     /// `WriteOffset`: stores the current position into the pointer field.
     fn write_offset(&mut self, field: usize) {
-        let target = self.pos as u64;
+        let target = self.w.position() as u64;
         self.write_u64_at(field, target);
     }
 
     fn save_offset(&mut self) -> usize {
-        let field = self.pos;
+        let field = self.w.position();
         self.u64(0);
         field
     }
@@ -332,7 +330,7 @@ impl<'a> Saver<'a> {
     }
 
     fn save_string(&mut self, value: &str) {
-        let field = self.pos;
+        let field = self.w.position();
         match self.strings.iter_mut().find(|entry| entry.value == value) {
             Some(entry) => entry.offsets.push(field),
             None => self.strings.push(StringEntry {
@@ -344,19 +342,19 @@ impl<'a> Saver<'a> {
     }
 
     fn save_strings_relocated(&mut self, values: &[String]) {
-        self.reloc(self.pos, values.len() as u32, 1, 0, 1);
+        self.reloc(self.w.position(), values.len() as u32, 1, 0, 1);
         for value in values {
             self.save_string(value);
         }
     }
 
     fn save_memory_pool_pointer(&mut self) {
-        self.memory_pool_pointers.push(self.pos);
+        self.memory_pool_pointers.push(self.w.position());
         self.u64(0);
     }
 
     fn save_header_block(&mut self, binary: bool) {
-        self.header_blocks.push(self.pos);
+        self.header_blocks.push(self.w.position());
         if binary {
             self.u16(0);
         } else {
@@ -372,7 +370,7 @@ impl<'a> Saver<'a> {
     /// `Save(IResData)` for an object that is queued once and referenced by
     /// every later pointer.
     fn save_ref(&mut self, obj: Obj) {
-        let field = self.pos;
+        let field = self.w.position();
         match self.find_item(&obj) {
             Some(item) => {
                 item.offsets.push(field);
@@ -395,7 +393,7 @@ impl<'a> Saver<'a> {
             return;
         }
         let first = make(0);
-        let field = self.pos;
+        let field = self.w.position();
         if let Some(item) = self.find_item(&first) {
             item.offsets.push(field);
             item.index = 0;
@@ -417,7 +415,7 @@ impl<'a> Saver<'a> {
             self.u64(0);
             return;
         }
-        let field = self.pos;
+        let field = self.w.position();
         let obj = Obj::Dict(id);
         match self.find_item(&obj) {
             Some(item) => item.offsets.push(field),
@@ -432,7 +430,7 @@ impl<'a> Saver<'a> {
     }
 
     fn save_custom(&mut self, id: CustomId) {
-        let field = self.pos;
+        let field = self.w.position();
         let obj = Obj::Custom(id);
         match self.find_item(&obj) {
             Some(item) => item.offsets.push(field),
@@ -454,7 +452,7 @@ impl<'a> Saver<'a> {
                 continue;
             }
             self.align(8);
-            let target = self.pos;
+            let target = self.w.position();
             self.items[i].target = Some(target);
             self.current_index = self.items[i].index;
             let obj = self.items[i].obj.clone();
@@ -583,7 +581,7 @@ impl<'a> Saver<'a> {
             self.u16(node.left);
             self.u16(node.right);
             if index == 0 {
-                self.reloc(self.pos, 1, nodes.len() as u32, 1, 1);
+                self.reloc(self.w.position(), 1, nodes.len() as u32, 1, 1);
                 self.save_string("");
             } else {
                 let key = node.key.clone().unwrap_or_default();
@@ -607,15 +605,15 @@ impl<'a> Saver<'a> {
         self.write(&[0xff, 0xfe]);
         self.u8(file.alignment);
         self.u8(file.target_address_size);
-        self.ofs_file_name = self.pos;
+        self.ofs_file_name = self.w.position();
         self.u32(0);
         self.u16(file.flag);
         self.save_header_block(true);
-        self.ofs_relocation_table = self.pos;
+        self.ofs_relocation_table = self.w.position();
         self.u32(0);
-        self.ofs_file_size = self.pos;
+        self.ofs_file_size = self.w.position();
         self.u32(0);
-        self.reloc(self.pos, 17, 1, 0, 1);
+        self.reloc(self.w.position(), 17, 1, 0, 1);
         let name = file.name.clone();
         self.save_string(&name);
         self.model_offset = self.save_offset();
@@ -625,21 +623,21 @@ impl<'a> Saver<'a> {
             self.save_offset();
         }
         if has_memory_pool {
-            self.reloc(self.pos, 1, 1, 0, 4);
+            self.reloc(self.w.position(), 1, 1, 0, 4);
         }
         self.save_memory_pool_pointer();
         if has_buffer_info {
-            self.reloc(self.pos, 1, 1, 0, 1);
+            self.reloc(self.w.position(), 1, 1, 0, 1);
         }
         self.buffer_info_field = self.save_offset();
         if !file.external_files.is_empty() {
-            self.reloc(self.pos, 2, 1, 0, 1);
+            self.reloc(self.w.position(), 2, 1, 0, 1);
         }
         self.external_file_offset = self.save_offset();
         self.external_file_dict_offset = self.save_offset();
         self.u64(0);
-        self.reloc(self.pos, 1, 1, 0, 1);
-        self.ofs_string_pool = self.pos;
+        self.reloc(self.w.position(), 1, 1, 0, 1);
+        self.ofs_string_pool = self.w.position();
         self.u64(0);
         self.u32(0);
         self.u16(self.p.models.len() as u16);
@@ -651,8 +649,11 @@ impl<'a> Saver<'a> {
         self.u16(file.external_files.len() as u16);
         self.u8(0);
         self.u8(1);
-        if self.pos != 0xf0 {
-            return Err(BfresError::new(self.pos, "unexpected BFRES header size"));
+        if self.w.position() != 0xf0 {
+            return Err(BfresError::new(
+                self.w.position(),
+                "unexpected BFRES header size",
+            ));
         }
 
         // Model headers.
@@ -666,10 +667,10 @@ impl<'a> Saver<'a> {
         if has_buffer_info {
             self.write_offset(self.buffer_info_field);
             self.u32(0);
-            self.ofs_total_buffer_size = self.pos;
+            self.ofs_total_buffer_size = self.w.position();
             self.u32(0);
-            self.reloc(self.pos, 1, 1, 0, 2);
-            self.ofs_index_buffer = self.pos;
+            self.reloc(self.w.position(), 1, 1, 0, 2);
+            self.ofs_index_buffer = self.w.position();
             self.u64(0);
             self.seek(16);
         } else {
@@ -680,8 +681,8 @@ impl<'a> Saver<'a> {
         if !file.external_files.is_empty() {
             self.write_offset(self.external_file_offset);
             for (index, external) in file.external_files.iter().enumerate() {
-                self.reloc(self.pos, 1, 1, 0, 5);
-                let field = self.pos;
+                self.reloc(self.w.position(), 1, 1, 0, 5);
+                let field = self.w.position();
                 self.u64(0);
                 self.u64(external.data.len() as u64);
                 self.external_blocks.push((index, vec![field]));
@@ -735,7 +736,8 @@ impl<'a> Saver<'a> {
         self.write_u32_at(self.ofs_file_name, (self.ofs_file_name_string + 2) as u32);
         let length = self.length() as u32;
         self.write_u32_at(self.ofs_file_size, length);
-        self.out.resize(self.length(), 0);
+        let length = self.length();
+        self.w.seek(length);
         Ok(())
     }
 
@@ -746,7 +748,7 @@ impl<'a> Saver<'a> {
         let model = &pm.model;
         self.write(b"FMDL");
         self.u32(model.flags);
-        self.reloc(self.pos, 11, 1, 0, 1);
+        self.reloc(self.w.position(), 11, 1, 0, 1);
         let name = model.name.clone();
         let path = model.path.clone();
         self.save_string(&name);
@@ -819,7 +821,7 @@ impl<'a> Saver<'a> {
     /// `SaveUserData`: the 32-byte records; returns the data pointer fields.
     fn save_user_data(&mut self, list: &[UserData], target: usize) -> Vec<usize> {
         self.align(8);
-        self.reloc(self.pos, 2, list.len() as u32, 6, 1);
+        self.reloc(self.w.position(), 2, list.len() as u32, 6, 1);
         self.write_offset(target);
         let mut fields = Vec::with_capacity(list.len());
         for entry in list {
@@ -841,7 +843,7 @@ impl<'a> Saver<'a> {
             .map(|u| u.strings.len())
             .sum();
         if string_count != 0 {
-            self.reloc(self.pos, string_count as u32, 1, 0, 1);
+            self.reloc(self.w.position(), string_count as u32, 1, 0, 1);
         }
         for kind in [2u8, 3, 0, 1, 4] {
             for (entry, field) in list.iter().zip(fields) {
@@ -880,7 +882,13 @@ impl<'a> Saver<'a> {
     fn write_model_block(&mut self, m: usize) -> Result<(), BfresError> {
         let model = &self.p.models[m].model;
         if !model.skeleton.bones.is_empty() {
-            self.reloc(self.pos, 3, model.skeleton.bones.len() as u32, 8, 1);
+            self.reloc(
+                self.w.position(),
+                3,
+                model.skeleton.bones.len() as u32,
+                8,
+                1,
+            );
         }
         self.write_skeleton(m)?;
         if !model.shapes.is_empty() {
@@ -925,14 +933,14 @@ impl<'a> Saver<'a> {
         let skeleton = &self.p.models[m].model.skeleton;
         self.write(b"FSKL");
         self.u32(skeleton.flags);
-        self.reloc(self.pos, 4, 1, 0, 1);
+        self.reloc(self.w.position(), 4, 1, 0, 1);
         let mut skl = SkeletonPositions::default();
         skl.bone_dict = self.save_offset();
         skl.bones = self.save_offset();
         skl.matrix_to_bone = self.save_offset();
         skl.inverse = self.save_offset();
         self.seek(8);
-        self.reloc(self.pos, 1, 1, 0, 1);
+        self.reloc(self.w.position(), 1, 1, 0, 1);
         skl.user_pointer = self.save_offset();
         self.u16(skeleton.bones.len() as u16);
         self.u16(skeleton.inverse_matrices.len() as u16);
@@ -1023,15 +1031,15 @@ impl<'a> Saver<'a> {
     fn write_vertex_buffer_header(&mut self, m: usize, v: usize) -> Result<(), BfresError> {
         let vertex = &self.p.models[m].model.vertex_buffers[v];
         let mut vp = VertexPositions::default();
-        vp.position = self.pos;
+        vp.position = self.w.position();
         self.write(b"FVTX");
         self.u32(vertex.flags);
-        self.reloc(self.pos, 2, 1, 0, 1);
+        self.reloc(self.w.position(), 2, 1, 0, 1);
         vp.attributes = self.save_offset();
         vp.attribute_dict = self.save_offset();
-        self.reloc(self.pos, 1, 1, 0, 4);
+        self.reloc(self.w.position(), 1, 1, 0, 4);
         self.save_memory_pool_pointer();
-        self.reloc(self.pos, 4, 1, 0, 1);
+        self.reloc(self.w.position(), 4, 1, 0, 1);
         vp.unk = self.save_offset();
         vp.unk2 = self.save_offset();
         vp.sizes = self.save_offset();
@@ -1084,7 +1092,7 @@ impl<'a> Saver<'a> {
         let vertex = &self.p.models[m].model.vertex_buffers[v];
         let vp = self.models[m].vertex[v].clone();
         if !vertex.attributes.is_empty() {
-            self.reloc(self.pos, 1, vertex.attributes.len() as u32, 1, 1);
+            self.reloc(self.w.position(), 1, vertex.attributes.len() as u32, 1, 1);
             self.write_offset(vp.attributes);
             for attribute in &vertex.attributes {
                 let name = attribute.name.clone();
@@ -1147,7 +1155,7 @@ impl<'a> Saver<'a> {
         let shape = &self.p.models[m].model.shapes[s];
         self.write(b"FSHP");
         self.u32(shape.flags);
-        self.reloc(self.pos, 8, 1, 0, 1);
+        self.reloc(self.w.position(), 8, 1, 0, 1);
         let name = shape.name.clone();
         self.save_string(&name);
         let vertex_position =
@@ -1201,11 +1209,11 @@ impl<'a> Saver<'a> {
         let mut sp = self.models[m].shape[s].clone();
         self.write_offset(sp.meshes);
         for (index, mesh) in shape.meshes.iter().enumerate() {
-            self.reloc(self.pos, 1, 1, 0, 1);
+            self.reloc(self.w.position(), 1, 1, 0, 1);
             let submeshes = self.save_offset();
-            self.reloc(self.pos, 1, 1, 0, 4);
+            self.reloc(self.w.position(), 1, 1, 0, 4);
             self.save_memory_pool_pointer();
-            self.reloc(self.pos, 2, 1, 0, 1);
+            self.reloc(self.w.position(), 2, 1, 0, 1);
             let unk = self.save_offset();
             let size = self.save_offset();
             let face_offset = self.face_buffer_offset(m, s, index);
@@ -1266,7 +1274,7 @@ impl<'a> Saver<'a> {
         let material = &self.p.models[m].model.materials[mat];
         self.write(b"FMAT");
         self.u32(material.flags);
-        self.reloc(self.pos, 12, 1, 0, 1);
+        self.reloc(self.w.position(), 12, 1, 0, 1);
         let name = material.name.clone();
         self.save_string(&name);
         self.save_ref(Obj::ShaderInfo(m, mat));
@@ -1286,7 +1294,7 @@ impl<'a> Saver<'a> {
             self.u64(0);
         }
         self.u64(0);
-        self.reloc(self.pos, 3, 1, 0, 1);
+        self.reloc(self.w.position(), 3, 1, 0, 1);
         let user_data = self.save_offset();
         let user_data_dict = self.save_offset();
         self.models[m]
@@ -1294,7 +1302,7 @@ impl<'a> Saver<'a> {
             .push((user_data, user_data_dict));
         self.save_custom(CustomId::Volatile(m, mat));
         self.u64(0);
-        self.reloc(self.pos, 2, 1, 0, 1);
+        self.reloc(self.w.position(), 2, 1, 0, 1);
         if material.sampler_slots.is_some() {
             self.save_custom(CustomId::SampSlots(m, mat));
         } else {
@@ -1320,7 +1328,7 @@ impl<'a> Saver<'a> {
     fn write_shader_info(&mut self, m: usize, mat: usize) -> Result<(), BfresError> {
         let info: &ShaderInfoV10 = &self.p.models[m].infos[mat];
         let rep = info.assign;
-        self.reloc(self.pos, 8, 1, 0, 1);
+        self.reloc(self.w.position(), 8, 1, 0, 1);
         self.save_ref(Obj::ShaderAssign(m, rep));
         self.save_custom(CustomId::AttrStrs(m, mat));
         if info.attribute_indices.is_some() {
@@ -1350,7 +1358,7 @@ impl<'a> Saver<'a> {
         let pm: &PreparedModel = &self.p.models[m];
         let mat = pm.shader_assigns[rep];
         let material = &pm.model.materials[mat];
-        self.reloc(self.pos, 9, 1, 0, 1);
+        self.reloc(self.w.position(), 9, 1, 0, 1);
         let archive = material.shader_archive.clone();
         let model_name = material.shading_model.clone();
         self.save_string(&archive);
@@ -1411,9 +1419,9 @@ impl<'a> Saver<'a> {
             CustomId::RiData(m, mat) => {
                 let material = &self.p.models[m].model.materials[mat];
                 let size = usize::from(material.render_info_size);
-                let start = self.pos;
+                let start = self.w.position();
                 self.zeros(size);
-                self.pos = start;
+                self.w.set_position(start);
                 let string_count: usize = material
                     .render_infos
                     .iter()
@@ -1422,12 +1430,12 @@ impl<'a> Saver<'a> {
                     .sum();
                 let has_strings = material.render_infos.iter().any(|ri| ri.kind == 2);
                 if has_strings {
-                    self.reloc(self.pos, string_count as u32, 1, 0, 1);
+                    self.reloc(self.w.position(), string_count as u32, 1, 0, 1);
                 }
                 let mut offsets = Vec::with_capacity(material.render_infos.len());
                 let infos = material.render_infos.clone();
                 for ri in &infos {
-                    offsets.push((self.pos - start) as u16);
+                    offsets.push((self.w.position() - start) as u16);
                     match ri.kind {
                         2 => {
                             for value in &ri.strings {
@@ -1447,7 +1455,7 @@ impl<'a> Saver<'a> {
                     }
                 }
                 self.render_info_offsets.insert((m, mat), offsets);
-                self.pos = start + size;
+                self.w.set_position(start + size);
             }
             CustomId::RiCounts(m, mat) => {
                 let infos = &self.p.models[m].model.materials[mat].render_infos;
@@ -1544,7 +1552,7 @@ impl<'a> Saver<'a> {
             CustomId::RiList(m, rep) => {
                 let mat = self.p.models[m].shader_assigns[rep];
                 let infos = self.p.models[m].model.materials[mat].render_infos.clone();
-                self.reloc(self.pos, 1, infos.len() as u32, 1, 1);
+                self.reloc(self.w.position(), 1, infos.len() as u32, 1, 1);
                 for ri in &infos {
                     self.save_string(&ri.name);
                     self.u8(ri.kind);
@@ -1554,7 +1562,7 @@ impl<'a> Saver<'a> {
             CustomId::ParamList(m, rep) => {
                 let mat = self.p.models[m].shader_assigns[rep];
                 let params = self.p.models[m].model.materials[mat].shader_params.clone();
-                self.reloc(self.pos, 2, params.len() as u32, 1, 1);
+                self.reloc(self.w.position(), 2, params.len() as u32, 1, 1);
                 for param in &params {
                     self.zeros(8);
                     self.save_string(&param.name);
@@ -1612,17 +1620,17 @@ impl<'a> Saver<'a> {
         }
 
         self.align(4);
-        let pool_start = self.pos;
+        let pool_start = self.w.position();
         self.write(b"_STR");
         self.save_header_block(false);
         self.u32(order.len() as u32);
-        let pool_offset = self.pos;
+        let pool_offset = self.w.position();
         for index in order {
             let entry = self.strings[index].clone();
             if entry.value == self.file_name {
-                self.ofs_file_name_string = self.pos;
+                self.ofs_file_name_string = self.w.position();
             }
-            let position = self.pos as u64;
+            let position = self.w.position() as u64;
             for offset in &entry.offsets {
                 self.write_u64_at(*offset, position);
             }
@@ -1637,7 +1645,7 @@ impl<'a> Saver<'a> {
             self.align(2);
         }
         self.align(2);
-        self.ofs_end_of_string_table = self.pos;
+        self.ofs_end_of_string_table = self.w.position();
         let pool_size = (self.ofs_end_of_string_table - pool_start) as u32;
         self.write_u32_at(self.ofs_string_pool, pool_offset as u32);
         self.write_u32_at(self.ofs_string_pool + 4, 0);
@@ -1656,7 +1664,7 @@ impl<'a> Saver<'a> {
     fn write_index_buffer(&mut self) {
         let alignment = self.data_alignment();
         self.align(alignment);
-        self.buffer_info_offset = self.pos;
+        self.buffer_info_offset = self.w.position();
         let meshes: Vec<Vec<u8>> = self
             .p
             .models
@@ -1665,9 +1673,7 @@ impl<'a> Saver<'a> {
             .flat_map(|shape| shape.meshes.iter().map(|mesh| mesh.data.clone()))
             .collect();
         for data in meshes {
-            if self.pos % 8 != 0 {
-                self.pos += 8 - self.pos % 8;
-            }
+            self.align(8);
             self.write(&data);
         }
         let offset = self.buffer_info_offset as u64;
@@ -1675,7 +1681,7 @@ impl<'a> Saver<'a> {
     }
 
     fn write_vertex_buffer_data(&mut self) {
-        self.ofs_vertex_buffer = self.pos;
+        self.ofs_vertex_buffer = self.w.position();
         let buffers: Vec<(Vec<u8>, usize)> = self
             .p
             .models
@@ -1690,9 +1696,7 @@ impl<'a> Saver<'a> {
             .collect();
         for (data, alignment) in buffers {
             let alignment = alignment.max(1);
-            if self.pos % alignment != 0 {
-                self.pos += alignment - self.pos % alignment;
-            }
+            self.align(alignment);
             self.write(&data);
         }
     }
@@ -1700,9 +1704,9 @@ impl<'a> Saver<'a> {
     fn write_memory_pool(&mut self) {
         let alignment = self.data_alignment();
         self.align(alignment);
-        let total = (self.pos - self.buffer_info_offset) as u32;
+        let total = (self.w.position() - self.buffer_info_offset) as u32;
         self.write_u32_at(self.ofs_total_buffer_size, total);
-        self.memory_pool_offset = self.pos;
+        self.memory_pool_offset = self.w.position();
         self.zeros(288);
         let pointers = self.memory_pool_pointers.clone();
         let offset = self.memory_pool_offset as u64;
@@ -1722,9 +1726,9 @@ impl<'a> Saver<'a> {
             };
             self.align(alignment);
             if block_index == 0 {
-                self.ofs_external_file_block = self.pos;
+                self.ofs_external_file_block = self.w.position();
             }
-            let position = self.pos as u64;
+            let position = self.w.position() as u64;
             for offset in offsets {
                 self.write_u64_at(*offset, position);
             }
@@ -1780,8 +1784,8 @@ impl<'a> Saver<'a> {
             };
             self.align(alignment);
         }
-        let table_start = self.pos as u32;
-        for entries in self.sections[1..].iter_mut() {
+        let table_start = self.w.position() as u32;
+        for entries in self.sections.iter_mut().skip(1) {
             entries.sort_by_key(|entry| entry.position);
         }
         let counts: Vec<u32> = self.sections.iter().map(|s| s.len() as u32).collect();
@@ -1871,9 +1875,9 @@ impl<'a> Saver<'a> {
 
     fn write_relocation_table(&mut self, sections: &[RelocSection]) {
         self.align(256);
-        let offset = self.pos as u32;
+        let offset = self.w.position() as u32;
         self.write(b"_RLT");
-        self.ofs_end_of_block = self.pos;
+        self.ofs_end_of_block = self.w.position();
         self.u32(offset);
         self.u32(sections.len() as u32);
         self.u32(0);

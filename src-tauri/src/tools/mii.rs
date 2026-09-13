@@ -126,9 +126,12 @@ fn unwrap_qr_store_data(wrapped: &[u8]) -> Result<Vec<u8>, String> {
         ));
     }
     let cipher = aes::Aes128::new_from_slice(&QR_KEY).map_err(|error| error.to_string())?;
-    let mut plaintext = wrapped[8..96].to_vec();
+    let (Some(body), Some(nonce_source)) = (wrapped.get(8..96), wrapped.get(..8)) else {
+        return Err("Mii QR payload is truncated".into());
+    };
+    let mut plaintext = body.to_vec();
     let mut nonce = [0_u8; 12];
-    nonce[..8].copy_from_slice(&wrapped[..8]);
+    nonce[..8].copy_from_slice(nonce_source);
 
     // CCM with a 12-byte nonce uses a three-byte, big-endian counter. Nintendo's
     // QR implementation has a known authentication-tag erratum, so decrypt the
@@ -148,9 +151,9 @@ fn unwrap_qr_store_data(wrapped: &[u8]) -> Result<Vec<u8>, String> {
     }
 
     let mut store_data = Vec::with_capacity(96);
-    store_data.extend_from_slice(&plaintext[..12]);
-    store_data.extend_from_slice(&wrapped[..8]);
-    store_data.extend_from_slice(&plaintext[12..]);
+    store_data.extend_from_slice(plaintext.get(..12).unwrap_or_default());
+    store_data.extend_from_slice(nonce_source);
+    store_data.extend_from_slice(plaintext.get(12..).unwrap_or_default());
     Ok(store_data)
 }
 
@@ -169,13 +172,14 @@ pub fn read_mii_data(path: &Path) -> Result<Vec<u8>, String> {
 }
 
 fn decode_utf16_name(bytes: &[u8], big_endian: bool) -> String {
-    let units = bytes.chunks_exact(2).map(|pair| {
-        if big_endian {
-            u16::from_be_bytes([pair[0], pair[1]])
-        } else {
-            u16::from_le_bytes([pair[0], pair[1]])
-        }
-    });
+    use crate::parser::binary::{BinaryReader, Endian};
+    let endian = if big_endian {
+        Endian::Big
+    } else {
+        Endian::Little
+    };
+    let mut reader = BinaryReader::with_endian(bytes, endian);
+    let units = std::iter::from_fn(|| reader.read_u16().ok());
     String::from_utf16_lossy(&units.take_while(|unit| *unit != 0).collect::<Vec<_>>())
         .trim()
         .to_string()
@@ -184,11 +188,11 @@ fn decode_utf16_name(bytes: &[u8], big_endian: bool) -> String {
 fn mii_name(data: &[u8]) -> Option<String> {
     let name = match data.len() {
         // nn::mii::CharInfo
-        88 => decode_utf16_name(&data[16..36], false),
+        88 => decode_utf16_name(data.get(16..36)?, false),
         // RFLCharData / RFLStoreData
-        74 | 76 => decode_utf16_name(&data[2..22], true),
+        74 | 76 => decode_utf16_name(data.get(2..22)?, true),
         // FFLiMiiDataCore / Official / StoreData
-        72 | 92 | 96 => decode_utf16_name(&data[26..46], false),
+        72 | 92 | 96 => decode_utf16_name(data.get(26..46)?, false),
         _ => return None,
     };
     (!name.is_empty()).then_some(name)
@@ -282,13 +286,13 @@ fn unique_sibling(path: &Path, extension: &str) -> PathBuf {
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or("mii");
-    for suffix in 1_u32.. {
+    for suffix in 1_u32..=u32::MAX {
         let candidate = parent.join(format!("{stem}_{suffix}.{extension}"));
         if !candidate.exists() {
             return candidate;
         }
     }
-    unreachable!()
+    parent.join(format!("{stem}_{}.{extension}", std::process::id()))
 }
 
 fn error_result(path: &Path, message: String) -> (OpenedFile<'static>, SendData) {
@@ -365,7 +369,9 @@ fn download_glb_data(mii_data: &[u8], output_base: &Path) -> Result<PathBuf, Str
     if glb.len() < 12 || !glb.starts_with(b"glTF") {
         return Err("Mii renderer did not return a valid GLB".into());
     }
-    let declared_length = u32::from_le_bytes(glb[8..12].try_into().unwrap()) as usize;
+    let declared_length = crate::parser::binary::BinaryReader::new(&glb)
+        .read_u32_at(8)
+        .map_err(|error| error.to_string())? as usize;
     if declared_length != glb.len() {
         return Err(format!(
             "incomplete GLB: header declares {declared_length} bytes, received {}",

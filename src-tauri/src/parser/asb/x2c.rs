@@ -36,7 +36,7 @@ pub fn read_x2c(
 ) -> io::Result<Vec<X2cEntry>> {
     r.seek(offset as usize)?;
     let count = r.read_u32()?;
-    let mut out = Vec::with_capacity(count as usize);
+    let mut out = Vec::new();
     for _ in 0..count {
         let source_node = r.read_u16()?;
         let target_node = r.read_u16()?;

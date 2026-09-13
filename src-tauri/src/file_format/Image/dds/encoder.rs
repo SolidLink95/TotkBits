@@ -93,7 +93,20 @@ pub fn replace_surface_from_png(
                 .saturating_mul((surface.height >> mip).max(1) as usize)
                 .saturating_mul(4);
             if layer == array_index && mip == mip_index {
-                surface.data[offset..offset + length].copy_from_slice(replacement.as_raw());
+                if replacement.as_raw().len() != length {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "replacement pixel data does not match the DDS surface size",
+                    ));
+                }
+                crate::parser::binary::BinaryPatcher::new(&mut surface.data)
+                    .write_bytes_at(offset, replacement.as_raw())
+                    .map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "DDS surface data is too small for the replacement",
+                        )
+                    })?;
             }
             offset = offset.saturating_add(length);
         }

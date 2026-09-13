@@ -40,13 +40,13 @@ pub fn read_command_groups(
     }
     reader.seek(offset as usize)?;
     let count = reader.read_u32()?;
-    let mut groups = Vec::with_capacity(count as usize);
+    let mut groups = Vec::new();
     for _ in 0..count {
         let values_offset = reader.read_u32()? as usize;
         let return_position = reader.position();
         reader.seek(values_offset)?;
         let value_count = reader.read_u32()?;
-        let mut values = Vec::with_capacity(value_count as usize);
+        let mut values = Vec::new();
         for _ in 0..value_count {
             values.push(pool.read_c_string_at(reader.read_u32()? as usize)?);
         }
@@ -65,14 +65,14 @@ pub fn read_transitions(
     reader.seek(offset as usize)?;
     let count = reader.read_u32()?;
     reader.read_u32()?;
-    let mut result = Vec::with_capacity(count as usize);
+    let mut result = Vec::new();
     for _ in 0..count {
         let entry_count = reader.read_u32()?;
         let unknown = reader.read_i32()?;
         let entries_offset = reader.read_u32()? as usize;
         let return_position = reader.position();
         reader.seek(entries_offset)?;
-        let mut entries = Vec::with_capacity(entry_count as usize);
+        let mut entries = Vec::new();
         for _ in 0..entry_count {
             entries.push(read_entry(reader, pool, groups)?);
         }

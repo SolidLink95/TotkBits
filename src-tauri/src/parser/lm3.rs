@@ -1016,7 +1016,7 @@ fn material_offsets(file52: &[u8], b007: Lm3SubEntry, material_size: u32) -> Vec
     let mut record_start = start;
     let mut position = start;
     while position + 28 <= end {
-        if file52[position..position + 28] == SENTINEL {
+        if file52.get(position..position + 28) == Some(&SENTINEL[..]) {
             // The material pointer is the last word of the record.
             let pointer = position
                 .checked_sub(4)
@@ -1059,7 +1059,9 @@ fn material_textures(
         return result;
     };
     let start = b006.offset as usize;
-    let material = &file52[start.min(file52.len())..(start + b006.size as usize).min(file52.len())];
+    let material = file52
+        .get(start.min(file52.len())..(start + b006.size as usize).min(file52.len()))
+        .unwrap_or_default();
     let offsets = material_offsets(file52, b007, b006.size);
     // A material runs until the next one begins; without a following pointer
     // this bounds how far a sweep may read.
@@ -1120,7 +1122,13 @@ fn material_textures(
         let mut blocks: Vec<Vec<usize>> = Vec::new();
         for index in unassigned {
             match blocks.last_mut() {
-                Some(block) if index - *block.last().unwrap() <= 2 => block.push(index),
+                Some(block)
+                    if block.last().is_some_and(|last| {
+                        index.checked_sub(*last).is_some_and(|gap| gap <= 2)
+                    }) =>
+                {
+                    block.push(index)
+                }
                 _ => blocks.push(vec![index]),
             }
         }
@@ -1171,7 +1179,7 @@ fn legacy_material_textures(
     let mut position = b007.offset as usize;
     let end = (b007.offset + b007.size) as usize;
     while bindings.len() < mesh_hashes.len() && position + 28 <= end.min(file52.len()) {
-        if file52[position..position + 28] == MARKER {
+        if file52.get(position..position + 28) == Some(&MARKER[..]) {
             // The binding pointer sits in the u32 before the marker. Push it
             // unconditionally so the count still matches the mesh count, as in
             // the reference extractor; a nonsensical value simply resolves to

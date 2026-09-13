@@ -304,13 +304,14 @@ impl<'a> TagProduct<'a> {
                         format!("TagProduct serialization failed: {error}"),
                     )
                 })?;
-            let header = binary.get_mut(2..4).ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "serialized TagProduct header is truncated",
-                )
-            })?;
-            header.copy_from_slice(&7u16.to_le_bytes());
+            crate::parser::binary::BinaryPatcher::new(&mut binary)
+                .write_u16_at(2, 7)
+                .map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "serialized TagProduct header is truncated",
+                    )
+                })?;
             return Ok(binary);
         }
 

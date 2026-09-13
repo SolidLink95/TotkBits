@@ -2,7 +2,7 @@ use base64::Engine;
 use serde::Serialize;
 use std::{io, path::Path};
 
-use crate::parser::binary::{BinaryReader, BinaryWriter, Endian as BinaryEndian};
+use crate::parser::binary::{BinaryPatcher, BinaryReader, BinaryWriter, Endian as BinaryEndian};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -227,11 +227,17 @@ impl ImageDocument {
             .map(|value| value as usize)
             .unwrap_or(allocation_end)
             .min(data.len());
+        let base_surface = data.get(base_offset..base_end).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "BNTX base surface lies outside the file",
+            )
+        })?;
         let mut decoded = super::switch_texture::decode(
             texture.width,
             texture.height,
             format,
-            &data[base_offset..base_end],
+            base_surface,
             texture.block_height_log2,
             texture.tile_mode == 1,
         )?;
@@ -897,8 +903,16 @@ impl ImageDocument {
                     "G1T texture payload is too small for replacement",
                 ));
             }
-            data[cursor..cursor + expected].fill(0);
-            data[cursor..cursor + encoded.len()].copy_from_slice(&encoded);
+            let slot = data.get_mut(cursor..cursor + expected).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "G1T texture payload is too small for replacement",
+                )
+            })?;
+            slot.fill(0);
+            BinaryPatcher::new(slot)
+                .write_bytes_at(0, &encoded)
+                .map_err(invalid)?;
             cursor += expected;
         }
         std::fs::write(target, data)
@@ -936,12 +950,24 @@ impl ImageDocument {
             ));
         }
         let length = u16::try_from(new_name.len())
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "BNTX name is too long"))?
-            .to_le_bytes();
-        data[texture.name_offset..texture.name_offset + 2].copy_from_slice(&length);
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "BNTX name is too long"))?;
+        let truncated = || {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "BNTX name slot lies outside the file",
+            )
+        };
         let start = texture.name_offset + 2;
-        data[start..start + texture.name_capacity].fill(0);
-        data[start..start + new_name.as_bytes().len()].copy_from_slice(new_name.as_bytes());
+        data.get_mut(start..start + texture.name_capacity)
+            .ok_or_else(truncated)?
+            .fill(0);
+        let mut patcher = BinaryPatcher::new(&mut data);
+        patcher
+            .write_u16_at(texture.name_offset, length)
+            .map_err(|_| truncated())?;
+        patcher
+            .write_bytes_at(start, new_name.as_bytes())
+            .map_err(|_| truncated())?;
         let output = match dictionary {
             Some(dictionary) => zstd.compress_with_dictionary(&data, dictionary)?,
             None => data,
@@ -1044,11 +1070,25 @@ impl ImageDocument {
                         format!("{name} mip {mip} does not fit the BNTX data slot"),
                     ));
                 }
-                data[mip_offset..mip_end].fill(0);
-                data[mip_offset..mip_offset + encoded.len()].copy_from_slice(&encoded);
+                let slot = data.get_mut(mip_offset..mip_end).ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("{name} mip {mip} lies outside the BNTX file"),
+                    )
+                })?;
+                slot.fill(0);
+                BinaryPatcher::new(slot)
+                    .write_bytes_at(0, &encoded)
+                    .map_err(invalid)?;
             }
-            data[texture.format_offset..texture.format_offset + 4]
-                .copy_from_slice(&bntx_format.to_le_bytes());
+            BinaryPatcher::new(&mut data)
+                .write_u32_at(texture.format_offset, bntx_format)
+                .map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "BNTX format field lies outside the file",
+                    )
+                })?;
             let output = match dictionary {
                 Some(dictionary) => zstd.compress_with_dictionary(&data, dictionary)?,
                 None => data,
@@ -1068,8 +1108,16 @@ impl ImageDocument {
                 "encoded BNTX surface does not fit its existing data slot",
             ));
         }
-        data[offset..end].fill(0);
-        data[offset..offset + encoded.len()].copy_from_slice(&encoded);
+        let slot = data.get_mut(offset..end).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "BNTX surface lies outside the file",
+            )
+        })?;
+        slot.fill(0);
+        BinaryPatcher::new(slot)
+            .write_bytes_at(0, &encoded)
+            .map_err(invalid)?;
         let output = match dictionary {
             Some(dictionary) => zstd.compress_with_dictionary(&data, dictionary)?,
             None => data,

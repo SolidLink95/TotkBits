@@ -3,6 +3,8 @@ use std::ffi::c_int;
 use std::ffi::{c_void, CStr};
 use std::io;
 
+use crate::parser::binary::{BinaryReader, BinaryWriter};
+
 const MCPK_MAGIC: &[u8; 4] = b"MCPK";
 const MCPK_VERSION: [u8; 4] = [1, 1, 0, 0];
 const MCPK_ALIGNMENT: usize = 0x1000;
@@ -72,12 +74,12 @@ impl MeshCodec {
 
         let compressed = BfresZstd155::compress(source)?;
 
-        let mut output = Vec::with_capacity(12 + compressed.len());
-        output.extend_from_slice(MCPK_MAGIC);
-        output.extend_from_slice(&MCPK_VERSION);
-        output.extend_from_slice(&flags.to_le_bytes());
-        output.extend_from_slice(&compressed);
-        Ok(output)
+        let mut output = BinaryWriter::new();
+        output.write_bytes(MCPK_MAGIC);
+        output.write_bytes(&MCPK_VERSION);
+        output.write_u32(flags);
+        output.write_bytes(&compressed);
+        Ok(output.into_inner())
     }
 
     fn decompress_loaded(data: &[u8]) -> io::Result<Vec<u8>> {
@@ -85,17 +87,19 @@ impl MeshCodec {
     }
 
     fn decompress_pseudo(data: &[u8]) -> io::Result<Vec<u8>> {
-        let flags = data
-            .get(8..12)
-            .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
-            .map(u32::from_le_bytes)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "truncated MCPK header"))?;
+        let reader = BinaryReader::new(data);
+        let flags = reader
+            .read_u32_at(8)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "truncated MCPK header"))?;
+        let payload = reader
+            .read_bytes_at(12, data.len().saturating_sub(12))
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "truncated MCPK header"))?;
         let size = ((flags >> 5) << (flags & 0xf)) as usize;
         let mut decompressor = zstd::bulk::Decompressor::new()?;
         decompressor.set_parameter(zstd::zstd_safe::DParameter::Format(
             zstd::zstd_safe::FrameFormat::Magicless,
         ))?;
-        let mut output = decompressor.decompress(&data[12..], size)?;
+        let mut output = decompressor.decompress(payload, size)?;
         if output.len() > size {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,

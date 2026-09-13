@@ -61,7 +61,7 @@ fn read_parameters(
     }
     let return_position = reader.position();
     reader.seek(array.offset()?)?;
-    let mut offsets = Vec::with_capacity(array.count as usize);
+    let mut offsets = Vec::new();
     for _ in 0..array.count {
         offsets.push(usize::try_from(reader.read_u64()?).map_err(|_| {
             io::Error::new(
@@ -84,7 +84,7 @@ fn read_triggers(reader: &mut BinaryReader<'_>, array: BaevArray) -> io::Result<
     }
     let return_position = reader.position();
     reader.seek(array.offset()?)?;
-    let mut values = Vec::with_capacity(array.count as usize);
+    let mut values = Vec::new();
     for _ in 0..array.count {
         let parameters = BaevArray::read(reader)?;
         let start_frame = f64::from(reader.read_f32()?);
@@ -104,7 +104,7 @@ fn read_holds(reader: &mut BinaryReader<'_>, array: BaevArray) -> io::Result<Vec
     }
     let return_position = reader.position();
     reader.seek(array.offset()?)?;
-    let mut values = Vec::with_capacity(array.count as usize);
+    let mut values = Vec::new();
     for _ in 0..array.count {
         let parameters = BaevArray::read(reader)?;
         let start_frame = f64::from(reader.read_f32()?);

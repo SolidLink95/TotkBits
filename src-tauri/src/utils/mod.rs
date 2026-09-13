@@ -13,7 +13,7 @@ pub use AppPaths::{exe_relative_path, running_exe_dir, Pathlib};
 pub use FileUtilities::{
     list_files_recursively, makedirs, read_string_from_file, write_string_to_file,
 };
-pub use PanicGuard::{catch_panic, panic_message};
+pub use PanicGuard::{catch_panic, catch_panic_with, panic_message};
 pub(crate) use Startup::cache_directory;
 pub use Startup::{get_startup_data, launch_weapon_icon_cache, StartupData};
 pub use ValueUtilities::{process_inline_content, update_json};

@@ -137,16 +137,14 @@ impl<'a> BymlFile<'_> {
     /// to roead's default version.
     pub fn to_binary_preserving_header(&self) -> io::Result<Vec<u8>> {
         let endian = self.endian.unwrap_or(roead::Endian::Little);
-        let version = self
-            .file_data
-            .data
-            .get(2..4)
-            .and_then(|bytes| <&[u8; 2]>::try_from(bytes).ok())
-            .map(|bytes| match endian {
-                roead::Endian::Little => u16::from_le_bytes(*bytes),
-                roead::Endian::Big => u16::from_be_bytes(*bytes),
-            })
-            .unwrap_or(4);
+        let binary_endian = match endian {
+            roead::Endian::Little => crate::parser::binary::Endian::Little,
+            roead::Endian::Big => crate::parser::binary::Endian::Big,
+        };
+        let version =
+            crate::parser::binary::BinaryReader::with_endian(&self.file_data.data, binary_endian)
+                .read_u16_at(2)
+                .unwrap_or(4);
         let mut data = Vec::new();
         self.pio
             .write(&mut Cursor::new(&mut data), endian, version.min(4))
@@ -156,17 +154,14 @@ impl<'a> BymlFile<'_> {
                     format!("BYML serialization failed: {error}"),
                 )
             })?;
-        let version_bytes = match endian {
-            roead::Endian::Little => version.to_le_bytes(),
-            roead::Endian::Big => version.to_be_bytes(),
-        };
-        let header = data.get_mut(2..4).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "serialized BYML header is truncated",
-            )
-        })?;
-        header.copy_from_slice(&version_bytes);
+        crate::parser::binary::BinaryPatcher::with_endian(&mut data, binary_endian)
+            .write_u16_at(2, version)
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "serialized BYML header is truncated",
+                )
+            })?;
         Ok(data)
     }
 

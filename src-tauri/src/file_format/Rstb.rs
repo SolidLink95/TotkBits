@@ -271,7 +271,13 @@ impl<'a> Restbl<'_> {
             }
             for file in list_files_recursively(&valid_path) {
                 // println!("  {}", &file);
-                let mut local_path = file.replace("\\", "/")[mod_romfs_path_len..].to_string();
+                let Some(mut local_path) = file
+                    .replace("\\", "/")
+                    .get(mod_romfs_path_len..)
+                    .map(str::to_string)
+                else {
+                    continue;
+                };
                 if local_path.starts_with("/") {
                     local_path = local_path[1..].to_string()
                 }

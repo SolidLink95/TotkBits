@@ -290,7 +290,7 @@ pub fn replace_with_skinned_cube(
         let buffer = buffers
             .get_mut(usize::from(attribute.buffer_index))
             .ok_or_else(|| invalid("template vertex attribute points at a missing buffer"))?;
-        let format = u16::from_be_bytes(attribute.format);
+        let format = crate::parser::binary::Endian::Big.u16_from_bytes(attribute.format);
         let stride = buffer.stride as usize;
         let name = attribute.name.as_str();
         let components = if name.starts_with("_p") || name.starts_with("_n") {
@@ -351,7 +351,16 @@ pub fn replace_with_skinned_cube(
                     attribute.offset
                 )));
             }
-            buffer.data[start..start + width].copy_from_slice(&scratch[..width]);
+            let source = scratch.get(..width).ok_or_else(|| {
+                invalid(format!("attribute {name} encoded fewer than {width} bytes"))
+            })?;
+            crate::parser::binary::BinaryPatcher::new(&mut buffer.data)
+                .write_bytes_at(start, source)
+                .map_err(|_| {
+                    invalid(format!(
+                        "attribute {name} of vertex {vertex} lies outside the vertex buffer"
+                    ))
+                })?;
         }
     }
     let vertex_buffer = VertexBuffer {
@@ -490,7 +499,7 @@ fn remap_skin_indices(buffer: &mut VertexBuffer, remap: &[u16]) -> io::Result<()
         if !attribute.name.starts_with("_i") {
             continue;
         }
-        let format = u16::from_be_bytes(attribute.format);
+        let format = crate::parser::binary::Endian::Big.u16_from_bytes(attribute.format);
         let width = match format {
             0x030B => 4,
             0x0309 => 2,

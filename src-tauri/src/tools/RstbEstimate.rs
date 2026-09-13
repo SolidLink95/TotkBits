@@ -513,15 +513,18 @@ fn mesh_codec_allocation(data: &[u8]) -> Result<u64, RstbEstimateError> {
 }
 
 fn sarc_declared_size(data: &[u8]) -> Option<u64> {
-    if data.len() < 0x0c || &data[..4] != b"SARC" {
+    use crate::parser::binary::{BinaryReader, Endian};
+    if data.len() < 0x0c || data.get(..4) != Some(b"SARC") {
         return None;
     }
-    let bytes: [u8; 4] = data[8..12].try_into().ok()?;
-    let size = match &data[6..8] {
-        [0xfe, 0xff] => u32::from_be_bytes(bytes),
-        [0xff, 0xfe] => u32::from_le_bytes(bytes),
+    let endian = match data.get(6..8) {
+        Some([0xfe, 0xff]) => Endian::Big,
+        Some([0xff, 0xfe]) => Endian::Little,
         _ => return None,
     };
+    let size = BinaryReader::with_endian(data, endian)
+        .read_u32_at(8)
+        .ok()?;
     (size != 0 && size as usize <= data.len()).then_some(u64::from(size))
 }
 
@@ -756,14 +759,10 @@ fn exb_allocation(
 }
 
 fn read_u32_le(data: &[u8], offset: usize, field: &str) -> Result<u32, RstbEstimateError> {
-    let end = checked_usize_add(offset, 4, field)?;
-    let bytes = data
-        .get(offset..end)
-        .ok_or_else(|| RstbEstimateError::new(format!("{field} is outside the file")))?;
-    let bytes: [u8; 4] = bytes
-        .try_into()
-        .map_err(|_| RstbEstimateError::new(format!("{field} must contain four bytes")))?;
-    Ok(u32::from_le_bytes(bytes))
+    checked_usize_add(offset, 4, field)?;
+    crate::parser::binary::BinaryReader::new(data)
+        .read_u32_at(offset)
+        .map_err(|_| RstbEstimateError::new(format!("{field} is outside the file")))
 }
 
 fn align_32(value: u64) -> Result<u64, RstbEstimateError> {

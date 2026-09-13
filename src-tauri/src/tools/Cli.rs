@@ -18,6 +18,37 @@ use std::{
     sync::Arc,
 };
 
+/// A CLI failure together with the process exit code it maps to. The
+/// Toolbox-compatible commands document 1 for bad arguments or input,
+/// 2 for a `--swap_model_name` on a multi-model file and 3 for any other
+/// failure; every other operation exits with 1.
+#[derive(Debug)]
+pub struct CliError {
+    pub code: i32,
+    pub message: String,
+}
+
+impl CliError {
+    pub fn new(code: i32, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+impl From<String> for CliError {
+    fn from(message: String) -> Self {
+        Self::new(1, message)
+    }
+}
+
+impl From<&str> for CliError {
+    fn from(message: &str) -> Self {
+        Self::new(1, message)
+    }
+}
+
 #[derive(Debug)]
 pub struct CliCommand {
     operation: String,
@@ -106,7 +137,9 @@ impl CliCommand {
                 input: PathBuf::new(),
                 output: PathBuf::new(),
                 replacement_folder: None,
-                extra: arguments[3..]
+                extra: arguments
+                    .get(3..)
+                    .unwrap_or_default()
                     .iter()
                     .map(|value| value.to_string_lossy().into_owned())
                     .collect(),
@@ -115,7 +148,7 @@ impl CliCommand {
         if operation == "decompress_dir" {
             let mut input = None;
             let mut output = None;
-            for pair in arguments[3..].chunks_exact(2) {
+            for pair in arguments.get(3..).unwrap_or_default().chunks_exact(2) {
                 match pair[0].to_str() {
                     Some("-i") => input = Some(absolute(&pair[1])),
                     Some("-o") => output = Some(absolute(&pair[1])),
@@ -160,11 +193,16 @@ impl CliCommand {
         }
     }
 
-    pub fn execute(&self) -> Result<(), String> {
+    pub fn execute(&self) -> Result<(), CliError> {
         if self.operation.is_empty() {
             return Err("missing CLI arguments".into());
         }
         match self.operation.as_str() {
+            "bfres_edit" => return self.bfres_edit(),
+            "bntx_edit" => return self.bntx_edit(),
+            _ => {}
+        }
+        let result = match self.operation.as_str() {
             "bin_to_text" => self.bin_to_text(),
             "text_to_bin" => self.text_to_bin(),
             "extract_archive" => self.extract_archive(),
@@ -181,11 +219,10 @@ impl CliCommand {
             "lm3_render_all" => self.lm3_render_all(),
             "lm3_slot_sizes" => self.lm3_slot_sizes(),
             "bfres_render" => self.bfres_render(),
-            "bfres_edit" => self.bfres_edit(),
-            "bntx_edit" => self.bntx_edit(),
             "create_weapon" => self.create_weapon(),
             value => Err(format!("unknown CLI operation: {value}")),
-        }
+        };
+        result.map_err(CliError::from)
     }
 
     fn zstd(&self) -> Result<Arc<crate::Zstd::TotkZstd<'static>>, String> {
@@ -520,12 +557,11 @@ impl CliCommand {
     /// exit code 1 for bad arguments or a non-BFRES input, 2 when
     /// `--swap_model_name` meets a file with two or more models (nothing is
     /// written), 3 for any other failure. The output is always pseudo-MCPK.
-    fn bfres_edit(&self) -> Result<(), String> {
+    fn bfres_edit(&self) -> Result<(), CliError> {
         use crate::file_format::Model3D::bfres::toolbox::{ExternalStrings, ResFile};
 
-        fn fail(code: i32, message: String) -> ! {
-            eprintln!("error: {message}");
-            std::process::exit(code);
+        fn fail(code: i32, message: impl Into<String>) -> CliError {
+            CliError::new(code, message)
         }
 
         let mut input = None;
@@ -539,54 +575,63 @@ impl CliCommand {
         let args = &self.extra;
         let mut i = 0;
         while i < args.len() {
-            let take = |i: &mut usize| -> String {
+            let take = |i: &mut usize| -> Result<String, CliError> {
                 *i += 1;
-                args.get(*i)
-                    .cloned()
-                    .unwrap_or_else(|| fail(1, format!("{} requires a value", args[*i - 1])))
+                args.get(*i).cloned().ok_or_else(|| {
+                    fail(
+                        1,
+                        format!(
+                            "{} requires a value",
+                            args.get(*i - 1).map(String::as_str).unwrap_or_default()
+                        ),
+                    )
+                })
             };
             match args[i].as_str() {
-                "-i" => input = Some(take(&mut i)),
-                "-o" => output = Some(take(&mut i)),
-                "--swap_int_name" => internal_name = Some(take(&mut i)),
-                "--swap_model_name" => model_name = Some(take(&mut i)),
-                "--fbx" => fbx = Some(take(&mut i)),
+                "-i" => input = Some(take(&mut i)?),
+                "-o" => output = Some(take(&mut i)?),
+                "--swap_int_name" => internal_name = Some(take(&mut i)?),
+                "--swap_model_name" => model_name = Some(take(&mut i)?),
+                "--fbx" => fbx = Some(take(&mut i)?),
                 "--import_skeleton" => import_skeleton = true,
-                "--totk_path" => totk_path = Some(take(&mut i)),
+                "--totk_path" => totk_path = Some(take(&mut i)?),
                 "--rename_tex" => {
-                    let from = take(&mut i);
-                    let to = take(&mut i);
+                    let from = take(&mut i)?;
+                    let to = take(&mut i)?;
                     if from.is_empty() {
-                        fail(1, "--rename_tex: the search string cannot be empty".into());
+                        return Err(fail(1, "--rename_tex: the search string cannot be empty"));
                     }
                     renames.push((from, to));
                 }
-                other => fail(1, format!("unknown argument {other}")),
+                other => return Err(fail(1, format!("unknown argument {other}"))),
             }
             i += 1;
         }
         let Some(input) = input else {
-            fail(1, "-i <input bfres> is required".into())
+            return Err(fail(1, "-i <input bfres> is required"));
         };
         let Some(output) = output else {
-            fail(1, "-o <output bfres> is required".into())
+            return Err(fail(1, "-o <output bfres> is required"));
         };
         if import_skeleton && fbx.is_none() {
-            fail(1, "--import_skeleton requires --fbx".into());
+            return Err(fail(1, "--import_skeleton requires --fbx"));
         }
         let input = Path::new(&input);
         let output = Path::new(&output);
         if !input.is_file() {
-            fail(1, format!("input file not found: {}", input.display()));
+            return Err(fail(
+                1,
+                format!("input file not found: {}", input.display()),
+            ));
         }
 
-        let mut raw = fs::read(input).unwrap_or_else(|e| fail(1, e.to_string()));
+        let mut raw = fs::read(input).map_err(|e| fail(1, e.to_string()))?;
         if crate::Settings::Magic::is_mcpk(&raw) {
             raw = crate::compression::meshcodec::MeshCodec::decompress(&raw)
-                .unwrap_or_else(|e| fail(1, format!("{}: {e}", input.display())));
+                .map_err(|e| fail(1, format!("{}: {e}", input.display())))?;
         }
         if !crate::Settings::Magic::is_bfres(&raw) {
-            fail(1, format!("{} is not a bfres file", input.display()));
+            return Err(fail(1, format!("{} is not a bfres file", input.display())));
         }
 
         let romfs = totk_path.map(PathBuf::from).or_else(|| {
@@ -599,17 +644,19 @@ impl CliCommand {
         let external = match romfs {
             Some(romfs) => match ExternalStrings::from_romfs(&romfs) {
                 Ok(table) => table,
-                Err(error) if needs_external => fail(3, error.to_string()),
+                Err(error) if needs_external => return Err(fail(3, error.to_string())),
                 Err(_) => ExternalStrings::empty(),
             },
-            None if needs_external => fail(
-                3,
-                "this file uses TOTK external strings; pass --totk_path <romfs> or configure the RomFS".into(),
-            ),
+            None if needs_external => {
+                return Err(fail(
+                    3,
+                    "this file uses TOTK external strings; pass --totk_path <romfs> or configure the RomFS",
+                ))
+            }
             None => ExternalStrings::empty(),
         };
 
-        let mut file = ResFile::load(&raw, &external).unwrap_or_else(|e| fail(3, e.to_string()));
+        let mut file = ResFile::load(&raw, &external).map_err(|e| fail(3, e.to_string()))?;
         println!(
             "opened {} ({} model(s))",
             input
@@ -619,27 +666,27 @@ impl CliCommand {
             file.model_count()
         );
         if model_name.is_some() && file.model_count() >= 2 {
-            fail(
+            return Err(fail(
                 2,
                 format!(
                     "--swap_model_name needs a single model but the file has {}; nothing written",
                     file.model_count()
                 ),
-            );
+            ));
         }
         if (model_name.is_some() || fbx.is_some()) && file.model_count() == 0 {
-            fail(3, "the file has no models to edit; nothing written".into());
+            return Err(fail(3, "the file has no models to edit; nothing written"));
         }
 
         if let Some(fbx) = fbx {
-            let fbx_bytes = fs::read(&fbx)
-                .unwrap_or_else(|e| fail(1, format!("fbx file not found: {fbx} ({e})")));
+            let fbx_bytes =
+                fs::read(&fbx).map_err(|e| fail(1, format!("fbx file not found: {fbx} ({e})")))?;
             let replaced =
                 crate::file_format::Model3D::bfres::BfresFile::replace_geometry_from_fbx(
                     &raw, &fbx_bytes,
                 )
-                .unwrap_or_else(|e| fail(3, e.to_string()));
-            file = ResFile::load(&replaced, &external).unwrap_or_else(|e| fail(3, e.to_string()));
+                .map_err(|e| fail(3, e.to_string()))?;
+            file = ResFile::load(&replaced, &external).map_err(|e| fail(3, e.to_string()))?;
             println!(
                 "replaced model {} from {fbx} (native importer, not byte-identical to Toolbox)",
                 file.first_model_name().unwrap_or_default()
@@ -648,7 +695,7 @@ impl CliCommand {
                 // Toolbox regenerates the skinning palette on every import.
                 let report = file
                     .regenerate_skinning_like_toolbox(&fbx_bytes)
-                    .unwrap_or_else(|e| fail(3, e.to_string()));
+                    .map_err(|e| fail(3, e.to_string()))?;
                 println!(
                     "regenerated skinning palette from {fbx}: {} smooth + {} rigid",
                     report.smooth_count, report.rigid_count
@@ -657,7 +704,7 @@ impl CliCommand {
             if import_skeleton {
                 let report = file
                     .import_skeleton_like_toolbox(&fbx_bytes)
-                    .unwrap_or_else(|e| fail(3, e.to_string()));
+                    .map_err(|e| fail(3, e.to_string()))?;
                 println!(
                     "imported skeleton from {fbx}: bones {} -> {} (added {}, removed {}, transforms updated {}; palette {} smooth + {} rigid)",
                     report.bones_before,
@@ -689,7 +736,7 @@ impl CliCommand {
                 file.first_model_name().unwrap_or_default()
             );
             file.rename_first_model(&name)
-                .unwrap_or_else(|e| fail(3, e.to_string()));
+                .map_err(|e| fail(3, e.to_string()))?;
         }
         if !renames.is_empty() {
             let mut changed = 0;
@@ -701,10 +748,10 @@ impl CliCommand {
 
         let saved = file
             .save_like_toolbox()
-            .unwrap_or_else(|e| fail(3, e.to_string()));
+            .map_err(|e| fail(3, e.to_string()))?;
         let compressed = crate::compression::meshcodec::MeshCodec::compress(&saved)
-            .unwrap_or_else(|e| fail(3, e.to_string()));
-        write_output(output, &compressed).unwrap_or_else(|e| fail(3, e));
+            .map_err(|e| fail(3, e.to_string()))?;
+        write_output(output, &compressed).map_err(|e| fail(3, e))?;
         println!("saved {} ({} bytes)", output.display(), compressed.len());
         Ok(())
     }
@@ -713,12 +760,11 @@ impl CliCommand {
     /// internal name, texture renames, image replacement and PNG export.
     /// The output is zstd compressed only when `-o` ends with `.zs`, and
     /// matches Toolbox's bytes in both cases.
-    fn bntx_edit(&self) -> Result<(), String> {
+    fn bntx_edit(&self) -> Result<(), CliError> {
         use crate::parser::bntx::{find_astc_encoder, format_name, BntxFile};
 
-        fn fail(code: i32, message: String) -> ! {
-            eprintln!("error: {message}");
-            std::process::exit(code);
+        fn fail(code: i32, message: impl Into<String>) -> CliError {
+            CliError::new(code, message)
         }
 
         let mut input = None;
@@ -731,28 +777,34 @@ impl CliCommand {
         let args = &self.extra;
         let mut i = 0;
         while i < args.len() {
-            let take = |i: &mut usize| -> String {
+            let take = |i: &mut usize| -> Result<String, CliError> {
                 *i += 1;
-                args.get(*i)
-                    .cloned()
-                    .unwrap_or_else(|| fail(1, format!("{} requires a value", args[*i - 1])))
+                args.get(*i).cloned().ok_or_else(|| {
+                    fail(
+                        1,
+                        format!(
+                            "{} requires a value",
+                            args.get(*i - 1).map(String::as_str).unwrap_or_default()
+                        ),
+                    )
+                })
             };
             match args[i].as_str() {
-                "-i" => input = Some(take(&mut i)),
-                "-o" => output = Some(take(&mut i)),
-                "--swap_int_name" => internal_name = Some(take(&mut i)),
-                "--export_tex" => export_dir = Some(take(&mut i)),
-                "--astcenc" => astcenc = Some(take(&mut i)),
+                "-i" => input = Some(take(&mut i)?),
+                "-o" => output = Some(take(&mut i)?),
+                "--swap_int_name" => internal_name = Some(take(&mut i)?),
+                "--export_tex" => export_dir = Some(take(&mut i)?),
+                "--astcenc" => astcenc = Some(take(&mut i)?),
                 "--rename_tex" => {
-                    let from = take(&mut i);
-                    let to = take(&mut i);
+                    let from = take(&mut i)?;
+                    let to = take(&mut i)?;
                     if from.is_empty() {
-                        fail(1, "--rename_tex: the search string cannot be empty".into());
+                        return Err(fail(1, "--rename_tex: the search string cannot be empty"));
                     }
                     renames.push((from, to));
                 }
                 "--replace_tex" => {
-                    let image = take(&mut i);
+                    let image = take(&mut i)?;
                     // The texture name is optional: the next token unless it is a switch.
                     let texture = match args.get(i + 1) {
                         Some(next) if !next.starts_with('-') => {
@@ -763,48 +815,51 @@ impl CliCommand {
                     };
                     replacements.push((image, texture));
                 }
-                other => fail(1, format!("unknown argument {other}")),
+                other => return Err(fail(1, format!("unknown argument {other}"))),
             }
             i += 1;
         }
         let Some(input) = input else {
-            fail(1, "-i <input bntx> is required".into())
+            return Err(fail(1, "-i <input bntx> is required"));
         };
         let Some(output) = output else {
-            fail(1, "-o <output bntx> is required".into())
+            return Err(fail(1, "-o <output bntx> is required"));
         };
         let input = Path::new(&input);
         let output = Path::new(&output);
         if !input.is_file() {
-            fail(1, format!("input file not found: {}", input.display()));
+            return Err(fail(
+                1,
+                format!("input file not found: {}", input.display()),
+            ));
         }
         for (image, _) in &replacements {
             if !Path::new(image).is_file() {
-                fail(1, format!("image file not found: {image}"));
+                return Err(fail(1, format!("image file not found: {image}")));
             }
         }
         let astcenc = astcenc.map(PathBuf::from);
         if let Some(path) = &astcenc {
             if !path.is_file() {
-                fail(1, format!("astcenc not found: {}", path.display()));
+                return Err(fail(1, format!("astcenc not found: {}", path.display())));
             }
         }
 
-        let mut raw = fs::read(input).unwrap_or_else(|e| fail(1, e.to_string()));
+        let mut raw = fs::read(input).map_err(|e| fail(1, e.to_string()))?;
         if crate::Settings::Magic::is_zstd(&raw) {
             raw = match zstd::decode_all(raw.as_slice()) {
                 Ok(data) => data,
                 Err(_) => {
                     let zstd = self.zstd()?;
                     zstd.try_decompress(&raw)
-                        .unwrap_or_else(|e| fail(1, format!("{}: {e}", input.display())))
+                        .map_err(|e| fail(1, format!("{}: {e}", input.display())))?
                 }
             };
         }
         if !crate::Settings::Magic::is_bntx(&raw) {
-            fail(1, format!("{} is not a bntx file", input.display()));
+            return Err(fail(1, format!("{} is not a bntx file", input.display())));
         }
-        let mut file = BntxFile::parse(&raw).unwrap_or_else(|e| fail(3, e.to_string()));
+        let mut file = BntxFile::parse(&raw).map_err(|e| fail(3, e.to_string()))?;
         let file_name = input
             .file_name()
             .and_then(|n| n.to_str())
@@ -832,7 +887,7 @@ impl CliCommand {
                 }
                 if name != old {
                     file.rename_texture(index, &name)
-                        .unwrap_or_else(|e| fail(3, e.to_string()));
+                        .map_err(|e| fail(3, e.to_string()))?;
                     changed += 1;
                     println!("texture: {old} -> {name}");
                 }
@@ -843,40 +898,46 @@ impl CliCommand {
             let index = match texture {
                 None => {
                     if file.textures.is_empty() {
-                        fail(3, "the file has no textures to replace; nothing written".into());
+                        return Err(fail(
+                            3,
+                            "the file has no textures to replace; nothing written",
+                        ));
                     }
                     0
                 }
-                Some(name) => file
+                Some(name) => match file
                     .textures
                     .iter()
                     .position(|t| t.name.eq_ignore_ascii_case(name))
-                    .unwrap_or_else(|| {
+                {
+                    Some(index) => index,
+                    None => {
                         let have: Vec<_> = file.textures.iter().map(|t| t.name.as_str()).collect();
-                        fail(
+                        return Err(fail(
                             3,
                             format!(
                                 "texture {name} not found in {file_name} (have: {}); nothing written",
                                 have.join(", ")
                             ),
-                        )
-                    }),
+                        ));
+                    }
+                },
             };
             let before = file.textures[index].describe();
             let encoder = find_astc_encoder(astcenc.as_deref());
             if file.textures[index].is_astc() && encoder.is_none() {
-                fail(
+                return Err(fail(
                     3,
                     format!(
                         "texture {} is {} and no astcenc executable was found; pass --astcenc <astcenc-avx2.exe>, set ASTCENC, or put it next to the executable",
                         file.textures[index].name,
                         format_name(file.textures[index].format)
                     ),
-                );
+                ));
             }
             let warning = file
                 .replace_texture_from_file(index, Path::new(image), encoder.as_deref())
-                .unwrap_or_else(|e| fail(3, e.to_string()));
+                .map_err(|e| fail(3, e.to_string()))?;
             if let Some(warning) = warning {
                 println!("warning: {warning}");
             }
@@ -899,8 +960,8 @@ impl CliCommand {
         } else {
             file.save_like_toolbox()
         }
-        .unwrap_or_else(|e| fail(3, e.to_string()));
-        write_output(output, &saved).unwrap_or_else(|e| fail(3, e));
+        .map_err(|e| fail(3, e.to_string()))?;
+        write_output(output, &saved).map_err(|e| fail(3, e))?;
         println!(
             "saved {} ({} bytes{})",
             output.display(),
@@ -915,10 +976,10 @@ impl CliCommand {
                 let png = dir.join(format!("{}.png", texture.name));
                 let image = file
                     .decode_texture(index)
-                    .unwrap_or_else(|e| fail(3, format!("{}: {e}", texture.name)));
+                    .map_err(|e| fail(3, format!("{}: {e}", texture.name)))?;
                 image
                     .save_with_format(&png, image::ImageFormat::Png)
-                    .unwrap_or_else(|e| fail(3, format!("{}: {e}", png.display())));
+                    .map_err(|e| fail(3, format!("{}: {e}", png.display())))?;
                 println!("exported {}", png.display());
             }
         }
@@ -1707,8 +1768,13 @@ fn strip_zs_suffix(path: &Path) -> PathBuf {
     else {
         return result;
     };
-    if name.to_ascii_lowercase().ends_with(".zs") {
-        result.set_file_name(&name[..name.len() - 3]);
+    if let Some(stem) = name
+        .len()
+        .checked_sub(3)
+        .filter(|_| name.to_ascii_lowercase().ends_with(".zs"))
+        .and_then(|end| name.get(..end))
+    {
+        result.set_file_name(stem);
     }
     result
 }

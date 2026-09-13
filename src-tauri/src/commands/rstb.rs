@@ -7,11 +7,16 @@ pub fn rstb_get_entries(
     documentId: String,
     entry: String,
 ) -> Option<SendData> {
-    with_document_mut!(
-        app_handle,
-        documentId,
-        app,
-        app.get_rstb_entries_by_query(entry)
+    crate::Settings::catch_panic_with(
+        move || {
+            with_document_mut!(
+                app_handle,
+                documentId,
+                app,
+                app.get_rstb_entries_by_query(entry)
+            )
+        },
+        |message| Some(crate::Open_and_Save::SendData::panicked(message)),
     )
 }
 
@@ -22,7 +27,10 @@ pub fn rstb_edit_entry(
     entry: String,
     val: String,
 ) -> Option<SendData> {
-    with_document_mut!(app_handle, documentId, app, app.rstb_edit_entry(entry, val))
+    crate::Settings::catch_panic_with(
+        move || with_document_mut!(app_handle, documentId, app, app.rstb_edit_entry(entry, val)),
+        |message| Some(crate::Open_and_Save::SendData::panicked(message)),
+    )
 }
 
 #[tauri::command]
@@ -31,5 +39,8 @@ pub fn rstb_remove_entry(
     documentId: String,
     entry: String,
 ) -> Option<SendData> {
-    with_document_mut!(app_handle, documentId, app, app.rstb_remove_entry(entry))
+    crate::Settings::catch_panic_with(
+        move || with_document_mut!(app_handle, documentId, app, app.rstb_remove_entry(entry)),
+        |message| Some(crate::Open_and_Save::SendData::panicked(message)),
+    )
 }

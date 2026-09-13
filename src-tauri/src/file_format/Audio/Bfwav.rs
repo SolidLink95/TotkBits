@@ -1,49 +1,13 @@
 use std::{fs::File, path::Path};
 
+use crate::parser::binary::{BinaryReader, BinaryWriter, Endian};
 use symphonia::core::{
     audio::SampleBuffer, codecs::DecoderOptions, errors::Error, formats::FormatOptions,
     io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
 };
 
-#[derive(Clone, Copy)]
-enum Endian {
-    Little,
-    Big,
-}
-
-impl Endian {
-    fn u16(self, b: &[u8]) -> u16 {
-        match self {
-            Self::Little => u16::from_le_bytes([b[0], b[1]]),
-            Self::Big => u16::from_be_bytes([b[0], b[1]]),
-        }
-    }
-    fn i16(self, b: &[u8]) -> i16 {
-        self.u16(b) as i16
-    }
-    fn u32(self, b: &[u8]) -> u32 {
-        match self {
-            Self::Little => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
-            Self::Big => u32::from_be_bytes([b[0], b[1], b[2], b[3]]),
-        }
-    }
-    fn put_u16(self, out: &mut [u8], value: u16) {
-        out.copy_from_slice(&match self {
-            Self::Little => value.to_le_bytes(),
-            Self::Big => value.to_be_bytes(),
-        });
-    }
-    fn put_u32(self, out: &mut [u8], value: u32) {
-        out.copy_from_slice(&match self {
-            Self::Little => value.to_le_bytes(),
-            Self::Big => value.to_be_bytes(),
-        });
-    }
-}
-
-fn range(data: &[u8], at: usize, size: usize) -> Result<&[u8], String> {
-    data.get(at..at + size)
-        .ok_or_else(|| "truncated BFWAV".into())
+fn truncated<T>(_: std::io::Error) -> Result<T, String> {
+    Err("truncated BFWAV".into())
 }
 
 fn align(value: usize, boundary: usize) -> usize {
@@ -62,18 +26,28 @@ pub fn decode(data: &[u8]) -> Result<DecodedAudio, String> {
     if !crate::Settings::Magic::is_bfwav(data) || data.len() < 0x20 {
         return Err("not a BFWAV file".into());
     }
-    let endian = match &data[4..6] {
+    let endian = match BinaryReader::new(data)
+        .read_bytes_at(4, 2)
+        .or_else(truncated)?
+    {
         b"\xfe\xff" => Endian::Big,
         b"\xff\xfe" => Endian::Little,
         _ => return Err("invalid BFWAV byte-order mark".into()),
     };
-    let blocks = endian.u16(range(data, 0x10, 2)?) as usize;
+    let reader = BinaryReader::with_endian(data, endian);
+    let u8_at = |at: usize| reader.read_u8_at(at).or_else(truncated);
+    let u16_at = |at: usize| reader.read_u16_at(at).or_else(truncated);
+    let i16_at = |at: usize| reader.read_i16_at(at).or_else(truncated);
+    let u32_at = |at: usize| reader.read_u32_at(at).or_else(truncated);
+    let bytes_at = |at: usize, len: usize| reader.read_bytes_at(at, len).or_else(truncated);
+
+    let blocks = u16_at(0x10)? as usize;
     let mut info = None;
     let mut audio = None;
     for index in 0..blocks {
         let at = 0x14 + index * 12;
-        let ty = endian.u16(range(data, at, 2)?);
-        let offset = endian.u32(range(data, at + 4, 4)?) as usize;
+        let ty = u16_at(at)?;
+        let offset = u32_at(at + 4)? as usize;
         match ty {
             0x7000 => info = Some(offset),
             0x7001 => audio = Some(offset),
@@ -82,17 +56,17 @@ pub fn decode(data: &[u8]) -> Result<DecodedAudio, String> {
     }
     let info = info.ok_or("BFWAV has no INFO block")?;
     let audio = audio.ok_or("BFWAV has no DATA block")?;
-    if range(data, info, 4)? != b"INFO" || range(data, audio, 4)? != b"DATA" {
+    if bytes_at(info, 4)? != b"INFO" || bytes_at(audio, 4)? != b"DATA" {
         return Err("invalid BFWAV blocks".into());
     }
     let stream = info + 8;
-    let codec = range(data, stream, 1)?[0];
-    let looping = range(data, stream + 1, 1)?[0] != 0;
-    let sample_rate = endian.u32(range(data, stream + 4, 4)?);
-    let loop_start = endian.u32(range(data, stream + 8, 4)?);
-    let sample_count = endian.u32(range(data, stream + 12, 4)?) as usize;
+    let codec = u8_at(stream)?;
+    let looping = u8_at(stream + 1)? != 0;
+    let sample_rate = u32_at(stream + 4)?;
+    let loop_start = u32_at(stream + 8)?;
+    let sample_count = u32_at(stream + 12)? as usize;
     let table = stream + 20;
-    let channel_count = endian.u32(range(data, table, 4)?) as usize;
+    let channel_count = u32_at(table)? as usize;
     if channel_count == 0 || channel_count > 32 {
         return Err(format!("invalid BFWAV channel count {channel_count}"));
     }
@@ -106,32 +80,37 @@ pub fn decode(data: &[u8]) -> Result<DecodedAudio, String> {
     let mut channels = Vec::with_capacity(channel_count);
     for channel in 0..channel_count {
         let reference = table + 4 + channel * 8;
-        if endian.u16(range(data, reference, 2)?) != 0x7100 {
+        if u16_at(reference)? != 0x7100 {
             return Err("invalid BFWAV channel reference".into());
         }
-        let channel_info = table + endian.u32(range(data, reference + 4, 4)?) as usize;
-        let audio_offset = endian.u32(range(data, channel_info + 4, 4)?) as usize;
-        let encoded = range(data, data_base + audio_offset, bytes_per_channel)?;
+        let channel_info = table + u32_at(reference + 4)? as usize;
+        let audio_offset = u32_at(channel_info + 4)? as usize;
+        // Validated to hold `bytes_per_channel` bytes, which bounds every
+        // allocation below.
+        let encoded = bytes_at(data_base + audio_offset, bytes_per_channel)?;
         let samples = match codec {
             0 => encoded
                 .iter()
                 .take(sample_count)
                 .map(|&v| (v as i8 as i16) << 8)
                 .collect(),
-            1 => encoded
-                .chunks_exact(2)
-                .take(sample_count)
-                .map(|v| endian.i16(v))
-                .collect(),
+            1 => {
+                let mut pcm = BinaryReader::with_endian(encoded, endian);
+                let mut samples = Vec::with_capacity(sample_count);
+                while samples.len() < sample_count && pcm.remaining() >= 2 {
+                    samples.push(pcm.read_i16().or_else(truncated)?);
+                }
+                samples
+            }
             2 => {
-                let adpcm_offset = endian.u32(range(data, channel_info + 12, 4)?) as usize;
+                let adpcm_offset = u32_at(channel_info + 12)? as usize;
                 let adpcm = channel_info + adpcm_offset;
                 let mut coefs = [0i16; 16];
                 for (i, coef) in coefs.iter_mut().enumerate() {
-                    *coef = endian.i16(range(data, adpcm + i * 2, 2)?);
+                    *coef = i16_at(adpcm + i * 2)?;
                 }
-                let mut hist1 = endian.i16(range(data, adpcm + 34, 2)?) as i32;
-                let mut hist2 = endian.i16(range(data, adpcm + 36, 2)?) as i32;
+                let mut hist1 = i16_at(adpcm + 34)? as i32;
+                let mut hist2 = i16_at(adpcm + 36)? as i32;
                 let mut decoded = Vec::with_capacity(sample_count);
                 for frame in encoded.chunks_exact(8) {
                     let header = frame[0];
@@ -192,25 +171,25 @@ pub fn pcm_to_wav(decoded: &DecodedAudio) -> Result<Vec<u8>, String> {
         return Err("audio channels have different lengths".into());
     }
     let data_size = sample_count * channel_count * 2;
-    let mut out = Vec::with_capacity(44 + data_size);
-    out.extend_from_slice(b"RIFF");
-    out.extend_from_slice(&(36u32 + data_size as u32).to_le_bytes());
-    out.extend_from_slice(b"WAVEfmt ");
-    out.extend_from_slice(&16u32.to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes());
-    out.extend_from_slice(&(channel_count as u16).to_le_bytes());
-    out.extend_from_slice(&decoded.sample_rate.to_le_bytes());
-    out.extend_from_slice(&(decoded.sample_rate * channel_count as u32 * 2).to_le_bytes());
-    out.extend_from_slice(&((channel_count * 2) as u16).to_le_bytes());
-    out.extend_from_slice(&16u16.to_le_bytes());
-    out.extend_from_slice(b"data");
-    out.extend_from_slice(&(data_size as u32).to_le_bytes());
+    let mut out = BinaryWriter::with_endian(Endian::Little);
+    out.write_bytes(b"RIFF");
+    out.write_u32(36u32 + data_size as u32);
+    out.write_bytes(b"WAVEfmt ");
+    out.write_u32(16);
+    out.write_u16(1);
+    out.write_u16(channel_count as u16);
+    out.write_u32(decoded.sample_rate);
+    out.write_u32(decoded.sample_rate * channel_count as u32 * 2);
+    out.write_u16((channel_count * 2) as u16);
+    out.write_u16(16);
+    out.write_bytes(b"data");
+    out.write_u32(data_size as u32);
     for sample in 0..sample_count {
         for channel in &decoded.channels {
-            out.extend_from_slice(&channel[sample].to_le_bytes());
+            out.write_i16(channel[sample]);
         }
     }
-    Ok(out)
+    Ok(out.into_inner())
 }
 
 pub fn decode_source(path: &Path) -> Result<DecodedAudio, String> {
@@ -287,7 +266,6 @@ pub fn encode_pcm16(audio: &DecodedAudio) -> Result<Vec<u8>, String> {
     if audio.channels.iter().any(|v| v.len() != samples) {
         return Err("audio channels have different lengths".into());
     }
-    let endian = Endian::Big;
     let channels = audio.channels.len();
     let table_size = 4 + channels * 8;
     let channel_info_size = channels * 16;
@@ -299,54 +277,55 @@ pub fn encode_pcm16(audio: &DecodedAudio) -> Result<Vec<u8>, String> {
     let channel_stride = align(channel_bytes, 0x20);
     let data_size = 8 + channel_stride * channels;
     let file_size = data_at + data_size;
-    let mut out = vec![0u8; file_size];
-    out[..4].copy_from_slice(b"FWAV");
-    out[4..6].copy_from_slice(b"\xfe\xff");
-    endian.put_u16(&mut out[6..8], header_size as u16);
-    endian.put_u32(&mut out[8..12], 0x0001_0200);
-    endian.put_u32(&mut out[12..16], file_size as u32);
-    endian.put_u16(&mut out[16..18], 2);
-    endian.put_u16(&mut out[0x14..0x16], 0x7000);
-    endian.put_u32(&mut out[0x18..0x1c], info_at as u32);
-    endian.put_u32(&mut out[0x1c..0x20], info_size as u32);
-    endian.put_u16(&mut out[0x20..0x22], 0x7001);
-    endian.put_u32(&mut out[0x24..0x28], data_at as u32);
-    endian.put_u32(&mut out[0x28..0x2c], data_size as u32);
-    out[info_at..info_at + 4].copy_from_slice(b"INFO");
-    endian.put_u32(&mut out[info_at + 4..info_at + 8], info_size as u32);
+    let mut out = BinaryWriter::with_endian(Endian::Big);
+    out.write_zeros(file_size);
+    out.seek(0);
+    out.write_bytes(b"FWAV");
+    out.write_bytes(b"\xfe\xff");
+    out.write_u16(header_size as u16);
+    out.write_u32(0x0001_0200);
+    out.write_u32(file_size as u32);
+    out.write_u16(2);
+    out.write_u16_at(0x14, 0x7000);
+    out.write_u32_at(0x18, info_at as u32);
+    out.write_u32_at(0x1c, info_size as u32);
+    out.write_u16_at(0x20, 0x7001);
+    out.write_u32_at(0x24, data_at as u32);
+    out.write_u32_at(0x28, data_size as u32);
+    out.seek(info_at);
+    out.write_bytes(b"INFO");
+    out.write_u32(info_size as u32);
     let stream = info_at + 8;
-    out[stream] = 1;
-    out[stream + 1] = audio.looping as u8;
-    endian.put_u32(&mut out[stream + 4..stream + 8], audio.sample_rate);
-    endian.put_u32(&mut out[stream + 8..stream + 12], audio.loop_start);
-    endian.put_u32(&mut out[stream + 12..stream + 16], samples as u32);
-    endian.put_u32(&mut out[stream + 16..stream + 20], audio.loop_start);
+    out.write_u8_at(stream, 1);
+    out.write_u8_at(stream + 1, audio.looping as u8);
+    out.write_u32_at(stream + 4, audio.sample_rate);
+    out.write_u32_at(stream + 8, audio.loop_start);
+    out.write_u32_at(stream + 12, samples as u32);
+    out.write_u32_at(stream + 16, audio.loop_start);
     let table = stream + 20;
-    endian.put_u32(&mut out[table..table + 4], channels as u32);
+    out.write_u32_at(table, channels as u32);
     let infos = table + table_size;
     for channel in 0..channels {
         let reference = table + 4 + channel * 8;
-        endian.put_u16(&mut out[reference..reference + 2], 0x7100);
-        endian.put_u32(
-            &mut out[reference + 4..reference + 8],
-            (infos + channel * 16 - table) as u32,
-        );
+        out.write_u16_at(reference, 0x7100);
+        out.write_u32_at(reference + 4, (infos + channel * 16 - table) as u32);
         let info = infos + channel * 16;
-        endian.put_u16(&mut out[info..info + 2], 0x1f00);
-        endian.put_u32(
-            &mut out[info + 4..info + 8],
-            (channel * channel_stride) as u32,
-        );
-        endian.put_u32(&mut out[info + 12..info + 16], u32::MAX);
+        out.write_u16_at(info, 0x1f00);
+        out.write_u32_at(info + 4, (channel * channel_stride) as u32);
+        out.write_u32_at(info + 12, u32::MAX);
     }
-    out[data_at..data_at + 4].copy_from_slice(b"DATA");
-    endian.put_u32(&mut out[data_at + 4..data_at + 8], data_size as u32);
+    out.seek(data_at);
+    out.write_bytes(b"DATA");
+    out.write_u32(data_size as u32);
     for (channel, values) in audio.channels.iter().enumerate() {
-        let mut at = data_at + 8 + channel * channel_stride;
+        out.seek(data_at + 8 + channel * channel_stride);
         for &value in values {
-            out[at..at + 2].copy_from_slice(&value.to_be_bytes());
-            at += 2;
+            out.write_i16(value);
         }
+    }
+    let out = out.into_inner();
+    if out.len() != file_size {
+        return Err("BFWAV layout mismatch".into());
     }
     Ok(out)
 }

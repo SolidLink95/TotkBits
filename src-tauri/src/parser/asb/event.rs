@@ -47,15 +47,15 @@ pub fn read_events(
     count: u32,
 ) -> io::Result<Vec<AsbEvent>> {
     r.seek(offset as usize)?;
-    let mut result = Vec::with_capacity(count as usize);
+    let mut result = Vec::new();
     for _ in 0..count {
         let at = r.read_u32()? as usize;
         let ret = r.position();
         r.seek(at)?;
         let tc = r.read_u32()?;
         let hc = r.read_u32()?;
-        let mut trigger_events = Vec::with_capacity(tc as usize);
-        let mut hold_events = Vec::with_capacity(hc as usize);
+        let mut trigger_events = Vec::new();
+        let mut hold_events = Vec::new();
         for _ in 0..tc {
             trigger_events.push(read_trigger(r, p)?)
         }
@@ -112,11 +112,11 @@ fn read_hold(r: &mut BinaryReader<'_>, p: &BinaryReader<'_>) -> io::Result<HoldE
 }
 fn read_parameters(r: &mut BinaryReader<'_>, p: &BinaryReader<'_>) -> io::Result<Vec<Value>> {
     let count = r.read_u32()?;
-    let mut offsets = Vec::with_capacity(count as usize);
+    let mut offsets = Vec::new();
     for _ in 0..count {
         offsets.push(r.read_u32()?)
     }
-    let mut values = Vec::with_capacity(count as usize);
+    let mut values = Vec::new();
     for tagged in offsets {
         let kind = match tagged >> 24 {
             0x40 => ParameterType::String,

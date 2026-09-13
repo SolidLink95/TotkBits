@@ -112,7 +112,7 @@ impl AampParameter {
             .iter()
             .position(|byte| *byte == 0)
             .unwrap_or(self.bytes.len());
-        String::from_utf8_lossy(&self.bytes[..end]).into_owned()
+        String::from_utf8_lossy(self.bytes.get(..end).unwrap_or_default()).into_owned()
     }
 }
 
@@ -279,7 +279,7 @@ impl AampList {
 
 impl AampTree {
     pub fn parse(bytes: &[u8]) -> io::Result<Self> {
-        if bytes.len() < 0x40 || &bytes[..4] != b"AAMP" {
+        if bytes.len() < 0x40 || bytes.get(..4) != Some(b"AAMP") {
             return Err(invalid("the file is not a complete AAMP archive"));
         }
         let declared = read_u32(bytes, 0x0c)? as usize;
@@ -360,19 +360,25 @@ impl AampTree {
         }
         let string_pool_size = bytes.len() - data_start - data_size;
 
-        bytes[..4].copy_from_slice(b"AAMP");
-        write_u32(&mut bytes, 0x04, self.archive_version);
-        write_u32(&mut bytes, 0x08, self.format_version);
+        BinaryPatcher::new(&mut bytes)
+            .write_bytes_at(0, b"AAMP")
+            .map_err(|_| invalid("AAMP header lies outside the sized archive"))?;
+        write_u32(&mut bytes, 0x04, self.archive_version)?;
+        write_u32(&mut bytes, 0x08, self.format_version)?;
         let total = to_u32(bytes.len())?;
-        write_u32(&mut bytes, 0x0c, total);
-        write_u32(&mut bytes, 0x10, self.parameter_io_version);
-        write_u32(&mut bytes, 0x14, to_u32(list_offsets[0] - HEADER_SIZE)?);
-        write_u32(&mut bytes, 0x18, to_u32(lists.len())?);
-        write_u32(&mut bytes, 0x1c, to_u32(objects.len())?);
-        write_u32(&mut bytes, 0x20, to_u32(parameters.len())?);
-        write_u32(&mut bytes, 0x24, to_u32(data_size)?);
-        write_u32(&mut bytes, 0x28, to_u32(string_pool_size)?);
-        write_u32(&mut bytes, 0x2c, 0);
+        write_u32(&mut bytes, 0x0c, total)?;
+        write_u32(&mut bytes, 0x10, self.parameter_io_version)?;
+        let first_list = list_offsets
+            .first()
+            .and_then(|offset| offset.checked_sub(HEADER_SIZE))
+            .ok_or_else(|| invalid("AAMP root list offset is missing"))?;
+        write_u32(&mut bytes, 0x14, to_u32(first_list)?)?;
+        write_u32(&mut bytes, 0x18, to_u32(lists.len())?)?;
+        write_u32(&mut bytes, 0x1c, to_u32(objects.len())?)?;
+        write_u32(&mut bytes, 0x20, to_u32(parameters.len())?)?;
+        write_u32(&mut bytes, 0x24, to_u32(data_size)?)?;
+        write_u32(&mut bytes, 0x28, to_u32(string_pool_size)?)?;
+        write_u32(&mut bytes, 0x2c, 0)?;
 
         // Lists index their children and objects by position in the flat
         // tables, so map each node back to the offset it was given.
@@ -381,7 +387,7 @@ impl AampTree {
         let mut parameter_cursor = 0usize;
         for (list_index, list) in lists.iter().enumerate() {
             let offset = list_offsets[list_index];
-            write_u32(&mut bytes, offset, list.hash);
+            write_u32(&mut bytes, offset, list.hash)?;
             // Children of this list sit contiguously after the ones already
             // handed out because the flat order is a pre-order walk in which
             // every list's own children come before any grandchildren.
@@ -405,7 +411,7 @@ impl AampTree {
             )?;
             for object in &list.objects {
                 let object_offset = object_offsets[object_cursor];
-                write_u32(&mut bytes, object_offset, object.hash);
+                write_u32(&mut bytes, object_offset, object.hash)?;
                 let first_parameter = parameter_offsets.get(parameter_cursor).copied();
                 write_relative(
                     &mut bytes,
@@ -416,7 +422,7 @@ impl AampTree {
                 )?;
                 for parameter in &object.parameters {
                     let parameter_offset = parameter_offsets[parameter_cursor];
-                    write_u32(&mut bytes, parameter_offset, parameter.hash);
+                    write_u32(&mut bytes, parameter_offset, parameter.hash)?;
                     let words = (value_offsets[parameter_cursor] - parameter_offset) / 4;
                     if words > 0x00ff_ffff {
                         return Err(invalid(
@@ -427,7 +433,7 @@ impl AampTree {
                         &mut bytes,
                         parameter_offset + 4,
                         (u32::from(parameter.kind) << 24) | words as u32,
-                    );
+                    )?;
                     parameter_cursor += 1;
                 }
                 object_cursor += 1;
@@ -502,11 +508,10 @@ fn read_parameter(bytes: &[u8], offset: usize) -> io::Result<AampParameter> {
         .ok_or_else(|| invalid("AAMP parameter offset overflows"))?;
     let size = value_size(bytes, value_offset, kind)?;
     ensure(bytes, value_offset, size)?;
-    Ok(AampParameter::raw(
-        hash,
-        kind,
-        bytes[value_offset..value_offset + size].to_vec(),
-    ))
+    let value = bytes
+        .get(value_offset..value_offset + size)
+        .ok_or_else(|| invalid("AAMP parameter value lies outside the file"))?;
+    Ok(AampParameter::raw(hash, kind, value.to_vec()))
 }
 
 fn value_size(bytes: &[u8], offset: usize, kind: u8) -> io::Result<usize> {
@@ -516,7 +521,9 @@ fn value_size(bytes: &[u8], offset: usize, kind: u8) -> io::Result<usize> {
         KIND_VEC3 => 12,
         KIND_VEC4 | KIND_COLOR | KIND_QUAT => 16,
         KIND_STRING32 | KIND_STRING64 | KIND_STRING256 | KIND_STRING_REF => {
-            let end = bytes[offset.min(bytes.len())..]
+            let end = bytes
+                .get(offset..)
+                .unwrap_or_default()
                 .iter()
                 .position(|byte| *byte == 0)
                 .ok_or_else(|| invalid("AAMP string parameter is not null terminated"))?;
@@ -555,7 +562,7 @@ fn write_relative(
     count: usize,
 ) -> io::Result<()> {
     if count == 0 {
-        write_u32(bytes, flags_offset, 0);
+        write_u32(bytes, flags_offset, 0)?;
         return Ok(());
     }
     let first = first_target.ok_or_else(|| invalid("AAMP table is missing its entries"))?;
@@ -563,7 +570,7 @@ fn write_relative(
     if words > 0xffff || count > 0xffff {
         return Err(invalid("AAMP collection exceeds the 16-bit layout range"));
     }
-    write_u32(bytes, flags_offset, ((count as u32) << 16) | words as u32);
+    write_u32(bytes, flags_offset, ((count as u32) << 16) | words as u32)?;
     Ok(())
 }
 
@@ -610,11 +617,12 @@ fn read_u32(bytes: &[u8], offset: usize) -> io::Result<u32> {
 }
 
 /// The archive is sized before any field is written, so a miss here is a
-/// layout bug rather than a malformed input.
-fn write_u32(bytes: &mut [u8], offset: usize, value: u32) {
+/// layout bug rather than a malformed input; it is still reported as an
+/// error instead of aborting the process.
+fn write_u32(bytes: &mut [u8], offset: usize, value: u32) -> io::Result<()> {
     BinaryPatcher::new(bytes)
         .write_u32_at(offset, value)
-        .expect("AAMP field lies inside the sized archive");
+        .map_err(|_| invalid("AAMP field lies outside the sized archive"))
 }
 
 fn read_c_string(bytes: &[u8], offset: usize) -> io::Result<String> {
@@ -625,7 +633,7 @@ fn read_c_string(bytes: &[u8], offset: usize) -> io::Result<String> {
         .iter()
         .position(|byte| *byte == 0)
         .unwrap_or(slice.len());
-    Ok(String::from_utf8_lossy(&slice[..end]).into_owned())
+    Ok(String::from_utf8_lossy(slice.get(..end).unwrap_or_default()).into_owned())
 }
 
 fn to_u32(value: usize) -> io::Result<u32> {

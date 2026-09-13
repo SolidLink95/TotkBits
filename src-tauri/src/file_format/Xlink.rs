@@ -148,16 +148,14 @@ fn xlink_data(zstd: &TotkZstd<'_>, data: &[u8]) -> io::Result<Vec<u8>> {
 }
 
 fn validate_modern_profile(data: &[u8]) -> io::Result<()> {
-    let version_bytes: [u8; 4] = data
-        .get(8..12)
-        .and_then(|bytes| bytes.try_into().ok())
-        .ok_or_else(|| {
+    let version = crate::parser::binary::BinaryReader::new(data)
+        .read_u32_at(8)
+        .map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 "XLink header is truncated before the profile version",
             )
         })?;
-    let version = u32::from_le_bytes(version_bytes);
     if matches!(version, 0x21 | 0x22 | 0x24) {
         return Ok(());
     }

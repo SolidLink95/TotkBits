@@ -144,10 +144,10 @@ impl AsbFile {
                 if file.baev.is_some() {
                     Self::offer_baev_save(opened_file);
                 }
-                if cached_asb.is_some_and(|cached| {
+                if let Some(cached) = cached_asb.filter(|cached| {
                     serde_yaml::to_value(cached).ok() == serde_yaml::to_value(&file.document).ok()
                 }) {
-                    return Ok(cached_asb.expect("checked cached ASB").to_bytes());
+                    return Ok(cached.to_bytes());
                 }
                 file.document.to_native_bytes()
             }

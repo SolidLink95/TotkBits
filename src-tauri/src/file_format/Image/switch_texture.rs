@@ -8,6 +8,21 @@ use tegra_swizzle::{
     BlockHeight,
 };
 
+/// Largest texture edge the Switch GPU addresses. A header claiming more is
+/// corrupt, and sizing buffers from it would abort the process on
+/// allocation failure instead of reporting an error.
+const MAX_TEXTURE_EDGE: u32 = 16384;
+
+fn check_dimensions(width: u32, height: u32) -> io::Result<()> {
+    if width == 0 || height == 0 || width > MAX_TEXTURE_EDGE || height > MAX_TEXTURE_EDGE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unsupported texture dimensions {width}x{height}"),
+        ));
+    }
+    Ok(())
+}
+
 pub fn decode_astc(
     width: u32,
     height: u32,
@@ -16,6 +31,7 @@ pub fn decode_astc(
     block_height: usize,
     block_height_log2: u8,
 ) -> io::Result<RgbaImage> {
+    check_dimensions(width, height)?;
     let mut block_dim = BlockDim::uncompressed();
     block_dim.width = NonZeroUsize::new(block_width)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ASTC block width is zero"))?;
@@ -91,10 +107,15 @@ pub fn decode(
     block_height_log2: u8,
     linear: bool,
 ) -> io::Result<RgbaImage> {
+    check_dimensions(width, height)?;
     let (block_width, block_height, bytes_per_block) = format_layout(format)?;
     let blocks_wide = width.div_ceil(block_width);
     let blocks_high = height.div_ceil(block_height);
-    let linear_size = (blocks_wide * blocks_high * bytes_per_block) as usize;
+    let linear_size = blocks_wide
+        .checked_mul(blocks_high)
+        .and_then(|blocks| blocks.checked_mul(bytes_per_block))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "texture size overflow"))?
+        as usize;
     let data = if linear {
         swizzled.get(..linear_size).unwrap_or(swizzled).to_vec()
     } else {

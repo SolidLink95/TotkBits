@@ -20,7 +20,7 @@ impl KidsObjFile {
         reader.skip(12)?;
         let entry_count = reader.read_u32()? as usize;
         reader.skip(8)?;
-        let mut textures = HashMap::with_capacity(entry_count);
+        let mut textures = HashMap::new();
 
         for _ in 0..entry_count {
             let signature = reader.read_u32()?;

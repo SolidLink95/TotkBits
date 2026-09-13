@@ -480,7 +480,10 @@ fn data(document: &BphclDocument) -> io::Result<&[u8]> {
         .tag
         .find("DATA")
         .ok_or_else(|| invalid("BPHCL has no DATA section"))?;
-    Ok(&document.raw[section.payload_offset..section.payload_end()])
+    document
+        .raw
+        .get(section.payload_offset..section.payload_end())
+        .ok_or_else(|| invalid("BPHCL DATA section exceeds the file"))
 }
 
 fn required_name<'a>(name: Option<&'a str>, description: &str) -> io::Result<&'a str> {

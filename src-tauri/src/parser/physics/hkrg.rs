@@ -604,7 +604,7 @@ impl<'a> Reader<'a> {
         let (bone_storage, bone_count) = self.array(key, bones_field)?;
         let (pose_storage, pose_count) = self.array(key, pose_field)?;
         let bone_stride = self.layout.pointer * 2;
-        let mut bones = Vec::with_capacity(bone_count);
+        let mut bones = Vec::new();
         if let Some(storage) = bone_storage {
             for index in 0..bone_count {
                 let bone = ObjectKey {

@@ -30,31 +30,51 @@ fn zstd(config: Arc<TotkConfig>) -> Result<Arc<TotkZstd<'static>>, String> {
 
 #[tauri::command]
 pub fn item_creator_catalog() -> Result<catalog::Catalog, String> {
-    let (config, romfs) = clean_romfs()?;
-    catalog::catalog(&romfs, zstd(config)?).map_err(|error| error.to_string())
+    crate::Settings::catch_panic_with(
+        move || {
+            let (config, romfs) = clean_romfs()?;
+            catalog::catalog(&romfs, zstd(config)?).map_err(|error| error.to_string())
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
 pub fn item_creator_template_info(actor: String) -> Result<catalog::TemplateInfo, String> {
-    let (config, romfs) = clean_romfs()?;
-    catalog::template_info(&romfs, &actor, zstd(config)?).map_err(|error| error.to_string())
+    crate::Settings::catch_panic_with(
+        move || {
+            let (config, romfs) = clean_romfs()?;
+            catalog::template_info(&romfs, &actor, zstd(config)?).map_err(|error| error.to_string())
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
 pub fn item_creator_icons(names: Vec<String>) -> HashMap<String, String> {
-    catalog::icons(&names)
+    crate::Settings::catch_panic_with(move || catalog::icons(&names), |_| HashMap::new())
 }
 
 #[tauri::command]
 pub fn item_creator_load_specs(path: String) -> Result<serde_json::Value, String> {
-    let text = fs::read_to_string(&path).map_err(|error| format!("{path}: {error}"))?;
-    serde_json::from_str(&text).map_err(|error| format!("{path}: {error}"))
+    crate::Settings::catch_panic_with(
+        move || {
+            let text = fs::read_to_string(&path).map_err(|error| format!("{path}: {error}"))?;
+            serde_json::from_str(&text).map_err(|error| format!("{path}: {error}"))
+        },
+        Err,
+    )
 }
 
 #[tauri::command]
 pub fn item_creator_save_specs(path: String, specs: serde_json::Value) -> Result<(), String> {
-    let text = serde_json::to_string_pretty(&specs).map_err(|error| error.to_string())?;
-    fs::write(&path, text).map_err(|error| format!("{path}: {error}"))
+    crate::Settings::catch_panic_with(
+        move || {
+            let text = serde_json::to_string_pretty(&specs).map_err(|error| error.to_string())?;
+            fs::write(&path, text).map_err(|error| format!("{path}: {error}"))
+        },
+        Err,
+    )
 }
 
 #[derive(Clone, Debug, Serialize)]

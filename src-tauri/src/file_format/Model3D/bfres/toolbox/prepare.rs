@@ -188,12 +188,12 @@ fn prepare_material(material: &mut Material) -> ShaderInfoV10 {
             sampler_indices.push(-1);
             continue;
         }
-        info.sampler_assigns.push(value.clone());
         let index = info
             .sampler_assigns
             .iter()
             .position(|v| v == value)
-            .unwrap();
+            .unwrap_or(info.sampler_assigns.len());
+        info.sampler_assigns.push(value.clone());
         sampler_indices.push(index as i8);
     }
     for (_, value) in &material.attrib_assign {
@@ -201,8 +201,12 @@ fn prepare_material(material: &mut Material) -> ShaderInfoV10 {
             attribute_indices.push(-1);
             continue;
         }
+        let index = info
+            .attrib_assigns
+            .iter()
+            .position(|v| v == value)
+            .unwrap_or(info.attrib_assigns.len());
         info.attrib_assigns.push(value.clone());
-        let index = info.attrib_assigns.iter().position(|v| v == value).unwrap();
         attribute_indices.push(index as i8);
     }
     let mut choice = 0i16;

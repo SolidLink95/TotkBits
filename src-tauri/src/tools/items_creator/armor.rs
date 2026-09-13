@@ -4,8 +4,8 @@
 //! compendium entry, but it does have sixteen dye icons, a shared `.anim`
 //! BFRES per model project and an `ArmorParam` component that carries the
 //! defense value. The clone keeps everything name-scoped under a new model
-//! project (`Armor_001` → `Armor_900`), drops cloth physics (the placeholder
-//! geometry has nothing to simulate) and severs the upgrade / hood-swap links.
+//! project (`Armor_001` → `Armor_900`), keeps the template's physics unless a
+//! donor actor replaces it, and severs the upgrade / hood-swap links.
 
 use super::{
     actor_pack,
@@ -85,7 +85,8 @@ pub struct ArmorSpec {
     pub model: Option<CubeModelSpec>,
     /// Existing vanilla actor whose `Phive/*` and `Component/Physics/*`
     /// entries are transferred into the clone (cloth, helper bones, ...).
-    /// Without it the clone binds the dummy physics component.
+    /// Empty, malformed or non-existent actors are ignored and the template's
+    /// own physics entries are preserved.
     #[serde(default, alias = "physics_actor")]
     pub physics: Option<String>,
     /// With a custom FBX: replace the bones with the FBX skeleton (Toolbox
@@ -223,9 +224,8 @@ impl ArmorSpec {
                 "choose either a custom FBX or the placeholder cube, not both",
             ));
         }
-        if let Some(actor) = &self.physics {
-            validate_actor_name(actor)?;
-        }
+        // `physics` is not validated: an unusable donor falls back to the
+        // template's own physics files instead of failing the build.
         Ok(())
     }
 
@@ -326,8 +326,9 @@ impl ArmorSpec {
     }
 
     /// Clones the template pack under the new project name. Every SARC entry
-    /// and BYML string scoped to the template project is renamed, cloth physics
-    /// is dropped and ArmorParam receives the custom defense/series values.
+    /// and BYML string scoped to the template project is renamed, the physics
+    /// bundle is swapped only when a usable donor actor is given, and
+    /// ArmorParam receives the custom defense/series values.
     fn clone_actor_pack(
         &self,
         clean_romfs: &Path,
@@ -350,23 +351,16 @@ impl ArmorSpec {
         let buying = self.vendors.first().and_then(|vendor| vendor.buying_price);
         let selling = self.vendors.first().and_then(|vendor| vendor.selling_price);
 
-        // Physics: the template's own cloth is dropped (it belongs to the mesh
-        // being replaced); an explicit donor actor's Phive/Physics entries are
-        // transferred instead, otherwise the dummy component is bound.
-        let physics = match &self.physics {
-            Some(actor) => Some(actor_pack::prepare_physics_entries(
-                clean_romfs,
-                actor,
-                zstd.clone(),
-            )?),
-            None => None,
-        };
-        let physics_ref = physics
-            .as_ref()
-            .map(|(reference, _)| reference.clone())
-            .unwrap_or_else(|| {
-                "?Component/Physics/Dummy.engine__component__PhysicsParam.bgyml".to_owned()
-            });
+        // Physics: with a usable donor actor its Phive/Physics entries replace
+        // the template's; otherwise the template's own physics files and its
+        // PhysicsRef are preserved (renamed with the rest of the pack).
+        let physics = actor_pack::optional_physics_entries(
+            clean_romfs,
+            self.physics.as_deref(),
+            zstd.clone(),
+        );
+        let replace_physics = physics.is_some();
+        let physics_ref = physics.as_ref().map(|(reference, _)| reference.clone());
         let mut entries: Vec<(String, Vec<u8>)> = physics
             .map(|(_, injected)| {
                 injected
@@ -379,7 +373,9 @@ impl ArmorSpec {
             let name = file
                 .name()
                 .ok_or_else(|| invalid_data("template armor pack contains an unnamed entry"))?;
-            if name.starts_with("Phive/") || name.starts_with("Component/Physics/") {
+            if replace_physics
+                && (name.starts_with("Phive/") || name.starts_with("Component/Physics/"))
+            {
                 continue;
             }
             let new_name = replace_project(name, &template_project, &project);
@@ -390,11 +386,13 @@ impl ArmorSpec {
             let mut document = pack.byml_file(name)?;
             rename_project_strings(&mut document.pio, &template_project, &project);
             if new_name == actor_file {
-                let components = map_child_mut(&mut document.pio, "Components")?;
-                components.insert(
-                    "PhysicsRef".into(),
-                    Byml::String(physics_ref.as_str().into()),
-                );
+                if let Some(physics_ref) = &physics_ref {
+                    let components = map_child_mut(&mut document.pio, "Components")?;
+                    components.insert(
+                        "PhysicsRef".into(),
+                        Byml::String(physics_ref.as_str().into()),
+                    );
+                }
             } else if new_name == armor_file {
                 let map = document
                     .pio

@@ -317,6 +317,21 @@ impl BinaryWriter {
             self.data.resize(position, 0);
         }
     }
+    /// Moves the cursor without growing the buffer, matching a `MemoryStream`
+    /// seek: the bytes are only materialised once something is written there.
+    pub fn set_position(&mut self, position: usize) {
+        self.position = position;
+    }
+    /// Advances the cursor by `count` zero bytes, overwriting anything already
+    /// there.
+    pub fn write_zeros(&mut self, count: usize) {
+        let end = self.position.saturating_add(count);
+        if end > self.data.len() {
+            self.data.resize(end, 0);
+        }
+        self.data[self.position..end].fill(0);
+        self.position = end;
+    }
     pub fn truncate(&mut self, position: usize) {
         self.data.truncate(position);
         self.position = self.position.min(position);
@@ -333,7 +348,7 @@ impl BinaryWriter {
         Ok(())
     }
     pub fn write_bytes(&mut self, value: &[u8]) {
-        let end = self.position + value.len();
+        let end = self.position.saturating_add(value.len());
         if end > self.data.len() {
             self.data.resize(end, 0);
         }

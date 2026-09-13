@@ -16,7 +16,7 @@ pub fn read_tags(
 ) -> io::Result<Vec<String>> {
     r.seek(offset as usize)?;
     let count = r.read_u32()?;
-    let mut out = Vec::with_capacity(count as usize);
+    let mut out = Vec::new();
     for _ in 0..count {
         out.push(p.read_c_string_at(r.read_u32()? as usize)?)
     }
@@ -32,7 +32,7 @@ pub fn read_x68(
     };
     r.seek(offset as usize)?;
     let count = r.read_u32()?;
-    let mut out = Vec::with_capacity(count as usize);
+    let mut out = Vec::new();
     for _ in 0..count {
         out.push(X68Entry {
             name: p.read_c_string_at(r.read_u32()? as usize)?,

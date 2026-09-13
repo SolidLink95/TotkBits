@@ -356,7 +356,9 @@ fn read_fixup_words(
         }
         records.push(words);
     }
-    if data[reader.position()..range.end]
+    if data
+        .get(reader.position()..range.end)
+        .ok_or_else(|| invalid("HKCL fixup section exceeds input"))?
         .iter()
         .any(|byte| *byte != 0xff)
     {
@@ -459,7 +461,7 @@ fn parse_type_names(data: &[u8], sections: &[DiscoveredSection]) -> io::Result<V
     if type_count == 0 {
         type_count = 1;
     }
-    let mut out = Vec::with_capacity(type_count);
+    let mut out = Vec::new();
     out.push(String::new());
     for _ in 1..type_count {
         let string_index = read_varuint(data, &mut cursor, type_names.end)? as usize;
@@ -580,11 +582,14 @@ fn read_null_terminated_strings(data: &[u8], payload: Range<usize>) -> Vec<Strin
         if cursor == payload.end {
             break;
         }
-        let next = data[cursor..payload.end]
+        let Some(window) = data.get(cursor..payload.end) else {
+            break;
+        };
+        let next = window
             .iter()
             .position(|byte| *byte == 0)
-            .unwrap_or(payload.end - cursor);
-        out.push(String::from_utf8_lossy(&data[cursor..cursor + next]).into_owned());
+            .unwrap_or(window.len());
+        out.push(String::from_utf8_lossy(&window[..next]).into_owned());
         cursor += next + 1;
     }
     out

@@ -26,7 +26,7 @@ pub fn read_keys(data: &[u8], offset: u64) -> io::Result<Vec<String>> {
     }
     let count = reader.read_u32()? as usize;
     reader.skip(16)?;
-    let mut keys = Vec::with_capacity(count);
+    let mut keys = Vec::new();
     for _ in 0..count {
         reader.skip(8)?;
         keys.push(read_string_ptr(&mut reader, data)?);

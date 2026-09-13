@@ -73,7 +73,7 @@ impl Asb {
         reader.seek(header.local_blackboard_offset as usize)?;
         let local_blackboard_parameters = LocalBlackboard::read(&mut reader, &pool)?;
         reader.seek(if header.version == 0x417 { 0x6c } else { 0x68 })?;
-        let mut commands = Vec::with_capacity(header.command_count as usize);
+        let mut commands = Vec::new();
         for _ in 0..header.command_count {
             commands.push(AsbCommand::read(&mut reader, &pool, header.version)?);
         }
@@ -86,7 +86,7 @@ impl Asb {
             &command_groups,
         )?;
         reader.seek(header.slots_offset as usize)?;
-        let mut animation_slots = Vec::with_capacity(header.slot_count as usize);
+        let mut animation_slots = Vec::new();
         for _ in 0..header.slot_count {
             animation_slots.push(AnimationSlot::read(&mut reader, &pool)?);
         }

@@ -192,7 +192,7 @@ impl AinbDocument {
             let count = reader.read_u16()?;
             reader.read_i16()?;
             reader.read_i16()?;
-            let mut raw_new_indices = Vec::with_capacity(count as usize);
+            let mut raw_new_indices = Vec::new();
             let replacements = (0..count)
                 .map(|_| {
                     let kind = ReplacementType::from_raw(reader.read_u8()?)?;

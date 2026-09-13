@@ -484,6 +484,20 @@ impl Default for SendData {
     }
 }
 impl SendData {
+    /// The universal failure payload: `tab: "ERROR"` with the message in the
+    /// status bar. Used when a command panics instead of returning an error,
+    /// so the frontend can roll the tab back the same way it does for any
+    /// other failure.
+    pub fn panicked(message: String) -> Self {
+        let status_text = format!("error: {message}");
+        Self {
+            tab: "ERROR".to_string(),
+            text: status_text.clone(),
+            status_text,
+            ..Self::default()
+        }
+    }
+
     pub fn get_file_label(&mut self, filetype: TotkFileType, endian: Option<roead::Endian>) {
         self.set_file_metadata(filetype, None);
         let mut e = String::new();

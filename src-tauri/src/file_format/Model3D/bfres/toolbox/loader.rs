@@ -66,7 +66,7 @@ impl<'a> Loader<'a> {
     /// Reads `count` v10 user data records (32 bytes each).
     fn user_data(&self, array: usize, count: usize) -> Result<Vec<UserData>, BfresError> {
         let d = self.data;
-        let mut list = Vec::with_capacity(count);
+        let mut list = Vec::new();
         if array == 0 {
             return Ok(list);
         }
@@ -123,18 +123,18 @@ impl<'a> Loader<'a> {
         let shape_array = read_u64(d, header + 40)? as usize;
         let material_array = read_u64(d, header + 56)? as usize;
 
-        let mut vertex_buffers = Vec::with_capacity(vertex_count);
-        let mut vertex_positions = Vec::with_capacity(vertex_count);
+        let mut vertex_buffers = Vec::new();
+        let mut vertex_positions = Vec::new();
         for index in 0..vertex_count {
             let offset = vertex_array + index * 88;
             vertex_positions.push(offset);
             vertex_buffers.push(self.vertex_buffer(offset)?);
         }
-        let mut shapes = Vec::with_capacity(shape_count);
+        let mut shapes = Vec::new();
         for index in 0..shape_count {
             shapes.push(self.shape(shape_array + index * 96, &vertex_positions)?);
         }
-        let mut materials = Vec::with_capacity(material_count);
+        let mut materials = Vec::new();
         for index in 0..material_count {
             materials.push(self.material(material_array + index * 176)?);
         }
@@ -165,7 +165,7 @@ impl<'a> Loader<'a> {
         let bone_count = read_u16(d, header + 56)? as usize;
         let smooth_count = read_u16(d, header + 58)? as usize;
         let rigid_count = read_u16(d, header + 60)? as usize;
-        let mut bones = Vec::with_capacity(bone_count);
+        let mut bones = Vec::new();
         for index in 0..bone_count {
             let b = bone_array + index * 88;
             let f = |o: usize| read_f32(d, b + o);
@@ -183,7 +183,7 @@ impl<'a> Loader<'a> {
                     .user_data(read_u64(d, b + 8)? as usize, read_u16(d, b + 42)? as usize)?,
             });
         }
-        let mut inverse_matrices = Vec::with_capacity(smooth_count);
+        let mut inverse_matrices = Vec::new();
         if inverse != 0 {
             for index in 0..smooth_count {
                 let base = inverse + index * 48;
@@ -223,7 +223,7 @@ impl<'a> Loader<'a> {
         let attribute_count = d[header + 76] as usize;
         let buffer_count = d[header + 77] as usize;
         let gpu_alignment = read_u16(d, header + 86)?;
-        let mut attributes = Vec::with_capacity(attribute_count);
+        let mut attributes = Vec::new();
         for index in 0..attribute_count {
             let a = attribute_array + index * 16;
             attributes.push(VertexAttrib {
@@ -235,7 +235,7 @@ impl<'a> Loader<'a> {
         }
         let alignment = usize::from(gpu_alignment.max(1));
         let mut position = self.buffer_offset + buffer_offset;
-        let mut buffers = Vec::with_capacity(buffer_count);
+        let mut buffers = Vec::new();
         for index in 0..buffer_count {
             let size = read_u32(d, sizes + index * 16)? as usize;
             let stride = read_u32(d, strides + index * 16)?;
@@ -277,7 +277,7 @@ impl<'a> Loader<'a> {
             .position(|position| *position == vertex_pointer)
             .map(|index| index as u16)
             .unwrap_or(read_u16(d, header + 86)?);
-        let mut meshes = Vec::with_capacity(mesh_count);
+        let mut meshes = Vec::new();
         for index in 0..mesh_count {
             let m = mesh_array + index * 56;
             let submesh_array = read_u64(d, m)? as usize;
@@ -285,7 +285,7 @@ impl<'a> Loader<'a> {
             let face_offset = read_u32(d, m + 32)? as usize;
             let submesh_count = read_u16(d, m + 52)? as usize;
             let size = read_u32(d, size_record)? as usize;
-            let mut submeshes = Vec::with_capacity(submesh_count);
+            let mut submeshes = Vec::new();
             for sub in 0..submesh_count {
                 submeshes.push((
                     read_u32(d, submesh_array + sub * 8)?,
@@ -303,7 +303,7 @@ impl<'a> Loader<'a> {
             });
         }
         let bounding_count: usize = meshes.iter().map(|mesh| mesh.submeshes.len() + 1).sum();
-        let mut boundings = Vec::with_capacity(bounding_count);
+        let mut boundings = Vec::new();
         if bounds_pointer != 0 {
             for index in 0..bounding_count {
                 let base = bounds_pointer + index * 24;
@@ -319,7 +319,7 @@ impl<'a> Loader<'a> {
         } else {
             skin_count
         };
-        let mut radius_list = Vec::with_capacity(radius_count);
+        let mut radius_list = Vec::new();
         if radius_pointer != 0 && mesh_count > 0 {
             for index in 0..radius_count {
                 let base = radius_pointer + index * 16;
@@ -400,7 +400,7 @@ impl<'a> Loader<'a> {
         let param_count = read_u16(d, assign + 0x4a)? as usize;
         let param_size = read_u16(d, assign + 0x4c)? as usize;
 
-        let mut render_infos = Vec::with_capacity(ri_count);
+        let mut render_infos = Vec::new();
         for index in 0..ri_count {
             let record = ri_list + index * 16;
             let name = self.string_at(record)?;
@@ -431,7 +431,7 @@ impl<'a> Loader<'a> {
             render_infos.push(info);
         }
 
-        let mut shader_params = Vec::with_capacity(param_count);
+        let mut shader_params = Vec::new();
         for index in 0..param_count {
             let record = param_list + index * 24;
             shader_params.push(ShaderParam {
@@ -453,10 +453,10 @@ impl<'a> Loader<'a> {
         } else {
             None
         };
-        let mut toggles = Vec::with_capacity(bool_count);
+        let mut toggles = Vec::new();
         if opt_toggles != 0 {
             let flag_count = 1 + bool_count / 64;
-            let mut flags = Vec::with_capacity(flag_count);
+            let mut flags = Vec::new();
             for index in 0..flag_count {
                 flags.push(read_u64(d, opt_toggles + index * 8)?);
             }
@@ -508,12 +508,14 @@ impl<'a> Loader<'a> {
         let options = assign_pairs(&opt_dict, &choices, &opt_index_list);
 
         let sampler_names = self.dict_keys(sampler_dict)?;
-        let mut samplers = Vec::with_capacity(sampler_count);
+        let mut samplers = Vec::new();
         for index in 0..sampler_count {
             let raw = self.bytes(sampler_array + index * 32, 32)?;
             samplers.push(Sampler {
                 name: sampler_names.get(index).cloned().unwrap_or_default(),
-                raw: raw.try_into().unwrap(),
+                raw: raw.try_into().map_err(|_| {
+                    BfresError::new(sampler_array + index * 32, "sampler record is not 32 bytes")
+                })?,
             });
         }
 
@@ -632,7 +634,7 @@ pub fn load(data: &[u8], ext: &ExternalStrings) -> Result<ResFile, BfresError> {
         return Err(BfresError::new(block, "missing _STR block"));
     }
     let string_count = read_u32(data, block + 0x10)? as usize;
-    let mut original_strings = Vec::with_capacity(string_count + 1);
+    let mut original_strings = Vec::new();
     let mut cursor = block + 0x14;
     for _ in 0..=string_count {
         let len = read_u16(data, cursor)? as usize;
@@ -642,7 +644,7 @@ pub fn load(data: &[u8], ext: &ExternalStrings) -> Result<ResFile, BfresError> {
 
     let model_count = read_u16(data, 0xdc)? as usize;
     let model_array = read_u64(data, 0x28)? as usize;
-    let mut models = Vec::with_capacity(model_count);
+    let mut models = Vec::new();
     for index in 0..model_count {
         models.push(loader.model(model_array + index * 120)?);
     }
@@ -650,7 +652,7 @@ pub fn load(data: &[u8], ext: &ExternalStrings) -> Result<ResFile, BfresError> {
     let external_count = read_u16(data, 0xec)? as usize;
     let external_array = read_u64(data, 0xb8)? as usize;
     let external_names = loader.dict_keys(read_u64(data, 0xc0)? as usize)?;
-    let mut external_files = Vec::with_capacity(external_count);
+    let mut external_files = Vec::new();
     for index in 0..external_count {
         let entry = external_array + index * 16;
         let offset = read_u64(data, entry)? as usize;

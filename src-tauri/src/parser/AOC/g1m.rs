@@ -519,7 +519,7 @@ fn parse_skeleton(data: &[u8], endian: Endian) -> io::Result<(Vec<BfresBone>, Ve
         .map(|_| reader.read_u16())
         .collect::<io::Result<Vec<_>>>()?;
     reader.seek(joint_offset)?;
-    let mut bones = Vec::with_capacity(joint_count);
+    let mut bones = Vec::new();
     for index in 0..joint_count {
         let scale = [reader.read_f32()?, reader.read_f32()?, reader.read_f32()?];
         let parent = reader.read_i32()?;
@@ -642,7 +642,7 @@ fn parse_geometry(data: &[u8], endian: Endian, file_offset: usize) -> io::Result
                     reader.skip(4)?;
                     let texture_count = reader.read_u32()? as usize;
                     reader.skip(8)?;
-                    let mut slots = Vec::with_capacity(texture_count);
+                    let mut slots = Vec::new();
                     for slot_index in 0..texture_count {
                         let id = reader.read_u16()?;
                         let layer = reader.read_u16()?;
@@ -691,12 +691,12 @@ fn parse_geometry(data: &[u8], endian: Endian, file_offset: usize) -> io::Result
                 geometry.attributes.reserve(count);
                 for _ in 0..count {
                     let list_count = reader.read_u32()? as usize;
-                    let mut buffers = Vec::with_capacity(list_count);
+                    let mut buffers = Vec::new();
                     for _ in 0..list_count {
                         buffers.push(reader.read_u32()? as usize);
                     }
                     let attr_count = reader.read_u32()? as usize;
-                    let mut attributes = Vec::with_capacity(attr_count);
+                    let mut attributes = Vec::new();
                     for _ in 0..attr_count {
                         let buffer = reader.read_u16()? as usize;
                         let offset = reader.read_u16()? as usize;
@@ -722,7 +722,7 @@ fn parse_geometry(data: &[u8], endian: Endian, file_offset: usize) -> io::Result
                 geometry.palettes.reserve(count);
                 for _ in 0..count {
                     let joint_count = reader.read_u32()? as usize;
-                    let mut palette = Vec::with_capacity(joint_count);
+                    let mut palette = Vec::new();
                     for _ in 0..joint_count {
                         reader.skip(8)?;
                         palette.push(reader.read_u32()? & 0x7fff_ffff);
@@ -861,7 +861,7 @@ fn build_meshes(
         let Some(index_buffer) = geometry.index_buffers.get(submesh.index_buffer) else {
             continue;
         };
-        let mut raw_indices = Vec::with_capacity(submesh.index_count);
+        let mut raw_indices = Vec::new();
         for index in submesh.index_offset
             ..submesh
                 .index_offset

@@ -40,7 +40,7 @@ impl BaevFileHeader {
         let resource_name = read_fixed(reader, 0x80)?;
         let return_position = reader.position();
         reader.seek(array.offset()?)?;
-        let mut sections = Vec::with_capacity(array.count as usize);
+        let mut sections = Vec::new();
         for _ in 0..array.count {
             sections.push(BaevSectionHeader::read(reader)?);
         }

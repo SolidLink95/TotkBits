@@ -1058,8 +1058,11 @@ impl<'a> TotkBitsApp<'a> {
         let path_var = Pathlib::new(path.replace("\\", "/"));
         let dirname = path_var.name.clone();
         let dirname_len = dirname.len();
-        let mut path_root_len = path_var.full_path.len() - dirname_len;
-        let mut path_root = &path_var.full_path[..path_root_len];
+        let mut path_root_len = path_var.full_path.len().saturating_sub(dirname_len);
+        let mut path_root = path_var
+            .full_path
+            .get(..path_root_len)
+            .unwrap_or(path_var.full_path.as_str());
         if path_root.ends_with("/") {
             path_root = &path_root[..path_root.len() - 1];
         }
@@ -1074,7 +1077,11 @@ impl<'a> TotkBitsApp<'a> {
         } else {
             for file in files {
                 let file_path = Pathlib::new(&file);
-                let mut file_path_to_add = file_path.full_path[path_root_len..].to_string();
+                let mut file_path_to_add = file_path
+                    .full_path
+                    .get(path_root_len..)
+                    .unwrap_or(file_path.full_path.as_str())
+                    .to_string();
                 if file_path_to_add.starts_with("/") {
                     file_path_to_add = file_path_to_add[1..].to_string();
                 }
