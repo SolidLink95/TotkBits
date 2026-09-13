@@ -887,22 +887,11 @@ impl ArmorSpec {
                 ))
             })?
         };
-        // Custom FBX: same native geometry replacement as weapons, then the
-        // optional Toolbox-style skeleton import.
-        let mut fbx_bytes = None;
-        let raw = match &self.assets.fbx {
-            Some(fbx) => {
-                let bytes = fs::read(super::resolve_asset(asset_root, fbx))?;
-                let replaced = assets::replace_geometry_from_fbx(
-                    clean_romfs,
-                    &raw,
-                    &bytes,
-                    self.replace_bones,
-                )?;
-                fbx_bytes = Some(bytes);
-                replaced
-            }
-            None => raw,
+        // Custom FBX: Switch Toolbox's model import (with the optional
+        // "Import Bones") on the Toolbox object model, like weapons.
+        let fbx_bytes = match &self.assets.fbx {
+            Some(fbx) => Some(fs::read(super::resolve_asset(asset_root, fbx))?),
+            None => None,
         };
         let external = assets::external_strings_for(clean_romfs, &raw)?;
         let mut file = ResFile::load(&raw, &external)
@@ -910,10 +899,9 @@ impl ArmorSpec {
         if file.model_count() == 0 {
             return Err(invalid_data("template BFRES contains no model"));
         }
-        if let (true, Some(bytes)) = (self.replace_bones, &fbx_bytes) {
-            file.import_skeleton_like_toolbox(bytes).map_err(|error| {
-                invalid_data(format!("failed to import the FBX skeleton: {error}"))
-            })?;
+        if let Some(bytes) = &fbx_bytes {
+            file.import_model_like_toolbox(bytes, self.replace_bones)
+                .map_err(|error| invalid_data(format!("failed to import the FBX: {error}")))?;
         }
         let cube = match &self.model {
             Some(spec) => Some(armor_model::replace_with_skinned_cube(

@@ -687,49 +687,57 @@ impl CliCommand {
         if let Some(fbx) = fbx {
             let fbx_bytes =
                 fs::read(&fbx).map_err(|e| fail(1, format!("fbx file not found: {fbx} ({e})")))?;
-            let replaced =
-                crate::file_format::Model3D::bfres::BfresFile::replace_geometry_from_fbx(
-                    &raw, &fbx_bytes,
+            let (shapes_before, materials, bones_before) = {
+                let model = &file.models[0];
+                (
+                    model.shapes.len(),
+                    model.materials.len(),
+                    model.skeleton.bones.len(),
                 )
+            };
+            let report = file
+                .import_model_like_toolbox(&fbx_bytes, import_skeleton)
                 .map_err(|e| fail(3, e.to_string()))?;
-            file = ResFile::load(&replaced, &external).map_err(|e| fail(3, e.to_string()))?;
-            println!(
-                "replaced model {} from {fbx} (native importer, not byte-identical to Toolbox)",
-                file.first_model_name().unwrap_or_default()
-            );
-            if !import_skeleton {
-                // Toolbox regenerates the skinning palette on every import.
-                let report = file
-                    .regenerate_skinning_like_toolbox(&fbx_bytes)
-                    .map_err(|e| fail(3, e.to_string()))?;
-                println!(
-                    "regenerated skinning palette from {fbx}: {} smooth + {} rigid",
-                    report.smooth_count, report.rigid_count
-                );
+            if report.shapes.is_empty() {
+                return Err(fail(
+                    3,
+                    format!("no meshes were imported from {fbx}; nothing written"),
+                ));
             }
+            println!(
+                "replaced model {} from {fbx}: shapes {} -> {}, materials {} -> {}",
+                file.first_model_name().unwrap_or_default(),
+                shapes_before,
+                report.shapes.len(),
+                materials,
+                file.models[0].materials.len()
+            );
             if import_skeleton {
-                let report = file
-                    .import_skeleton_like_toolbox(&fbx_bytes)
-                    .map_err(|e| fail(3, e.to_string()))?;
+                let skeleton = &report.skeleton;
                 println!(
                     "imported skeleton from {fbx}: bones {} -> {} (added {}, removed {}, transforms updated {}; palette {} smooth + {} rigid)",
-                    report.bones_before,
-                    report.bones_after,
-                    report.added.len(),
-                    report.removed.len(),
-                    report.transforms_updated.len(),
-                    report.smooth_count,
-                    report.rigid_count
+                    bones_before,
+                    skeleton.bones_after,
+                    skeleton.added.len(),
+                    skeleton.removed.len(),
+                    skeleton.transforms_updated.len(),
+                    skeleton.smooth_count,
+                    skeleton.rigid_count
                 );
                 for (label, names) in [
-                    ("added", &report.added),
-                    ("removed", &report.removed),
-                    ("updated", &report.transforms_updated),
+                    ("added", &skeleton.added),
+                    ("removed", &skeleton.removed),
+                    ("updated", &skeleton.transforms_updated),
                 ] {
                     if !names.is_empty() {
                         println!("  {label}: {}", names.join(", "));
                     }
                 }
+            } else {
+                println!(
+                    "regenerated skinning palette from {fbx}: {} smooth + {} rigid",
+                    report.skeleton.smooth_count, report.skeleton.rigid_count
+                );
             }
         }
         if !skeleton_files.is_empty() {

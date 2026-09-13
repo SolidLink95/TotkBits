@@ -50,9 +50,9 @@ pub struct MeshBoneUsage {
     pub vertices: Vec<Vec<String>>,
 }
 
-type Matrix = [[f32; 4]; 4];
+pub(crate) type Matrix = [[f32; 4]; 4];
 
-const IDENTITY: Matrix = [
+pub(crate) const IDENTITY: Matrix = [
     [1.0, 0.0, 0.0, 0.0],
     [0.0, 1.0, 0.0, 0.0],
     [0.0, 0.0, 1.0, 0.0],
@@ -278,7 +278,7 @@ fn push_bone(name: String, parent_index: i32, world: Matrix, bones: &mut Vec<Too
 
 // ---- Assimp: FBXConverter::GenerateTransformationChain ---------------------
 
-fn node_transform(node: &NodeHandle<'_>) -> io::Result<Matrix> {
+pub(crate) fn node_transform(node: &NodeHandle<'_>) -> io::Result<Matrix> {
     let properties = read_properties(node);
     let vector = |name: &str| properties.get(name).copied();
     let rotation_order = properties
@@ -332,7 +332,10 @@ fn node_transform(node: &NodeHandle<'_>) -> io::Result<Matrix> {
         chain.push(translation(value));
     }
     if let Some(value) = vector("Lcl Scaling") {
-        if (square_length(value) - 3.0f32).abs() > ZERO_EPSILON {
+        // Assimp 4.1 compares the square length against 1 (not 3), so a
+        // unit scale still emits its matrix; only exact zero-length is
+        // skipped in practice.
+        if (square_length(value) - 1.0f32).abs() > ZERO_EPSILON {
             chain.push(scaling(value));
         }
     }
@@ -465,7 +468,7 @@ fn rotation_matrix(order: i32, degrees: [f32; 3]) -> Matrix {
 }
 
 /// `aiMatrix4x4 * aiMatrix4x4` (row major, column vectors).
-fn multiply(a: &Matrix, b: &Matrix) -> Matrix {
+pub(crate) fn multiply(a: &Matrix, b: &Matrix) -> Matrix {
     let mut out = [[0.0f32; 4]; 4];
     for (row, out_row) in out.iter_mut().enumerate() {
         for (column, cell) in out_row.iter_mut().enumerate() {

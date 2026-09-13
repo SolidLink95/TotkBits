@@ -138,7 +138,7 @@ impl WeaponModelAssetsRequest {
         }
         drop(base_bfres);
 
-        let mut customized = raw;
+        let customized = raw;
         let mut fbx_bytes = None;
         if let Some(fbx_path) = &self.fbx_path {
             let fbx_path = if fbx_path.is_absolute() {
@@ -152,10 +152,7 @@ impl WeaponModelAssetsRequest {
                     format!("custom FBX is missing: {}", fbx_path.display()),
                 ));
             }
-            let bytes = fs::read(fbx_path)?;
-            customized =
-                replace_geometry_from_fbx(clean_romfs, &customized, &bytes, self.replace_bones)?;
-            fbx_bytes = Some(bytes);
+            fbx_bytes = Some(fs::read(fbx_path)?);
         }
 
         // From here on the model is edited through the Switch Toolbox compatible
@@ -167,10 +164,9 @@ impl WeaponModelAssetsRequest {
         if file.model_count() == 0 {
             return Err(invalid_data("base BFRES contains no model"));
         }
-        if let (true, Some(bytes)) = (self.replace_bones, &fbx_bytes) {
-            file.import_skeleton_like_toolbox(bytes).map_err(|error| {
-                invalid_data(format!("failed to import the FBX skeleton: {error}"))
-            })?;
+        if let Some(bytes) = &fbx_bytes {
+            file.import_model_like_toolbox(bytes, self.replace_bones)
+                .map_err(|error| invalid_data(format!("failed to import the FBX: {error}")))?;
         }
         let texture_names = model_texture_names(&file);
         let texture_sources = index_textures(&clean_romfs.join("TexToGo"))?;
@@ -276,56 +272,6 @@ impl WeaponModelAssetsRequest {
 /// replacement can only map weights onto bones the BFRES already has.
 /// Otherwise it runs on the template as it is and the caller imports the
 /// skeleton afterwards, exactly as before.
-pub(super) fn replace_geometry_from_fbx(
-    clean_romfs: &Path,
-    raw: &[u8],
-    fbx: &[u8],
-    replace_bones: bool,
-) -> io::Result<Vec<u8>> {
-    let mut source = std::borrow::Cow::Borrowed(raw);
-    if replace_bones && fbx_skins_to_new_bones(raw, fbx)? {
-        let external = external_strings_for(clean_romfs, raw)?;
-        let mut file = ResFile::load(raw, &external)
-            .map_err(|error| invalid_data(format!("failed to load template BFRES: {error}")))?;
-        file.import_skeleton_like_toolbox(fbx)
-            .map_err(|error| invalid_data(format!("failed to import the FBX skeleton: {error}")))?;
-        source = std::borrow::Cow::Owned(file.save_like_toolbox().map_err(|error| {
-            invalid_data(format!(
-                "failed to save the BFRES with the imported skeleton: {error}"
-            ))
-        })?);
-    }
-    BfresFile::replace_geometry_from_fbx(&source, fbx)
-        .map_err(|error| invalid_data(format!("failed to replace BFRES geometry: {error}")))
-}
-
-/// Whether any weighted FBX bone is missing from the BFRES skeleton.
-fn fbx_skins_to_new_bones(raw: &[u8], fbx: &[u8]) -> io::Result<bool> {
-    let imported = crate::parser::fbx::import::import_for_bfres(fbx)?;
-    let parsed = BfresFile::from_bytes(raw)
-        .map_err(|error| invalid_data(format!("failed to parse template BFRES: {error}")))?;
-    let known: std::collections::HashSet<&str> = parsed
-        .render
-        .bones
-        .iter()
-        .map(|bone| bone.name.as_str())
-        .collect();
-    Ok(imported.meshes.iter().any(|mesh| {
-        mesh.bone_indices
-            .iter()
-            .zip(&mesh.bone_weights)
-            .any(|(joints, weights)| {
-                joints.iter().zip(weights).any(|(&joint, &weight)| {
-                    weight > 0.0
-                        && imported
-                            .bones
-                            .get(usize::from(joint))
-                            .is_some_and(|(name, _)| !known.contains(name.as_str()))
-                })
-            })
-    }))
-}
-
 pub(super) fn external_strings_for(clean_romfs: &Path, raw: &[u8]) -> io::Result<ExternalStrings> {
     let needs_external = raw.get(0xEE).is_some_and(|flags| flags & 0x02 != 0);
     if !needs_external {

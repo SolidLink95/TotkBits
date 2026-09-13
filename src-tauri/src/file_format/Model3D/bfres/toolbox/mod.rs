@@ -5,15 +5,18 @@
 //! with a port of `ResFileSwitchSaver`, so that a plain "open and save" or a
 //! name/texture edit produces exactly the bytes Toolbox would write.
 
+mod geometry_import;
 mod loader;
 mod matrix;
 mod model;
+mod opentk;
 pub(crate) mod patricia;
 mod prepare;
 mod saver;
 mod skeleton_import;
 mod strings;
 
+pub use geometry_import::GeometryImportReport;
 pub use model::{Bone, Material, Mesh, ResFile, Shape, VertexAttrib, VertexBuffer, VertexData};
 pub use skeleton_import::SkeletonImportReport;
 pub use strings::ExternalStrings;
@@ -295,6 +298,22 @@ impl ResFile {
         Ok(report)
     }
 
+    /// Switch Toolbox's model replacement from an FBX (`--fbx`, optionally
+    /// with "Import Bones"): every shape of the first model is rebuilt from
+    /// the Assimp meshes with Toolbox's attribute layout, skinning palette,
+    /// tangents and bounding boxes, byte for byte like the Toolbox CLI.
+    pub fn import_model_like_toolbox(
+        &mut self,
+        fbx: &[u8],
+        import_bones: bool,
+    ) -> Result<GeometryImportReport, BfresError> {
+        let model = self
+            .models
+            .first_mut()
+            .ok_or_else(|| BfresError::new(0, "BFRES contains no model"))?;
+        geometry_import::import_model(model, fbx, import_bones)
+    }
+
     pub fn first_model_name(&self) -> Option<&str> {
         self.models.first().map(|model| model.name.as_str())
     }
@@ -380,6 +399,120 @@ mod tests {
         assert!(
             failures.is_empty(),
             "native resave differs from Toolbox: {failures:?}"
+        );
+    }
+
+    /// Diagnostic: whole-file parity of the Toolbox model import. The
+    /// `tmp/_CLAUDE/parity/skeleton` references are Toolbox CLI `--fbx`
+    /// outputs on vanilla models and `tmp/_CLAUDE/cape_cmp/good.bfres` is
+    /// the Toolbox CLI `--fbx --import_skeleton` output on a TotkBits
+    /// generated model (`bad.bfres`). Every byte has to match; the native
+    /// output is written next to each reference as `*.totkbits.bfres`.
+    #[test]
+    #[ignore = "needs the TOTK dump, the FBX fixtures and the Toolbox reference outputs"]
+    fn model_import_matches_toolbox_reference_outputs() {
+        let Some(external) = external() else {
+            return;
+        };
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let skeleton = manifest.join("../tmp/_CLAUDE/parity/skeleton");
+        let cape = manifest.join("../tmp/_CLAUDE/cape_cmp");
+        let mut cases: Vec<(
+            String,
+            std::path::PathBuf,
+            std::path::PathBuf,
+            bool,
+            std::path::PathBuf,
+        )> = vec![(
+            "cape".to_owned(),
+            cape.join("bad.bfres"),
+            manifest.join("../res/1/untitled1.fbx"),
+            true,
+            cape.join("good.bfres"),
+        )];
+        for (tag, source, fbx) in [
+            (
+                "sword022",
+                manifest.join("../tmp/bfres/Weapon_Sword_022.Weapon_Sword_022.bfres"),
+                manifest.join("../tmp/Weapon_Sword_022.fbx"),
+            ),
+            (
+                "lsword108_untitled",
+                romfs.join("Model/Weapon_Lsword_108.Weapon_Lsword_108.bfres.mc"),
+                manifest.join("../tmp/untitled.fbx"),
+            ),
+            (
+                "lsword108_005",
+                romfs.join("Model/Weapon_Lsword_108.Weapon_Lsword_108.bfres.mc"),
+                manifest.join("../tmp/Weapon_Lsword_005.fbx"),
+            ),
+        ] {
+            for import_bones in [true, false] {
+                let variant = if import_bones { "import" } else { "plain" };
+                cases.push((
+                    format!("{tag}.{variant}"),
+                    source.clone(),
+                    fbx.clone(),
+                    import_bones,
+                    skeleton.join(format!("{tag}.{variant}.toolbox.bfres.mc.raw")),
+                ));
+            }
+        }
+        let mut failures = Vec::new();
+        let mut checked = 0;
+        for (name, source, fbx, import_bones, reference) in cases {
+            let (Ok(source_bytes), Ok(fbx_bytes), Ok(expected)) = (
+                std::fs::read(&source),
+                std::fs::read(&fbx),
+                std::fs::read(&reference),
+            ) else {
+                continue;
+            };
+            checked += 1;
+            let raw = if crate::Settings::Magic::is_mcpk(&source_bytes) {
+                crate::compression::meshcodec::MeshCodec::decompress(&source_bytes).unwrap()
+            } else {
+                source_bytes
+            };
+            let mut file = ResFile::load(&raw, &external).unwrap();
+            if let Err(error) = file.import_model_like_toolbox(&fbx_bytes, import_bones) {
+                failures.push(format!("{name}: import failed: {error}"));
+                continue;
+            }
+            let actual = file.save_like_toolbox().unwrap();
+            let output = reference.with_extension("totkbits.bfres");
+            std::fs::write(&output, &actual).unwrap();
+            // The references were decompressed from MCPK, which pads the
+            // logical file size; only the logical bytes are compared.
+            let expected = &expected[..expected.len().min(actual.len().max(4))];
+            if actual != expected {
+                let first = actual
+                    .iter()
+                    .zip(expected.iter())
+                    .position(|(a, b)| a != b)
+                    .unwrap_or(actual.len().min(expected.len()));
+                let differing = actual
+                    .iter()
+                    .zip(expected.iter())
+                    .filter(|(a, b)| a != b)
+                    .count();
+                failures.push(format!(
+                    "{name}: {} vs {} bytes, first difference at 0x{first:x}, {differing} differing bytes in the common prefix ({})",
+                    actual.len(),
+                    expected.len(),
+                    output.display()
+                ));
+            }
+        }
+        assert!(checked > 0, "no reference outputs found");
+        assert!(
+            failures.is_empty(),
+            "{}",
+            failures.join(
+                "
+"
+            )
         );
     }
 

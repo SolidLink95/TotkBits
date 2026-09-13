@@ -1009,6 +1009,9 @@ impl<'a> Saver<'a> {
             }
         }
         if !skeleton.bones.is_empty() {
+            // Syroot aligns the dictionary; a rigid-only palette leaves the
+            // matrix-to-bone array on an odd multiple of two.
+            self.align(8);
             self.write_offset(skl.bone_dict);
             self.write_dict(&DictId::Bone(m))?;
         }
