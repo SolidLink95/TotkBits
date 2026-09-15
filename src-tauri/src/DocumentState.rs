@@ -1704,6 +1704,71 @@ impl DocumentState {
 
     /// Drops every unreachable DATA allocation from an open BPHCL, the way
     /// PhysicsTool's save-without-cloth path does after a removal.
+    /// Scales every length in an open BPHCL document (see
+    /// `BphclDocument::rescale_geometry`) and refreshes its tree.
+    pub fn rescale_bphcl_document(
+        &self,
+        document_id: &str,
+        scale: f32,
+    ) -> Result<BphclMutationResult, String> {
+        let mut documents = self.documents();
+        let app = documents
+            .get(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' is not open"))?;
+        let file = app
+            .opened_file
+            .bphcl
+            .as_ref()
+            .ok_or_else(|| format!("Document '{document_id}' is not a BPHCL document"))?;
+        let source_path = file.source_path.clone();
+        let parent_link = app.internal_parent.clone();
+        let (bytes, report) = file
+            .document
+            .rescale_geometry(scale)
+            .map_err(|error| format!("BPHCL rescale failed: {error}"))?;
+        let rebuilt = crate::parser::physics::bphcl::BphclDocument::parse(&bytes)
+            .map_err(|error| format!("Rescaled BPHCL did not reparse: {error}"))?;
+        if let Some(link) = &parent_link {
+            documents
+                .get_mut(&link.document_id)
+                .ok_or_else(|| format!("Parent document '{}' is not open", link.document_id))?
+                .update_child_entry(link.outer_path.as_deref(), &link.inner_path, bytes.clone())?;
+        }
+        let target = documents
+            .get_mut(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' was closed during rescale"))?;
+        target.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
+            source_path,
+            document: rebuilt,
+        });
+        let root_name = if target.opened_file.path.name.is_empty() {
+            "rescaled.bphcl".to_string()
+        } else {
+            target.opened_file.path.name.clone()
+        };
+        let mut sarc_paths = crate::file_format::Pack::SarcPaths::default();
+        sarc_paths.read_only = true;
+        sarc_paths.paths = target
+            .opened_file
+            .bphcl
+            .as_ref()
+            .ok_or_else(|| "Rescaled BPHCL state was lost".to_owned())?
+            .leaves()
+            .map_err(|error| format!("Failed to refresh BPHCL tree: {error}"))?
+            .into_iter()
+            .map(|leaf| format!("{root_name}/{}", leaf.path))
+            .collect();
+        let touched: usize = report.edits.iter().map(|(_, count)| count).sum();
+        Ok(BphclMutationResult {
+            status_text: format!(
+                "Rescaled BPHCL geometry by {:.3} ({touched} values in {} member kinds); save to keep it",
+                report.scale,
+                report.edits.len()
+            ),
+            sarc_paths,
+        })
+    }
+
     pub fn compact_bphcl_document(&self, document_id: &str) -> Result<BphclMutationResult, String> {
         let mut documents = self.documents();
         let app = documents

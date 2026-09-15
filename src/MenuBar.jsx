@@ -1,4 +1,5 @@
 import { open } from '@tauri-apps/plugin-shell';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import "./App.css";
 import { addFilesFromDirRecursivelyToRoot, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, extractRootFolderClick, fetchAndSetEditorContent, OpenFileFromPath, openFolderContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
@@ -39,6 +40,9 @@ function MenuBarDisplay({ updateButton = null }) {
   const [isBatchRenderOpen, setIsBatchRenderOpen] = useState(false);
   const [existingPng, setExistingPng] = useState('overwrite');
   const [batchModelKind, setBatchModelKind] = useState('g1m');
+  const [isRescaleOpen, setIsRescaleOpen] = useState(false);
+  const [hkclConvert, setHkclConvert] = useState(null); // { hkclPath, packPath, scale }
+  const [rescaleValue, setRescaleValue] = useState('1.0');
   const dropdownRefs = useRef({ file: null, view: null, tools: null, compare: null, about: null });
 
   const closeMenu = () => {
@@ -275,6 +279,70 @@ function MenuBarDisplay({ updateButton = null }) {
     setStatusText('Item creator: clone weapons and armor into a standalone mod');
   };
 
+
+  const handleRescaleBphcl = (event) => {
+    event.stopPropagation();
+    closeMenu();
+    setRescaleValue('1.0');
+    setIsRescaleOpen(true);
+  };
+  const applyRescaleBphcl = async () => {
+    const scale = Number(rescaleValue);
+    if (!Number.isFinite(scale) || scale < 0.1 || scale > 5.0) {
+      setStatusText('ERROR: the scale factor must be between 0.1 and 5.0');
+      return;
+    }
+    const documentId = activeDocumentId;
+    try {
+      const result = await invoke('rescale_bphcl_document', { documentId, scale });
+      setIsRescaleOpen(false);
+      const sarcPaths = result.sarcPaths ?? result.sarc_paths;
+      const statusMessage = result.statusText ?? result.status_text;
+      const refreshedPaths = { ...sarcPaths, documentId };
+      const snapshot = documentSnapshots.current.get(documentId);
+      if (snapshot) documentSnapshots.current.set(documentId, { ...snapshot, activeTab: 'SARC', paths: refreshedPaths, statusText: statusMessage });
+      setpaths(refreshedPaths);
+      setActiveTab('SARC');
+      setStatusText(statusMessage);
+    } catch (error) {
+      setStatusText(`ERROR: ${String(error)}`);
+    }
+  };
+
+  const handleHkclToBphcl = async (event) => {
+    event.stopPropagation();
+    closeMenu();
+    try {
+      const hkclPath = await openDialog({ multiple: false, directory: false, title: 'Select the BOTW cloth (.hkcl)', filters: [{ name: 'Havok cloth', extensions: ['hkcl'] }] });
+      if (typeof hkclPath !== 'string') return;
+      const packPath = await openDialog({ multiple: false, directory: false, title: 'Select the TOTK actor pack to apply it to', filters: [{ name: 'Actor pack', extensions: ['zs', 'pack'] }] });
+      if (typeof packPath !== 'string') return;
+      setHkclConvert({ hkclPath, packPath, scale: '1.0' });
+    } catch (error) {
+      setStatusText(`ERROR: ${String(error)}`);
+    }
+  };
+  const applyHkclToBphcl = async () => {
+    if (!hkclConvert) return;
+    const scale = Number(hkclConvert.scale);
+    if (!Number.isFinite(scale) || scale < 0.1 || scale > 5.0) {
+      setStatusText('ERROR: the scale factor must be between 0.1 and 5.0');
+      return;
+    }
+    const { hkclPath, packPath } = hkclConvert;
+    setStatusText('Converting HKCL to BPHCL...');
+    try {
+      const result = await invoke('convert_hkcl_into_pack', { hkclPath, packPath, scale });
+      setHkclConvert(null);
+      const summary = `Converted ${result.cloths.length} cloth(s) into ${result.bphclEntry} of ${result.outputPath}` +
+        (result.warnings.length ? ` - ${result.warnings.join('; ')}` : '');
+      await OpenFileFromPath(result.outputPath, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent, true);
+      setStatusText(summary);
+    } catch (error) {
+      setStatusText(`ERROR: ${String(error)}`);
+    }
+  };
+
   const handlePhysicsMerge = async (event) => {
     event.stopPropagation();
     closeMenu();
@@ -408,6 +476,8 @@ function MenuBarDisplay({ updateButton = null }) {
     { label: 'Download GLB', onClick: handleDownloadMiiGlb, icon: blankIcon, shortcut: '', condition: activeDocument?.fileType === 'MII' },
     { label: 'Batch render', onClick: handleBatchRender, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Physics merge', onClick: handlePhysicsMerge, icon: blankIcon, shortcut: '', condition: true },
+    { label: 'Rescale BPHCL', onClick: handleRescaleBphcl, icon: blankIcon, shortcut: '', condition: activeDocument?.fileType === 'BPHCL' },
+    { label: 'HKCL to BPHCL', onClick: handleHkclToBphcl, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Item creator', onClick: handleItemCreator, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.webp', shortcut: '', condition: isSarcOpened },
     { label: 'Add folder', onClick: handleAddFolderClick, icon: 'menu/add_folder.webp', shortcut: '', condition: isSarcOpened },
@@ -547,6 +617,33 @@ function MenuBarDisplay({ updateButton = null }) {
         </div>
       </div>
       <CommandsHelp isOpen={isCommandsOpen} onClose={() => setIsCommandsOpen(false)} />
+      {isRescaleOpen && <div className="batch-render-options-overlay" role="dialog" aria-modal="true" aria-labelledby="rescale-bphcl-title">
+        <section className="batch-render-options">
+          <h2 id="rescale-bphcl-title">Rescale BPHCL geometry</h2>
+          <label>Scale factor (0.1 – 5.0)
+            <input type="number" min="0.1" max="5" step="0.01" value={rescaleValue} onChange={(event) => setRescaleValue(event.target.value)} />
+          </label>
+          <p style={{ maxWidth: '28em', fontSize: '0.9em', opacity: 0.85 }}>Multiplies every length in the cloth (rest lengths, particle positions, bone offsets, collidables, skin offsets). Use the ratio between the target skeleton and the skeleton the cloth was authored for, e.g. 0.73 for a Maz Koshia cloth moved onto Link.</p>
+          <footer>
+            <button type="button" onClick={() => setIsRescaleOpen(false)}>Cancel</button>
+            <button type="button" onClick={applyRescaleBphcl}>Apply scale</button>
+          </footer>
+        </section>
+      </div>}
+      {hkclConvert && <div className="batch-render-options-overlay" role="dialog" aria-modal="true" aria-labelledby="hkcl-convert-title">
+        <section className="batch-render-options">
+          <h2 id="hkcl-convert-title">HKCL to BPHCL</h2>
+          <p style={{ maxWidth: '28em', fontSize: '0.9em', opacity: 0.85 }}>Cloth: {hkclConvert.hkclPath}<br />Pack: {hkclConvert.packPath}</p>
+          <label>Optional scale (0.1 – 5.0, 1.0 keeps the size)
+            <input type="number" min="0.1" max="5" step="0.01" value={hkclConvert.scale} onChange={(event) => setHkclConvert({ ...hkclConvert, scale: event.target.value })} />
+          </label>
+          <p style={{ maxWidth: '28em', fontSize: '0.9em', opacity: 0.85 }}>The converted cloth replaces the pack's Phive/Cloth file; ClothParam and ControllerSetParam are regenerated (HelperBoneList entries are dropped). The pack is overwritten in place and opened afterwards.</p>
+          <footer>
+            <button type="button" onClick={() => setHkclConvert(null)}>Cancel</button>
+            <button type="button" onClick={applyHkclToBphcl}>Convert</button>
+          </footer>
+        </section>
+      </div>}
       {isBatchRenderOpen && <div className="batch-render-options-overlay" role="dialog" aria-modal="true" aria-labelledby="batch-render-options-title">
         <section className="batch-render-options">
           <h2 id="batch-render-options-title">Batch render PNG</h2>

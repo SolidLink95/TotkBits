@@ -297,3 +297,57 @@ pub fn compact_bphcl_document(
         Err,
     )
 }
+
+/// Converts an HKCL into a BPHCL and installs it into the actor pack at
+/// `packPath` (overwritten in place); returns what was registered.
+#[tauri::command]
+pub fn convert_hkcl_into_pack(
+    hkclPath: String,
+    packPath: String,
+    scale: f32,
+) -> Result<crate::tools::hkcl_convert::HkclConversionSummary, String> {
+    crate::Settings::catch_panic_with(
+        move || {
+            let config = std::sync::Arc::new(
+                crate::TotkConfig::TotkConfig::safe_new(false)
+                    .map_err(|error| error.to_string())?,
+            );
+            let zstd = crate::Zstd::TotkZstd::new(
+                config.clone(),
+                crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+            )
+            .unwrap_or_else(|_| {
+                crate::Zstd::TotkZstd::dictionaryless(
+                    config,
+                    crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+                )
+            });
+            let pack = std::path::PathBuf::from(&packPath);
+            crate::tools::hkcl_convert::convert_hkcl_into_pack(
+                std::path::Path::new(&hkclPath),
+                &pack,
+                &pack,
+                scale,
+                std::sync::Arc::new(zstd),
+            )
+            .map_err(|error| format!("HKCL to BPHCL failed: {error}"))
+        },
+        Err,
+    )
+}
+
+#[tauri::command]
+pub fn rescale_bphcl_document(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    scale: f32,
+) -> Result<crate::DocumentState::BphclMutationResult, String> {
+    crate::Settings::catch_panic_with(
+        move || {
+            app_handle
+                .state::<DocumentState>()
+                .rescale_bphcl_document(&documentId, scale)
+        },
+        Err,
+    )
+}

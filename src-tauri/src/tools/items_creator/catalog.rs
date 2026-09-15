@@ -32,6 +32,9 @@ pub struct TemplateEntry {
     pub decayed: bool,
     /// Weapon rendering a `_Before` (pristine, pre-decay) mesh.
     pub pristine: bool,
+    /// Armor that is a Great Fairy rank (PouchActorInfo `ArmorRank` above 1)
+    /// of another piece rather than a base piece.
+    pub upgraded: bool,
 }
 
 /// One travelling merchant (Beedle) and where he stands.
@@ -94,6 +97,9 @@ pub struct Catalog {
     pub templates: Vec<TemplateEntry>,
     /// `Npc_TripMaster_*` actors that can sell the items, with their stable.
     pub vendors: Vec<VendorEntry>,
+    /// Pouch display name of every named pouch actor (upgrade materials span
+    /// `Item_*`, `BeeHome`, `Animal_Insect_*`, ...).
+    pub item_names: BTreeMap<String, String>,
 }
 
 /// Values a template carries, used to pre-fill the form.
@@ -155,7 +161,9 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
     }
     let names = pouch_labels(clean_romfs, zstd.clone()).unwrap_or_default();
     let places = location_names(clean_romfs, zstd.clone()).unwrap_or_default();
-    let (decayed_actors, pristine_actors) = weapon_variants(clean_romfs, zstd).unwrap_or_default();
+    let (decayed_actors, pristine_actors) =
+        weapon_variants(clean_romfs, zstd.clone()).unwrap_or_default();
+    let upgraded_actors = upgraded_armor(clean_romfs, zstd).unwrap_or_default();
     let icon_dir = icon_directory();
     let mut templates = Vec::new();
     let mut vendors = Vec::new();
@@ -226,6 +234,7 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
             name: strip_control_tags(raw_name),
             pristine: pristine_actors.contains(actor),
             decayed: decayed_actors.contains(actor),
+            upgraded: upgraded_actors.contains(actor),
             actor: actor.to_owned(),
             kind,
             has_icon,
@@ -233,11 +242,17 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
     }
     templates.sort_by(|a, b| a.actor.cmp(&b.actor));
     vendors.sort_by(|a, b| a.actor.cmp(&b.actor));
+    let item_names = names
+        .iter()
+        .map(|(actor, (name, _))| (actor.clone(), strip_control_tags(name)))
+        .filter(|(_, name)| !name.is_empty())
+        .collect();
     Ok(Catalog {
         romfs: clean_romfs.to_string_lossy().into_owned(),
         icon_dir: icon_dir.map(|dir| dir.to_string_lossy().into_owned()),
         templates,
         vendors,
+        item_names,
     })
 }
 
@@ -585,6 +600,36 @@ fn pouch_labels(
     Ok(labels)
 }
 
+/// Armor actors that are an upgrade rank of another piece: PouchActorInfo
+/// rows with `ArmorRank` above 1 (base pieces carry rank 1, or none).
+fn upgraded_armor(
+    clean_romfs: &Path,
+    zstd: Arc<TotkZstd<'_>>,
+) -> Option<std::collections::BTreeSet<String>> {
+    let (_, source) = super::version::discover_product_file(
+        &clean_romfs.join("RSDB"),
+        "PouchActorInfo.Product.",
+        ".rstbl.byml.zs",
+    )
+    .ok()?;
+    let file = BymlFile::new(&source, zstd)?;
+    let rows = file.pio.as_array().ok()?;
+    Some(
+        rows.iter()
+            .filter_map(|row| {
+                let map = row.as_map().ok()?;
+                let rank = map.get("ArmorRank")?.as_i32().ok()?;
+                (rank > 1).then(|| {
+                    map.get("__RowId")?
+                        .as_string()
+                        .ok()
+                        .map(ToString::to_string)
+                })?
+            })
+            .collect(),
+    )
+}
+
 fn pouch_prices(
     clean_romfs: &Path,
     actor: &str,
@@ -652,6 +697,24 @@ mod tests {
         );
         assert!(decayed.iter().any(|t| t.actor == "Weapon_Sword_106"));
         assert!(pristine.iter().any(|t| t.actor == "Weapon_Sword_001"));
+        // Hylian Hood ranks (Armor_002..004/015_Head) are upgrades, the base is not.
+        let upgraded: Vec<_> = catalog.templates.iter().filter(|t| t.upgraded).collect();
+        eprintln!("{} upgraded armor actors", upgraded.len());
+        assert!(upgraded.iter().any(|t| t.actor == "Armor_002_Head"));
+        assert_eq!(
+            catalog.item_names.get("Item_Enemy_77").map(String::as_str),
+            Some("Bokoblin Horn")
+        );
+        assert_eq!(
+            catalog.item_names.get("BeeHome").map(String::as_str),
+            Some("Courser Bee Honey")
+        );
+        assert!(catalog.item_names.contains_key("Animal_Insect_AA"));
+        assert!(upgraded.iter().any(|t| t.actor == "Armor_015_Head"));
+        assert!(!catalog
+            .templates
+            .iter()
+            .any(|t| t.upgraded && (t.actor == "Armor_001_Head" || t.kind == "SmallSword")));
         // Hylian Hood: four Great Fairy ranks, the first paid with 5 Bokoblin horns + 10 rupees.
         let hylian = template_info(romfs, "Armor_001_Head", zstd.clone()).unwrap();
         assert_eq!(hylian.upgrades.len(), 4, "{:?}", hylian.upgrades);

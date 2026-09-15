@@ -451,3 +451,120 @@ fn cloth_removal_prunes_orphaned_colliders_across_corpus() {
     }
     eprintln!("cloth removal pruned {pruned_total} colliders across {samples} corpus samples");
 }
+
+/// Converts every BOTW cloth of `tmp/hkcl` with the bundled TOTK type table;
+/// the result must reparse and validate, and for the actors Nintendo ported
+/// (a same-named file in `tmp/_bphcl`) the cloth and operator layout of every
+/// cloth that kept its name must match the official port.
+#[test]
+fn hkcl_corpus_converts_like_nintendo_ports() {
+    use crate::parser::physics::hkcl::HkclDocument;
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let type_section = fs::read(root.join("misc/bphcl_types.bin")).expect("misc/bphcl_types.bin");
+    let types = super::type_donor(&type_section).expect("type donor");
+    let link_bones = fs::read_to_string(root.join("misc/link_bones.txt"))
+        .expect("misc/link_bones.txt")
+        .lines()
+        .map(|line| line.trim().to_owned())
+        .filter(|line| !line.is_empty())
+        .collect();
+    let options = super::ConvertOptions {
+        link_bones,
+        ..Default::default()
+    };
+    let directory = root.join("../tmp/hkcl");
+    let mut paths: Vec<_> = fs::read_dir(&directory)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", directory.display()))
+        .map(|entry| entry.expect("corpus entry").path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "hkcl")
+        })
+        .collect();
+    paths.sort();
+    assert!(!paths.is_empty(), "HKCL corpus is empty");
+    let mut converted = 0;
+    let mut compared = 0;
+    let mut failures = Vec::new();
+    for path in paths {
+        let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+        let hkcl = match HkclDocument::parse(&fs::read(&path).unwrap()) {
+            Ok(document) => document,
+            Err(error) => {
+                failures.push(format!("{stem}: hkcl parse: {error}"));
+                continue;
+            }
+        };
+        let (bytes, report) =
+            match super::convert_hkcl_to_bphcl(&hkcl, &types, &type_section, &options) {
+                Ok(result) => result,
+                Err(error) => {
+                    failures.push(format!("{stem}: convert: {error}"));
+                    continue;
+                }
+            };
+        let ours = BphclDocument::parse(&bytes).expect("converted BPHCL reparses");
+        if let Err(error) = ours.validate() {
+            failures.push(format!("{stem}: validate: {error}"));
+            continue;
+        }
+        assert_eq!(ours.cloth.len(), report.cloths.len(), "{stem}: cloth count");
+        assert_eq!(
+            ours.collidables.len(),
+            report.collidables.len(),
+            "{stem}: collidable count"
+        );
+        converted += 1;
+        let vanilla_path = root.join("../tmp/_bphcl").join(format!("{stem}.bphcl"));
+        let Ok(vanilla_bytes) = fs::read(&vanilla_path) else {
+            continue;
+        };
+        let vanilla = BphclDocument::parse(&vanilla_bytes).expect("vanilla BPHCL parses");
+        for cloth in &ours.cloth {
+            let Some(reference) = vanilla.cloth.iter().find(|c| c.name == cloth.name) else {
+                continue;
+            };
+            let classes = |document: &BphclDocument, cloth: &super::Cloth| -> Vec<String> {
+                let reflect = super::Reflect::new(document).expect("DATA section");
+                let cloth_type = reflect
+                    .find_type("hclClothData")
+                    .expect("hclClothData type");
+                let field = reflect
+                    .member_offset(cloth_type, "operators")
+                    .expect("operators");
+                let base = reflect
+                    .item(cloth.item_index)
+                    .expect("cloth item")
+                    .data_offset;
+                reflect
+                    .pointer_array(base + field)
+                    .into_iter()
+                    .map(|index| {
+                        reflect.type_name(reflect.item(index).expect("operator item").type_index)
+                    })
+                    // Nintendo re-exported a few cloths with the gather operator
+                    // in place of the equivalent copy operator; both are vertex
+                    // transfers between buffers.
+                    .map(|name| {
+                        name.replace("hclGatherAllVerticesOperator", "hclCopyVerticesOperator")
+                    })
+                    .collect()
+            };
+            if classes(&ours, cloth) != classes(&vanilla, reference) {
+                failures.push(format!(
+                    "{stem}/{}: operator classes {:?} vs Nintendo {:?}",
+                    cloth.name,
+                    classes(&ours, cloth),
+                    classes(&vanilla, reference)
+                ));
+            }
+            if cloth.simulations.len() != reference.simulations.len() {
+                failures.push(format!("{stem}/{}: sim cloth count differs", cloth.name));
+            }
+            compared += 1;
+        }
+    }
+    eprintln!("converted {converted} HKCL files, compared {compared} cloths with Nintendo ports");
+    assert!(converted > 0, "no HKCL file converted");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

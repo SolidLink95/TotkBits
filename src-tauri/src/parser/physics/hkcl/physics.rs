@@ -351,7 +351,7 @@ pub(super) fn parse_physics_graph(
     })
 }
 
-struct GraphReader<'a> {
+pub(super) struct GraphReader<'a> {
     raw: &'a [u8],
     sections: &'a [HkclSection],
     endian: Endian,
@@ -361,7 +361,7 @@ struct GraphReader<'a> {
 }
 
 impl<'a> GraphReader<'a> {
-    fn new(
+    pub(super) fn new(
         raw: &'a [u8],
         header: &HkclHeader,
         sections: &'a [HkclSection],
@@ -400,7 +400,7 @@ impl<'a> GraphReader<'a> {
         }
     }
 
-    fn pointer(&self, key: ObjectKey, field: usize) -> Option<ObjectKey> {
+    pub(super) fn pointer(&self, key: ObjectKey, field: usize) -> Option<ObjectKey> {
         let source = key.offset.checked_add(field as u32)?;
         self.local
             .get(&(key.section_index, source))
@@ -408,7 +408,7 @@ impl<'a> GraphReader<'a> {
             .copied()
     }
 
-    fn bytes(&self, key: ObjectKey, field: usize, len: usize) -> io::Result<&'a [u8]> {
+    pub(super) fn bytes(&self, key: ObjectKey, field: usize, len: usize) -> io::Result<&'a [u8]> {
         let section = self
             .sections
             .get(key.section_index)
@@ -432,25 +432,25 @@ impl<'a> GraphReader<'a> {
             .ok_or_else(|| invalid("HKCL object read exceeds input"))
     }
 
-    fn u16(&self, key: ObjectKey, field: usize) -> io::Result<u16> {
+    pub(super) fn u16(&self, key: ObjectKey, field: usize) -> io::Result<u16> {
         let source = self.bytes(key, field, 2)?;
         BinaryReader::with_endian(source, self.endian).read_u16_at(0)
     }
 
-    fn i16(&self, key: ObjectKey, field: usize) -> io::Result<i16> {
+    pub(super) fn i16(&self, key: ObjectKey, field: usize) -> io::Result<i16> {
         Ok(self.u16(key, field)? as i16)
     }
 
-    fn u32(&self, key: ObjectKey, field: usize) -> io::Result<u32> {
+    pub(super) fn u32(&self, key: ObjectKey, field: usize) -> io::Result<u32> {
         let source = self.bytes(key, field, 4)?;
         BinaryReader::with_endian(source, self.endian).read_u32_at(0)
     }
 
-    fn f32(&self, key: ObjectKey, field: usize) -> io::Result<f32> {
+    pub(super) fn f32(&self, key: ObjectKey, field: usize) -> io::Result<f32> {
         Ok(f32::from_bits(self.u32(key, field)?))
     }
 
-    fn vector4(&self, key: ObjectKey, field: usize) -> io::Result<Vector4> {
+    pub(super) fn vector4(&self, key: ObjectKey, field: usize) -> io::Result<Vector4> {
         Ok(Vector4([
             self.f32(key, field)?,
             self.f32(key, field + 4)?,
@@ -459,7 +459,7 @@ impl<'a> GraphReader<'a> {
         ]))
     }
 
-    fn matrix4(&self, key: ObjectKey, field: usize) -> io::Result<Matrix4> {
+    pub(super) fn matrix4(&self, key: ObjectKey, field: usize) -> io::Result<Matrix4> {
         let mut values = [0.0; 16];
         for (index, value) in values.iter_mut().enumerate() {
             *value = self.f32(key, field + index * 4)?;
@@ -467,7 +467,7 @@ impl<'a> GraphReader<'a> {
         Ok(Matrix4(values))
     }
 
-    fn string(&self, key: ObjectKey, field: usize) -> io::Result<Option<String>> {
+    pub(super) fn string(&self, key: ObjectKey, field: usize) -> io::Result<Option<String>> {
         let Some(target) = self.pointer(key, field) else {
             return Ok(None);
         };
@@ -484,7 +484,11 @@ impl<'a> GraphReader<'a> {
         Ok(Some(String::from_utf8_lossy(&bytes[..end]).into_owned()))
     }
 
-    fn array(&self, key: ObjectKey, field: usize) -> io::Result<(Option<ObjectKey>, usize)> {
+    pub(super) fn array(
+        &self,
+        key: ObjectKey,
+        field: usize,
+    ) -> io::Result<(Option<ObjectKey>, usize)> {
         let count = self.u32(key, field + self.pointer_size)? as usize;
         if count > 1_000_000 {
             return Err(invalid("HKCL array count is unreasonable"));
@@ -492,7 +496,7 @@ impl<'a> GraphReader<'a> {
         Ok((self.pointer(key, field), count))
     }
 
-    fn pointer_array(&self, key: ObjectKey, field: usize) -> io::Result<Vec<ObjectKey>> {
+    pub(super) fn pointer_array(&self, key: ObjectKey, field: usize) -> io::Result<Vec<ObjectKey>> {
         let (storage, count) = self.array(key, field)?;
         let Some(storage) = storage else {
             return Ok(Vec::new());
@@ -697,7 +701,7 @@ impl<'a> GraphReader<'a> {
         })
     }
 
-    fn u16_array(&self, key: ObjectKey, field: usize) -> io::Result<Vec<u16>> {
+    pub(super) fn u16_array(&self, key: ObjectKey, field: usize) -> io::Result<Vec<u16>> {
         let (storage, count) = self.array(key, field)?;
         let Some(storage) = storage else {
             return Ok(Vec::new());
@@ -707,7 +711,7 @@ impl<'a> GraphReader<'a> {
             .collect()
     }
 
-    fn vector4_array(&self, key: ObjectKey, field: usize) -> io::Result<Vec<Vector4>> {
+    pub(super) fn vector4_array(&self, key: ObjectKey, field: usize) -> io::Result<Vec<Vector4>> {
         let (storage, count) = self.array(key, field)?;
         let Some(storage) = storage else {
             return Ok(Vec::new());
@@ -717,7 +721,7 @@ impl<'a> GraphReader<'a> {
             .collect()
     }
 
-    fn referenced_size(&self) -> usize {
+    pub(super) fn referenced_size(&self) -> usize {
         self.pointer_size.max(8)
     }
 }

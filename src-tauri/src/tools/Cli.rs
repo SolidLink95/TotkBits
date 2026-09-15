@@ -96,20 +96,21 @@ impl CliCommand {
                 | "bntx_edit"
                 | "create_weapon"
                 | "merge_skeletons"
+                | "hkcl_to_bphcl"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
         let valid_arguments = if operation == "decompress_dir" {
             arguments.len() == 7
         } else if matches!(
             operation.as_str(),
-            "bfres_edit" | "bntx_edit" | "create_weapon" | "merge_skeletons"
+            "bfres_edit" | "bntx_edit" | "create_weapon" | "merge_skeletons" | "hkcl_to_bphcl"
         ) {
             arguments.len() >= 3
         } else {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -130,7 +131,7 @@ impl CliCommand {
         };
         if matches!(
             operation.as_str(),
-            "bfres_edit" | "bntx_edit" | "create_weapon" | "merge_skeletons"
+            "bfres_edit" | "bntx_edit" | "create_weapon" | "merge_skeletons" | "hkcl_to_bphcl"
         ) {
             return Some(Self {
                 operation,
@@ -202,6 +203,7 @@ impl CliCommand {
             "bfres_edit" => return self.bfres_edit(),
             "bntx_edit" => return self.bntx_edit(),
             "merge_skeletons" => return self.merge_skeletons(),
+            "hkcl_to_bphcl" => return self.hkcl_to_bphcl(),
             _ => {}
         }
         let result = match self.operation.as_str() {
@@ -808,6 +810,61 @@ impl CliCommand {
     /// 7400. `--compare` reports skeleton parity against a reference FBX
     /// (names, order, hierarchy, LimbNode/Null, transforms within
     /// tolerance); a mismatch exits with code 3.
+    /// `hkcl_to_bphcl -i <in.hkcl> -o <out> [--pack <actor.pack.zs>] [--scale N]`:
+    /// without `--pack` the output is a bare BPHCL, with it the pack is copied
+    /// to the output with the converted cloth installed.
+    fn hkcl_to_bphcl(&self) -> Result<(), CliError> {
+        let mut input = None;
+        let mut output = None;
+        let mut pack = None;
+        let mut scale = 1.0f32;
+        let args = &self.extra;
+        let mut i = 0;
+        while i < args.len() {
+            let take = |i: &mut usize| -> Result<String, CliError> {
+                *i += 1;
+                args.get(*i)
+                    .cloned()
+                    .ok_or_else(|| CliError::new(1, format!("{} requires a value", args[*i - 1])))
+            };
+            match args[i].as_str() {
+                "-i" => input = Some(take(&mut i)?),
+                "-o" => output = Some(take(&mut i)?),
+                "--pack" => pack = Some(take(&mut i)?),
+                "--scale" => {
+                    let value = take(&mut i)?;
+                    scale = value
+                        .parse()
+                        .map_err(|_| CliError::new(1, format!("invalid --scale {value}")))?;
+                }
+                other => return Err(CliError::new(1, format!("unknown argument {other}"))),
+            }
+            i += 1;
+        }
+        let input = input.ok_or_else(|| CliError::new(1, "-i <in.hkcl> is required"))?;
+        let output = output.ok_or_else(|| CliError::new(1, "-o <output> is required"))?;
+        let summary = match pack {
+            Some(pack) => crate::tools::hkcl_convert::convert_hkcl_into_pack(
+                Path::new(&input),
+                Path::new(&pack),
+                Path::new(&output),
+                scale,
+                self.zstd().map_err(|e| CliError::new(1, e))?,
+            ),
+            None => crate::tools::hkcl_convert::convert_hkcl_to_file(
+                Path::new(&input),
+                Path::new(&output),
+                scale,
+            ),
+        }
+        .map_err(|error| CliError::new(1, format!("hkcl_to_bphcl failed: {error}")))?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&summary).unwrap_or_default()
+        );
+        Ok(())
+    }
+
     fn merge_skeletons(&self) -> Result<(), CliError> {
         use crate::parser::skeleton::{compare, fbx_writer, Skeleton};
 

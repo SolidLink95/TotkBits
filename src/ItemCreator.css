@@ -113,6 +113,8 @@
 
 /* Template picker */
 .item-creator-picker { position: relative; }
+.item-creator-picker > .item-creator-check { margin-bottom: 6px; }
+.item-creator-skin-material { display: flex; flex-direction: column; gap: 4px; }
 .item-creator-picker-button {
     display: flex;
     align-items: center;

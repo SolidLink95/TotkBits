@@ -209,6 +209,12 @@ pub struct ArmorSpec {
     /// A dyeable template stays dyeable either way.
     #[serde(default, alias = "make_dyeable")]
     pub dyeable: bool,
+    /// Vanilla armor actor whose ArmorParam `HiddenMaterialGroupList` (the
+    /// skin materials of Link's body model this piece hides, e.g. `G_Skin`
+    /// with `Mt_Upper_Skin`) is copied into the new piece; `None` keeps the
+    /// template's list.
+    #[serde(default, alias = "skin_material_actor")]
+    pub skin_material: Option<String>,
 }
 
 /// Everything written for one upgrade rank actor.
@@ -372,6 +378,13 @@ impl ArmorSpec {
                 "armor actor {} must start with Armor_",
                 self.actor_name
             )));
+        }
+        if let Some(actor) = self
+            .skin_material
+            .as_deref()
+            .filter(|actor| !actor.trim().is_empty())
+        {
+            validate_actor_name(actor)?;
         }
         let slot = self.slot()?;
         let template_slot = ArmorSlot::from_actor_name(&self.template_actor);
@@ -784,6 +797,20 @@ impl ArmorSpec {
                             groups.insert(0, Byml::String("G_Upper".into()));
                         }
                     }
+                }
+                // `HiddenMaterialGroupList` names the skin materials of the
+                // body model this piece hides; a chosen skin-material actor
+                // lends its list to the new piece.
+                if let Some(actor) = self
+                    .skin_material
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|actor| !actor.is_empty())
+                {
+                    map.insert(
+                        "HiddenMaterialGroupList".into(),
+                        hidden_material_groups(clean_romfs, actor, zstd.clone())?,
+                    );
                 }
             } else if new_name == price_file {
                 let map = document
@@ -1652,6 +1679,47 @@ struct GeneratedArmorModel {
     anim: Option<PathBuf>,
 }
 
+/// The `HiddenMaterialGroupList` of a vanilla armor actor's ArmorParam (an
+/// empty list when the actor states none).
+fn hidden_material_groups(
+    clean_romfs: &Path,
+    actor: &str,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<Byml> {
+    let pack_path = clean_romfs
+        .join("Pack/Actor")
+        .join(format!("{actor}.pack.zs"));
+    if !pack_path.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "skin material actor {actor} has no vanilla actor pack: {}",
+                pack_path.display()
+            ),
+        ));
+    }
+    let pack = PackFile::from_binary(&fs::read(&pack_path)?, zstd)?;
+    let armor_path = format!("Component/ArmorParam/{actor}.game__component__ArmorParam.bgyml");
+    let armor = pack.byml_file(&armor_path).map_err(|error| {
+        invalid(format!(
+            "skin material actor {actor} has no ArmorParam ({armor_path}): {error}"
+        ))
+    })?;
+    let groups = armor
+        .pio
+        .as_map()
+        .map_err(|_| invalid_data(format!("{armor_path} is not a map")))?
+        .get("HiddenMaterialGroupList")
+        .cloned()
+        .unwrap_or_else(|| Byml::Array(Vec::new()));
+    if groups.as_array().is_err() {
+        return Err(invalid_data(format!(
+            "{armor_path}: HiddenMaterialGroupList is not a list"
+        )));
+    }
+    Ok(groups)
+}
+
 /// What the generator needs to know about the vanilla base actor.
 struct TemplateArmor {
     pack_bytes: Vec<u8>,
@@ -2206,6 +2274,7 @@ mod tests {
             upgrades,
             upgrades_enabled: true,
             dyeable: false,
+            skin_material: None,
         }
     }
 
@@ -2361,6 +2430,42 @@ mod tests {
             "Work/Actor/Item_Fruit_K.engine__actor__ActorParam.gyml"
         );
         assert_eq!(item.get("Number").unwrap().as_i32().unwrap(), 3);
+    }
+
+    /// `HiddenMaterialGroupList` comes straight from the chosen vanilla
+    /// actor's ArmorParam (the Hylian tunic hides the torso skin; the Korok
+    /// mask hides nothing; unknown actors are refused).
+    #[test]
+    #[ignore = "needs the TOTK dump"]
+    fn skin_material_groups_come_from_the_chosen_actor() {
+        let Some((clean_romfs, zstd)) = romfs_zstd() else {
+            return;
+        };
+        let groups = hidden_material_groups(clean_romfs, "Armor_001_Upper", zstd.clone()).unwrap();
+        let list = groups.as_array().unwrap();
+        assert_eq!(list.len(), 1, "{groups:?}");
+        let group = list[0].as_map().unwrap();
+        assert_eq!(
+            group
+                .get("GroupName")
+                .unwrap()
+                .as_string()
+                .unwrap()
+                .as_str(),
+            "G_Skin"
+        );
+        assert!(group
+            .get("MaterialNameList")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|name| name
+                .as_string()
+                .is_ok_and(|n| n.as_str() == "Mt_Upper_Skin")));
+        let none = hidden_material_groups(clean_romfs, "Armor_005_Head", zstd.clone()).unwrap();
+        assert!(none.as_array().unwrap().is_empty());
+        assert!(hidden_material_groups(clean_romfs, "Armor_Missing_Head", zstd).is_err());
     }
 
     /// Generates a Korok-mask clone with two Great Fairy ranks from the real

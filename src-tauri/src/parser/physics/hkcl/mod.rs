@@ -1,3 +1,4 @@
+mod cloth_package;
 mod document;
 mod fixup;
 pub(crate) mod header;
@@ -8,6 +9,12 @@ mod patch;
 mod physics;
 mod section;
 
+pub use cloth_package::{
+    BlendBlock, BlendLayouts, BlockLayout, BufferAccess, BufferDefinition, ClothData, ClothPackage,
+    ClothState, CollidableData, ConstraintKind, ConstraintSet, Deformer, LandscapeCollisionData,
+    Operator, ParticleData, ShapeData, SimClothData, SkeletonData, SkinOperator,
+    TransferMotionData, TransformSetAccess, TransformSetDefinition, TransformTracker,
+};
 pub use document::{HkclDocument, HkclLeaf};
 pub use fixup::{GlobalFixup, LocalFixup, VirtualFixup};
 pub use header::{HkclHeader, HkclLayoutRules};

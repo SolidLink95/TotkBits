@@ -45,6 +45,7 @@ const emptyForm = (tab) => ({
     upgrades: [],
     upgradesEnabled: true,
     dyeable: false,
+    skinMaterial: '',
 });
 
 const MAX_UPGRADES = 4;
@@ -53,23 +54,46 @@ const physicsDonors = (value) => (Array.isArray(value) ? value : [value])
     .map((entry) => String(entry ?? '').trim())
     .filter(Boolean);
 const emptyUpgrade = () => ({ defense: '', rupees: '', materials: '' });
-/** "Item_Enemy_77:5, Item_Ore_F:20" -> [{ actor, count }]; null when malformed. */
-const parseMaterials = (value) => {
+/** Splits a material list on the commas outside double quotes. */
+const splitMaterials = (value) => {
+    const entries = [];
+    let current = '';
+    let quoted = false;
+    for (const char of String(value ?? '')) {
+        if (char === '"') quoted = !quoted;
+        if (char === ',' && !quoted) { entries.push(current); current = ''; } else current += char;
+    }
+    entries.push(current);
+    return entries;
+};
+/**
+ * '"Bokoblin Horn":5, Item_Ore_F:20' -> [{ actor, count }]; quoted entries are
+ * pouch names resolved through the catalog, bare ones actor ids; null when
+ * malformed or a name is unknown.
+ */
+const parseMaterials = (value, itemNames = {}) => {
+    const byName = new Map(Object.entries(itemNames).map(([actor, name]) => [name.toLowerCase(), actor]));
     const materials = [];
-    for (const entry of String(value ?? '').split(',')) {
+    for (const entry of splitMaterials(value)) {
         const text = entry.trim();
         if (!text) continue;
-        const [actor, count = '1'] = text.split(':').map((part) => part.trim());
-        const number = Number(count);
-        if (!/^[A-Za-z0-9_]+$/.test(actor) || !Number.isInteger(number) || number < 1) return null;
+        const match = text.match(/^(?:"([^"]*)"|([A-Za-z0-9_]+))\s*(?::\s*(\d+))?$/);
+        if (!match) return null;
+        const actor = match[1] !== undefined ? byName.get(match[1].trim().toLowerCase()) : match[2];
+        const number = Number(match[3] ?? '1');
+        if (!actor || !Number.isInteger(number) || number < 1) return null;
         materials.push({ actor, count: number });
     }
     return materials;
 };
-const formatMaterials = (materials) => (materials || [])
-    .map((material) => Array.isArray(material)
-        ? `${material[0]}:${material[1]}`
-        : `${material.actor ?? material.name}:${material.count ?? material.number ?? 1}`)
+/** Materials as '"Bokoblin Horn":5, "Amber":20' (actor ids for unnamed items). */
+const formatMaterials = (materials, itemNames = {}) => (materials || [])
+    .map((material) => {
+        const actor = Array.isArray(material) ? material[0] : (material.actor ?? material.name);
+        const count = Array.isArray(material) ? material[1] : (material.count ?? material.number ?? 1);
+        const name = itemNames[actor];
+        return `${name ? `"${name}"` : actor}:${count}`;
+    })
     .join(', ');
 
 const toInt = (value) => {
@@ -92,7 +116,7 @@ const toWeights = (value) => {
 };
 
 /** Spec object exactly as `--cli create_weapon` reads it. */
-function buildSpec(tab, form, vendor) {
+function buildSpec(tab, form, vendor, itemNames = {}) {
     const vendors = vendor ? [{
         actor_name: vendor,
         ...(toInt(form.buyingPrice) !== undefined ? { buying_price: toInt(form.buyingPrice) } : {}),
@@ -118,11 +142,12 @@ function buildSpec(tab, form, vendor) {
         if (form.fbx && form.replaceBones) spec.replace_bones = true;
         spec.upgrades_enabled = Boolean(form.upgradesEnabled);
         if (form.dyeable) spec.dyeable = true;
+        if (form.skinMaterial) spec.skin_material = form.skinMaterial;
         if (form.upgradesEnabled && form.upgrades.length) {
             spec.upgrades = form.upgrades.map((upgrade) => ({
                 defense: toInt(upgrade.defense) ?? 0,
                 rupees: toInt(upgrade.rupees) ?? 0,
-                materials: parseMaterials(upgrade.materials) || [],
+                materials: parseMaterials(upgrade.materials, itemNames) || [],
             }));
         }
         if (form.cube && !form.fbx) {
@@ -159,7 +184,7 @@ function buildSpec(tab, form, vendor) {
 }
 
 /** Inverse of buildSpec, for the Edit button. */
-function formFromSpec(spec) {
+function formFromSpec(spec, itemNames = {}) {
     const isArmor = spec.actor_name.startsWith('Armor_');
     const tab = isArmor ? 'armor' : 'weapon';
     const form = emptyForm(tab);
@@ -182,10 +207,11 @@ function formFromSpec(spec) {
         form.seriesName = spec.series_name || '';
         form.upgradesEnabled = spec.upgrades_enabled ?? spec.enable_upgrades ?? true;
         form.dyeable = Boolean(spec.dyeable || spec.make_dyeable);
+        form.skinMaterial = spec.skin_material || spec.skin_material_actor || '';
         form.upgrades = (spec.upgrades || []).map((upgrade) => ({
             defense: upgrade.defense ?? '',
             rupees: upgrade.rupees ?? upgrade.price ?? '',
-            materials: formatMaterials(upgrade.materials || upgrade.items),
+            materials: formatMaterials(upgrade.materials || upgrade.items, itemNames),
         }));
         const cube = spec.cube || spec.model;
         form.cube = Boolean(cube);
@@ -208,7 +234,7 @@ function formFromSpec(spec) {
 
 const templateLabel = (template) => `${template.name || template.actor}${template.decayed ? ' (decayed)' : ''}`;
 
-function TemplatePicker({ templates, value, icons, onChange, onOpen, disabled }) {
+function TemplatePicker({ templates, value, icons, onChange, onOpen, disabled, hideUpgrades, onHideUpgrades, placeholder = 'Select a template', noneLabel = null }) {
     const [isOpen, setIsOpen] = useState(false);
     const [filter, setFilter] = useState('');
     const ref = useRef(null);
@@ -220,20 +246,32 @@ function TemplatePicker({ templates, value, icons, onChange, onOpen, disabled })
     }, [isOpen]);
     const selected = templates.find((template) => template.actor === value);
     const query = filter.trim().toLowerCase();
+    const hasUpgrades = templates.some((template) => template.upgraded);
+    const candidates = hideUpgrades ? templates.filter((template) => !template.upgraded) : templates;
     const visible = query
-        ? templates.filter((template) => template.actor.toLowerCase().includes(query) || template.name.toLowerCase().includes(query))
-        : templates;
+        ? candidates.filter((template) => template.actor.toLowerCase().includes(query) || template.name.toLowerCase().includes(query))
+        : candidates;
     return <div className="item-creator-picker" ref={ref}>
+        {hasUpgrades && onHideUpgrades && <div className="item-creator-check">
+            <input id="item-creator-hide-upgrades" type="checkbox" checked={hideUpgrades} onChange={(event) => onHideUpgrades(event.target.checked)} />
+            <label htmlFor="item-creator-hide-upgrades" className="item-creator-hint">Hide upgrades (Great Fairy ranks of vanilla armor)</label>
+        </div>}
         <button type="button" className="item-creator-picker-button" disabled={disabled} onClick={() => { setIsOpen((open) => !open); if (!isOpen) onOpen(); }}>
             <img src={icons[value] || BLANK_ICON} alt="" />
             <span className="item-creator-option-name">
-                <span>{selected ? templateLabel(selected) : 'Select a template'}</span>
+                <span>{selected ? templateLabel(selected) : placeholder}</span>
                 {selected && <small>{selected.actor}</small>}
             </span>
             <span className="item-creator-caret">▾</span>
         </button>
         {isOpen && <div className="item-creator-picker-list">
             <input type="text" autoFocus placeholder="Filter by name or actor…" value={filter} onChange={(event) => setFilter(event.target.value)} />
+            {noneLabel && !query && <div
+                className={`item-creator-option${!value ? ' selected' : ''}`}
+                onClick={() => { onChange(''); setIsOpen(false); setFilter(''); }}>
+                <img src={BLANK_ICON} alt="" />
+                <span className="item-creator-option-name"><span>{noneLabel}</span></span>
+            </div>}
             {visible.length === 0 && <div className="item-creator-empty">No templates match.</div>}
             {visible.map((template) => <div
                 key={template.actor}
@@ -262,6 +300,7 @@ function ItemCreator({ activeTab, setStatusText }) {
     const [form, setForm] = useState(() => emptyForm('weapon'));
     const [placeholders, setPlaceholders] = useState({ name: '', description: '' });
     const [templateUpgrades, setTemplateUpgrades] = useState([]);
+    const [hideUpgrades, setHideUpgrades] = useState(true);
     const [items, setItems] = useState([]);
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [editingIndex, setEditingIndex] = useState(-1);
@@ -281,6 +320,7 @@ function ItemCreator({ activeTab, setStatusText }) {
     }, [activeTab, catalog]);
 
     const templates = useMemo(() => (catalog?.templates || []).filter((template) => template.kind === form.kind), [catalog, form.kind]);
+    const itemNames = catalog?.itemNames || {};
 
     const ensureIcons = useCallback((kind, names) => {
         if (loadedKinds.current.has(kind) || names.length === 0) return;
@@ -405,7 +445,7 @@ function ItemCreator({ activeTab, setStatusText }) {
                 if (defense === undefined || defense < 0) return `Rank ${rank}: enter a defense value.`;
                 const rupees = toInt(upgrade.rupees);
                 if (rupees === undefined || rupees < 0) return `Rank ${rank}: enter the rupee cost (0 is allowed).`;
-                if (parseMaterials(upgrade.materials) === null) return `Rank ${rank}: materials must look like Item_Enemy_77:5, Item_Ore_F:20.`;
+                if (parseMaterials(upgrade.materials, itemNames) === null) return `Rank ${rank}: materials must look like "Bokoblin Horn":5, "Amber":20 (pouch names in quotes, or actor ids such as Item_Enemy_77).`;
             }
         }
         return '';
@@ -415,7 +455,7 @@ function ItemCreator({ activeTab, setStatusText }) {
         const problem = validate();
         setFormError(problem);
         if (problem) return;
-        const spec = buildSpec(tab, form, vendor);
+        const spec = buildSpec(tab, form, vendor, itemNames);
         setItems((current) => {
             const next = [...current];
             if (editingIndex >= 0 && editingIndex < next.length) next[editingIndex] = spec;
@@ -439,7 +479,7 @@ function ItemCreator({ activeTab, setStatusText }) {
     const editItem = () => {
         const spec = items[selectedIndex];
         if (!spec) return;
-        const loaded = formFromSpec(spec);
+        const loaded = formFromSpec(spec, itemNames);
         setTab(loaded.tab);
         setForm(loaded.form);
         if (loaded.vendor) setVendor(loaded.vendor);
@@ -563,7 +603,9 @@ function ItemCreator({ activeTab, setStatusText }) {
                             icons={icons}
                             disabled={!catalog}
                             onOpen={() => ensureIcons(form.kind, templates.map((template) => template.actor))}
-                            onChange={changeTemplate} />
+                            onChange={changeTemplate}
+                            hideUpgrades={hideUpgrades}
+                            onHideUpgrades={setHideUpgrades} />
                         <label>Actor ID</label>
                         <input type="text" value={form.actorName} onChange={(event) => update({ actorName: event.target.value })} />
                         <label>Name</label>
@@ -606,6 +648,20 @@ function ItemCreator({ activeTab, setStatusText }) {
                             <input type="number" value={form.defense} onChange={(event) => update({ defense: event.target.value })} />
                             <label>Series</label>
                             <input type="text" value={form.seriesName} placeholder="Armor set key, e.g. Hylia" onChange={(event) => update({ seriesName: event.target.value })} />
+                            <label>Skin material</label>
+                            <div className="item-creator-skin-material">
+                                <TemplatePicker
+                                    templates={templates}
+                                    value={form.skinMaterial}
+                                    icons={icons}
+                                    disabled={!catalog}
+                                    onOpen={() => ensureIcons(form.kind, templates.map((template) => template.actor))}
+                                    onChange={(actor) => update({ skinMaterial: actor })}
+                                    hideUpgrades={hideUpgrades}
+                                    placeholder="Keep the template's hidden skin materials"
+                                    noneLabel="None (keep the template's list)" />
+                                <span className="item-creator-hint">Copies the chosen actor's ArmorParam HiddenMaterialGroupList (the body-skin materials the piece hides) into the new piece.</span>
+                            </div>
                             <label>Physics</label>
                             <div className="item-creator-physics">
                                 {form.physics.map((donor, index) => (
@@ -643,7 +699,7 @@ function ItemCreator({ activeTab, setStatusText }) {
                                             onChange={(event) => updateUpgrade(index, { defense: event.target.value })} />
                                         <input type="number" value={upgrade.rupees} placeholder="Rupees" title="Rupees the Great Fairy charges for this step"
                                             onChange={(event) => updateUpgrade(index, { rupees: event.target.value })} />
-                                        <input type="text" value={upgrade.materials} placeholder="Item_Enemy_77:5, Item_Ore_F:20" title="Materials for this step, actor:count"
+                                        <input type="text" value={upgrade.materials} placeholder='"Bokoblin Horn":5, "Amber":20' title='Materials for this step: "pouch name":count (actor ids such as Item_Enemy_77 work too)'
                                             onChange={(event) => updateUpgrade(index, { materials: event.target.value })} />
                                         <button type="button" title="Remove this rank and the ones after it" onClick={() => update({ upgrades: form.upgrades.slice(0, index) })}>×</button>
                                     </div>
@@ -651,7 +707,7 @@ function ItemCreator({ activeTab, setStatusText }) {
                                 <div className="item-creator-upgrade-actions">
                                     <button type="button" disabled={form.upgrades.length >= MAX_UPGRADES} onClick={() => update({ upgrades: [...form.upgrades, emptyUpgrade()] })}>Add rank</button>
                                     <button type="button" disabled={templateUpgrades.length === 0} title="Copy the template's Great Fairy chain (defense, rupees and materials per rank)"
-                                        onClick={() => update({ upgrades: templateUpgrades.slice(0, MAX_UPGRADES).map((entry) => ({ defense: entry.defense ?? '', rupees: entry.rupees ?? '', materials: formatMaterials(entry.materials) })) })}>Use template's upgrades</button>
+                                        onClick={() => update({ upgrades: templateUpgrades.slice(0, MAX_UPGRADES).map((entry) => ({ defense: entry.defense ?? '', rupees: entry.rupees ?? '', materials: formatMaterials(entry.materials, itemNames) })) })}>Use template's upgrades</button>
                                     <span className="item-creator-hint">{form.upgrades.length ? `${form.upgrades.length} custom rank(s) (the rest of the chain is dropped)` : 'Empty: the four ranks are derived from the template.'}</span>
                                 </div>
                             </div>
