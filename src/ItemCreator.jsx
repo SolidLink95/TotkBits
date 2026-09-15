@@ -46,7 +46,37 @@ const emptyForm = (tab) => ({
     upgradesEnabled: true,
     dyeable: false,
     skinMaterial: '',
+    armorEffects: [{ type: '', level: '' }],
 });
+
+/** Icon under public/effects for an ArmorEffectType. */
+const EFFECT_ICONS = {
+    AttackUp: 'AttackUp', AttackUpCold: 'AttackUpCold', AttackUpHot: 'AttackUpHot', AttackUpThunderstorm: 'AttackUpThunderstorm',
+    ClimbSpeedUp: 'ClimbSpeed', ClimbSpeedUpOnlyHorizontaly: 'ClimbSpeed', ClimbWaterfall: 'SwimSpeed',
+    QuietnessUp: 'Quietness', ResistBurn: 'ResistBurn', ResistCold: 'ResistCold', ResistElectric: 'ResistElectric',
+    ResistFreeze: 'ResistFreeze', ResistHot: 'ResistHot', ResitLightning: 'ResistLightning',
+    SandMoveUp: 'SandMove', SnowMoveUp: 'SnowMove', NotSlippy: 'SnowMove', SwimSpeedUp: 'SwimSpeed',
+    MiasmaGuard: 'GloomResistance', EnableUseSwordBeam: 'ClimbSpeedAndBeamPowerUp', WakeWind: 'ResistHotAndWakeWind',
+    DecreaseZonauEnergy: 'DecreaseZonauEnergy', DivingMobilityUp: 'DivingMobilityUp', RupeeGuard: 'RupeeGuard',
+    LightEmission: 'Glow', NightGlow: 'Glow', Moisturizing: 'Moisturizing', MaskAll: 'MajoraMask',
+};
+const effectIcon = (type) => `effects/${EFFECT_ICONS[type] || 'Other'}.webp`;
+/** In-game effect names (as on the armor upgrade lists); unknown types are split on capitals. */
+const EFFECT_LABELS = {
+    AttackUp: 'Attack Up', AttackUpCold: 'Cold Weather Attack', AttackUpHot: 'Hot Weather Attack', AttackUpThunderstorm: 'Stormy Weather Attack',
+    ClimbSpeedUp: 'Climb Speed Up', ClimbSpeedUpOnlyHorizontaly: 'Climb Speed Up (sideways only)', ClimbWaterfall: 'Swim Up Waterfalls',
+    QuietnessUp: 'Stealth Up', ResistBurn: 'Flame Guard', ResistCold: 'Cold Resistance', ResistElectric: 'Shock Resistance',
+    ResistFreeze: 'Unfreezable', ResistHot: 'Heat Resistance', ResitLightning: 'Lightning Proof',
+    SandMoveUp: 'Sand Speed Up', SnowMoveUp: 'Snow Speed Up', NotSlippy: 'Slip Resistance', SwimSpeedUp: 'Swim Speed Up',
+    MiasmaGuard: 'Gloom Resistance', EnableUseSwordBeam: 'Master Sword Beam Up', WakeWind: 'Wake Wind',
+    DecreaseZonauEnergy: 'Energy Up', DivingMobilityUp: 'Skydive Mobility Up', RupeeGuard: 'Rupee Padding',
+    LightEmission: 'Glow', NightGlow: 'Glow (at night)', Moisturizing: 'Moisturizing', SpinAttack: 'Spin Attack',
+    YigaDisguise: 'Yiga Disguise', MaskAll: 'Monster Disguise (all)', MaskBokoblin: 'Bokoblin Disguise', MaskHorablin: 'Horriblin Disguise',
+    MaskMoriblin: 'Moblin Disguise', MaskLizalfos: 'Lizalfos Disguise', MaskLynel: 'Lynel Disguise',
+    SoulPowerUpWind: "Tulin's Sage Power Up", SoulPowerUpWater: "Sidon's Sage Power Up", SoulPowerUpFire: "Yunobo's Sage Power Up",
+    SoulPowerUpLightning: "Riju's Sage Power Up", SoulPowerUpSpirit: "Mineru's Sage Power Up",
+};
+const effectLabel = (type) => EFFECT_LABELS[type] || type.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
 
 const MAX_UPGRADES = 4;
 /** Physics donor actors of a form or spec (string or list) without blanks. */
@@ -143,6 +173,12 @@ function buildSpec(tab, form, vendor, itemNames = {}) {
         spec.upgrades_enabled = Boolean(form.upgradesEnabled);
         if (form.dyeable) spec.dyeable = true;
         if (form.skinMaterial) spec.skin_material = form.skinMaterial;
+        const effects = form.armorEffects.filter((effect) => effect.type);
+        if (effects.length) {
+            spec.armor_effects = effects.map((effect) => toInt(effect.level) !== undefined
+                ? { type: effect.type, level: toInt(effect.level) }
+                : { type: effect.type });
+        }
         if (form.upgradesEnabled && form.upgrades.length) {
             spec.upgrades = form.upgrades.map((upgrade) => ({
                 defense: toInt(upgrade.defense) ?? 0,
@@ -208,6 +244,10 @@ function formFromSpec(spec, itemNames = {}) {
         form.upgradesEnabled = spec.upgrades_enabled ?? spec.enable_upgrades ?? true;
         form.dyeable = Boolean(spec.dyeable || spec.make_dyeable);
         form.skinMaterial = spec.skin_material || spec.skin_material_actor || '';
+        const effects = (spec.armor_effects || spec.effects || []).map((effect) => typeof effect === 'string'
+            ? { type: effect, level: '' }
+            : { type: effect.type ?? effect.effect_type ?? '', level: effect.level ?? '' });
+        form.armorEffects = effects.length ? effects : [{ type: '', level: '' }];
         form.upgrades = (spec.upgrades || []).map((upgrade) => ({
             defense: upgrade.defense ?? '',
             rupees: upgrade.rupees ?? upgrade.price ?? '',
@@ -257,7 +297,7 @@ function TemplatePicker({ templates, value, icons, onChange, onOpen, disabled, h
             <label htmlFor="item-creator-hide-upgrades" className="item-creator-hint">Hide upgrades (Great Fairy ranks of vanilla armor)</label>
         </div>}
         <button type="button" className="item-creator-picker-button" disabled={disabled} onClick={() => { setIsOpen((open) => !open); if (!isOpen) onOpen(); }}>
-            <img src={icons[value] || BLANK_ICON} alt="" />
+            <img src={icons[value] || BLANK_ICON} alt="" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = BLANK_ICON; }} />
             <span className="item-creator-option-name">
                 <span>{selected ? templateLabel(selected) : placeholder}</span>
                 {selected && <small>{selected.actor}</small>}
@@ -277,7 +317,7 @@ function TemplatePicker({ templates, value, icons, onChange, onOpen, disabled, h
                 key={template.actor}
                 className={`item-creator-option${template.actor === value ? ' selected' : ''}`}
                 onClick={() => { onChange(template.actor); setIsOpen(false); setFilter(''); }}>
-                <img src={icons[template.actor] || BLANK_ICON} alt="" loading="lazy" />
+                <img src={icons[template.actor] || BLANK_ICON} alt="" loading="lazy" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = BLANK_ICON; }} />
                 <span className="item-creator-option-name">
                     <span>{templateLabel(template)}</span>
                     <small>{template.actor}</small>
@@ -321,6 +361,19 @@ function ItemCreator({ activeTab, setStatusText }) {
 
     const templates = useMemo(() => (catalog?.templates || []).filter((template) => template.kind === form.kind), [catalog, form.kind]);
     const itemNames = catalog?.itemNames || {};
+    const armorEffects = catalog?.armorEffects || [];
+    const effectTemplates = useMemo(() => armorEffects.map((effect) => ({
+        actor: effect.effectType,
+        name: effectLabel(effect.effectType),
+        kind: 'effect',
+        upgraded: false,
+        decayed: false,
+    })), [armorEffects]);
+    const effectIcons = useMemo(() => Object.fromEntries(armorEffects.map((effect) => [effect.effectType, effectIcon(effect.effectType)])), [armorEffects]);
+    const effectLevels = (type) => armorEffects.find((effect) => effect.effectType === type)?.levels || [];
+    const updateEffect = (index, patch) => update({
+        armorEffects: form.armorEffects.map((effect, position) => position === index ? { ...effect, ...patch } : effect),
+    });
 
     const ensureIcons = useCallback((kind, names) => {
         if (loadedKinds.current.has(kind) || names.length === 0) return;
@@ -677,6 +730,31 @@ function ItemCreator({ activeTab, setStatusText }) {
                                 <span className="item-creator-hint">{form.physics.filter((entry) => entry.trim()).length > 1
                                     ? 'Two or more donors: their cloths, skeletons and collidables are merged into one bphcl named after the actor.'
                                     : 'One donor copies its Phive / Physics files as they are.'}</span>
+                            </div>
+                            <label>Armor effects</label>
+                            <div className="item-creator-physics">
+                                {form.armorEffects.map((effect, index) => (
+                                    <div className="item-creator-effect-entry" key={index}>
+                                        <TemplatePicker
+                                            templates={effectTemplates}
+                                            value={effect.type}
+                                            icons={effectIcons}
+                                            disabled={!catalog}
+                                            onOpen={() => {}}
+                                            onChange={(type) => updateEffect(index, { type, level: effectLevels(type)[0] ?? '' })}
+                                            placeholder="None"
+                                            noneLabel="None" />
+                                        <input type="number" min="0" value={effect.level} placeholder="Level" title="ArmorEffectLevel (vanilla uses it for DecreaseZonauEnergy)"
+                                            disabled={!effect.type} onChange={(event) => updateEffect(index, { level: event.target.value })} />
+                                        <button type="button" title="Remove this effect" disabled={form.armorEffects.length <= 1}
+                                            onClick={() => update({ armorEffects: form.armorEffects.filter((_, position) => position !== index) })}>−</button>
+                                        <button type="button" title="Add another effect" hidden={index !== form.armorEffects.length - 1}
+                                            onClick={() => update({ armorEffects: [...form.armorEffects, { type: '', level: '' }] })}>+</button>
+                                    </div>
+                                ))}
+                                <span className="item-creator-hint">{form.armorEffects.some((effect) => effect.type)
+                                    ? 'ArmorParam ArmorEffect gets exactly these entries; the first one is also the PouchActorInfo ArmorEffectType shown in the inventory.'
+                                    : 'None: the template\'s effects are kept. The list comes from every base armor in the RomFS.'}</span>
                             </div>
                             <label>Dye</label>
                             <div className="item-creator-check">

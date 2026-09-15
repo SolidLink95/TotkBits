@@ -100,6 +100,44 @@ fn physics_donors<'de, D: serde::Deserializer<'de>>(
     })
 }
 
+/// One `ArmorEffect` entry of ArmorParam (`ArmorEffectType` plus the
+/// optional `ArmorEffectLevel`).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ArmorEffectSpec {
+    #[serde(rename = "type", alias = "effect_type", alias = "ArmorEffectType")]
+    pub effect_type: String,
+    #[serde(
+        default,
+        alias = "ArmorEffectLevel",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub level: Option<i32>,
+}
+
+/// `"armor_effects": ["QuietnessUp", {"type": "DecreaseZonauEnergy", "level": 1}]`
+/// or `null`.
+fn armor_effects<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<ArmorEffectSpec>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Entry {
+        Name(String),
+        Full(ArmorEffectSpec),
+    }
+    Ok(Option::<Vec<Entry>>::deserialize(deserializer)?
+        .unwrap_or_default()
+        .into_iter()
+        .map(|entry| match entry {
+            Entry::Name(effect_type) => ArmorEffectSpec {
+                effect_type,
+                level: None,
+            },
+            Entry::Full(spec) => spec,
+        })
+        .collect())
+}
+
 /// The fifteen dye colours in the order of the `<Slot>_ftp` animation
 /// frames 1..15 and of the vanilla `_<Color>` icon variants, with the tint
 /// used when a piece is made dyeable from a single-colour template.
@@ -215,6 +253,10 @@ pub struct ArmorSpec {
     /// template's list.
     #[serde(default, alias = "skin_material_actor")]
     pub skin_material: Option<String>,
+    /// `ArmorEffect` entries of the ArmorParam (the first one also becomes
+    /// the PouchActorInfo `ArmorEffectType`); empty keeps the template's.
+    #[serde(default, alias = "effects", deserialize_with = "armor_effects")]
+    pub armor_effects: Vec<ArmorEffectSpec>,
 }
 
 /// Everything written for one upgrade rank actor.
@@ -385,6 +427,20 @@ impl ArmorSpec {
             .filter(|actor| !actor.trim().is_empty())
         {
             validate_actor_name(actor)?;
+        }
+        for effect in &self.armor_effects {
+            let name = effect.effect_type.trim();
+            if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                return Err(invalid(format!(
+                    "armor effect {:?} is not a valid ArmorEffectType",
+                    effect.effect_type
+                )));
+            }
+            if effect.level.is_some_and(|level| level < 0) {
+                return Err(invalid(format!(
+                    "armor effect {name}: level cannot be negative"
+                )));
+            }
         }
         let slot = self.slot()?;
         let template_slot = ArmorSlot::from_actor_name(&self.template_actor);
@@ -798,6 +854,25 @@ impl ArmorSpec {
                         }
                     }
                 }
+                // `ArmorEffect`: the chosen effects replace the template's.
+                if !self.armor_effects.is_empty() {
+                    let effects = self
+                        .armor_effects
+                        .iter()
+                        .map(|effect| {
+                            let mut entry = roead::byml::Map::default();
+                            entry.insert(
+                                "ArmorEffectType".into(),
+                                byml_string(effect.effect_type.trim()),
+                            );
+                            if let Some(level) = effect.level {
+                                entry.insert("ArmorEffectLevel".into(), Byml::I32(level));
+                            }
+                            Byml::Map(entry)
+                        })
+                        .collect();
+                    map.insert("ArmorEffect".into(), Byml::Array(effects));
+                }
                 // `HiddenMaterialGroupList` names the skin materials of the
                 // body model this piece hides; a chosen skin-material actor
                 // lends its list to the new piece.
@@ -1129,6 +1204,13 @@ impl ArmorSpec {
             pouch.insert(
                 "ColorVariationType".into(),
                 JsonValue::String("ArmorDye".into()),
+            );
+        }
+        // Vanilla rows list one effect: the first ArmorParam entry.
+        if let Some(effect) = self.armor_effects.first() {
+            pouch.insert(
+                "ArmorEffectType".into(),
+                JsonValue::String(effect.effect_type.trim().to_owned()),
             );
         }
         clone_armor_rsdb_rows(
@@ -2275,6 +2357,7 @@ mod tests {
             upgrades_enabled: true,
             dyeable: false,
             skin_material: None,
+            armor_effects: Vec::new(),
         }
     }
 

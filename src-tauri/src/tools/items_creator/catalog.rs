@@ -37,6 +37,18 @@ pub struct TemplateEntry {
     pub upgraded: bool,
 }
 
+/// One `ArmorEffectType` used by vanilla armor.
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArmorEffectEntry {
+    /// `ArmorParam` `ArmorEffectType`, for example `QuietnessUp`.
+    pub effect_type: String,
+    /// Distinct `ArmorEffectLevel` values vanilla pairs with it (usually none).
+    pub levels: Vec<i32>,
+    /// Base armor actors carrying the effect.
+    pub actors: Vec<String>,
+}
+
 /// One travelling merchant (Beedle) and where he stands.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,6 +112,8 @@ pub struct Catalog {
     /// Pouch display name of every named pouch actor (upgrade materials span
     /// `Item_*`, `BeeHome`, `Animal_Insect_*`, ...).
     pub item_names: BTreeMap<String, String>,
+    /// Every `ArmorEffectType` found in the base (non-upgrade) armor packs.
+    pub armor_effects: Vec<ArmorEffectEntry>,
 }
 
 /// Values a template carries, used to pre-fill the form.
@@ -163,7 +177,7 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
     let places = location_names(clean_romfs, zstd.clone()).unwrap_or_default();
     let (decayed_actors, pristine_actors) =
         weapon_variants(clean_romfs, zstd.clone()).unwrap_or_default();
-    let upgraded_actors = upgraded_armor(clean_romfs, zstd).unwrap_or_default();
+    let upgraded_actors = upgraded_armor(clean_romfs, zstd.clone()).unwrap_or_default();
     let icon_dir = icon_directory();
     let mut templates = Vec::new();
     let mut vendors = Vec::new();
@@ -247,13 +261,81 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
         .map(|(actor, (name, _))| (actor.clone(), strip_control_tags(name)))
         .filter(|(_, name)| !name.is_empty())
         .collect();
+    let base_armor: Vec<&str> = templates
+        .iter()
+        .filter(|template| template.actor.starts_with("Armor_") && !template.upgraded)
+        .map(|template| template.actor.as_str())
+        .collect();
+    let armor_effects = armor_effects(&actor_dir, &base_armor, zstd);
     Ok(Catalog {
         romfs: clean_romfs.to_string_lossy().into_owned(),
         icon_dir: icon_dir.map(|dir| dir.to_string_lossy().into_owned()),
         templates,
         vendors,
         item_names,
+        armor_effects,
     })
+}
+
+/// Scans the ArmorParam of every listed actor pack for `ArmorEffect` entries
+/// (`{ArmorEffectType, ArmorEffectLevel?}`), sorted by effect type.
+fn armor_effects(
+    actor_dir: &Path,
+    actors: &[&str],
+    zstd: Arc<TotkZstd<'_>>,
+) -> Vec<ArmorEffectEntry> {
+    let mut found: BTreeMap<String, ArmorEffectEntry> = BTreeMap::new();
+    for actor in actors {
+        let Ok(bytes) = fs::read(actor_dir.join(format!("{actor}.pack.zs"))) else {
+            continue;
+        };
+        let Ok(pack) = PackFile::from_binary(&bytes, zstd.clone()) else {
+            continue;
+        };
+        let Ok(armor) = pack.byml_file(&format!(
+            "Component/ArmorParam/{actor}.game__component__ArmorParam.bgyml"
+        )) else {
+            continue;
+        };
+        let entries = armor
+            .pio
+            .as_map()
+            .ok()
+            .and_then(|map| map.get("ArmorEffect"))
+            .and_then(|list| list.as_array().ok())
+            .map(|list| list.to_vec())
+            .unwrap_or_default();
+        for entry in entries {
+            let Ok(map) = entry.as_map() else { continue };
+            let Some(effect_type) = map
+                .get("ArmorEffectType")
+                .and_then(|value| value.as_string().ok())
+                .map(ToString::to_string)
+            else {
+                continue;
+            };
+            let level = map
+                .get("ArmorEffectLevel")
+                .and_then(|value| value.as_i32().ok());
+            let slot = found
+                .entry(effect_type.clone())
+                .or_insert_with(|| ArmorEffectEntry {
+                    effect_type,
+                    ..Default::default()
+                });
+            if let Some(level) = level {
+                if !slot.levels.contains(&level) {
+                    slot.levels.push(level);
+                }
+            }
+            if !slot.actors.iter().any(|known| known == actor) {
+                slot.actors.push((*actor).to_owned());
+            }
+        }
+    }
+    // `found` is keyed by effect type, so the list is already alphabetical.
+    let effects: Vec<ArmorEffectEntry> = found.into_values().collect();
+    effects
 }
 
 /// Reads the values of one template actor for pre-filling the form.
@@ -708,6 +790,37 @@ mod tests {
         assert_eq!(
             catalog.item_names.get("BeeHome").map(String::as_str),
             Some("Courser Bee Honey")
+        );
+        eprintln!(
+            "armor effects: {:?}",
+            catalog
+                .armor_effects
+                .iter()
+                .map(|effect| (
+                    effect.effect_type.as_str(),
+                    effect.actors.len(),
+                    effect.levels.clone()
+                ))
+                .collect::<Vec<_>>()
+        );
+        let quiet = catalog
+            .armor_effects
+            .iter()
+            .find(|effect| effect.effect_type == "QuietnessUp")
+            .expect("QuietnessUp effect");
+        assert!(
+            quiet.actors.iter().any(|actor| actor == "Armor_006_Head") || quiet.actors.len() > 1
+        );
+        let zonai = catalog
+            .armor_effects
+            .iter()
+            .find(|effect| effect.effect_type == "DecreaseZonauEnergy")
+            .expect("DecreaseZonauEnergy effect");
+        assert_eq!(zonai.levels, [1]);
+        assert!(
+            catalog.armor_effects.len() >= 30,
+            "{}",
+            catalog.armor_effects.len()
         );
         assert!(catalog.item_names.contains_key("Animal_Insect_AA"));
         assert!(upgraded.iter().any(|t| t.actor == "Armor_015_Head"));

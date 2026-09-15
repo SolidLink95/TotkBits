@@ -110,6 +110,9 @@
 .item-creator-physics { display: flex; flex-direction: column; gap: 6px; }
 .item-creator-physics-entry { display: grid; grid-template-columns: minmax(0, 1fr) 28px 28px; gap: 6px; align-items: center; }
 .item-creator-physics-entry button[hidden] { display: none; }
+.item-creator-effect-entry { display: grid; grid-template-columns: minmax(0, 1fr) 72px 28px 28px; gap: 6px; align-items: center; }
+.item-creator-effect-entry button[hidden] { display: none; }
+.item-creator-effect-entry .item-creator-picker-button img, .item-creator-effect-entry .item-creator-option img { object-fit: contain; }
 
 /* Template picker */
 .item-creator-picker { position: relative; }
