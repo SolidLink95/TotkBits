@@ -2,7 +2,7 @@
 //! as templates (with their pouch names), which travelling merchants exist,
 //! the values a template carries, and the cached base icons.
 
-use super::{actor_pack, armor::ArmorSlot, WeaponKind};
+use super::{actor_pack, armor::ArmorSlot, vendor, WeaponKind};
 use crate::{
     file_format::{BinTextFile::BymlFile, Pack::PackFile},
     parser::msbt::{token::TextPart, Msbt},
@@ -10,7 +10,7 @@ use crate::{
 };
 use serde::Serialize;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs, io,
     path::{Path, PathBuf},
     sync::Arc,
@@ -35,6 +35,12 @@ pub struct TemplateEntry {
     /// Armor that is a Great Fairy rank (PouchActorInfo `ArmorRank` above 1)
     /// of another piece rather than a base piece.
     pub upgraded: bool,
+    /// Base armor whose pack carries `Phive/HelperBone/*` files (a usable
+    /// helper-bone donor for the items creator).
+    pub helper_bones: bool,
+    /// Base armor whose pack carries `Phive/Cloth/*` files (cloth physics of
+    /// its own, a useful physics donor for the items creator).
+    pub cloth: bool,
 }
 
 /// One `ArmorEffectType` used by vanilla armor.
@@ -49,11 +55,17 @@ pub struct ArmorEffectEntry {
     pub actors: Vec<String>,
 }
 
-/// One travelling merchant (Beedle) and where he stands.
+/// One shop the items can be sold in: a travelling merchant (Beedle) and
+/// where he stands, or the Bargainer Statue group.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VendorEntry {
+    /// Spec `actor_name`: an `Npc_TripMaster_*` actor or `BargainerStatue`.
     pub actor: String,
+    /// Text for the shop picker ("Beedle: New Serenne Stable (Npc_TripMaster_00)").
+    pub label: String,
+    /// `Rupee`, or `MinusRupee` for the poe-priced Bargainer Statues.
+    pub currency: String,
     /// `Location.msbt` label of the stable or town he stands at, empty when unknown.
     pub location_label: String,
     /// Localized name of that place ("New Serenne Stable"), empty when unknown.
@@ -107,7 +119,8 @@ pub struct Catalog {
     pub romfs: String,
     pub icon_dir: Option<String>,
     pub templates: Vec<TemplateEntry>,
-    /// `Npc_TripMaster_*` actors that can sell the items, with their stable.
+    /// Shops that can sell the items: every `Npc_TripMaster_*` actor with
+    /// his stable, then the Bargainer Statue group when the RomFS has it.
     pub vendors: Vec<VendorEntry>,
     /// Pouch display name of every named pouch actor (upgrade materials span
     /// `Item_*`, `BeeHome`, `Animal_Insect_*`, ...).
@@ -193,20 +206,27 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
             let known = BEEDLE_LOCATIONS
                 .iter()
                 .find(|(vendor, _, _)| *vendor == actor);
+            let location = known
+                .map(|(_, label, fallback)| {
+                    places
+                        .get(*label)
+                        .cloned()
+                        .filter(|text| !text.is_empty())
+                        .unwrap_or_else(|| (*fallback).to_owned())
+                })
+                .unwrap_or_default();
             vendors.push(VendorEntry {
                 actor: actor.to_owned(),
+                label: if location.is_empty() {
+                    format!("Beedle: {actor}")
+                } else {
+                    format!("Beedle: {location} ({actor})")
+                },
+                currency: vendor::RUPEE_CURRENCY.to_owned(),
                 location_label: known
                     .map(|(_, label, _)| (*label).to_owned())
                     .unwrap_or_default(),
-                location: known
-                    .map(|(_, label, fallback)| {
-                        places
-                            .get(*label)
-                            .cloned()
-                            .filter(|text| !text.is_empty())
-                            .unwrap_or_else(|| (*fallback).to_owned())
-                    })
-                    .unwrap_or_default(),
+                location,
             });
             continue;
         }
@@ -252,10 +272,24 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
             actor: actor.to_owned(),
             kind,
             has_icon,
+            helper_bones: false,
+            cloth: false,
         });
     }
     templates.sort_by(|a, b| a.actor.cmp(&b.actor));
     vendors.sort_by(|a, b| a.actor.cmp(&b.actor));
+    if vendor::BARGAINER_STATUE_ACTORS
+        .iter()
+        .all(|actor| actor_dir.join(format!("{actor}.pack.zs")).is_file())
+    {
+        vendors.push(VendorEntry {
+            actor: vendor::BARGAINER_STATUE.to_owned(),
+            label: "Bargainer Statue (every statue, paid in poes)".to_owned(),
+            currency: vendor::POE_CURRENCY.to_owned(),
+            location_label: String::new(),
+            location: String::new(),
+        });
+    }
     let item_names = names
         .iter()
         .map(|(actor, (name, _))| (actor.clone(), strip_control_tags(name)))
@@ -266,7 +300,12 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
         .filter(|template| template.actor.starts_with("Armor_") && !template.upgraded)
         .map(|template| template.actor.as_str())
         .collect();
-    let armor_effects = armor_effects(&actor_dir, &base_armor, zstd);
+    let (armor_effects, helper_bone_actors, cloth_actors) =
+        scan_base_armor(&actor_dir, &base_armor, zstd);
+    for template in &mut templates {
+        template.helper_bones = helper_bone_actors.contains(&template.actor);
+        template.cloth = cloth_actors.contains(&template.actor);
+    }
     Ok(Catalog {
         romfs: clean_romfs.to_string_lossy().into_owned(),
         icon_dir: icon_dir.map(|dir| dir.to_string_lossy().into_owned()),
@@ -277,14 +316,18 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
     })
 }
 
-/// Scans the ArmorParam of every listed actor pack for `ArmorEffect` entries
-/// (`{ArmorEffectType, ArmorEffectLevel?}`), sorted by effect type.
-fn armor_effects(
+/// Scans every listed actor pack for the ArmorParam `ArmorEffect` entries
+/// (`{ArmorEffectType, ArmorEffectLevel?}`, returned sorted by effect type)
+/// and for the actors carrying `Phive/HelperBone/*` and `Phive/Cloth/*`
+/// files (returned as two sets, in that order).
+fn scan_base_armor(
     actor_dir: &Path,
     actors: &[&str],
     zstd: Arc<TotkZstd<'_>>,
-) -> Vec<ArmorEffectEntry> {
+) -> (Vec<ArmorEffectEntry>, BTreeSet<String>, BTreeSet<String>) {
     let mut found: BTreeMap<String, ArmorEffectEntry> = BTreeMap::new();
+    let mut helper_bone_actors = BTreeSet::new();
+    let mut cloth_actors = BTreeSet::new();
     for actor in actors {
         let Ok(bytes) = fs::read(actor_dir.join(format!("{actor}.pack.zs"))) else {
             continue;
@@ -292,6 +335,17 @@ fn armor_effects(
         let Ok(pack) = PackFile::from_binary(&bytes, zstd.clone()) else {
             continue;
         };
+        let has_entry_under = |prefix: &str| {
+            pack.sarc
+                .files()
+                .any(|file| file.name().is_some_and(|name| name.starts_with(prefix)))
+        };
+        if has_entry_under("Phive/HelperBone/") {
+            helper_bone_actors.insert((*actor).to_owned());
+        }
+        if has_entry_under("Phive/Cloth/") {
+            cloth_actors.insert((*actor).to_owned());
+        }
         let Ok(armor) = pack.byml_file(&format!(
             "Component/ArmorParam/{actor}.game__component__ArmorParam.bgyml"
         )) else {
@@ -334,8 +388,11 @@ fn armor_effects(
         }
     }
     // `found` is keyed by effect type, so the list is already alphabetical.
-    let effects: Vec<ArmorEffectEntry> = found.into_values().collect();
-    effects
+    (
+        found.into_values().collect(),
+        helper_bone_actors,
+        cloth_actors,
+    )
 }
 
 /// Reads the values of one template actor for pre-filling the form.
@@ -871,7 +928,18 @@ mod tests {
             .find(|v| v.actor == "Npc_TripMaster_00")
             .expect("Beedle 00");
         assert_eq!(serenne.location, "New Serenne Stable");
-        assert!(catalog.vendors.iter().all(|v| !v.location.is_empty()));
+        assert!(catalog
+            .vendors
+            .iter()
+            .filter(|v| !vendor::is_bargainer_statue(&v.actor))
+            .all(|v| !v.location.is_empty()));
+        let statue = catalog
+            .vendors
+            .last()
+            .expect("statue entry closes the vendor list");
+        assert_eq!(statue.actor, vendor::BARGAINER_STATUE);
+        assert_eq!(statue.currency, vendor::POE_CURRENCY);
+        assert!(statue.label.starts_with("Bargainer Statue"));
         for actor in [
             "Weapon_Sword_001",
             "Weapon_Shield_001",

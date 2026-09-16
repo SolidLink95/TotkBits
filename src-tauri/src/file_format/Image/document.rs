@@ -639,45 +639,39 @@ impl ImageDocument {
                 })?;
             let selected_width = (u32::from(txtg.header.width) >> mip_index).max(1);
             let selected_height = (u32::from(txtg.header.height) >> mip_index).max(1);
-            let log2 = super::switch_texture::inferred_block_height_log2(selected_height, 4);
-            let (image, format_name) = match txtg.header.format {
-                0x101 | 0x109 => (
-                    super::switch_texture::decode_astc(
-                        selected_width,
-                        selected_height,
-                        &surface.data,
-                        4,
-                        4,
-                        log2,
-                    )?,
-                    "ASTC 4x4".to_owned(),
-                ),
-                0x102 | 0x105 => (
-                    super::switch_texture::decode_astc(
-                        selected_width,
-                        selected_height,
-                        &surface.data,
-                        8,
-                        8,
-                        log2,
-                    )?,
-                    "ASTC 8x8".to_owned(),
-                ),
-                _ => {
-                    let image_format = image_format?;
-                    (
-                        super::switch_texture::decode(
+            let (image, format_name) =
+                match crate::parser::textogo::writer::astc_block_from_textogo(&txtg.header) {
+                    Some((block_width, block_height)) => (
+                        super::switch_texture::decode_astc(
                             selected_width,
                             selected_height,
-                            image_format,
                             &surface.data,
-                            log2,
-                            false,
+                            block_width as usize,
+                            block_height as usize,
+                            super::switch_texture::inferred_block_height_log2(
+                                selected_height,
+                                block_height,
+                            ),
                         )?,
-                        format!("{image_format:?}"),
-                    )
-                }
-            };
+                        format!("ASTC {block_width}x{block_height}"),
+                    ),
+                    None => {
+                        let image_format = image_format?;
+                        let log2 =
+                            super::switch_texture::inferred_block_height_log2(selected_height, 4);
+                        (
+                            super::switch_texture::decode(
+                                selected_width,
+                                selected_height,
+                                image_format,
+                                &surface.data,
+                                log2,
+                                false,
+                            )?,
+                            format!("{image_format:?}"),
+                        )
+                    }
+                };
             (
                 image,
                 "TexToGo".into(),

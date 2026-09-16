@@ -1052,6 +1052,10 @@ impl<'a> TotkBitsApp<'a> {
         None
     }
 
+    /// Adds every file under `path` (a folder on disk) to the archive below
+    /// `internal_dir`; an empty directory (or `/`) means the archive root, so
+    /// the entries land at `<folder name>/...` instead of under a nameless
+    /// folder.
     pub fn add_dir_to_sarc(&mut self, internal_dir: String, path: String) -> Option<SendData> {
         let mut data = SendData::default();
         let mut int_path = Pathlib::new(internal_dir.replace("\\", "/"));
@@ -1085,10 +1089,15 @@ impl<'a> TotkBitsApp<'a> {
                 if file_path_to_add.starts_with("/") {
                     file_path_to_add = file_path_to_add[1..].to_string();
                 }
-                let new_internal_path = format!("{}/{}", &int_path.full_path, &file_path_to_add);
+                let new_internal_path = join_internal_path(&int_path.full_path, &file_path_to_add);
                 let _ = self.add_internal_file_from_path(new_internal_path, file, true);
             }
-            data.status_text = format!("Added {} files to {}", files_len, &int_path.full_path);
+            let target = if int_path.full_path.is_empty() {
+                "the archive root".to_string()
+            } else {
+                int_path.full_path.clone()
+            };
+            data.status_text = format!("Added {} files to {}", files_len, target);
         }
         if let Some(pack) = &mut self.pack {
             data.get_sarc_paths(pack);
@@ -1105,7 +1114,7 @@ impl<'a> TotkBitsApp<'a> {
         // let mut data = SendData::default();
         let p1 = Pathlib::new(internal_dir.replace("\\", "/"));
         let p2 = Pathlib::new(path.replace("\\", "/"));
-        let internal_path = format!("{}/{}", &p1.full_path, &p2.name);
+        let internal_path = join_internal_path(&p1.full_path, &p2.name);
         return self.add_internal_file_from_path(internal_path, p2.full_path, true);
 
         // Some(data)
@@ -2492,4 +2501,32 @@ pub fn check_if_filepath_valid(path: &str) -> bool {
     }
     let path = Path::new(path);
     path.exists() && path.is_file()
+}
+
+/// Joins an archive directory and a relative entry path without producing a
+/// leading `/` (or a nameless first folder) when the directory is the root.
+fn join_internal_path(internal_dir: &str, relative: &str) -> String {
+    let dir = internal_dir.trim_matches('/');
+    let relative = relative.trim_start_matches('/');
+    if dir.is_empty() {
+        relative.to_string()
+    } else {
+        format!("{dir}/{relative}")
+    }
+}
+
+#[cfg(test)]
+mod internal_path_tests {
+    use super::join_internal_path;
+
+    #[test]
+    fn root_and_nested_directories_join_without_a_nameless_folder() {
+        assert_eq!(join_internal_path("", "Actor/A.bgyml"), "Actor/A.bgyml");
+        assert_eq!(join_internal_path("/", "/Actor/A.bgyml"), "Actor/A.bgyml");
+        assert_eq!(
+            join_internal_path("Phive/", "Cloth/x.bphcl"),
+            "Phive/Cloth/x.bphcl"
+        );
+        assert_eq!(join_internal_path("Phive", "x.bphcl"), "Phive/x.bphcl");
+    }
 }

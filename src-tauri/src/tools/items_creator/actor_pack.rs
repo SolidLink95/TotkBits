@@ -611,9 +611,51 @@ pub(super) fn prepare_physics_entries(
         ));
     }
     let pack = PackFile::from_binary(&fs::read(&pack_path)?, zstd)?;
+    physics_entries_of_pack(&pack, actor_name)
+}
+
+/// Collects the physics bundle of an actor pack on disk (`.pack.zs` or a
+/// plain `.pack`, from any mod): the actor is the one whose ActorParam the
+/// pack carries, so the file name does not matter. Returns the actor name
+/// with the bundle.
+pub(super) fn prepare_physics_entries_from_file(
+    pack_path: &Path,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<(String, (String, Vec<InjectedPackEntry>))> {
+    if !pack_path.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("physics donor pack is missing: {}", pack_path.display()),
+        ));
+    }
+    let pack = PackFile::from_binary(&fs::read(pack_path)?, zstd)?;
+    let actor_name = pack
+        .sarc
+        .files()
+        .find_map(|file| {
+            file.name()?
+                .strip_prefix("Actor/")?
+                .strip_suffix(".engine__actor__ActorParam.bgyml")
+                .map(str::to_owned)
+        })
+        .ok_or_else(|| {
+            invalid(format!(
+                "physics donor pack has no Actor/*.engine__actor__ActorParam.bgyml entry: {}",
+                pack_path.display()
+            ))
+        })?;
+    validate_actor_name(&actor_name)?;
+    let bundle = physics_entries_of_pack(&pack, &actor_name)?;
+    Ok((actor_name, bundle))
+}
+
+fn physics_entries_of_pack(
+    pack: &PackFile<'_>,
+    actor_name: &str,
+) -> io::Result<(String, Vec<InjectedPackEntry>)> {
     let actor_path = format!("Actor/{actor_name}.engine__actor__ActorParam.bgyml");
-    let actor = parse_pack_byml(&pack, &actor_path)?;
-    let physics_ref = resolve_component_ref(&pack, &actor, "PhysicsRef", &mut BTreeSet::new())?
+    let actor = parse_pack_byml(pack, &actor_path)?;
+    let physics_ref = resolve_component_ref(pack, &actor, "PhysicsRef", &mut BTreeSet::new())?
         .ok_or_else(|| invalid(format!("vanilla actor {actor_name} has no PhysicsRef")))?;
     let physics_path = reference_to_internal(&physics_ref);
     let mut entries = Vec::new();

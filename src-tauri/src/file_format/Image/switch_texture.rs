@@ -99,6 +99,50 @@ pub fn decode_astc(
     })
 }
 
+/// Tiles linear ASTC blocks (astcenc output without its 16-byte header)
+/// into the Tegra swizzled layout `decode_astc` reads, for
+/// `block_width`x`block_height` texel blocks of 16 bytes each.
+pub fn swizzle_astc(
+    width: u32,
+    height: u32,
+    linear: &[u8],
+    block_width: usize,
+    block_height: usize,
+    block_height_log2: u8,
+) -> io::Result<Vec<u8>> {
+    check_dimensions(width, height)?;
+    let mut block_dim = BlockDim::uncompressed();
+    block_dim.width = NonZeroUsize::new(block_width)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ASTC block width is zero"))?;
+    block_dim.height = NonZeroUsize::new(block_height)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ASTC block height is zero"))?;
+    let tegra_block_height = BlockHeight::new(1usize << block_height_log2)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid Tegra block height"))?;
+    let expected =
+        (width as usize).div_ceil(block_width) * (height as usize).div_ceil(block_height) * 16;
+    if linear.len() < expected {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "ASTC surface holds {} bytes, {expected} needed for {width}x{height}",
+                linear.len()
+            ),
+        ));
+    }
+    swizzle_surface(
+        width as usize,
+        height as usize,
+        1,
+        &linear[..expected],
+        block_dim,
+        Some(tegra_block_height),
+        16,
+        1,
+        1,
+    )
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
+}
+
 pub fn decode(
     width: u32,
     height: u32,

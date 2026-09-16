@@ -215,16 +215,28 @@ pub struct ArmorSpec {
     /// Placeholder geometry. When omitted the template mesh is kept.
     #[serde(default, alias = "cube")]
     pub model: Option<CubeModelSpec>,
-    /// Vanilla actors whose `Phive/*` and `Component/Physics/*` entries are
+    /// Actors whose `Phive/*` and `Component/Physics/*` entries are
     /// transferred into the clone (cloth, helper bones, ...); a single string
-    /// is accepted too. One usable donor is copied verbatim. Two or more are
-    /// merged into one bundle named after the actor: every cloth (with its
-    /// skeleton) and collidable of their BPHCL files, their ClothParams,
-    /// cloth reactions and helper-bone files. Empty, malformed or
-    /// non-existent actors are ignored, and the template's own physics
-    /// entries are preserved when no donor is usable.
+    /// is accepted too. Each donor is a vanilla actor name (its pack is read
+    /// from the RomFS) or the path of an actor pack on disk (`.pack.zs` /
+    /// `.pack`, e.g. a piece from another mod). One usable donor is copied
+    /// verbatim. Two or more are merged into one bundle named after the
+    /// actor: every cloth (with its skeleton) and collidable of their BPHCL
+    /// files, their ClothParams, cloth reactions and advanced options; the
+    /// helper bones come from the first donor only (renamed after the
+    /// actor), since they drive bones of that donor's model.
+    /// Empty, malformed or non-existent donors are ignored, and the
+    /// template's own physics entries are preserved when no donor is usable.
     #[serde(default, alias = "physics_actor", deserialize_with = "physics_donors")]
     pub physics: Vec<String>,
+    /// Vanilla armor actor whose `Phive/HelperBone/*` files are transferred
+    /// into the clone after the physics step (whatever physics the piece
+    /// ended up with keeps its cloth; its `HelperBoneList` is replaced).
+    /// The helper-bone files, the ControllerSetParam, `Component/Physics`
+    /// and the ActorParam `PhysicsRef` are renamed after the actor. `None`
+    /// or blank keeps the helper bones the physics step left.
+    #[serde(default, alias = "helper_bones", alias = "helper_bone_actor")]
+    pub helper_bone: Option<String>,
     /// With a custom FBX: replace the bones with the FBX skeleton (Toolbox
     /// "Import Bones") instead of keeping the template skeleton.
     #[serde(default, alias = "import_skeleton")]
@@ -421,10 +433,11 @@ impl ArmorSpec {
                 self.actor_name
             )));
         }
-        if let Some(actor) = self
-            .skin_material
-            .as_deref()
-            .filter(|actor| !actor.trim().is_empty())
+        for actor in [&self.skin_material, &self.helper_bone]
+            .into_iter()
+            .flatten()
+            .map(|actor| actor.trim())
+            .filter(|actor| !actor.is_empty())
         {
             validate_actor_name(actor)?;
         }
@@ -518,21 +531,7 @@ impl ArmorSpec {
             }
         }
         for vendor in &self.vendors {
-            if !vendor.actor_name.starts_with("Npc_TripMaster_") {
-                return Err(invalid(
-                    "only existing Npc_TripMaster_* vendors are supported initially",
-                ));
-            }
-            if vendor.quantity == 0 {
-                return Err(invalid("vendor quantity must be greater than zero"));
-            }
-            if vendor.buying_price.is_some_and(|price| price < 0)
-                || vendor.selling_price.is_some_and(|price| price < 0)
-            {
-                return Err(invalid(
-                    "vendor buying and selling prices cannot be negative",
-                ));
-            }
+            vendor::validate_vendor(vendor)?;
         }
         for asset in [&self.assets.icon_png, &self.assets.fbx]
             .into_iter()
@@ -584,6 +583,7 @@ impl ArmorSpec {
 
         let actor_pack = self.clone_actor_pack(
             clean_romfs,
+            asset_root,
             output_romfs,
             &template,
             &upgrades,
@@ -667,18 +667,17 @@ impl ArmorSpec {
         let upgrades = self.generate_upgrade_files(
             clean_romfs,
             output_romfs,
-            asset_root,
+            &ui_textures,
             &upgrades,
             make_dyeable,
             &mut rsdb,
             zstd.clone(),
         )?;
         let processor = vendor::VendorProcessor::new(clean_romfs, output_romfs, zstd);
-        let vendor_packs = self
-            .vendors
-            .iter()
-            .map(|target| processor.add_weapon(&self.actor_name, target))
-            .collect::<io::Result<Vec<_>>>()?;
+        let mut vendor_packs = Vec::new();
+        for target in &self.vendors {
+            vendor_packs.extend(processor.add_weapon(&self.actor_name, target)?);
+        }
 
         Ok(ArmorGenerationReport {
             actor_name: self.actor_name.clone(),
@@ -701,11 +700,13 @@ impl ArmorSpec {
 
     /// Clones the template pack under the new project name. Every SARC entry
     /// and BYML string scoped to the template project is renamed, the physics
-    /// bundle is swapped only when a usable donor actor is given, and
-    /// ArmorParam receives the custom defense/series values.
+    /// bundle is swapped only when a usable donor actor is given, the helper
+    /// bones are transferred from the chosen actor, and ArmorParam receives
+    /// the custom defense/series values.
     fn clone_actor_pack(
         &self,
         clean_romfs: &Path,
+        asset_root: &Path,
         output_romfs: &Path,
         template: &TemplateArmor,
         upgrades: &[ArmorUpgradeSpec],
@@ -742,6 +743,7 @@ impl ArmorSpec {
         // PhysicsRef are preserved (renamed with the rest of the pack).
         let physics = super::physics::merged_physics_entries(
             clean_romfs,
+            asset_root,
             &self.physics,
             &self.actor_name,
             zstd.clone(),
@@ -908,6 +910,23 @@ impl ArmorSpec {
         }
         if let Some(first) = upgrades.first() {
             set_enhancement_cost(&mut entries, &actor_file, first, zstd.clone())?;
+        }
+        // Helper bones: the chosen actor's Phive/HelperBone files replace the
+        // ones the physics step left, and the physics binding is renamed.
+        if let Some(donor) = self
+            .helper_bone
+            .as_deref()
+            .map(str::trim)
+            .filter(|donor| !donor.is_empty())
+        {
+            super::physics::transfer_helper_bones(
+                clean_romfs,
+                donor,
+                &self.actor_name,
+                &actor_file,
+                &mut entries,
+                zstd.clone(),
+            )?;
         }
         if make_dyeable
             && !entries
@@ -1231,11 +1250,20 @@ impl ArmorSpec {
     /// ActorParam / ArmorParam / GameParameterTable / EnhancementMaterial /
     /// PriceParam documents that `$parent` the base ones, exactly like
     /// `Armor_002_Head` sits on `Armor_001_Head`.
+    ///
+    /// Icons are not built again per rank. The game loads
+    /// `UI/Tex/Icon/<actor>[_<Color>].bntx.zs` by the actor's own name (only
+    /// `ActorInfo.ActorName` redirects, and that also merges the pouch
+    /// identity, so it is unusable for ranks), and vanilla ranks such as
+    /// `Armor_002_Head` ship pixel-identical copies of the base icons under
+    /// their own names. The rank files are therefore byte clones of the
+    /// base's finished `base_icons` with just the texture name swapped: no
+    /// PNG decoding, tinting or ASTC encoding happens for ranks.
     fn generate_upgrade_files(
         &self,
         clean_romfs: &Path,
         output_romfs: &Path,
-        asset_root: &Path,
+        base_icons: &[UiTextureReport],
         upgrades: &[ArmorUpgradeSpec],
         make_dyeable: bool,
         rsdb_outputs: &mut Vec<PathBuf>,
@@ -1314,11 +1342,6 @@ impl ArmorSpec {
             .clone();
         table_template.remove("$parent");
 
-        let custom_icon = self
-            .assets
-            .icon_png
-            .as_deref()
-            .map(|path| super::resolve_asset(asset_root, path));
         let mut reports = Vec::with_capacity(upgrades.len());
         let mut enhancement_rows = vec![rsdb::EnhancementRow {
             actor: self.actor_name.clone(),
@@ -1504,33 +1527,14 @@ impl ArmorSpec {
                 &self.description,
                 zstd.clone(),
             )?;
-            let mut ui_textures = Vec::new();
-            for (source, destination, texture_name) in
-                icon_variants(clean_romfs, &self.template_actor, name)?
-            {
-                let png = (texture_name == *name)
-                    .then(|| custom_icon.clone())
-                    .flatten();
-                ui_textures.push(super::generate_ui_texture(
-                    clean_romfs,
-                    output_romfs,
-                    source,
-                    destination,
-                    texture_name,
-                    png,
-                    zstd.clone(),
-                )?);
-            }
-            if make_dyeable {
-                ui_textures.extend(generate_dye_icons(
-                    clean_romfs,
-                    output_romfs,
-                    &self.template_actor,
-                    name,
-                    custom_icon.as_deref(),
-                    zstd.clone(),
-                )?);
-            }
+            let ui_textures = clone_rank_icons(
+                clean_romfs,
+                output_romfs,
+                base_icons,
+                &self.actor_name,
+                name,
+                zstd.clone(),
+            )?;
             reports.push(ArmorUpgradeReport {
                 actor_name: name.clone(),
                 rank: rank as u8,
@@ -1934,6 +1938,62 @@ fn tint_rgba(image: &image::RgbaImage, tint: [u8; 3]) -> image::RgbaImage {
         pixel.0 = [mix(r, tint[0]), mix(g, tint[1]), mix(b, tint[2]), a];
     }
     tinted
+}
+
+/// The icons of one upgrade rank: every finished icon of the base piece
+/// (`<base>.bntx.zs` and its `<base>_<Color>` dye variants) is cloned under
+/// `<rank>` / `<rank>_<Color>` with only the texture name swapped, the way
+/// `Armor_002_Head`'s icons are pixel-identical copies of `Armor_001_Head`'s.
+/// The image payload the base already produced (custom PNG, dye tint, ASTC
+/// encode) is reused as is.
+fn clone_rank_icons(
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    base_icons: &[UiTextureReport],
+    base_actor: &str,
+    rank_actor: &str,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<Vec<UiTextureReport>> {
+    if base_icons.is_empty() {
+        return Err(invalid_data(format!(
+            "no base icons were generated for {base_actor}; cannot derive {rank_actor}'s"
+        )));
+    }
+    let mut reports = Vec::with_capacity(base_icons.len());
+    for base in base_icons {
+        let suffix = match base.name.strip_prefix(base_actor) {
+            Some("") => "",
+            Some(rest) if rest.starts_with('_') => rest,
+            _ => {
+                return Err(invalid_data(format!(
+                    "base icon {} is not named after {base_actor}",
+                    base.name
+                )))
+            }
+        };
+        let name = format!("{rank_actor}{suffix}");
+        let destination = format!("UI/Tex/Icon/{name}.bntx.zs");
+        let request = assets::WeaponBntxAssetRequest {
+            // Absolute: the source is the base's finished icon in the output
+            // tree, not a vanilla file.
+            texture_source: base.destination.clone(),
+            png_source: None,
+            new_name: name,
+            texture_destination: PathBuf::from(&destination),
+        };
+        let report = request.generate(clean_romfs, output_romfs, zstd.clone())?;
+        reports.push(UiTextureReport {
+            destination: output_romfs.join(&destination),
+            name: report.name,
+            format: report.format,
+            width: report.width,
+            height: report.height,
+            png_applied: base.png_applied,
+            similarity: report.similarity,
+            warning: base.warning.clone(),
+        });
+    }
+    Ok(reports)
 }
 
 /// The fifteen `<actor>_<Color>` icons for a piece whose template ships only
@@ -2350,6 +2410,7 @@ mod tests {
             series_name: None,
             model: None,
             physics: Vec::new(),
+            helper_bone: None,
             replace_bones: false,
             assets: ArmorAssets::default(),
             vendors: Vec::new(),

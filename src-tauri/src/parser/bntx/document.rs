@@ -1437,7 +1437,7 @@ fn channels_by_format(format: u32) -> [u8; 4] {
 
 /// Encodes one mip level to ASTC blocks with astcenc, exactly like the C#
 /// CLI helper: `astcenc -cs|-cl in.png out.astc WxH -thorough -silent`.
-fn encode_astc_level(
+pub(crate) fn encode_astc_level(
     image: &RgbaImage,
     block_width: u32,
     block_height: u32,

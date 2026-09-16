@@ -35,7 +35,7 @@ const emptyForm = (tab) => ({
     quantity: '1',
     fbx: '',
     iconPng: '',
-    physics: tab === 'armor' ? [''] : '',
+    physics: tab === 'armor' ? [emptyDonor()] : '',
     replaceBones: false,
     cube: false,
     cubeSize: '0.24,0.24,0.24',
@@ -46,6 +46,7 @@ const emptyForm = (tab) => ({
     upgradesEnabled: true,
     dyeable: false,
     skinMaterial: '',
+    helperBone: '',
     armorEffects: [{ type: '', level: '' }],
 });
 
@@ -59,6 +60,9 @@ const EFFECT_ICONS = {
     MiasmaGuard: 'GloomResistance', EnableUseSwordBeam: 'ClimbSpeedAndBeamPowerUp', WakeWind: 'ResistHotAndWakeWind',
     DecreaseZonauEnergy: 'DecreaseZonauEnergy', DivingMobilityUp: 'DivingMobilityUp', RupeeGuard: 'RupeeGuard',
     LightEmission: 'Glow', NightGlow: 'Glow', Moisturizing: 'Moisturizing', MaskAll: 'MajoraMask',
+    MaskBokoblin: 'MaskBokoblin', MaskHorablin: 'MaskHorablin', MaskLizalfos: 'MaskLizalfos', MaskLynel: 'MaskLynel', MaskMoriblin: 'MaskMoriblin',
+    SoulPowerUpFire: 'SoulPowerUpFire', SoulPowerUpLightning: 'SoulPowerUpLightning', SoulPowerUpSpirit: 'SoulPowerUpSpirit',
+    SoulPowerUpWater: 'SoulPowerUpWater', SoulPowerUpWind: 'SoulPowerUpWind', SpinAttack: 'SpinAttack', YigaDisguise: 'YigaDisguise',
 };
 const effectIcon = (type) => `effects/${EFFECT_ICONS[type] || 'Other'}.webp`;
 /** In-game effect names (as on the armor upgrade lists); unknown types are split on capitals. */
@@ -71,17 +75,36 @@ const EFFECT_LABELS = {
     MiasmaGuard: 'Gloom Resistance', EnableUseSwordBeam: 'Master Sword Beam Up', WakeWind: 'Wake Wind',
     DecreaseZonauEnergy: 'Energy Up', DivingMobilityUp: 'Skydive Mobility Up', RupeeGuard: 'Rupee Padding',
     LightEmission: 'Glow', NightGlow: 'Glow (at night)', Moisturizing: 'Moisturizing', SpinAttack: 'Spin Attack',
-    YigaDisguise: 'Yiga Disguise', MaskAll: 'Monster Disguise (all)', MaskBokoblin: 'Bokoblin Disguise', MaskHorablin: 'Horriblin Disguise',
-    MaskMoriblin: 'Moblin Disguise', MaskLizalfos: 'Lizalfos Disguise', MaskLynel: 'Lynel Disguise',
+    YigaDisguise: 'Yiga Disguise', MaskAll: 'Majora Mask', MaskBokoblin: 'Bokoblin Mask', MaskHorablin: 'Horriblin Mask',
+    MaskMoriblin: 'Moblin Mask', MaskLizalfos: 'Lizalfos Mask', MaskLynel: 'Lynel Mask',
     SoulPowerUpWind: "Tulin's Sage Power Up", SoulPowerUpWater: "Sidon's Sage Power Up", SoulPowerUpFire: "Yunobo's Sage Power Up",
     SoulPowerUpLightning: "Riju's Sage Power Up", SoulPowerUpSpirit: "Mineru's Sage Power Up",
 };
 const effectLabel = (type) => EFFECT_LABELS[type] || type.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
 
 const MAX_UPGRADES = 4;
-/** Physics donor actors of a form or spec (string or list) without blanks. */
+/**
+ * How one armor physics donor is chosen: a base armor picked from the
+ * catalog, an actor pack file on disk, or an actor name typed by hand. All
+ * three end up as one string in the spec (`--cli create_weapon` reads a
+ * vanilla actor name or a `.pack.zs` / `.pack` path).
+ */
+const DONOR_MODES = [
+    { id: 'list', label: 'Base armor' },
+    { id: 'file', label: 'Pack file' },
+    { id: 'name', label: 'Actor name' },
+];
+const emptyDonor = (mode = 'list') => ({ mode, value: '' });
+const isPackPath = (value) => /\.pack(\.zs)?$/i.test(String(value ?? '').trim());
+/** Form donor entry for a spec string: files by extension, catalog armor as list picks, the rest typed. */
+const donorFromSpec = (value, catalogActors = new Set()) => {
+    const text = String(value ?? '').trim();
+    const mode = isPackPath(text) ? 'file' : (catalogActors.has(text) ? 'list' : 'name');
+    return { mode, value: text };
+};
+/** Physics donor strings of a form or spec (string, string list or {mode, value} list) without blanks. */
 const physicsDonors = (value) => (Array.isArray(value) ? value : [value])
-    .map((entry) => String(entry ?? '').trim())
+    .map((entry) => String((entry && typeof entry === 'object' ? entry.value : entry) ?? '').trim())
     .filter(Boolean);
 const emptyUpgrade = () => ({ defense: '', rupees: '', materials: '' });
 /** Splits a material list on the commas outside double quotes. */
@@ -173,6 +196,7 @@ function buildSpec(tab, form, vendor, itemNames = {}) {
         spec.upgrades_enabled = Boolean(form.upgradesEnabled);
         if (form.dyeable) spec.dyeable = true;
         if (form.skinMaterial) spec.skin_material = form.skinMaterial;
+        if (form.helperBone) spec.helper_bone = form.helperBone;
         const effects = form.armorEffects.filter((effect) => effect.type);
         if (effects.length) {
             spec.armor_effects = effects.map((effect) => toInt(effect.level) !== undefined
@@ -220,7 +244,7 @@ function buildSpec(tab, form, vendor, itemNames = {}) {
 }
 
 /** Inverse of buildSpec, for the Edit button. */
-function formFromSpec(spec, itemNames = {}) {
+function formFromSpec(spec, itemNames = {}, catalogActors = new Set()) {
     const isArmor = spec.actor_name.startsWith('Armor_');
     const tab = isArmor ? 'armor' : 'weapon';
     const form = emptyForm(tab);
@@ -235,7 +259,9 @@ function formFromSpec(spec, itemNames = {}) {
     form.iconPng = spec.assets?.icon_png || '';
     form.fbx = spec.assets?.fbx || '';
     const donors = physicsDonors(spec.physics ?? spec.physics_actor);
-    form.physics = isArmor ? (donors.length ? donors : ['']) : (donors[0] || '');
+    form.physics = isArmor
+        ? (donors.length ? donors.map((donor) => donorFromSpec(donor, catalogActors)) : [emptyDonor()])
+        : (donors[0] || '');
     form.replaceBones = Boolean(spec.replace_bones || spec.import_skeleton);
     if (isArmor) {
         form.kind = ARMOR_SLOTS.find((slot) => spec.actor_name.endsWith(slot.suffix))?.id || 'Head';
@@ -244,6 +270,7 @@ function formFromSpec(spec, itemNames = {}) {
         form.upgradesEnabled = spec.upgrades_enabled ?? spec.enable_upgrades ?? true;
         form.dyeable = Boolean(spec.dyeable || spec.make_dyeable);
         form.skinMaterial = spec.skin_material || spec.skin_material_actor || '';
+        form.helperBone = spec.helper_bone || spec.helper_bones || spec.helper_bone_actor || '';
         const effects = (spec.armor_effects || spec.effects || []).map((effect) => typeof effect === 'string'
             ? { type: effect, level: '' }
             : { type: effect.type ?? effect.effect_type ?? '', level: effect.level ?? '' });
@@ -360,6 +387,18 @@ function ItemCreator({ activeTab, setStatusText }) {
     }, [activeTab, catalog]);
 
     const templates = useMemo(() => (catalog?.templates || []).filter((template) => template.kind === form.kind), [catalog, form.kind]);
+    // Helper-bone donors: every base armor of any slot whose pack carries
+    // Phive/HelperBone files (a cape's bones can drive a head piece with a
+    // merged skeleton, so the list is not limited to the current slot).
+    const helperBoneTemplates = useMemo(() => (catalog?.templates || [])
+        .filter((template) => template.helperBones && ARMOR_SLOTS.some((slot) => slot.id === template.kind)), [catalog]);
+    // Physics donors picked from the list: every base armor of any slot whose
+    // pack carries Phive/Cloth files (cloth physics of its own).
+    const physicsTemplates = useMemo(() => (catalog?.templates || [])
+        .filter((template) => template.cloth && ARMOR_SLOTS.some((slot) => slot.id === template.kind)), [catalog]);
+    const physicsTemplateActors = useMemo(() => new Set(physicsTemplates.map((template) => template.actor)), [physicsTemplates]);
+    // The Bargainer Statues price their goods in poes (ShopParam `MinusRupee`).
+    const poeShop = (catalog?.vendors || []).find((entry) => entry.actor === vendor)?.currency === 'MinusRupee';
     const itemNames = catalog?.itemNames || {};
     const armorEffects = catalog?.armorEffects || [];
     const effectTemplates = useMemo(() => armorEffects.map((effect) => ({
@@ -457,13 +496,17 @@ function ItemCreator({ activeTab, setStatusText }) {
     const updateUpgrade = (index, patch) => update({
         upgrades: form.upgrades.map((upgrade, position) => position === index ? { ...upgrade, ...patch } : upgrade),
     });
-    const updatePhysics = (index, value) => update({
-        physics: form.physics.map((donor, position) => position === index ? value : donor),
+    const updatePhysics = (index, patch) => update({
+        physics: form.physics.map((donor, position) => position === index ? { ...donor, ...patch } : donor),
     });
 
     const pickFile = async (field, filters) => {
         const selected = await open({ multiple: false, directory: false, filters });
         if (typeof selected === 'string') update({ [field]: selected });
+    };
+    const pickPhysicsPack = async (index) => {
+        const selected = await open({ multiple: false, directory: false, filters: [{ name: 'Actor pack', extensions: ['zs', 'pack'] }] });
+        if (typeof selected === 'string') updatePhysics(index, { value: selected });
     };
     const pickOutputDir = async () => {
         const selected = await open({ directory: true, multiple: false });
@@ -532,7 +575,7 @@ function ItemCreator({ activeTab, setStatusText }) {
     const editItem = () => {
         const spec = items[selectedIndex];
         if (!spec) return;
-        const loaded = formFromSpec(spec, itemNames);
+        const loaded = formFromSpec(spec, itemNames, physicsTemplateActors);
         setTab(loaded.tab);
         setForm(loaded.form);
         if (loaded.vendor) setVendor(loaded.vendor);
@@ -570,6 +613,9 @@ function ItemCreator({ activeTab, setStatusText }) {
             setEditingIndex(-1);
             const vendorName = valid.find((spec) => spec.vendors?.[0]?.actor_name)?.vendors[0].actor_name;
             if (vendorName) setVendor(vendorName);
+            // The spec file names the mod: `C:\mods\MyCape.json` -> `MyCape`.
+            const stem = path.split(/[\\/]/).pop().replace(/\.[^.]*$/, '');
+            if (stem) setModName(stem);
             setStatus({ kind: 'ok', text: `Loaded ${valid.length} item(s) from ${path}` });
         } catch (reason) {
             setStatus({ kind: 'error', text: String(reason) });
@@ -630,8 +676,7 @@ function ItemCreator({ activeTab, setStatusText }) {
             <label htmlFor="item-creator-shop">Shop</label>
             <select id="item-creator-shop" value={vendor} onChange={(event) => setVendor(event.target.value)}>
                 <option value="">Not sold</option>
-                {(catalog?.vendors || []).map((entry) => <option key={entry.actor} value={entry.actor}>Beedle: {entry.location ? `${entry.location} (${entry.actor})` : entry.actor}</option>)}
-                {/* {(catalog?.vendors || []).map((entry) => <option key={entry.actor} value={entry.actor}>Beedle: {entry.location ? `${entry.location} (${entry.actor})` : entry.actor}</option>)} */}
+                {(catalog?.vendors || []).map((entry) => <option key={entry.actor} value={entry.actor}>{entry.label}</option>)}
             </select>
             {/* <label htmlFor="item-creator-zstd">RSTB zstd level</label>
             <input id="item-creator-zstd" type="number" min="1" max="22" placeholder="default" value={zstdLevel} onChange={(event) => setZstdLevel(event.target.value)} /> */}
@@ -719,17 +764,52 @@ function ItemCreator({ activeTab, setStatusText }) {
                             <div className="item-creator-physics">
                                 {form.physics.map((donor, index) => (
                                     <div className="item-creator-physics-entry" key={index}>
-                                        <input type="text" value={donor} placeholder={index === 0 ? 'Vanilla actor whose Phive / Physics files are copied (optional)' : 'Another vanilla actor to merge physics from'}
-                                            onChange={(event) => updatePhysics(index, event.target.value)} />
+                                        <select value={donor.mode} title="Where this physics donor comes from"
+                                            onChange={(event) => updatePhysics(index, { mode: event.target.value, value: '' })}>
+                                            {DONOR_MODES.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
+                                        </select>
+                                        {donor.mode === 'list' && <TemplatePicker
+                                            templates={physicsTemplates}
+                                            value={donor.value}
+                                            icons={icons}
+                                            disabled={!catalog}
+                                            onOpen={() => ensureIcons('physics', physicsTemplates.map((template) => template.actor))}
+                                            onChange={(actor) => updatePhysics(index, { value: actor })}
+                                            hideUpgrades={hideUpgrades}
+                                            placeholder={index === 0 ? 'Base armor whose Phive / Physics files are copied (optional)' : 'Another base armor to merge physics from'}
+                                            noneLabel="None" />}
+                                        {donor.mode === 'file' && <div className="item-creator-path">
+                                            <input type="text" value={donor.value} placeholder="Actor pack (.pack.zs / .pack) whose Phive / Physics files are copied"
+                                                onChange={(event) => updatePhysics(index, { value: event.target.value })} />
+                                            <button type="button" onClick={() => pickPhysicsPack(index)}>Browse…</button>
+                                        </div>}
+                                        {donor.mode === 'name' && <input type="text" value={donor.value} placeholder="Vanilla actor name from the RomFS, e.g. Armor_005_Head (optional)"
+                                            onChange={(event) => updatePhysics(index, { value: event.target.value })} />}
                                         <button type="button" title="Remove this physics donor" disabled={form.physics.length <= 1}
                                             onClick={() => update({ physics: form.physics.filter((_, position) => position !== index) })}>−</button>
                                         <button type="button" title="Add another physics donor" hidden={index !== form.physics.length - 1}
-                                            onClick={() => update({ physics: [...form.physics, ''] })}>+</button>
+                                            onClick={() => update({ physics: [...form.physics, emptyDonor()] })}>+</button>
                                     </div>
                                 ))}
-                                <span className="item-creator-hint">{form.physics.filter((entry) => entry.trim()).length > 1
+                                <span className="item-creator-hint">{physicsDonors(form.physics).length > 1
                                     ? 'Two or more donors: their cloths, skeletons and collidables are merged into one bphcl named after the actor.'
-                                    : 'One donor copies its Phive / Physics files as they are.'}</span>
+                                    : (form.physics.some((donor) => donor.mode === 'name')
+                                        ? 'One donor copies its Phive / Physics files as they are. A typed name that is empty or matches no actor pack in the RomFS is skipped and the template keeps its own physics.'
+                                        : 'One donor copies its Phive / Physics files as they are. Base armor lists every vanilla piece with cloth physics; a pack file can come from any mod.')}</span>
+                            </div>
+                            <label>Helper bones</label>
+                            <div className="item-creator-skin-material">
+                                <TemplatePicker
+                                    templates={helperBoneTemplates}
+                                    value={form.helperBone}
+                                    icons={icons}
+                                    disabled={!catalog}
+                                    onOpen={() => ensureIcons('helper-bones', helperBoneTemplates.map((template) => template.actor))}
+                                    onChange={(actor) => update({ helperBone: actor })}
+                                    hideUpgrades={hideUpgrades}
+                                    placeholder="Keep the helper bones the physics step leaves"
+                                    noneLabel="None (keep the template's or physics donor's helper bones)" />
+                                <span className="item-creator-hint">After the physics step, copies the chosen actor's Phive/HelperBone files into the piece (renamed after the actor, replacing the ones already there) and renames its ControllerSetParam, Component/Physics and ActorParam PhysicsRef to match.</span>
                             </div>
                             <label>Armor effects</label>
                             <div className="item-creator-physics">
@@ -824,7 +904,7 @@ function ItemCreator({ activeTab, setStatusText }) {
                             <button type="button" onClick={() => pickFile('iconPng', [{ name: 'PNG', extensions: ['png'] }])}>Browse…</button>
                         </div>
                         <div className="item-creator-section">Shop</div>
-                        <label>Buy price</label>
+                        <label>{poeShop ? 'Buy price (poes)' : 'Buy price'}</label>
                         <input type="number" value={form.buyingPrice} disabled={!vendor} onChange={(event) => update({ buyingPrice: event.target.value })} />
                         <label>Sell price</label>
                         <input type="number" value={form.sellingPrice} disabled={!vendor} onChange={(event) => update({ sellingPrice: event.target.value })} />

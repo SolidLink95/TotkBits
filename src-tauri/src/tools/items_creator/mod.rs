@@ -94,8 +94,12 @@ impl WeaponKind {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct VendorTarget {
     #[serde(alias = "name", alias = "vendor")]
-    /// Existing vanilla actor, for example `Npc_TripMaster_00`.
+    /// Existing vanilla Beedle actor, for example `Npc_TripMaster_00`, or
+    /// [`vendor::BARGAINER_STATUE`] (`"BargainerStatue"`) for every
+    /// Bargainer Statue at once.
     pub actor_name: String,
+    /// Shop price, in the vendor's currency: rupees for Beedle, poes for the
+    /// Bargainer Statue (their goods cost PouchActorInfo `BuyingPrice`).
     #[serde(default)]
     pub buying_price: Option<i32>,
     #[serde(default)]
@@ -178,7 +182,8 @@ pub struct WeaponSpec {
     #[serde(default, alias = "picture_book_caption")]
     pub picture_book_description: Option<String>,
     pub assets: WeaponAssets,
-    /// Existing travelling merchants. New vendor creation is out of scope.
+    /// Existing shops: Beedle actors, or the Bargainer Statue group. New
+    /// vendor creation is out of scope.
     #[serde(default)]
     pub vendors: Vec<VendorTarget>,
 }
@@ -596,10 +601,11 @@ impl WeaponSpec {
         zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
     ) -> io::Result<Vec<vendor::VendorPackReport>> {
         let processor = vendor::VendorProcessor::new(clean_romfs, output_romfs, zstd);
-        self.vendors
-            .iter()
-            .map(|target| processor.add_weapon(&self.actor_name, target))
-            .collect()
+        let mut reports = Vec::new();
+        for target in &self.vendors {
+            reports.extend(processor.add_weapon(&self.actor_name, target)?);
+        }
+        Ok(reports)
     }
 
     /// Generates both the vendor ShopParam pack and matching priced RSDB weapon rows.
@@ -613,12 +619,7 @@ impl WeaponSpec {
             return Ok(None);
         }
         let rsdb_outputs = self.generate_rsdb(clean_romfs, output_romfs, zstd.clone())?;
-        let processor = vendor::VendorProcessor::new(clean_romfs, output_romfs, zstd);
-        let vendor_packs = self
-            .vendors
-            .iter()
-            .map(|target| processor.add_weapon(&self.actor_name, target))
-            .collect::<io::Result<Vec<_>>>()?;
+        let vendor_packs = self.generate_vendor_pack(clean_romfs, output_romfs, zstd)?;
         Ok(Some(vendor::VendorGenerationReport {
             vendor_packs,
             rsdb_outputs,
@@ -803,26 +804,7 @@ impl WeaponSpec {
             ));
         }
         for vendor in &self.vendors {
-            if !vendor.actor_name.starts_with("Npc_TripMaster_") {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "only existing Npc_TripMaster_* vendors are supported initially",
-                ));
-            }
-            if vendor.quantity == 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "vendor quantity must be greater than zero",
-                ));
-            }
-            if vendor.buying_price.is_some_and(|price| price < 0)
-                || vendor.selling_price.is_some_and(|price| price < 0)
-            {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "vendor buying and selling prices cannot be negative",
-                ));
-            }
+            vendor::validate_vendor(vendor)?;
         }
 
         for source in self.asset_sources() {
@@ -968,11 +950,18 @@ impl GenerationPlan {
             "add sizes for every new resource and update modified resources",
         ));
         for vendor in &spec.vendors {
-            files.push(planned(
-                format!("Pack/Actor/{}.pack.zs", vendor.actor_name),
-                PlanAction::PatchVendorPack,
-                "extend an existing travelling merchant selling list",
-            ));
+            let reason = if vendor::is_bargainer_statue(&vendor.actor_name) {
+                "extend the Bargainer Statue poe trade list"
+            } else {
+                "extend an existing travelling merchant selling list"
+            };
+            for actor in vendor::vendor_pack_actors(&vendor.actor_name) {
+                files.push(planned(
+                    format!("Pack/Actor/{actor}.pack.zs"),
+                    PlanAction::PatchVendorPack,
+                    reason,
+                ));
+            }
         }
         Ok(Self { files })
     }
@@ -1515,7 +1504,13 @@ mod tests {
             }
             assert!(weapon.messages.is_file());
             assert!(weapon.sharp_info.is_file());
-            assert_eq!(weapon.vendor_packs.len(), spec.vendors.len());
+            assert_eq!(
+                weapon.vendor_packs.len(),
+                spec.vendors
+                    .iter()
+                    .map(|vendor| vendor::vendor_pack_actors(&vendor.actor_name).len())
+                    .sum::<usize>()
+            );
         }
         assert!(report.rstb.output.is_file());
         fs::write(output_root.join("items_creator_input.json"), input).unwrap();
@@ -2635,5 +2630,24 @@ mod tests {
         let mut value = spec();
         value.vendors[0].actor_name = "Npc_CustomVendor".into();
         assert!(value.validate(Path::new("missing-assets")).is_err());
+        value.vendors[0].actor_name = "TwnObj_DemonStatue_C_01".into();
+        assert!(value.validate(Path::new("missing-assets")).is_err());
+    }
+
+    #[test]
+    fn bargainer_statue_plans_every_statue_pack() {
+        let mut value = spec();
+        value.vendors[0].actor_name = vendor::BARGAINER_STATUE.into();
+        let plan = GenerationPlan::for_weapon_version(&value, "112").unwrap();
+        for actor in vendor::BARGAINER_STATUE_ACTORS {
+            assert!(plan.files.iter().any(|file| {
+                file.relative_path == Path::new(&format!("Pack/Actor/{actor}.pack.zs"))
+                    && file.action == PlanAction::PatchVendorPack
+            }));
+        }
+        assert!(!plan.files.iter().any(|file| file
+            .relative_path
+            .to_string_lossy()
+            .contains("BargainerStatue")));
     }
 }

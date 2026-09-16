@@ -481,7 +481,8 @@ export async function addFilesFromDirRecursively(internalPath, setStatusText, se
 
 }
 
-const refreshSavedArchivePaths = (sarcPaths, setpaths, documentSnapshots) => {
+const refreshSavedArchivePaths = (content, setpaths, documentSnapshots) => {
+  const sarcPaths = content?.sarc_paths;
   if (!sarcPaths || sarcPaths.paths.length === 0) return;
   setpaths(sarcPaths);
   const { documents, activeDocumentId } = getDocumentsSnapshot();
@@ -492,20 +493,21 @@ const refreshSavedArchivePaths = (sarcPaths, setpaths, documentSnapshots) => {
   }
   const activeDocument = documents.find((document) => document.id === activeDocumentId);
   const parentId = activeDocument?.parentDocumentId;
-  if (parentId && activeDocument?.fileMetadata?.includes('[BPHCL] [AAMP]')) {
-    const parentSnapshot = documentSnapshots.current.get(parentId);
-    if (parentSnapshot) {
-      documentSnapshots.current.set(parentId, { ...parentSnapshot, paths: sarcPaths });
-    }
-  } else if (parentId && sarcPaths) {
-    const parentSnapshot = documentSnapshots.current.get(parentId);
-    if (parentSnapshot) {
-      documentSnapshots.current.set(parentId, {
-        ...parentSnapshot,
-        paths: sarcPaths,
-      });
-    }
+  if (!parentId) return;
+  const parentSnapshot = documentSnapshots.current.get(parentId);
+  if (!parentSnapshot) return;
+  if (content.parent_modded_path) {
+    // A BPHCL written back into its archive: the returned tree is the BPHCL's
+    // own node list, not the parent's file list. Keep the parent's tree and
+    // only mark the saved entry as modified there.
+    const parentPaths = parentSnapshot.paths || {};
+    const moddedPaths = [...new Set([...(parentPaths.modded_paths || []), content.parent_modded_path])];
+    documentSnapshots.current.set(parentId, { ...parentSnapshot, paths: { ...parentPaths, modded_paths: moddedPaths } });
+    return;
   }
+  // Ordinary internal files (and a BPHCL's Section.aamp) get the parent's
+  // refreshed tree back from the save.
+  documentSnapshots.current.set(parentId, { ...parentSnapshot, paths: sarcPaths });
 };
 
 const activeFileName = () => {
@@ -537,7 +539,7 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
-      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots);
+      refreshSavedArchivePaths(content, setpaths, documentSnapshots);
       console.log(content.sarc_paths.added_paths);
       console.log(content.sarc_paths.modded_paths);
     }
@@ -573,7 +575,7 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
-      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots);
+      refreshSavedArchivePaths(content, setpaths, documentSnapshots);
       console.log(content.sarc_paths.added_paths);
       console.log(content.sarc_paths.modded_paths);
     }

@@ -97,20 +97,30 @@ impl CliCommand {
                 | "create_weapon"
                 | "merge_skeletons"
                 | "hkcl_to_bphcl"
+                | "txtg_edit"
+                | "txtg"
+                | "--txtg"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
         let valid_arguments = if operation == "decompress_dir" {
             arguments.len() == 7
         } else if matches!(
             operation.as_str(),
-            "bfres_edit" | "bntx_edit" | "create_weapon" | "merge_skeletons" | "hkcl_to_bphcl"
+            "bfres_edit"
+                | "bntx_edit"
+                | "create_weapon"
+                | "merge_skeletons"
+                | "hkcl_to_bphcl"
+                | "txtg_edit"
+                | "txtg"
+                | "--txtg"
         ) {
             arguments.len() >= 3
         } else {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc.exe>]\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -131,7 +141,14 @@ impl CliCommand {
         };
         if matches!(
             operation.as_str(),
-            "bfres_edit" | "bntx_edit" | "create_weapon" | "merge_skeletons" | "hkcl_to_bphcl"
+            "bfres_edit"
+                | "bntx_edit"
+                | "create_weapon"
+                | "merge_skeletons"
+                | "hkcl_to_bphcl"
+                | "txtg_edit"
+                | "txtg"
+                | "--txtg"
         ) {
             return Some(Self {
                 operation,
@@ -204,6 +221,7 @@ impl CliCommand {
             "bntx_edit" => return self.bntx_edit(),
             "merge_skeletons" => return self.merge_skeletons(),
             "hkcl_to_bphcl" => return self.hkcl_to_bphcl(),
+            "txtg_edit" | "txtg" | "--txtg" => return self.txtg_edit(),
             _ => {}
         }
         let result = match self.operation.as_str() {
@@ -861,6 +879,127 @@ impl CliCommand {
         println!(
             "{}",
             serde_json::to_string_pretty(&summary).unwrap_or_default()
+        );
+        Ok(())
+    }
+
+    /// `txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png>
+    /// [--astcenc <exe>]`: replaces the image data of a TexToGo texture with
+    /// the PNG, re-encoded in the texture's own format (BC natively, ASTC
+    /// through astcenc) with the same mip count, settings and hash, so the
+    /// output stays the same kind of `.txtg` the game expects.
+    fn txtg_edit(&self) -> Result<(), CliError> {
+        use crate::parser::textogo::{writer as textogo_writer, TexToGoFile};
+
+        let mut input = None;
+        let mut output = None;
+        let mut png = None;
+        let mut astcenc = None;
+        let args = &self.extra;
+        let mut i = 0;
+        while i < args.len() {
+            let take = |i: &mut usize| -> Result<String, CliError> {
+                *i += 1;
+                args.get(*i)
+                    .cloned()
+                    .ok_or_else(|| CliError::new(1, format!("{} requires a value", args[*i - 1])))
+            };
+            match args[i].as_str() {
+                "-i" => input = Some(take(&mut i)?),
+                "-o" => output = Some(take(&mut i)?),
+                "--png" => png = Some(take(&mut i)?),
+                "--astcenc" => astcenc = Some(take(&mut i)?),
+                other => return Err(CliError::new(1, format!("unknown argument {other}"))),
+            }
+            i += 1;
+        }
+        let input =
+            PathBuf::from(input.ok_or_else(|| CliError::new(1, "-i <in.txtg> is required"))?);
+        let output =
+            PathBuf::from(output.ok_or_else(|| CliError::new(1, "-o <out.txtg> is required"))?);
+        let png =
+            PathBuf::from(png.ok_or_else(|| CliError::new(1, "--png <image.png> is required"))?);
+        for (what, path) in [("input", &input), ("png", &png)] {
+            if !path.is_file() {
+                return Err(CliError::new(
+                    1,
+                    format!("{what} file not found: {}", path.display()),
+                ));
+            }
+        }
+        let astcenc = astcenc.map(PathBuf::from);
+        if let Some(path) = &astcenc {
+            if !path.is_file() {
+                return Err(CliError::new(
+                    1,
+                    format!("astcenc not found: {}", path.display()),
+                ));
+            }
+        }
+
+        let mut raw = fs::read(&input).map_err(|e| CliError::new(1, e.to_string()))?;
+        if crate::Settings::Magic::is_zstd(&raw) {
+            raw = match zstd::decode_all(raw.as_slice()) {
+                Ok(data) => data,
+                Err(_) => {
+                    let zstd = self.zstd()?;
+                    zstd.try_decompress(&raw)
+                        .map_err(|e| CliError::new(1, format!("{}: {e}", input.display())))?
+                }
+            };
+        }
+        let texture = TexToGoFile::parse(&raw)
+            .map_err(|e| CliError::new(3, format!("{}: {e}", input.display())))?;
+        let image = image::open(&png)
+            .map_err(|e| CliError::new(1, format!("{}: {e}", png.display())))?
+            .to_rgba8();
+        println!(
+            "opened {} (txtg format 0x{:X}, {}x{}, {} mip(s), {} layer(s))",
+            input.display(),
+            texture.header.format,
+            texture.header.width,
+            texture.header.height,
+            texture.header.mip_count,
+            texture.header.depth
+        );
+        let encoder = if textogo_writer::astc_block_from_textogo(&texture.header).is_some() {
+            let encoder = crate::parser::bntx::find_astc_encoder(astcenc.as_deref())
+                .ok_or_else(|| {
+                    CliError::new(
+                        3,
+                        "the texture is ASTC and no astcenc encoder was found (pass --astcenc <astcenc.exe> or set ASTCENC)",
+                    )
+                })?;
+            println!("astcenc: {}", encoder.display());
+            Some(encoder)
+        } else {
+            None
+        };
+        let encoded = textogo_writer::from_rgba_with_encoder(&image, &texture, encoder.as_deref())
+            .map_err(|e| CliError::new(3, format!("{}: {e}", png.display())))?;
+        let mut bytes =
+            textogo_writer::write(&encoded).map_err(|e| CliError::new(3, e.to_string()))?;
+        let compress = output
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("zs"));
+        if compress {
+            let zstd = self.zstd()?;
+            bytes = zstd
+                .compressor
+                .compress_zs(&bytes)
+                .map_err(|e| CliError::new(3, format!("zstd: {e}")))?;
+        }
+        write_output(&output, &bytes).map_err(|e| CliError::new(3, e))?;
+        println!(
+            "wrote {} ({}x{}, {} mip(s), format 0x{:X} kept, {} bytes{})",
+            output.display(),
+            encoded.header.width,
+            encoded.header.height,
+            encoded.header.mip_count,
+            encoded.header.format,
+            bytes.len(),
+            if compress { ", zstd" } else { "" }
         );
         Ok(())
     }
