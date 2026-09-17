@@ -908,4 +908,82 @@ mod tests {
         assert!(write_material_anim_bfres("x.anim", &anims).is_err());
         assert!(read_material_anim_bfres(b"not a bfres").is_err());
     }
+    /// The vanilla armor project animations read back and rewrite byte for
+    /// byte (the items creator regenerates them under a new project). Files
+    /// that also carry shader-parameter animations (`_fsp` light toggles,
+    /// which the writer does not emit) are reported, not counted.
+    #[test]
+    #[ignore = "needs the TOTK dump"]
+    fn armor_project_anims_round_trip_byte_for_byte() {
+        use crate::{
+            TotkConfig::TotkConfig,
+            Zstd::{TotkZstd, TOTK_ZSTD_COMPRESSION_LEVEL},
+        };
+        use std::sync::Arc;
+        let romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        if !romfs.is_dir() {
+            return;
+        }
+        let mut config = TotkConfig::default();
+        config.romfs = romfs.to_string_lossy().into_owned();
+        let zstd = TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL).unwrap();
+        let mut failures = Vec::new();
+        let mut skipped = Vec::new();
+        let mut checked = 0;
+        let mut exact = 0;
+        for entry in std::fs::read_dir(romfs.join("Model")).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            if !name.starts_with("Armor_") || !name.ends_with(".anim.bfres.zs") {
+                continue;
+            }
+            let compressed = std::fs::read(&path).unwrap();
+            let (raw, _) = zstd.try_decompress_for_path(&path, &compressed).unwrap();
+            checked += 1;
+            let (file, anims) = match read_material_anim_bfres(&raw) {
+                Ok(read) => read,
+                Err(error) => {
+                    failures.push(format!("{name}: {error}"));
+                    continue;
+                }
+            };
+            if anims.is_empty() || anims.iter().any(|anim| anim.materials.is_empty()) {
+                skipped.push(name);
+                continue;
+            }
+            match write_material_anim_bfres(&file, &anims) {
+                Ok(rewritten) if rewritten == raw => exact += 1,
+                Ok(rewritten) => {
+                    let first = rewritten
+                        .iter()
+                        .zip(&raw)
+                        .position(|(a, b)| a != b)
+                        .unwrap_or(rewritten.len().min(raw.len()));
+                    failures.push(format!(
+                        "{name}: differs at 0x{first:X} (sizes {} vs {})",
+                        rewritten.len(),
+                        raw.len()
+                    ));
+                }
+                Err(error) => failures.push(format!("{name}: {error}")),
+            }
+        }
+        println!(
+            "{exact} of {checked} exact, skipped (shader-parameter animations): {}",
+            skipped.join(", ")
+        );
+        assert!(
+            exact >= 20,
+            "only {exact} of {checked} armor animations round-trip"
+        );
+        // Armor_048 pairs its texture patterns with shader-parameter curves
+        // in the same materials; the reader keeps only the patterns.
+        failures.retain(|failure| !failure.starts_with("Armor_048."));
+        assert!(
+            failures.is_empty(),
+            "{} of {checked} failed:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+    }
 }

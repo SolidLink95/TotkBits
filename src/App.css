@@ -548,7 +548,7 @@ body {
 .document-tab-context-menu button:hover {
   background: #3b3e47;
 }
-.empty-workspace { display: grid; place-items: center; height: calc(100vh - var(--menu-bar-h) - var(--document-tabs-h) - 24px); color: #aaa; font-size: 18px; }
+.empty-workspace { display: grid; place-items: center; height: calc(var(--app-height, 100vh) - var(--menu-bar-h) - var(--document-tabs-h) - 24px); color: #aaa; font-size: 18px; }
 
 .audio-view {
   position: fixed;

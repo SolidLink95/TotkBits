@@ -1,0 +1,100 @@
+/* "Add ELink" tab of the Item creator: reuses its look (.item-creator-*). */
+.add-elink-panel { display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; }
+.add-elink-body {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 18px;
+    flex: 1;
+    min-height: 0;
+}
+.add-elink-create { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; }
+.add-elink-create .item-creator-primary { padding: 8px 14px; }
+.add-elink-error { grid-column: 1 / -1; }
+.add-elink-column { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; }
+.add-elink-column h2 { margin: 0; }
+.add-elink-users {
+    flex: 1;
+    min-height: 120px;
+    overflow: auto;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #222;
+}
+.add-elink-user {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 8px;
+    border-bottom: 1px solid #333;
+    cursor: pointer;
+    font-size: 13px;
+}
+.add-elink-user.selected { background: #3b5a86; }
+.add-elink-user:hover:not(.selected) { background: #2e2e2e; }
+.add-elink-user small { color: #aaa; white-space: nowrap; }
+.add-elink-user.selected small { color: #dfe8f7; }
+.add-elink-options { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 10px; align-items: center; }
+.add-elink-options label { color: #bbb; text-align: right; white-space: nowrap; }
+.add-elink-options .item-creator-check { grid-column: 1 / -1; }
+
+.add-elink-entries {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+}
+.add-elink-entry-list {
+    overflow: auto;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #222;
+    min-height: 0;
+}
+.add-elink-entry {
+    display: flex;
+    flex-direction: column;
+    padding: 5px 8px;
+    border-bottom: 1px solid #333;
+    cursor: pointer;
+    font-size: 13px;
+}
+.add-elink-entry.selected { background: #3b5a86; }
+.add-elink-entry:hover:not(.selected) { background: #2e2e2e; }
+.add-elink-entry small { color: #aaa; }
+.add-elink-entry.selected small { color: #dfe8f7; }
+.add-elink-entry .add-elink-modified { color: #f0b52a; }
+.add-elink-entry.selected .add-elink-modified { color: #ffe08a; }
+.add-elink-params {
+    overflow: auto;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #2a2a2a;
+    padding: 12px 14px;
+    min-height: 0;
+}
+.add-elink-params h3 { margin: 0 0 4px; font-size: 14px; color: #eee; font-weight: normal; }
+.add-elink-params .add-elink-where { color: #999; font-size: 12px; margin-bottom: 10px; word-break: break-all; }
+.add-elink-group {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #3d3d3d;
+    color: #999;
+    font-size: 12px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+.add-elink-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px 12px;
+    margin-top: 6px;
+}
+.add-elink-grid.wide { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.add-elink-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #bbb; }
+.add-elink-field input.edited { border-color: #d9a01c; }
+.add-elink-field input.curve { font-style: italic; }
+.add-elink-field .add-elink-default { color: #777; font-size: 11px; }
+.add-elink-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.add-elink-actions button { font-size: 12px; padding: 4px 8px; }

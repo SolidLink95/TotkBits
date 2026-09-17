@@ -120,7 +120,7 @@ impl CliCommand {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc.exe>]\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--no_rstb] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc.exe>]\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -1388,7 +1388,7 @@ impl CliCommand {
 
     fn create_weapon(&self) -> Result<(), String> {
         use crate::tools::items_creator::{
-            generate_item_mod, load_item_specs, GenerationPlan, ItemSpec,
+            generate_item_mod_with_options, load_item_specs, GenerationPlan, ItemSpec,
         };
 
         let mut input = None;
@@ -1396,6 +1396,7 @@ impl CliCommand {
         let mut totk_path = None;
         let mut plan_only = false;
         let mut rstb_only = false;
+        let mut generate_rstb = true;
         let mut zstd_level = None;
         let args = &self.extra;
         let mut i = 0;
@@ -1412,6 +1413,7 @@ impl CliCommand {
                 "--totk_path" => totk_path = Some(take(&mut i)?),
                 "--plan" => plan_only = true,
                 "--rstb_only" => rstb_only = true,
+                "--no_rstb" => generate_rstb = false,
                 "--zstd_level" => {
                     let value = take(&mut i)?;
                     zstd_level =
@@ -1485,12 +1487,18 @@ impl CliCommand {
                         ""
                     }
                 ),
+                ItemSpec::Elink(spec) => println!(
+                    "{}: ELink user from {} ({} edited asset call(s))",
+                    spec.new_name.trim(),
+                    spec.base_user.trim(),
+                    spec.entries.len()
+                ),
             }
         }
         if plan_only {
             for spec in &specs {
                 let ItemSpec::Weapon(spec) = spec else {
-                    println!("  (no plan preview for armor {})", spec.actor_name());
+                    println!("  (no plan preview for {})", spec.actor_name());
                     continue;
                 };
                 let plan =
@@ -1512,9 +1520,16 @@ impl CliCommand {
                 .map_err(|e| format!("failed to load RomFS zstd dictionaries: {e}"))?,
         );
         let started = std::time::Instant::now();
-        let report =
-            generate_item_mod(&specs, &clean_romfs, &output, &asset_root, zstd, zstd_level)
-                .map_err(|e| e.to_string())?;
+        let report = generate_item_mod_with_options(
+            &specs,
+            &clean_romfs,
+            &output,
+            &asset_root,
+            zstd,
+            zstd_level,
+            generate_rstb,
+        )
+        .map_err(|e| e.to_string())?;
         for weapon in &report.weapons {
             println!("{}:", weapon.actor_name);
             println!("  actor pack  {}", weapon.actor_pack.display());
@@ -1611,11 +1626,25 @@ impl CliCommand {
                 );
             }
         }
-        println!(
-            "rstb          {} ({} entries)",
-            report.rstb.output.display(),
-            report.rstb.entries.len()
-        );
+        for elink in &report.elinks {
+            println!("{} (ELink from {}):", elink.new_name, elink.base_user);
+            println!("  elink       {}", elink.elink.display());
+            if let Some(esetb) = &elink.esetb {
+                println!("  esetb       {}", esetb.display());
+            }
+            println!("  edited      {} asset call(s)", elink.edited_entries);
+            for note in &elink.notes {
+                println!("  note        {note}");
+            }
+        }
+        match &report.rstb {
+            Some(rstb) => println!(
+                "rstb          {} ({} entries)",
+                rstb.output.display(),
+                rstb.entries.len()
+            ),
+            None => println!("rstb        skipped (--no_rstb)"),
+        }
         if let Some(parent) = output.parent() {
             let report_path = parent.join("items_creator_report.json");
             let json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
@@ -1994,6 +2023,7 @@ fn parse_file_type(value: &str) -> Result<TotkFileType, String> {
         "msbt" | "msyt" => Ok(TotkFileType::Msbt),
         "evfl" | "bfevfl" => Ok(TotkFileType::Evfl),
         "xlink" | "belnk" => Ok(TotkFileType::Xlink),
+        "esetb" | "ptcl" => Ok(TotkFileType::Esetb),
         "text" => Ok(TotkFileType::Text),
         "smo" => Ok(TotkFileType::SmoSaveFile),
         _ => Err(format!("unsupported file type: {value}")),

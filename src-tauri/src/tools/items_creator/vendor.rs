@@ -1,13 +1,13 @@
 //! Existing shop pack processing: Beedle (`Npc_TripMaster_*`, rupees) and
 //! the Bargainer Statues (poes).
 
-use super::VendorTarget;
+use super::{shared::SharedFiles, VendorTarget};
 use crate::{file_format::Pack::PackFile, Zstd::TotkZstd};
 use roead::byml::Byml;
 use serde::Serialize;
 use std::{
     collections::BTreeSet,
-    fs, io,
+    io,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -94,84 +94,77 @@ impl<'a> VendorProcessor<'a> {
         weapon_actor: &str,
         vendor: &VendorTarget,
     ) -> io::Result<Vec<VendorPackReport>> {
-        validate_actor_name(weapon_actor)?;
-        validate_vendor(vendor)?;
         super::assets::ensure_output_outside_romfs(&self.clean_romfs, &self.output_romfs)?;
-        let poe = is_bargainer_statue(&vendor.actor_name);
-        vendor_pack_actors(&vendor.actor_name)
-            .iter()
-            .map(|pack_actor| self.patch_pack(weapon_actor, pack_actor, vendor.quantity, poe))
-            .collect()
+        let mut shared = SharedFiles::new(&self.clean_romfs, &self.output_romfs, self.zstd.clone());
+        let reports = apply_weapon(&mut shared, weapon_actor, vendor)?;
+        shared.flush()?;
+        Ok(reports)
     }
+}
 
-    fn patch_pack(
-        &self,
-        weapon_actor: &str,
-        pack_actor: &str,
-        quantity: u32,
-        poe: bool,
-    ) -> io::Result<VendorPackReport> {
-        let pack_name = format!("{pack_actor}.pack.zs");
-        // Several items may target the same merchant: keep building on the
-        // pack already written to the output ROMFS so earlier goods survive.
-        let generated = self.output_romfs.join("Pack/Actor").join(&pack_name);
-        let source = if generated.is_file() {
-            generated
-        } else {
-            self.clean_romfs.join("Pack/Actor").join(&pack_name)
-        };
-        if !source.is_file() {
-            return Err(io::Error::new(
+/// Adds the item to the run's shared copy of every actor pack the vendor
+/// stands for; the packs are written when `shared` is flushed.
+pub fn apply_weapon(
+    shared: &mut SharedFiles<'_>,
+    weapon_actor: &str,
+    vendor: &VendorTarget,
+) -> io::Result<Vec<VendorPackReport>> {
+    validate_actor_name(weapon_actor)?;
+    validate_vendor(vendor)?;
+    let poe = is_bargainer_statue(&vendor.actor_name);
+    vendor_pack_actors(&vendor.actor_name)
+        .iter()
+        .map(|pack_actor| patch_pack(shared, weapon_actor, pack_actor, vendor.quantity, poe))
+        .collect()
+}
+
+fn patch_pack(
+    shared: &mut SharedFiles<'_>,
+    weapon_actor: &str,
+    pack_actor: &str,
+    quantity: u32,
+    poe: bool,
+) -> io::Result<VendorPackReport> {
+    // Several items may target the same merchant: they all edit the one
+    // shared copy, so earlier goods survive.
+    let (clean_source, output) = shared.pair(&format!("Pack/Actor/{pack_actor}.pack.zs"));
+    let zstd = shared.zstd();
+    let document = shared.pack(&clean_source, &output).map_err(|error| {
+        if error.kind() == io::ErrorKind::NotFound {
+            io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("vendor actor pack is missing: {}", source.display()),
-            ));
+                format!("vendor actor pack is missing: {}", clean_source.display()),
+            )
+        } else {
+            error
         }
-        let source_bytes = fs::read(&source)?;
-        let pack = PackFile::from_binary(&source_bytes, self.zstd.clone())?;
-        let actor_path = format!("Actor/{pack_actor}.engine__actor__ActorParam.bgyml");
-        let actor = pack.byml_file(&actor_path)?.pio;
-        let shop_ref = resolve_component_ref(&pack, &actor, "ShopRef", &mut BTreeSet::new())?
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| invalid(format!("vendor {pack_actor} has no ShopRef")))?;
-        let shop_path = reference_to_internal(&shop_ref);
-        if !shop_path.starts_with("Component/ShopParam/") {
-            return Err(invalid(format!(
-                "vendor ShopRef is outside Component/ShopParam/: {shop_path}"
-            )));
-        }
-        let mut shop = pack.byml_file(&shop_path)?;
-        upsert_goods(&mut shop.pio, weapon_actor, quantity, poe)?;
-        let rebuilt_shop = shop.to_binary_preserving_header()?;
-
-        let mut entries = Vec::new();
-        for file in pack.sarc.files() {
-            let name = file
-                .name()
-                .ok_or_else(|| invalid_data("vendor pack contains unnamed entry"))?;
-            entries.push((
-                name.to_owned(),
-                if name == shop_path {
-                    rebuilt_shop.clone()
-                } else {
-                    file.data().to_vec()
-                },
-            ));
-        }
-        let output_bytes = pack.rebuild_binary(entries)?;
-        let output = self.output_romfs.join("Pack/Actor").join(&pack_name);
-        if let Some(parent) = output.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&output, output_bytes)?;
-        Ok(VendorPackReport {
-            output,
-            vendor_actor: pack_actor.to_owned(),
-            shop_param: shop_path,
-            weapon_actor: weapon_actor.into(),
-            quantity,
-            currency: if poe { POE_CURRENCY } else { RUPEE_CURRENCY }.to_owned(),
-        })
+    })?;
+    let actor_path = format!("Actor/{pack_actor}.engine__actor__ActorParam.bgyml");
+    let actor = document.pack.byml_file(&actor_path)?.pio;
+    let shop_ref = resolve_component_ref(&document.pack, &actor, "ShopRef", &mut BTreeSet::new())?
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| invalid(format!("vendor {pack_actor} has no ShopRef")))?;
+    let shop_path = reference_to_internal(&shop_ref);
+    if !shop_path.starts_with("Component/ShopParam/") {
+        return Err(invalid(format!(
+            "vendor ShopRef is outside Component/ShopParam/: {shop_path}"
+        )));
     }
+    let mut shop = crate::file_format::BinTextFile::BymlFile::from_binary(
+        document.entry(&shop_path)?,
+        zstd,
+        &shop_path,
+    )?;
+    upsert_goods(&mut shop.pio, weapon_actor, quantity, poe)?;
+    document.replace(shop_path.clone(), shop.to_binary_preserving_header()?);
+    Ok(VendorPackReport {
+        output,
+        vendor_actor: pack_actor.to_owned(),
+        shop_param: shop_path,
+        weapon_actor: weapon_actor.into(),
+        quantity,
+        currency: if poe { POE_CURRENCY } else { RUPEE_CURRENCY }.to_owned(),
+    })
 }
 
 /// Adds or replaces the item's GoodsList entry. `PriceOffset` stays 0 so
@@ -298,6 +291,7 @@ fn invalid_data(message: impl Into<String>) -> io::Error {
 mod tests {
     use super::*;
     use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
+    use std::fs;
 
     #[test]
     fn vendor_json_defaults_quantity_to_one() {

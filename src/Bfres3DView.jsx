@@ -1862,7 +1862,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             }} />
             <div className="bfres-panel-divider left" role="separator" aria-orientation="vertical" onMouseDown={(event) => startPanelDrag('left', event)} />
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
-                <Canvas key={viewResetKey} dpr={[1, 2]} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
+                <Canvas key={viewResetKey} dpr={[1, 2]} resize={{ offsetSize: true }} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
                     <ViewportCapture captureRef={captureViewportRef} />
                     {bfres?.render && <ResourceScene key={`animation-scene-${animationResetKey}`} bfres={bfres} render={bfres.render} animation={loadedG1a?.bound} animationPlaying={g1aPlaying} animationSeek={{ time: g1aPosition, revision: g1aSeekRevision }} onAnimationTime={setG1aPosition} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} weightPreviewColors={weightPreviewColors} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} tint={tint} onSelectMesh={(mesh) => {
                         setSelectedMesh(mesh.name);

@@ -307,7 +307,7 @@ const CompareFiles = () => {
         <div style={{marginRight: margin}}>{(compareData.label2 ?? '').replace(/\/\//g, '/') || 'Original File'}</div>
       </div>
 
-      <div style={{ height: 'calc(100vh - 177px)', width: '100%', flexDirection: 'column' }}>
+      <div style={{ height: 'calc(var(--app-height, 100vh) - 177px)', width: '100%', flexDirection: 'column' }}>
       {/* DiffEditor */}
         <DiffEditor
         // style={{    overflow: 'hidden'  }}

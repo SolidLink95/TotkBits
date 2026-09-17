@@ -1,16 +1,11 @@
 //! GameDataList generation for custom weapon inventory and compendium flags.
 
-use crate::{
-    file_format::{
-        BinTextFile::{bytes_to_file, BymlFile},
-        GameDataList::{recalculate_save_metadata, GameDataList},
-    },
-    Zstd::{TotkZstd, ZstdDictionary},
-};
+use super::shared::SharedFiles;
+use crate::{file_format::BinTextFile::BymlFile, Zstd::TotkZstd};
 use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
 use std::{
-    fs, io,
+    io,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -67,6 +62,34 @@ impl WeaponGameDataRequest {
     ) -> io::Result<WeaponGameDataReport> {
         GameDataListProcessor::new(clean_romfs, output_romfs, zstd).generate_weapon(self)
     }
+
+    /// Adds the flags to the run's shared GameDataList; the file is written
+    /// when `shared` is flushed.
+    pub fn apply(&self, shared: &mut SharedFiles<'_>) -> io::Result<WeaponGameDataReport> {
+        validate_actor_name(&self.actor_name)?;
+        let game_data = shared.clean_romfs().join("GameData");
+        let (version, source) =
+            super::version::discover_product_file(&game_data, PRODUCT_PREFIX, PRODUCT_SUFFIX)?;
+        let file_name = source
+            .file_name()
+            .ok_or_else(|| invalid_data("GameDataList filename is missing"))?;
+        let output = shared.output_romfs().join("GameData").join(file_name);
+        let document = shared.game_data(&source, &output)?;
+        let hashes = apply_weapon_flags(
+            &mut document.file.pio,
+            &self.actor_name,
+            self.picture_book,
+            self.inventory_flags,
+        )?;
+        verify_hashes(&document.file.pio, &hashes)?;
+        let expected = hashes.clone();
+        document.expect(move |root| verify_hashes(root, &expected));
+        Ok(WeaponGameDataReport {
+            output,
+            product_version: version,
+            hashes,
+        })
+    }
 }
 
 impl<'a> GameDataListProcessor<'a> {
@@ -82,57 +105,11 @@ impl<'a> GameDataListProcessor<'a> {
         &self,
         request: &WeaponGameDataRequest,
     ) -> io::Result<WeaponGameDataReport> {
-        validate_actor_name(&request.actor_name)?;
         super::assets::ensure_output_outside_romfs(&self.clean_romfs, &self.output_romfs)?;
-        let game_data = self.clean_romfs.join("GameData");
-        let (version, source) =
-            super::version::discover_product_file(&game_data, PRODUCT_PREFIX, PRODUCT_SUFFIX)?;
-        let file_name = source
-            .file_name()
-            .ok_or_else(|| invalid_data("GameDataList filename is missing"))?;
-        let output = self.output_romfs.join("GameData").join(file_name);
-        let merge_source = if output.is_file() { &output } else { &source };
-        let mut file = BymlFile::new(merge_source, self.zstd.clone())
-            .ok_or_else(|| invalid_data("invalid clean GameDataList"))?;
-        let hashes = apply_weapon_flags(
-            &mut file.pio,
-            &request.actor_name,
-            request.picture_book,
-            request.inventory_flags,
-        )?;
-        verify_hashes(&file.pio, &hashes)?;
-        // The new flags enlarge the save data; keep the layout metadata in sync.
-        recalculate_save_metadata(&mut file.pio)?;
-
-        if let Some(parent) = output.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let text = file.pio.to_text();
-        let mut binary = GameDataList::text_to_binary(&text)?;
-        BymlFile::from_binary(&binary, self.zstd.clone(), &output).map_err(|error| {
-            invalid_data(format!(
-                "GameDataList::text_to_binary produced invalid BYML: {error}"
-            ))
-        })?;
-        if let Some(compression) = file.file_data.compression {
-            binary = if compression == ZstdDictionary::Yaz0 {
-                TotkZstd::compress_yaz0_with_alignment(&binary, file.file_data.yaz0_alignment)?
-            } else {
-                self.zstd.compress_with_dictionary(&binary, compression)?
-            };
-        }
-        let output_text = output
-            .to_str()
-            .ok_or_else(|| invalid_data("GameDataList output path is not UTF-8"))?;
-        bytes_to_file(binary, output_text)?;
-        let saved = BymlFile::new(&output, self.zstd.clone())
-            .ok_or_else(|| invalid_data("generated GameDataList cannot be reopened"))?;
-        verify_hashes(&saved.pio, &hashes)?;
-        Ok(WeaponGameDataReport {
-            output,
-            product_version: version,
-            hashes,
-        })
+        let mut shared = SharedFiles::new(&self.clean_romfs, &self.output_romfs, self.zstd.clone());
+        let report = request.apply(&mut shared)?;
+        shared.flush()?;
+        Ok(report)
     }
 }
 
@@ -410,6 +387,7 @@ fn invalid_data(message: impl Into<String>) -> io::Error {
 mod tests {
     use super::*;
     use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
+    use std::fs;
 
     #[test]
     fn murmur_hashes_match_totktools_and_real_weapon_data() {

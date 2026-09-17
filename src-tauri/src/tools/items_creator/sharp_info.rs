@@ -1,9 +1,10 @@
 //! SharpInfo generation for weapon modifier initialization.
 
-use crate::{file_format::BinTextFile::BymlFile, Zstd::TotkZstd};
+use super::shared::SharedFiles;
+use crate::Zstd::TotkZstd;
 use roead::byml::Byml;
 use std::{
-    fs, io,
+    io,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -19,15 +20,22 @@ pub fn generate_weapon_sharp_info(
     zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<PathBuf> {
     super::assets::ensure_output_outside_romfs(clean_romfs, output_romfs)?;
-    let output = output_romfs.join(SHARP_INFO_PATH);
-    let clean_source = clean_romfs.join(SHARP_INFO_PATH);
-    let source = if output.is_file() {
-        &output
-    } else {
-        &clean_source
-    };
-    let mut file = BymlFile::new(&source, zstd.clone())
-        .ok_or_else(|| invalid_data("invalid clean SharpInfo table"))?;
+    let mut shared = SharedFiles::new(clean_romfs, output_romfs, zstd);
+    let output = apply_weapon_sharp_info(&mut shared, actor_name, template_actor)?;
+    shared.flush()?;
+    Ok(output)
+}
+
+/// Adds the row to the run's shared SharpInfo table; the file is written
+/// when `shared` is flushed.
+pub fn apply_weapon_sharp_info(
+    shared: &mut SharedFiles<'_>,
+    actor_name: &str,
+    template_actor: &str,
+) -> io::Result<PathBuf> {
+    let (clean_source, output) = shared.pair(SHARP_INFO_PATH);
+    let document = shared.byml(&clean_source, &output)?;
+    let file = &mut document.file;
     // The table is split per weapon family (SharpInfoList for melee weapons,
     // SharpInfoBowList, SharpInfoShieldList); the custom row joins the list
     // that holds its template, or failing that any weapon of the same kind.
@@ -74,22 +82,20 @@ pub fn generate_weapon_sharp_info(
     rows.push(row);
     rows.sort_by(|left, right| row_actor(left).cmp(&row_actor(right)));
 
-    if let Some(parent) = output.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    file.save(output.to_string_lossy().into_owned())?;
-    let saved = BymlFile::new(&output, zstd)
-        .ok_or_else(|| invalid_data("generated SharpInfo cannot be reopened"))?;
-    let saved_rows = list_rows(&saved.pio, &list_key)?;
-    let saved_row = find_row(saved_rows, actor_name)
-        .ok_or_else(|| invalid_data("generated SharpInfo row is missing"))?;
-    let saved_map = saved_row
-        .as_map()
-        .map_err(|_| invalid_data("generated SharpInfo row is not a map"))?;
-    if saved_map.get("ActorNameHash") != Some(&Byml::U32(super::gamedata::murmur3_hash(actor_name)))
-    {
-        return Err(invalid_data("generated SharpInfo hash is incorrect"));
-    }
+    let actor = actor_name.to_owned();
+    document.expect(move |root| {
+        let saved_rows = list_rows(root, &list_key)?;
+        let saved_row = find_row(saved_rows, &actor)
+            .ok_or_else(|| invalid_data("generated SharpInfo row is missing"))?;
+        let saved_map = saved_row
+            .as_map()
+            .map_err(|_| invalid_data("generated SharpInfo row is not a map"))?;
+        if saved_map.get("ActorNameHash") != Some(&Byml::U32(super::gamedata::murmur3_hash(&actor)))
+        {
+            return Err(invalid_data("generated SharpInfo hash is incorrect"));
+        }
+        Ok(())
+    });
     Ok(output)
 }
 

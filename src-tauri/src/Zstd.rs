@@ -1105,6 +1105,18 @@ pub fn get_executable_dir() -> String {
 }
 
 #[cfg(test)]
+mod thread_safety_tests {
+    /// `Arc<TotkZstd>` is shared by the items creator and the document
+    /// commands; every compressor creates its own encoder over the shared
+    /// dictionaries, so the context may be used from several threads at once.
+    #[test]
+    fn totk_zstd_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<super::TotkZstd<'static>>();
+    }
+}
+
+#[cfg(test)]
 mod yaz0_tests {
     use super::{
         preferred_dictionary_for_path, sha256, TotkZstd, ZsDic, ZstdDictionary,

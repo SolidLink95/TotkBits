@@ -13,7 +13,7 @@ use std::{
     sync::Arc,
 };
 
-fn clean_romfs() -> Result<(Arc<TotkConfig>, PathBuf), String> {
+pub(super) fn clean_romfs() -> Result<(Arc<TotkConfig>, PathBuf), String> {
     let config = TotkConfig::safe_new(false).map_err(|error| error.to_string())?;
     let romfs = PathBuf::from(&config.romfs);
     if config.romfs.is_empty() || !romfs.is_dir() {
@@ -22,7 +22,7 @@ fn clean_romfs() -> Result<(Arc<TotkConfig>, PathBuf), String> {
     Ok((Arc::new(config), romfs))
 }
 
-fn zstd(config: Arc<TotkConfig>) -> Result<Arc<TotkZstd<'static>>, String> {
+pub(super) fn zstd(config: Arc<TotkConfig>) -> Result<Arc<TotkZstd<'static>>, String> {
     TotkZstd::new(config, TOTK_ZSTD_COMPRESSION_LEVEL)
         .map(Arc::new)
         .map_err(|error| format!("failed to load RomFS zstd dictionaries: {error}"))
@@ -55,6 +55,21 @@ pub fn item_creator_icons(names: Vec<String>) -> HashMap<String, String> {
     crate::Settings::catch_panic_with(move || catalog::icons(&names), |_| HashMap::new())
 }
 
+/// Icons of Great Fairy ingredients keyed by icon actor (data URLs); made
+/// from the RomFS into `.cache/ingredients` the first time they are asked for.
+#[tauri::command]
+pub fn item_creator_ingredient_icons(
+    names: Vec<String>,
+) -> Result<HashMap<String, String>, String> {
+    crate::Settings::catch_panic_with(
+        move || {
+            let (config, romfs) = clean_romfs()?;
+            Ok(catalog::ingredient_icons(&romfs, zstd(config)?, &names))
+        },
+        Err,
+    )
+}
+
 #[tauri::command]
 pub fn item_creator_load_specs(path: String) -> Result<serde_json::Value, String> {
     crate::Settings::catch_panic_with(
@@ -85,20 +100,25 @@ pub struct ItemCreatorResult {
     pub report_path: String,
     pub weapons: Vec<String>,
     pub armors: Vec<String>,
-    pub rstb_entries: usize,
+    /// Custom ELink users written with the mod.
+    pub elinks: Vec<String>,
+    /// `None` when the RSTB pass was skipped.
+    pub rstb_entries: Option<usize>,
     pub seconds: f64,
     pub warnings: Vec<String>,
 }
 
 /// Writes `<outputDir>/<modName>/items_creator_input.json`, generates the mod
 /// into `<outputDir>/<modName>/romfs` and drops the report next to it. Runs
-/// on a worker thread; the UI polls its returned promise.
+/// on a worker thread; the UI polls its returned promise. `generateRstb`
+/// (default true) false skips the ResourceSizeTable pass.
 #[tauri::command]
 pub async fn item_creator_generate(
     specs: serde_json::Value,
     outputDir: String,
     modName: String,
     zstdLevel: Option<i32>,
+    generateRstb: Option<bool>,
 ) -> Result<ItemCreatorResult, String> {
     let mod_name = modName.trim().to_owned();
     if mod_name.is_empty()
@@ -131,13 +151,14 @@ pub async fn item_creator_generate(
         }
         let output_romfs = mod_dir.join("romfs");
         let started = std::time::Instant::now();
-        let report = items_creator::generate_item_mod(
+        let report = items_creator::generate_item_mod_with_options(
             &loaded,
             &romfs,
             &output_romfs,
             &mod_dir,
             zstd,
             zstdLevel,
+            generateRstb.unwrap_or(true),
         )
         .map_err(|error| error.to_string())?;
         let report_path = mod_dir.join("items_creator_report.json");
@@ -159,6 +180,11 @@ pub async fn item_creator_generate(
                 }
             }
         }
+        for elink in &report.elinks {
+            for note in &elink.notes {
+                warnings.push(format!("{}: {note}", elink.new_name));
+            }
+        }
         Ok(ItemCreatorResult {
             output_romfs: output_romfs.to_string_lossy().into_owned(),
             spec_path: spec_path.to_string_lossy().into_owned(),
@@ -169,7 +195,8 @@ pub async fn item_creator_generate(
                 .map(|w| w.actor_name.clone())
                 .collect(),
             armors: report.armors.iter().map(|a| a.actor_name.clone()).collect(),
-            rstb_entries: report.rstb.entries.len(),
+            elinks: report.elinks.iter().map(|e| e.new_name.clone()).collect(),
+            rstb_entries: report.rstb.as_ref().map(|rstb| rstb.entries.len()),
             seconds: started.elapsed().as_secs_f64(),
             warnings,
         })

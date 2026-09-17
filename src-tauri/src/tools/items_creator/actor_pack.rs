@@ -165,12 +165,15 @@ pub struct WeaponPackRequest {
     pub attachment_damage: Option<i32>,
     #[serde(default)]
     pub shield_bash_damage: Option<i32>,
-    /// Optional sound-link parameter source.
-    #[serde(default)]
+    /// Optional sound-link parameter source (a vanilla actor name string works too).
+    #[serde(default, alias = "audio", alias = "sound_actor")]
     pub sound: Option<LinkParameterSource>,
-    /// Optional effect-link parameter source.
-    #[serde(default)]
+    /// Optional effect-link parameter source (a vanilla actor name string works too).
+    #[serde(default, alias = "effect_actor")]
     pub effect: Option<LinkParameterSource>,
+    /// Advanced effect: XLink keys a generated root AI emits at spawn (see `effect_ai`).
+    #[serde(default, alias = "xlink_keys", alias = "effect_ai_keys")]
+    pub effect_keys: Vec<String>,
     /// Existing vanilla actor whose complete physics bundle should be reused.
     /// Empty, malformed or non-existent actors are ignored and the template's
     /// own `Phive/*` and `Component/Physics/*` entries are kept.
@@ -184,16 +187,107 @@ pub struct WeaponPackRequest {
     pub extra_edits: Vec<BymlParameterEdit>,
 }
 
+/// Where an SLink/ELink parameter comes from. Specs may also give a plain
+/// string: a vanilla actor name (`"sound": "Weapon_Lsword_103"`) or the path
+/// of a `.bgyml` / `.pack(.zs)` file, read as [`Self::VanillaActor`] /
+/// [`Self::File`]. A hand-typed link user is the tagged
+/// `{"source": "user_name", "user_name": "Item_Weapon_01_custom"}`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "source", rename_all = "snake_case")]
+#[serde(
+    tag = "source",
+    rename_all = "snake_case",
+    from = "LinkParameterSourceRepr"
+)]
 pub enum LinkParameterSource {
-    /// Import a standalone SLink/ELink parameter BYML and retarget it to the custom actor.
+    /// Import a standalone SLink/ELink parameter BYML as it is (its `UserName`
+    /// may name a modded link user), or the link entry an actor pack file
+    /// (`.pack` / `.pack.zs`) resolves for its own actor.
     File { path: PathBuf },
     /// Reuse the resolved link parameter entry from an existing vanilla actor pack.
+    /// A blank name, or one without a pack or link component in the RomFS,
+    /// is skipped and the template keeps its own link entry.
     VanillaActor {
         #[serde(alias = "name")]
         actor_name: String,
     },
+    /// A link user typed by hand, e.g. a custom ELink user added with the
+    /// Add ELink tool: a fresh `{UserName: <name>}` parameter file named
+    /// after the custom actor is written and bound.
+    #[serde(alias = "user", alias = "manual", alias = "custom")]
+    UserName {
+        #[serde(alias = "user", alias = "name")]
+        user_name: String,
+    },
+}
+
+impl LinkParameterSource {
+    /// The same source with a relative file path made absolute against
+    /// `base` (the folder of the spec file that named it).
+    pub fn anchored(&self, base: &Path) -> Self {
+        match self {
+            Self::File { path } if path.is_relative() => Self::File {
+                path: base.join(path),
+            },
+            other => other.clone(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum LinkParameterSourceRepr {
+    Tagged(TaggedLinkParameterSource),
+    Plain(String),
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "source", rename_all = "snake_case")]
+enum TaggedLinkParameterSource {
+    File {
+        path: PathBuf,
+    },
+    VanillaActor {
+        #[serde(alias = "name")]
+        actor_name: String,
+    },
+    #[serde(alias = "user", alias = "manual", alias = "custom")]
+    UserName {
+        #[serde(alias = "user", alias = "name")]
+        user_name: String,
+    },
+}
+
+impl From<LinkParameterSourceRepr> for LinkParameterSource {
+    fn from(repr: LinkParameterSourceRepr) -> Self {
+        match repr {
+            LinkParameterSourceRepr::Tagged(TaggedLinkParameterSource::File { path }) => {
+                Self::File { path }
+            }
+            LinkParameterSourceRepr::Tagged(TaggedLinkParameterSource::VanillaActor {
+                actor_name,
+            }) => Self::VanillaActor { actor_name },
+            LinkParameterSourceRepr::Tagged(TaggedLinkParameterSource::UserName { user_name }) => {
+                Self::UserName { user_name }
+            }
+            LinkParameterSourceRepr::Plain(text) => {
+                let text = text.trim();
+                let lower = text.to_ascii_lowercase();
+                if lower.ends_with(".bgyml")
+                    || lower.ends_with(".byml")
+                    || lower.ends_with(".pack")
+                    || lower.ends_with(".pack.zs")
+                    || text.contains('/')
+                    || text.contains('\\')
+                {
+                    Self::File { path: text.into() }
+                } else {
+                    Self::VanillaActor {
+                        actor_name: text.to_owned(),
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -283,6 +377,7 @@ impl WeaponPackRequest {
             &policy,
             self.sound.as_ref(),
             self.effect.as_ref(),
+            &self.effect_keys,
             self.physics.as_deref(),
             self.chemical.as_deref(),
             self.shootable.as_deref(),
@@ -304,6 +399,7 @@ pub fn clone_vanilla_actor_pack_with_links(
     policy: &ActorPackPolicy,
     sound: Option<&LinkParameterSource>,
     effect: Option<&LinkParameterSource>,
+    effect_keys: &[String],
     physics_actor: Option<&str>,
     chemical_actor: Option<&str>,
     shootable_actor: Option<&str>,
@@ -336,37 +432,38 @@ pub fn clone_vanilla_actor_pack_with_links(
         )?;
     }
     let mut injected = Vec::new();
-    if let Some(source) = sound {
-        let (path, data) = prepare_link_entry(
-            clean_romfs,
-            source,
-            new_actor,
-            LinkKind::Sound,
-            zstd.clone(),
-        )?;
-        policy.parameter_edits.push(string_edit_insert(
-            &actor_file,
-            &["Components", "SLinkRef"],
-            format!("?{path}"),
-        ));
-        injected.push(InjectedPackEntry { path, data });
-    }
-    if let Some(source) = effect {
-        let (path, data) = prepare_link_entry(
-            clean_romfs,
-            source,
-            new_actor,
-            LinkKind::Effect,
-            zstd.clone(),
-        )?;
-        policy.parameter_edits.push(string_edit_insert(
-            &actor_file,
-            &["Components", "ELinkRef"],
-            format!("?{path}"),
-        ));
-        injected.push(InjectedPackEntry { path, data });
-    }
     let mut replaced_prefixes = Vec::new();
+    for (source, kind) in [(sound, LinkKind::Sound), (effect, LinkKind::Effect)] {
+        let Some(source) = source else {
+            continue;
+        };
+        // An unusable vanilla donor is skipped: the template's own link
+        // entry and reference then stay in place.
+        let Some((path, data)) =
+            optional_link_entry(clean_romfs, source, new_actor, kind, zstd.clone())?
+        else {
+            continue;
+        };
+        policy.parameter_edits.push(string_edit_insert(
+            &actor_file,
+            &["Components", kind.component_key()],
+            format!("?{path}"),
+        ));
+        // The donor's file supersedes the template's own link entry.
+        replaced_prefixes.push(kind.entry_prefix());
+        injected.push(InjectedPackEntry { path, data });
+    }
+    // Advanced effect: a root AI that emits the chosen ELink keys at spawn.
+    // It supersedes whatever root AI the template had.
+    if let Some(effect_ai) = super::effect_ai::build_effect_ai(new_actor, effect_keys)? {
+        policy.parameter_edits.push(string_edit_insert(
+            &actor_file,
+            &["Components", "AIInfoRef"],
+            effect_ai.ai_info_ref,
+        ));
+        replaced_prefixes.push(super::effect_ai::ENTRY_PREFIX);
+        injected.extend(effect_ai.entries);
+    }
     // Without a usable donor the template's own physics files stay in place.
     if let Some((physics_ref, entries)) =
         optional_physics_entries(clean_romfs, physics_actor, zstd.clone())
@@ -718,17 +815,25 @@ pub(super) fn optional_physics_entries(
     }
 }
 
-#[derive(Clone, Copy)]
-enum LinkKind {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum LinkKind {
     Sound,
     Effect,
 }
 
 impl LinkKind {
-    fn component_key(self) -> &'static str {
+    pub(super) fn component_key(self) -> &'static str {
         match self {
             Self::Sound => "SLinkRef",
             Self::Effect => "ELinkRef",
+        }
+    }
+
+    /// The RSDB ActorInfo column that mirrors the link's `UserName`.
+    pub(super) fn actor_info_key(self) -> &'static str {
+        match self {
+            Self::Sound => "SLinkUserName",
+            Self::Effect => "ELinkUserName",
         }
     }
 
@@ -739,12 +844,125 @@ impl LinkKind {
         }
     }
 
+    /// Pack folder of this link kind's parameter files.
+    pub(super) fn entry_prefix(self) -> &'static str {
+        match self {
+            Self::Sound => "Component/SLink/",
+            Self::Effect => "Component/ELink/",
+        }
+    }
+
     fn type_name(self) -> &'static str {
         match self {
             Self::Sound => "SLinkParam",
             Self::Effect => "ELinkParam",
         }
     }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Sound => "audio",
+            Self::Effect => "effect",
+        }
+    }
+}
+
+/// The link entry to inject for `source`, or `None` when it names no usable
+/// vanilla actor. A missing or malformed *file* source, or a blank typed
+/// user name, is still an error.
+pub(super) fn optional_link_entry(
+    clean_romfs: &Path,
+    source: &LinkParameterSource,
+    new_actor: &str,
+    kind: LinkKind,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<Option<(String, Vec<u8>)>> {
+    match source {
+        LinkParameterSource::VanillaActor { actor_name } => Ok(optional_vanilla_link_entry(
+            clean_romfs,
+            Some(actor_name),
+            kind,
+            zstd,
+        )),
+        LinkParameterSource::File { .. } | LinkParameterSource::UserName { .. } => {
+            prepare_link_entry(clean_romfs, source, new_actor, kind, zstd).map(Some)
+        }
+    }
+}
+
+/// The `Component/SLink` / `Component/ELink` entry (internal path and exact
+/// bytes) a vanilla donor actor resolves its link reference to. `None` when
+/// the donor is blank, malformed, has no pack in the RomFS or no such
+/// component: the caller then keeps the template's own link.
+pub(super) fn optional_vanilla_link_entry(
+    clean_romfs: &Path,
+    actor: Option<&str>,
+    kind: LinkKind,
+    zstd: Arc<TotkZstd<'_>>,
+) -> Option<(String, Vec<u8>)> {
+    let actor = actor?.trim();
+    if actor.is_empty() {
+        return None;
+    }
+    let source = LinkParameterSource::VanillaActor {
+        actor_name: actor.to_owned(),
+    };
+    match prepare_link_entry(clean_romfs, &source, actor, kind, zstd) {
+        Ok(entry) => Some(entry),
+        Err(error) => {
+            eprintln!(
+                "[items creator] {} donor {actor} is unusable ({error}); keeping the template's own {}",
+                kind.label(),
+                kind.component_key()
+            );
+            None
+        }
+    }
+}
+
+/// The `UserName` a link parameter document declares: the name the game
+/// resolves the actor's sound / effect resources by, which RSDB ActorInfo
+/// mirrors in `SLinkUserName` / `ELinkUserName`.
+pub(super) fn link_user_name(data: &[u8]) -> io::Result<String> {
+    let document = Byml::from_binary(data)
+        .map_err(|error| invalid(format!("link parameter BYML: {error}")))?;
+    link_user_name_of(&document)
+}
+
+/// The ActorInfo `SLinkUserName` / `ELinkUserName` values of an item cloned
+/// with these link sources: the `UserName` of each link entry that
+/// [`clone_vanilla_actor_pack_with_links`] injects. A missing source, or a
+/// vanilla donor that is unusable (already reported when the pack was
+/// cloned), leaves the template's own column alone.
+pub(super) fn link_user_names(
+    clean_romfs: &Path,
+    sound: Option<&LinkParameterSource>,
+    effect: Option<&LinkParameterSource>,
+    new_actor: &str,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<Vec<(&'static str, String)>> {
+    let mut names = Vec::with_capacity(2);
+    for (source, kind) in [(sound, LinkKind::Sound), (effect, LinkKind::Effect)] {
+        let Some(source) = source else {
+            continue;
+        };
+        let entry = match source {
+            LinkParameterSource::File { .. } | LinkParameterSource::UserName { .. } => Some(
+                prepare_link_entry(clean_romfs, source, new_actor, kind, zstd.clone())?,
+            ),
+            LinkParameterSource::VanillaActor { actor_name } => {
+                if actor_name.trim().is_empty() {
+                    None
+                } else {
+                    prepare_link_entry(clean_romfs, source, new_actor, kind, zstd.clone()).ok()
+                }
+            }
+        };
+        if let Some((_, data)) = entry {
+            names.push((kind.actor_info_key(), link_user_name(&data)?));
+        }
+    }
+    Ok(names)
 }
 
 fn prepare_link_entry(
@@ -754,6 +972,14 @@ fn prepare_link_entry(
     kind: LinkKind,
     zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<(String, Vec<u8>)> {
+    let own_entry_path = || {
+        format!(
+            "Component/{}/{}.engine__component__{}.bgyml",
+            kind.directory(),
+            new_actor,
+            kind.type_name()
+        )
+    };
     match source {
         LinkParameterSource::File { path } => {
             if !path.is_file() {
@@ -762,29 +988,27 @@ fn prepare_link_entry(
                     format!("link parameter file is missing: {}", path.display()),
                 ));
             }
-            let mut document = BymlFile::new(path, zstd.clone())
-                .ok_or_else(|| invalid("invalid link parameter BYML"))?;
-            let map = document
-                .pio
-                .as_mut_map()
-                .map_err(|_| invalid("link parameter BYML root is not a map"))?;
-            match map.get("UserName") {
-                Some(Byml::String(_)) => {
-                    map.insert("UserName".into(), Byml::String(new_actor.into()));
-                }
-                Some(_) => return Err(invalid("link parameter UserName is not a string")),
-                None => return Err(invalid("link parameter UserName is missing")),
+            let lower = path.to_string_lossy().to_ascii_lowercase();
+            if lower.ends_with(".pack") || lower.ends_with(".pack.zs") {
+                // An actor pack (vanilla or modded): its own actor's link entry.
+                let file_name = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let actor_name = file_name
+                    .strip_suffix(".pack.zs")
+                    .or_else(|| file_name.strip_suffix(".pack"))
+                    .unwrap_or(&file_name)
+                    .to_owned();
+                let pack = PackFile::from_binary(&fs::read(path)?, zstd)?;
+                return link_entry_from_pack(&pack, &actor_name, kind);
             }
+            let document = BymlFile::new(path, zstd.clone())
+                .ok_or_else(|| invalid("invalid link parameter BYML"))?;
+            // The file is used as it is: its UserName may be a modded link user.
+            link_user_name_of(&document.pio)?;
             let rebuilt = document.to_binary_preserving_header()?;
-            Ok((
-                format!(
-                    "Component/{}/{}.engine__component__{}.bgyml",
-                    kind.directory(),
-                    new_actor,
-                    kind.type_name()
-                ),
-                rebuilt,
-            ))
+            Ok((own_entry_path(), rebuilt))
         }
         LinkParameterSource::VanillaActor { actor_name } => {
             validate_actor_name(actor_name)?;
@@ -801,26 +1025,81 @@ fn prepare_link_entry(
                 ));
             }
             let pack = PackFile::from_binary(&fs::read(pack_path)?, zstd)?;
-            let actor_path = format!("Actor/{actor_name}.engine__actor__ActorParam.bgyml");
-            let actor = parse_pack_byml(&pack, &actor_path)?;
-            let reference =
-                resolve_component_ref(&pack, &actor, kind.component_key(), &mut BTreeSet::new())?
-                    .ok_or_else(|| {
-                    invalid(format!(
-                        "vanilla actor {actor_name} has no {}",
-                        kind.component_key()
-                    ))
-                })?;
-            let path = reference_to_internal(&reference);
-            let data = pack
-                .sarc
-                .get_data(&path)
-                .ok_or_else(|| invalid(format!("resolved vanilla link entry is missing: {path}")))?
-                .to_vec();
-            pack.byml_file(&path)?;
-            Ok((path, data))
+            link_entry_from_pack(&pack, actor_name, kind)
+        }
+        LinkParameterSource::UserName { user_name } => {
+            let user_name = user_name.trim();
+            if user_name.is_empty() {
+                return Err(invalid(format!("{} user name is blank", kind.label())));
+            }
+            if user_name
+                .chars()
+                .any(|c| c.is_whitespace() || c == '"' || c == '\\')
+            {
+                return Err(invalid(format!(
+                    "{} user name {user_name:?} contains spaces or quotes",
+                    kind.label()
+                )));
+            }
+            let mut map = roead::byml::Map::default();
+            map.insert("UserName".into(), Byml::String(user_name.into()));
+            let data = super::effect_ai::byml_v7_bytes(&Byml::Map(map))?;
+            Ok((own_entry_path(), data))
         }
     }
+}
+
+/// The `UserName` of a parsed link parameter document.
+fn link_user_name_of(document: &Byml) -> io::Result<String> {
+    let map = document
+        .as_map()
+        .map_err(|_| invalid("link parameter BYML root is not a map"))?;
+    match map.get("UserName") {
+        Some(Byml::String(value)) => Ok(value.to_string()),
+        Some(_) => Err(invalid("link parameter UserName is not a string")),
+        None => Err(invalid("link parameter UserName is missing")),
+    }
+}
+
+/// The `Component/SLink` / `Component/ELink` entry (internal path and exact
+/// bytes) that `actor_name`'s ActorParam inside `pack` resolves to.
+fn link_entry_from_pack(
+    pack: &PackFile<'_>,
+    actor_name: &str,
+    kind: LinkKind,
+) -> io::Result<(String, Vec<u8>)> {
+    let mut actor_path = format!("Actor/{actor_name}.engine__actor__ActorParam.bgyml");
+    if pack.sarc.get_data(&actor_path).is_none() {
+        // A renamed pack file: fall back to the single ActorParam it holds.
+        let mut candidates = pack
+            .sarc
+            .files()
+            .filter_map(|file| file.name.map(str::to_owned))
+            .filter(|name| {
+                name.starts_with("Actor/") && name.ends_with(".engine__actor__ActorParam.bgyml")
+            })
+            .collect::<Vec<_>>();
+        if candidates.len() == 1 {
+            actor_path = candidates.remove(0);
+        }
+    }
+    let actor = parse_pack_byml(pack, &actor_path)?;
+    let reference =
+        resolve_component_ref(pack, &actor, kind.component_key(), &mut BTreeSet::new())?
+            .ok_or_else(|| {
+                invalid(format!(
+                    "actor {actor_name} has no {}",
+                    kind.component_key()
+                ))
+            })?;
+    let path = reference_to_internal(&reference);
+    let data = pack
+        .sarc
+        .get_data(&path)
+        .ok_or_else(|| invalid(format!("resolved link entry is missing: {path}")))?
+        .to_vec();
+    pack.byml_file(&path)?;
+    Ok((path, data))
 }
 
 impl ActorPackPolicy {
@@ -1920,6 +2199,105 @@ mod tests {
     }
 
     #[test]
+    fn link_sources_accept_plain_strings() {
+        let request = WeaponPackRequest::from_json(
+            r#"{
+                "name": "Weapon_Lsword_900",
+                "base": "Weapon_Lsword_108",
+                "audio": " Weapon_Lsword_103 ",
+                "effect": "custom/Weapon.engine__component__ELinkParam.bgyml"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            request.sound,
+            Some(LinkParameterSource::VanillaActor {
+                actor_name: "Weapon_Lsword_103".into()
+            })
+        );
+        assert_eq!(
+            request.effect,
+            Some(LinkParameterSource::File {
+                path: "custom/Weapon.engine__component__ELinkParam.bgyml".into()
+            })
+        );
+    }
+
+    #[test]
+    fn link_sources_accept_user_names_and_pack_files() {
+        let request = WeaponPackRequest::from_json(
+            r#"{
+                "name": "Weapon_Lsword_900",
+                "base": "Weapon_Lsword_108",
+                "effect": { "source": "user_name", "user_name": "Item_Weapon_01_custom" },
+                "sound": "mods/Weapon_Custom.pack.zs"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            request.effect,
+            Some(LinkParameterSource::UserName {
+                user_name: "Item_Weapon_01_custom".into()
+            })
+        );
+        assert_eq!(
+            request.sound,
+            Some(LinkParameterSource::File {
+                path: "mods/Weapon_Custom.pack.zs".into()
+            })
+        );
+        let aliased = WeaponPackRequest::from_json(
+            r#"{
+                "name": "Weapon_Lsword_900",
+                "base": "Weapon_Lsword_108",
+                "effect": { "source": "user", "name": "Player_custom" }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            aliased.effect,
+            Some(LinkParameterSource::UserName {
+                user_name: "Player_custom".into()
+            })
+        );
+    }
+
+    #[test]
+    fn typed_user_name_becomes_a_fresh_link_parameter() {
+        let zstd = Arc::new(TotkZstd::dictionaryless(
+            Arc::new(TotkConfig::default()),
+            16,
+        ));
+        let source = LinkParameterSource::UserName {
+            user_name: " Item_Weapon_01_custom ".into(),
+        };
+        let (path, data) = prepare_link_entry(
+            Path::new("."),
+            &source,
+            "Weapon_Sword_900",
+            LinkKind::Effect,
+            zstd.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            path,
+            "Component/ELink/Weapon_Sword_900.engine__component__ELinkParam.bgyml"
+        );
+        assert_eq!(link_user_name(&data).unwrap(), "Item_Weapon_01_custom");
+        let blank = LinkParameterSource::UserName {
+            user_name: "  ".into(),
+        };
+        assert!(prepare_link_entry(
+            Path::new("."),
+            &blank,
+            "Weapon_Sword_900",
+            LinkKind::Effect,
+            zstd
+        )
+        .is_err());
+    }
+
+    #[test]
     fn chemical_bundle_source_conflicts_with_raw_reference_override() {
         let request = WeaponPackRequest::from_json(
             r#"{
@@ -2331,7 +2709,10 @@ mod tests {
             sound: Some(LinkParameterSource::VanillaActor {
                 actor_name: "Weapon_Lsword_103".into(),
             }),
-            effect: Some(LinkParameterSource::File { path: effect_file }),
+            effect: Some(LinkParameterSource::File {
+                path: effect_file.clone(),
+            }),
+            effect_keys: Vec::new(),
             physics: Some("Weapon_Lsword_103".into()),
             shootable: None,
             extra_edits: Vec::new(),
@@ -2383,16 +2764,10 @@ mod tests {
             .get_data(&reference_to_internal(sound_ref))
             .is_some());
         let effect_path = reference_to_internal(effect_ref);
-        let effect = Byml::from_binary(generated.sarc.get_data(&effect_path).unwrap()).unwrap();
         assert_eq!(
-            effect
-                .as_map()
-                .unwrap()
-                .get("UserName")
-                .unwrap()
-                .as_string()
-                .unwrap(),
-            custom_actor
+            link_user_name(generated.sarc.get_data(&effect_path).unwrap()).unwrap(),
+            link_user_name(&fs::read(&effect_file).unwrap()).unwrap(),
+            "a file source keeps its own UserName"
         );
 
         let source = PackFile::from_binary(
@@ -2466,6 +2841,7 @@ mod tests {
             shield_bash_damage: None,
             sound: None,
             effect: None,
+            effect_keys: Vec::new(),
             physics: None,
             shootable: Some("CustomProjectile".into()),
             extra_edits: Vec::new(),

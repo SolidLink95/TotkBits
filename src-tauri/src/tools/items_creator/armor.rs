@@ -18,7 +18,8 @@ use crate::{
         BinTextFile::BymlFile,
         Model3D::bfres::{
             material_anim::{
-                write_material_anim_bfres, TexturePatternAnim, TexturePatternMaterial,
+                read_material_anim_bfres, write_material_anim_bfres, TexturePatternAnim,
+                TexturePatternMaterial,
             },
             toolbox::ResFile,
             BfresFile,
@@ -259,16 +260,41 @@ pub struct ArmorSpec {
     /// A dyeable template stays dyeable either way.
     #[serde(default, alias = "make_dyeable")]
     pub dyeable: bool,
-    /// Vanilla armor actor whose ArmorParam `HiddenMaterialGroupList` (the
-    /// skin materials of Link's body model this piece hides, e.g. `G_Skin`
-    /// with `Mt_Upper_Skin`) is copied into the new piece; `None` keeps the
-    /// template's list.
+    /// Vanilla armor actor whose ArmorParam material visibility is copied
+    /// into the new piece: both `HiddenMaterialGroupList` (the skin
+    /// materials of Link's body model this piece hides, e.g. `G_Skin` with
+    /// `Mt_Upper_Skin`) and `HideMaterialGroupNameList` (the body-model
+    /// material groups it covers, e.g. `G_UpperBeltSet`, `G_Head`). A key
+    /// the donor lacks is dropped so the ArmorParam default applies, exactly
+    /// as on the donor. `None` keeps the template's lists.
     #[serde(default, alias = "skin_material_actor")]
     pub skin_material: Option<String>,
     /// `ArmorEffect` entries of the ArmorParam (the first one also becomes
     /// the PouchActorInfo `ArmorEffectType`); empty keeps the template's.
     #[serde(default, alias = "effects", deserialize_with = "armor_effects")]
     pub armor_effects: Vec<ArmorEffectSpec>,
+    /// Audio: vanilla actor whose `Component/SLink` file is transferred into
+    /// the piece (the ActorParam `SLinkRef` binds it) together with the audio
+    /// keys of its ArmorParam (`SoundMaterial`, `HasSoundCloth`,
+    /// `IsBarefootSound`). A blank name, or one without a pack or SLink in
+    /// the RomFS, is skipped and the template's own sound stays.
+    #[serde(default, alias = "audio", alias = "sound_actor")]
+    pub sound: Option<String>,
+    /// Effect: a vanilla actor whose `Component/ELink` file is transferred
+    /// into the piece (the ActorParam `ELinkRef` binds it) together with the
+    /// effect keys of its ArmorParam (`WindEffectMesh`, `WindEffectScale`),
+    /// skipped like `sound` when unusable; or an ELinkParam `.bgyml` / actor
+    /// pack file used as it is; or a hand-typed ELink user name
+    /// (`{"source": "user_name", "user_name": "Item_Weapon_01_custom"}`).
+    #[serde(default, alias = "effect_actor")]
+    pub effect: Option<actor_pack::LinkParameterSource>,
+    /// Advanced effect: XLink keys (asset-call-table entries of the ELink
+    /// user the piece ends up with, e.g. `Miasma_Status_In` of `Player`)
+    /// that a generated root AI search-and-emits once at spawn, giving the
+    /// piece a permanent effect. Empty adds no AI; see `effect_ai`. Upgrade
+    /// ranks inherit it with the rest of the base pack.
+    #[serde(default, alias = "xlink_keys", alias = "effect_ai_keys")]
+    pub effect_keys: Vec<String>,
 }
 
 /// Everything written for one upgrade rank actor.
@@ -565,13 +591,35 @@ impl ArmorSpec {
         asset_root: &Path,
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<ArmorGenerationReport> {
+        let mut shared = super::shared::SharedFiles::new(clean_romfs, output_romfs, zstd);
+        let report = self.generate_files_with(&mut shared, asset_root)?;
+        shared.flush()?;
+        Ok(report)
+    }
+
+    /// [`ArmorSpec::generate_files`] for one piece of a batch: the per-piece
+    /// files are written now, the mod-wide ones (messages, RSDB, GameDataList,
+    /// vendor packs) are edited in `shared` and written when the caller
+    /// flushes it.
+    pub fn generate_files_with(
+        &self,
+        shared: &mut super::shared::SharedFiles<'_>,
+        asset_root: &Path,
+    ) -> io::Result<ArmorGenerationReport> {
         self.validate(asset_root)?;
+        let clean_romfs = shared.clean_romfs().to_path_buf();
+        let output_romfs = shared.output_romfs().to_path_buf();
+        let zstd = shared.zstd();
+        let clean_romfs = clean_romfs.as_path();
+        let output_romfs = output_romfs.as_path();
         assets::ensure_output_outside_romfs(clean_romfs, output_romfs)?;
         let slot = self.slot()?;
         let project = self.project()?;
         let template_project = self.template_project()?;
         let template = TemplateArmor::load(clean_romfs, &self.template_actor, zstd.clone())?;
         let upgrades = self.effective_upgrades(clean_romfs, zstd.clone())?;
+        let mut stopwatch = super::Stopwatch::new("armor");
+        stopwatch.lap("template + upgrade chain");
         // A dyeable template stays dyeable; `dyeable` only adds what a
         // single-colour template lacks.
         let make_dyeable = self.dyeable && !template.dyeable;
@@ -581,6 +629,7 @@ impl ArmorSpec {
             ));
         }
 
+        let links = self.resolve_links(clean_romfs, zstd.clone())?;
         let actor_pack = self.clone_actor_pack(
             clean_romfs,
             asset_root,
@@ -588,8 +637,10 @@ impl ArmorSpec {
             &template,
             &upgrades,
             make_dyeable,
+            &links,
             zstd.clone(),
         )?;
+        stopwatch.lap("actor pack");
         let model = self.generate_model(
             clean_romfs,
             output_romfs,
@@ -598,6 +649,7 @@ impl ArmorSpec {
             make_dyeable,
             zstd.clone(),
         )?;
+        stopwatch.lap("model");
         let model_anim = match model.anim.clone() {
             Some(anim) => Some(anim),
             None => clone_project_anim(
@@ -605,10 +657,12 @@ impl ArmorSpec {
                 output_romfs,
                 &template_project,
                 &project,
+                slot,
                 zstd.clone(),
             )?,
         };
 
+        stopwatch.lap("project anim");
         let custom_icon = self
             .assets
             .icon_png
@@ -631,6 +685,7 @@ impl ArmorSpec {
                 zstd.clone(),
             )?);
         }
+        stopwatch.lap("icons");
         if make_dyeable {
             ui_textures.extend(generate_dye_icons(
                 clean_romfs,
@@ -642,43 +697,32 @@ impl ArmorSpec {
             )?);
         }
 
-        let messages = messages::generate_pouch_labels(
-            clean_romfs,
-            output_romfs,
+        stopwatch.lap("dye icons");
+        let messages = messages::apply_pouch_labels(
+            shared,
             &self.actor_name,
             &self.display_name,
             &self.description,
-            zstd.clone(),
         )?;
-        let mut rsdb = self.generate_rsdb(
-            clean_romfs,
-            output_romfs,
-            &template,
-            &upgrades,
-            make_dyeable,
-            zstd.clone(),
-        )?;
+        stopwatch.lap("messages");
+        let mut rsdb = self.generate_rsdb(shared, &template, &upgrades, make_dyeable, &links)?;
+        stopwatch.lap("rsdb");
         let game_data = gamedata::WeaponGameDataRequest {
             actor_name: self.actor_name.clone(),
             picture_book: false,
             inventory_flags: true,
         }
-        .generate(clean_romfs, output_romfs, zstd.clone())?;
-        let upgrades = self.generate_upgrade_files(
-            clean_romfs,
-            output_romfs,
-            &ui_textures,
-            &upgrades,
-            make_dyeable,
-            &mut rsdb,
-            zstd.clone(),
-        )?;
-        let processor = vendor::VendorProcessor::new(clean_romfs, output_romfs, zstd);
+        .apply(shared)?;
+        stopwatch.lap("game data");
+        let upgrades =
+            self.generate_upgrade_files(shared, &ui_textures, &upgrades, make_dyeable, &mut rsdb)?;
+        stopwatch.lap("upgrade ranks");
         let mut vendor_packs = Vec::new();
         for target in &self.vendors {
-            vendor_packs.extend(processor.add_weapon(&self.actor_name, target)?);
+            vendor_packs.extend(vendor::apply_weapon(shared, &self.actor_name, target)?);
         }
 
+        stopwatch.lap("vendors");
         Ok(ArmorGenerationReport {
             actor_name: self.actor_name.clone(),
             slot,
@@ -698,6 +742,63 @@ impl ArmorSpec {
         })
     }
 
+    /// Audio / effect: a usable donor actor's SLink / ELink file replaces
+    /// the template's own, the ActorParam reference binds it, the matching
+    /// ArmorParam keys follow the donor and the RSDB ActorInfo row names the
+    /// donor's link user. An unusable donor is skipped and the template's
+    /// own sound / effect stays.
+    /// Makes a relative effect file path absolute against `base`.
+    pub fn anchor_link_paths(&mut self, base: &Path) {
+        self.effect = self.effect.as_ref().map(|link| link.anchored(base));
+    }
+
+    fn resolve_links(
+        &self,
+        clean_romfs: &Path,
+        zstd: Arc<TotkZstd<'_>>,
+    ) -> io::Result<Vec<ResolvedLink>> {
+        let mut links = Vec::new();
+        if let Some((path, data)) = actor_pack::optional_vanilla_link_entry(
+            clean_romfs,
+            self.sound.as_deref(),
+            actor_pack::LinkKind::Sound,
+            zstd.clone(),
+        ) {
+            let donor_keys = donor_armor_param_keys(
+                clean_romfs,
+                self.sound.as_deref().unwrap_or_default().trim(),
+                &SOUND_ARMOR_KEYS[..],
+                zstd.clone(),
+            );
+            links.push((actor_pack::LinkKind::Sound, path, data, donor_keys));
+        }
+        // The effect may also be a file or a typed user name; only a vanilla
+        // donor has an ArmorParam to take the wind-effect keys from.
+        if let Some(source) = &self.effect {
+            if let Some((path, data)) = actor_pack::optional_link_entry(
+                clean_romfs,
+                source,
+                &self.actor_name,
+                actor_pack::LinkKind::Effect,
+                zstd.clone(),
+            )? {
+                let donor_keys = match source {
+                    actor_pack::LinkParameterSource::VanillaActor { actor_name } => {
+                        donor_armor_param_keys(
+                            clean_romfs,
+                            actor_name.trim(),
+                            &EFFECT_ARMOR_KEYS[..],
+                            zstd.clone(),
+                        )
+                    }
+                    _ => Vec::new(),
+                };
+                links.push((actor_pack::LinkKind::Effect, path, data, donor_keys));
+            }
+        }
+        Ok(links)
+    }
+
     /// Clones the template pack under the new project name. Every SARC entry
     /// and BYML string scoped to the template project is renamed, the physics
     /// bundle is swapped only when a usable donor actor is given, the helper
@@ -711,6 +812,7 @@ impl ArmorSpec {
         template: &TemplateArmor,
         upgrades: &[ArmorUpgradeSpec],
         make_dyeable: bool,
+        links: &[ResolvedLink],
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<PathBuf> {
         let project = self.project()?;
@@ -750,6 +852,9 @@ impl ArmorSpec {
         )?;
         let replace_physics = physics.is_some();
         let physics_ref = physics.as_ref().map(|(reference, _)| reference.clone());
+        // Advanced effect: a root AI emitting the chosen ELink keys at spawn
+        // supersedes whatever root AI the template had.
+        let effect_ai = super::effect_ai::build_effect_ai(&self.actor_name, &self.effect_keys)?;
         let mut entries: Vec<(String, Vec<u8>)> = physics
             .map(|(_, injected)| {
                 injected
@@ -767,6 +872,15 @@ impl ArmorSpec {
             {
                 continue;
             }
+            if links
+                .iter()
+                .any(|(kind, ..)| name.starts_with(kind.entry_prefix()))
+            {
+                continue;
+            }
+            if effect_ai.is_some() && name.starts_with(super::effect_ai::ENTRY_PREFIX) {
+                continue;
+            }
             let new_name = replace_project(name, &template_project, &project);
             if !name.ends_with(".bgyml") {
                 entries.push((new_name, file.data().to_vec()));
@@ -780,6 +894,17 @@ impl ArmorSpec {
                     components.insert(
                         "PhysicsRef".into(),
                         Byml::String(physics_ref.as_str().into()),
+                    );
+                }
+                for (kind, path, ..) in links {
+                    let components = map_child_mut(&mut document.pio, "Components")?;
+                    components.insert(kind.component_key().into(), byml_string(format!("?{path}")));
+                }
+                if let Some(effect_ai) = &effect_ai {
+                    let components = map_child_mut(&mut document.pio, "Components")?;
+                    components.insert(
+                        "AIInfoRef".into(),
+                        byml_string(effect_ai.ai_info_ref.clone()),
                     );
                 }
                 if make_dyeable {
@@ -831,6 +956,21 @@ impl ArmorSpec {
                 ] {
                     map.remove(key);
                 }
+                // Audio / effect donors: their ArmorParam sound / wind-effect
+                // keys replace the template's (a key the donor lacks is
+                // dropped so the ArmorParam default applies).
+                for (_, _, _, donor_keys) in links {
+                    for (key, value) in donor_keys {
+                        match value {
+                            Some(value) => {
+                                map.insert((*key).into(), value.clone());
+                            }
+                            None => {
+                                map.remove(*key);
+                            }
+                        }
+                    }
+                }
                 // The upgrade chain starts here: rank 2 is the next actor.
                 if let Some(next) = rank_names.first() {
                     map.insert(
@@ -838,11 +978,35 @@ impl ArmorSpec {
                         Byml::String(actor_param_work_path(next).into()),
                     );
                 }
+                // Material visibility: a chosen skin-material actor lends
+                // both of its lists to the new piece. `HiddenMaterialGroupList`
+                // names the skin materials of the body model the piece hides,
+                // `HideMaterialGroupNameList` the body-model material groups
+                // it covers; a key the donor lacks is dropped so the default
+                // applies as it does on the donor.
+                if let Some(actor) = self
+                    .skin_material
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|actor| !actor.is_empty())
+                {
+                    let visibility = material_visibility(clean_romfs, actor, zstd.clone())?;
+                    map.insert("HiddenMaterialGroupList".into(), visibility.hidden_groups);
+                    match visibility.hide_group_names {
+                        Some(groups) => {
+                            map.insert("HideMaterialGroupNameList".into(), groups);
+                        }
+                        None => {
+                            map.remove("HideMaterialGroupNameList");
+                        }
+                    }
+                }
                 // `HideMaterialGroupNameList` names the material groups of
                 // Link's body model (`G_Upper` torso/arm skin, `G_Lower` legs,
-                // ...) that this piece covers. The template's list is kept; a
-                // cube upper additionally hides the torso skin, which vanilla
-                // tunics leave visible because their own mesh covers it.
+                // ...) that this piece covers. The template's (or donor's)
+                // list is kept; a cube upper additionally hides the torso
+                // skin, which vanilla tunics leave visible because their own
+                // mesh covers it.
                 if self.model.is_some() && self.slot()? == ArmorSlot::Upper {
                     let groups = map
                         .entry("HideMaterialGroupNameList".into())
@@ -875,20 +1039,6 @@ impl ArmorSpec {
                         .collect();
                     map.insert("ArmorEffect".into(), Byml::Array(effects));
                 }
-                // `HiddenMaterialGroupList` names the skin materials of the
-                // body model this piece hides; a chosen skin-material actor
-                // lends its list to the new piece.
-                if let Some(actor) = self
-                    .skin_material
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|actor| !actor.is_empty())
-                {
-                    map.insert(
-                        "HiddenMaterialGroupList".into(),
-                        hidden_material_groups(clean_romfs, actor, zstd.clone())?,
-                    );
-                }
             } else if new_name == price_file {
                 let map = document
                     .pio
@@ -902,6 +1052,17 @@ impl ArmorSpec {
                 }
             }
             entries.push((new_name, document.to_binary_preserving_header()?));
+        }
+        for (_, path, data, _) in links {
+            entries.push((path.clone(), data.clone()));
+        }
+        if let Some(effect_ai) = effect_ai {
+            entries.extend(
+                effect_ai
+                    .entries
+                    .into_iter()
+                    .map(|entry| (entry.path, entry.data)),
+            );
         }
         if !entries.iter().any(|(name, _)| *name == actor_file) {
             return Err(invalid_data(format!(
@@ -990,6 +1151,7 @@ impl ArmorSpec {
                 format!("template armor model is missing: {}", source.display()),
             ));
         }
+        let mut stopwatch = super::Stopwatch::new("armor model");
         let new_fmdb = replace_project(&template.fmdb_name, &template_project, &project);
         if new_fmdb == template.fmdb_name {
             return Err(invalid_data(format!(
@@ -1017,6 +1179,7 @@ impl ArmorSpec {
         let external = assets::external_strings_for(clean_romfs, &raw)?;
         let mut file = ResFile::load(&raw, &external)
             .map_err(|error| invalid_data(format!("failed to load template BFRES: {error}")))?;
+        stopwatch.lap("load template bfres");
         if file.model_count() == 0 {
             return Err(invalid_data("template BFRES contains no model"));
         }
@@ -1024,6 +1187,7 @@ impl ArmorSpec {
             file.import_model_like_toolbox(bytes, self.replace_bones)
                 .map_err(|error| invalid_data(format!("failed to import the FBX: {error}")))?;
         }
+        stopwatch.lap("fbx import");
         let cube = match &self.model {
             Some(spec) => Some(armor_model::replace_with_skinned_cube(
                 &mut file,
@@ -1089,6 +1253,7 @@ impl ArmorSpec {
             }
         }
 
+        stopwatch.lap("textures");
         let container_name = format!("{project}.{new_fmdb}");
         file.set_internal_name(&container_name);
         file.rename_first_model(&new_fmdb)
@@ -1111,6 +1276,7 @@ impl ArmorSpec {
         let renamed = file
             .save_like_toolbox()
             .map_err(|error| invalid_data(format!("failed to serialize BFRES: {error}")))?;
+        stopwatch.lap("save bfres");
         let verified = BfresFile::from_bytes(&renamed)
             .map_err(|error| invalid_data(format!("failed to reopen generated BFRES: {error}")))?;
         assets::validate_bfres_geometry(&verified)?;
@@ -1129,14 +1295,17 @@ impl ArmorSpec {
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)?;
         }
+        stopwatch.lap("verify + placeholder textures");
         let compressed = MeshCodec::compress(&renamed)
             .map_err(|error| invalid_data(format!("failed to MCPK-compress BFRES: {error}")))?;
+        stopwatch.lap("meshcodec compress");
         let roundtrip = MeshCodec::decompress(&compressed).map_err(|error| {
             invalid_data(format!("generated MCPK does not decompress: {error}"))
         })?;
         BfresFile::from_bytes(&roundtrip).map_err(|error| {
             invalid_data(format!("round-tripped BFRES cannot be parsed: {error}"))
         })?;
+        stopwatch.lap("meshcodec roundtrip check");
         fs::write(&destination, compressed)?;
         let anim = if make_dyeable {
             // Material names were renamed with the project above; the slice
@@ -1162,6 +1331,7 @@ impl ArmorSpec {
         } else {
             None
         };
+        stopwatch.lap("dye anim");
         Ok(GeneratedArmorModel {
             model: destination,
             cube,
@@ -1176,12 +1346,11 @@ impl ArmorSpec {
     /// `ArmorNextRankActor`, now pointing at the rank-2 actor.
     fn generate_rsdb(
         &self,
-        clean_romfs: &Path,
-        output_romfs: &Path,
+        shared: &mut super::shared::SharedFiles<'_>,
         template: &TemplateArmor,
         upgrades: &[ArmorUpgradeSpec],
         make_dyeable: bool,
-        zstd: Arc<TotkZstd<'_>>,
+        links: &[ResolvedLink],
     ) -> io::Result<Vec<PathBuf>> {
         let project = self.project()?;
         let template_project = self.template_project()?;
@@ -1190,6 +1359,13 @@ impl ArmorSpec {
             "ActorName".into(),
             JsonValue::String(self.actor_name.clone()),
         );
+        // The donor's link user, as vanilla rows mirror their own link files.
+        for (kind, _, data, _) in links {
+            actor.insert(
+                kind.actor_info_key().into(),
+                JsonValue::String(actor_pack::link_user_name(data)?),
+            );
+        }
         actor.insert(
             "FmdbName".into(),
             JsonValue::String(replace_project(
@@ -1233,14 +1409,12 @@ impl ArmorSpec {
             );
         }
         clone_armor_rsdb_rows(
-            clean_romfs,
-            output_romfs,
+            shared,
             &self.template_actor,
             &self.actor_name,
             &actor,
             &pouch,
             &["ArmorNextRankActor", "ArmorHeadSwapActor"],
-            zstd,
         )
     }
 
@@ -1261,17 +1435,20 @@ impl ArmorSpec {
     /// PNG decoding, tinting or ASTC encoding happens for ranks.
     fn generate_upgrade_files(
         &self,
-        clean_romfs: &Path,
-        output_romfs: &Path,
+        shared: &mut super::shared::SharedFiles<'_>,
         base_icons: &[UiTextureReport],
         upgrades: &[ArmorUpgradeSpec],
         make_dyeable: bool,
         rsdb_outputs: &mut Vec<PathBuf>,
-        zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<Vec<ArmorUpgradeReport>> {
         let Some(first_upgrade) = upgrades.first() else {
             return Ok(Vec::new());
         };
+        let clean_romfs = shared.clean_romfs().to_path_buf();
+        let output_romfs = shared.output_romfs().to_path_buf();
+        let zstd = shared.zstd();
+        let clean_romfs = clean_romfs.as_path();
+        let output_romfs = output_romfs.as_path();
         let names = Self::rank_actor_names_for(&self.actor_name, upgrades);
         let vanilla_packs = clean_romfs.join("Pack/Actor");
         for name in &names {
@@ -1349,6 +1526,7 @@ impl ArmorSpec {
             price: first_upgrade.rupees,
         }];
         for (index, upgrade) in upgrades.iter().enumerate() {
+            let mut stopwatch = super::Stopwatch::new("armor rank");
             let rank = index + 2;
             let name = names
                 .get(index)
@@ -1503,30 +1681,26 @@ impl ArmorSpec {
                     JsonValue::String("ArmorDye".into()),
                 );
             }
+            stopwatch.lap("rank pack");
             let rsdb = clone_armor_rsdb_rows(
-                clean_romfs,
-                output_romfs,
+                shared,
                 &self.actor_name,
                 name,
                 &actor,
                 &pouch,
                 &["ArmorNextRankActor"],
-                zstd.clone(),
             )?;
+            stopwatch.lap("rank rsdb");
             let game_data = gamedata::WeaponGameDataRequest {
                 actor_name: name.clone(),
                 picture_book: false,
                 inventory_flags: true,
             }
-            .generate(clean_romfs, output_romfs, zstd.clone())?;
-            let messages = messages::generate_pouch_labels(
-                clean_romfs,
-                output_romfs,
-                name,
-                &self.display_name,
-                &self.description,
-                zstd.clone(),
-            )?;
+            .apply(shared)?;
+            stopwatch.lap("rank game data");
+            let messages =
+                messages::apply_pouch_labels(shared, name, &self.display_name, &self.description)?;
+            stopwatch.lap("rank messages");
             let ui_textures = clone_rank_icons(
                 clean_romfs,
                 output_romfs,
@@ -1535,6 +1709,7 @@ impl ArmorSpec {
                 name,
                 zstd.clone(),
             )?;
+            stopwatch.lap("rank icons");
             reports.push(ArmorUpgradeReport {
                 actor_name: name.clone(),
                 rank: rank as u8,
@@ -1557,16 +1732,11 @@ impl ArmorSpec {
         let table =
             rsdb::WeaponRsdbProcessor::versioned_rsdb_name("EnhancementMaterialInfo", &version)?;
         let destination = output_rsdb.join(&table);
-        let source = if destination.is_file() {
-            destination.clone()
-        } else {
-            clean_rsdb.join(&table)
-        };
         rsdb::WeaponRsdbProcessor::upsert_enhancement_material_rows(
-            &source,
+            shared,
+            &clean_rsdb.join(&table),
             &destination,
             &enhancement_rows,
-            zstd,
         )?;
         if !rsdb_outputs.contains(&destination) {
             rsdb_outputs.push(destination);
@@ -1579,17 +1749,15 @@ impl ArmorSpec {
 /// cloned from `template_actor`'s rows (vanilla or already generated).
 #[allow(clippy::too_many_arguments)]
 fn clone_armor_rsdb_rows(
-    clean_romfs: &Path,
-    output_romfs: &Path,
+    shared: &mut super::shared::SharedFiles<'_>,
     template_actor: &str,
     actor_name: &str,
     actor_overrides: &BTreeMap<String, JsonValue>,
     pouch_overrides: &BTreeMap<String, JsonValue>,
     pouch_removals: &[&str],
-    zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<Vec<PathBuf>> {
-    let clean_rsdb = clean_romfs.join("RSDB");
-    let output_rsdb = output_romfs.join("RSDB");
+    let clean_rsdb = shared.clean_romfs().join("RSDB");
+    let output_rsdb = shared.output_romfs().join("RSDB");
     fs::create_dir_all(&output_rsdb)?;
     let (version, actor_info_source) =
         super::version::discover_product_file(&clean_rsdb, "ActorInfo.Product.", ".rstbl.byml.zs")?;
@@ -1611,36 +1779,24 @@ fn clone_armor_rsdb_rows(
     let mut outputs = Vec::with_capacity(4);
     for (name, overrides, removals) in tables {
         let destination = output_rsdb.join(&name);
-        let clean_source = clean_rsdb.join(&name);
-        let source = if destination.is_file() {
-            destination.clone()
-        } else {
-            clean_source
-        };
         rsdb::WeaponRsdbProcessor::clone_rsdb_row(
-            &source,
+            shared,
+            &clean_rsdb.join(&name),
             &destination,
             template_actor,
             actor_name,
             overrides,
             removals,
-            zstd.clone(),
         )?;
         outputs.push(destination);
     }
     let tag_output = output_rsdb.join(&tag_product);
-    let clean_tag = clean_rsdb.join(&tag_product);
-    let tag_source = if tag_output.is_file() {
-        tag_output.clone()
-    } else {
-        clean_tag
-    };
     rsdb::WeaponRsdbProcessor::clone_tag_entry(
-        &tag_source,
+        shared,
+        &clean_rsdb.join(&tag_product),
         &tag_output,
         template_actor,
         actor_name,
-        zstd,
     )?;
     outputs.push(tag_output);
     Ok(outputs)
@@ -1765,13 +1921,20 @@ struct GeneratedArmorModel {
     anim: Option<PathBuf>,
 }
 
-/// The `HiddenMaterialGroupList` of a vanilla armor actor's ArmorParam (an
-/// empty list when the actor states none).
-fn hidden_material_groups(
+/// The material-visibility lists of a vanilla armor actor's ArmorParam.
+struct MaterialVisibility {
+    /// `HiddenMaterialGroupList` (an empty list when the actor states none).
+    hidden_groups: Byml,
+    /// `HideMaterialGroupNameList`, `None` when the actor's ArmorParam lacks it.
+    hide_group_names: Option<Byml>,
+}
+
+/// Both material-visibility lists of a vanilla armor actor's ArmorParam.
+fn material_visibility(
     clean_romfs: &Path,
     actor: &str,
     zstd: Arc<TotkZstd<'_>>,
-) -> io::Result<Byml> {
+) -> io::Result<MaterialVisibility> {
     let pack_path = clean_romfs
         .join("Pack/Actor")
         .join(format!("{actor}.pack.zs"));
@@ -1791,19 +1954,74 @@ fn hidden_material_groups(
             "skin material actor {actor} has no ArmorParam ({armor_path}): {error}"
         ))
     })?;
-    let groups = armor
+    let map = armor
         .pio
         .as_map()
-        .map_err(|_| invalid_data(format!("{armor_path} is not a map")))?
+        .map_err(|_| invalid_data(format!("{armor_path} is not a map")))?;
+    let hidden_groups = map
         .get("HiddenMaterialGroupList")
         .cloned()
         .unwrap_or_else(|| Byml::Array(Vec::new()));
-    if groups.as_array().is_err() {
+    if hidden_groups.as_array().is_err() {
         return Err(invalid_data(format!(
             "{armor_path}: HiddenMaterialGroupList is not a list"
         )));
     }
-    Ok(groups)
+    let hide_group_names = map.get("HideMaterialGroupNameList").cloned();
+    if hide_group_names
+        .as_ref()
+        .is_some_and(|value| value.as_array().is_err())
+    {
+        return Err(invalid_data(format!(
+            "{armor_path}: HideMaterialGroupNameList is not a list"
+        )));
+    }
+    Ok(MaterialVisibility {
+        hidden_groups,
+        hide_group_names,
+    })
+}
+
+/// ArmorParam keys that follow the audio donor.
+const SOUND_ARMOR_KEYS: [&str; 3] = ["SoundMaterial", "HasSoundCloth", "IsBarefootSound"];
+/// ArmorParam keys that follow the effect donor.
+const EFFECT_ARMOR_KEYS: [&str; 2] = ["WindEffectMesh", "WindEffectScale"];
+
+/// Per key: the donor's ArmorParam value, or `None` when its ArmorParam lacks it.
+type DonorArmorKeys = Vec<(&'static str, Option<Byml>)>;
+
+/// A sound / effect donor resolved for the piece: the link kind, the pack
+/// path and bytes of the donor's link file, and the donor's ArmorParam keys.
+type ResolvedLink = (actor_pack::LinkKind, String, Vec<u8>, DonorArmorKeys);
+
+/// The listed ArmorParam keys of a vanilla donor actor. Empty when the donor
+/// is not an armor actor (its pack has no ArmorParam), in which case the
+/// template's own keys stay.
+fn donor_armor_param_keys(
+    clean_romfs: &Path,
+    actor: &str,
+    keys: &[&'static str],
+    zstd: Arc<TotkZstd<'_>>,
+) -> DonorArmorKeys {
+    let pack_path = clean_romfs
+        .join("Pack/Actor")
+        .join(format!("{actor}.pack.zs"));
+    let Ok(bytes) = fs::read(&pack_path) else {
+        return Vec::new();
+    };
+    let Ok(pack) = PackFile::from_binary(&bytes, zstd) else {
+        return Vec::new();
+    };
+    let armor_path = format!("Component/ArmorParam/{actor}.game__component__ArmorParam.bgyml");
+    let Ok(armor) = pack.byml_file(&armor_path) else {
+        return Vec::new();
+    };
+    let Ok(map) = armor.pio.as_map() else {
+        return Vec::new();
+    };
+    keys.iter()
+        .map(|key| (*key, map.get(*key).cloned()))
+        .collect()
 }
 
 /// What the generator needs to know about the vanilla base actor.
@@ -2181,8 +2399,9 @@ fn write_dye_anim(
 ) -> io::Result<PathBuf> {
     // `FrameCount` stores the last frame index (15 for sixteen slices), exactly
     // like the vanilla `<Slot>_ftp` animations.
+    let name = slot_anim_name(slot);
     let anim = TexturePatternAnim::texture_per_frame(
-        format!("{}_ftp", slot.suffix().trim_start_matches('_')),
+        name.clone(),
         materials
             .iter()
             .map(|(material, sampler, albedo)| TexturePatternMaterial {
@@ -2192,7 +2411,53 @@ fn write_dye_anim(
             })
             .collect(),
     );
-    let raw = write_material_anim_bfres(&format!("{project}.anim"), &[anim])
+    write_project_anim(clean_romfs, output_romfs, project, vec![anim], &name, zstd)
+}
+
+/// The texture-pattern animation the dye shop plays for a slot (`Head_ftp`).
+fn slot_anim_name(slot: ArmorSlot) -> String {
+    format!("{}_ftp", slot.suffix().trim_start_matches('_'))
+}
+
+/// Writes `Model/<project>.anim.bfres.zs`. An earlier piece of the same
+/// project in this run may have written the file already: its animations are
+/// kept, `own` (this piece's slot animation) replaces the one of that name,
+/// and the other given animations only fill in names still missing.
+fn write_project_anim(
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    project: &str,
+    anims: Vec<TexturePatternAnim>,
+    own: &str,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<PathBuf> {
+    let destination = output_romfs
+        .join("Model")
+        .join(format!("{project}.anim.bfres.zs"));
+    let mut merged = if destination.is_file() {
+        let compressed = fs::read(&destination)?;
+        let (raw, _) = zstd.try_decompress_for_path(&destination, &compressed)?;
+        let (_, existing) = read_material_anim_bfres(&raw).map_err(|error| {
+            invalid_data(format!(
+                "{} cannot be read back: {error}",
+                destination.display()
+            ))
+        })?;
+        texture_pattern_anims_only(existing, &destination.display().to_string())
+    } else {
+        Vec::new()
+    };
+    for anim in anims {
+        match merged
+            .iter()
+            .position(|existing| existing.name == anim.name)
+        {
+            Some(index) if anim.name == own => merged[index] = anim,
+            Some(_) => {}
+            None => merged.push(anim),
+        }
+    }
+    let raw = write_material_anim_bfres(&format!("{project}.anim"), &merged)
         .map_err(|error| invalid_data(format!("failed to write the dye animation: {error}")))?;
     // Same container settings as the vanilla project animations.
     let reference = clean_romfs.join("Model/Armor_001.anim.bfres.zs");
@@ -2206,9 +2471,6 @@ fn write_dye_anim(
         ZstdDictionary::Yaz0 => TotkZstd::compress_yaz0_with_alignment(&raw, 0)?,
         other => zstd.compress_with_dictionary(&raw, other)?,
     };
-    let destination = output_romfs
-        .join("Model")
-        .join(format!("{project}.anim.bfres.zs"));
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -2216,30 +2478,86 @@ fn write_dye_anim(
     Ok(destination)
 }
 
+/// Drops the animations the material-animation writer cannot emit (shader
+/// parameter animations such as the `_fsp` light toggles read back with no
+/// texture-pattern material), warning about each one.
+fn texture_pattern_anims_only(
+    anims: Vec<TexturePatternAnim>,
+    source: &str,
+) -> Vec<TexturePatternAnim> {
+    anims
+        .into_iter()
+        .filter(|anim| {
+            if anim.materials.is_empty() {
+                eprintln!(
+                    "warning: {source}: dropping {} (not a texture-pattern animation)",
+                    anim.name
+                );
+                return false;
+            }
+            true
+        })
+        .collect()
+}
+
 /// `Model/<project>.anim.bfres.zs` holds the dye material animations shared by
-/// every piece of a project. It is copied once per new project with the
-/// project name patched in place (same length, so the string pool is intact).
+/// every piece of a project. A dyeable template's file is cloned under the
+/// new project: with names of equal length the vanilla bytes are patched in
+/// place (string pool intact, every animation kept); otherwise, or when an
+/// earlier piece of the project already wrote the file, the texture-pattern
+/// animations are read, renamed and rewritten (shader-parameter animations,
+/// which the writer cannot emit, are dropped with a warning).
 fn clone_project_anim(
     clean_romfs: &Path,
     output_romfs: &Path,
     template_project: &str,
     project: &str,
+    slot: ArmorSlot,
     zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<Option<PathBuf>> {
     let source = clean_romfs
         .join("Model")
         .join(format!("{template_project}.anim.bfres.zs"));
-    if !source.is_file() || template_project.len() != project.len() {
+    if !source.is_file() {
         return Ok(None);
     }
     let destination = output_romfs
         .join("Model")
         .join(format!("{project}.anim.bfres.zs"));
-    if destination.is_file() {
-        return Ok(Some(destination));
-    }
     let compressed = fs::read(&source)?;
     let (raw, dictionary) = zstd.try_decompress_for_path(&source, &compressed)?;
+    if template_project.len() != project.len() || destination.is_file() {
+        let (_, anims) = read_material_anim_bfres(&raw).map_err(|error| {
+            invalid_data(format!("{} cannot be read: {error}", source.display()))
+        })?;
+        let anims: Vec<TexturePatternAnim> =
+            texture_pattern_anims_only(anims, &source.display().to_string())
+                .into_iter()
+                .map(|mut anim| {
+                    anim.name = replace_project(&anim.name, template_project, project);
+                    for material in &mut anim.materials {
+                        material.material =
+                            replace_project(&material.material, template_project, project);
+                        for texture in &mut material.textures {
+                            *texture = replace_project(texture, template_project, project);
+                        }
+                    }
+                    anim
+                })
+                .collect();
+        if anims.is_empty() {
+            return Ok(None);
+        }
+        return write_project_anim(
+            clean_romfs,
+            output_romfs,
+            project,
+            anims,
+            &slot_anim_name(slot),
+            zstd,
+        )
+        .map(Some);
+    }
     let patched = replace_bytes(&raw, template_project.as_bytes(), project.as_bytes());
     let output = match dictionary {
         ZstdDictionary::None => patched,
@@ -2419,6 +2737,9 @@ mod tests {
             dyeable: false,
             skin_material: None,
             armor_effects: Vec::new(),
+            sound: None,
+            effect: None,
+            effect_keys: Vec::new(),
         }
     }
 
@@ -2576,16 +2897,31 @@ mod tests {
         assert_eq!(item.get("Number").unwrap().as_i32().unwrap(), 3);
     }
 
-    /// `HiddenMaterialGroupList` comes straight from the chosen vanilla
-    /// actor's ArmorParam (the Hylian tunic hides the torso skin; the Korok
-    /// mask hides nothing; unknown actors are refused).
+    /// Both visibility lists come straight from the chosen vanilla actor's
+    /// ArmorParam (the Hylian tunic hides the torso skin and covers the belt
+    /// set; the Korok mask hides no skin but covers `G_Head`; unknown actors
+    /// are refused).
     #[test]
     #[ignore = "needs the TOTK dump"]
     fn skin_material_groups_come_from_the_chosen_actor() {
         let Some((clean_romfs, zstd)) = romfs_zstd() else {
             return;
         };
-        let groups = hidden_material_groups(clean_romfs, "Armor_001_Upper", zstd.clone()).unwrap();
+        let tunic = material_visibility(clean_romfs, "Armor_001_Upper", zstd.clone()).unwrap();
+        let names: Vec<String> = tunic
+            .hide_group_names
+            .as_ref()
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_string().unwrap().to_string())
+            .collect();
+        assert!(
+            names.iter().any(|name| name == "G_UpperBeltSet"),
+            "{names:?}"
+        );
+        let groups = tunic.hidden_groups;
         let list = groups.as_array().unwrap();
         assert_eq!(list.len(), 1, "{groups:?}");
         let group = list[0].as_map().unwrap();
@@ -2607,9 +2943,15 @@ mod tests {
             .any(|name| name
                 .as_string()
                 .is_ok_and(|n| n.as_str() == "Mt_Upper_Skin")));
-        let none = hidden_material_groups(clean_romfs, "Armor_005_Head", zstd.clone()).unwrap();
-        assert!(none.as_array().unwrap().is_empty());
-        assert!(hidden_material_groups(clean_romfs, "Armor_Missing_Head", zstd).is_err());
+        let mask = material_visibility(clean_romfs, "Armor_005_Head", zstd.clone()).unwrap();
+        assert!(mask.hidden_groups.as_array().unwrap().is_empty());
+        let names = mask.hide_group_names.unwrap();
+        assert_eq!(names.as_array().unwrap().len(), 1);
+        assert_eq!(
+            names.as_array().unwrap()[0].as_string().unwrap().as_str(),
+            "G_Head"
+        );
+        assert!(material_visibility(clean_romfs, "Armor_Missing_Head", zstd).is_err());
     }
 
     /// Generates a Korok-mask clone with two Great Fairy ranks from the real
@@ -2862,6 +3204,86 @@ mod tests {
                 .join("UI/Tex/Icon")
                 .join(format!("{actor}_Blue.bntx.zs"))
                 .is_file());
+        }
+    }
+
+    /// A dyeable template whose project name is longer than the new one
+    /// (Armor_1091 -> Armor_760) cannot be byte-patched: the vanilla
+    /// animations are rewritten under the new project, and a piece written
+    /// earlier for the same project keeps its own slot animation.
+    #[test]
+    #[ignore = "needs the TOTK dump"]
+    fn clones_a_dyeable_template_anim_under_a_project_of_another_length() {
+        use crate::file_format::Model3D::bfres::material_anim::read_material_anim_bfres;
+        let Some((clean_romfs, zstd)) = romfs_zstd() else {
+            return;
+        };
+        let output_romfs =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_CLAUDE/anim_clone_test/romfs");
+        if output_romfs.is_dir() {
+            fs::remove_dir_all(&output_romfs).unwrap();
+        }
+        fs::create_dir_all(&output_romfs).unwrap();
+        let read = |path: &Path| {
+            let compressed = fs::read(path).unwrap();
+            let (raw, _) = zstd.try_decompress_for_path(path, &compressed).unwrap();
+            read_material_anim_bfres(&raw).unwrap()
+        };
+        let (_, vanilla) = read(&clean_romfs.join("Model/Armor_1091.anim.bfres.zs"));
+        assert!(vanilla.iter().any(|anim| anim.name == "Head_ftp"));
+
+        // An Upper piece made dyeable from a single-colour template first.
+        let upper = write_dye_anim(
+            clean_romfs,
+            &output_romfs,
+            "Armor_760",
+            ArmorSlot::Upper,
+            &[(
+                "Mt_Custom_Upper".into(),
+                "_a0".into(),
+                "Armor_760_Upper_Alb".into(),
+            )],
+            zstd.clone(),
+        )
+        .unwrap();
+        let destination = output_romfs.join("Model/Armor_760.anim.bfres.zs");
+        assert_eq!(upper, destination);
+
+        let cloned = clone_project_anim(
+            clean_romfs,
+            &output_romfs,
+            "Armor_1091",
+            "Armor_760",
+            ArmorSlot::Head,
+            zstd.clone(),
+        )
+        .unwrap();
+        assert_eq!(cloned.as_deref(), Some(destination.as_path()));
+        let (name, anims) = read(&destination);
+        assert_eq!(name, "Armor_760.anim");
+        let head = anims.iter().find(|anim| anim.name == "Head_ftp").unwrap();
+        let vanilla_head = vanilla.iter().find(|anim| anim.name == "Head_ftp").unwrap();
+        assert_eq!(head.frame_count, vanilla_head.frame_count);
+        assert_eq!(head.materials.len(), vanilla_head.materials.len());
+        for (ours, theirs) in head.materials.iter().zip(&vanilla_head.materials) {
+            assert_eq!(
+                ours.material,
+                replace_project(&theirs.material, "Armor_1091", "Armor_760")
+            );
+            assert_eq!(ours.sampler, theirs.sampler);
+            assert_eq!(ours.textures.len(), 16);
+            for (a, b) in ours.textures.iter().zip(&theirs.textures) {
+                assert_eq!(a, &replace_project(b, "Armor_1091", "Armor_760"));
+                assert!(!a.contains("Armor_1091"));
+            }
+        }
+        // The earlier piece's own slot animation survives the clone.
+        let upper = anims.iter().find(|anim| anim.name == "Upper_ftp").unwrap();
+        assert_eq!(upper.materials.len(), 1);
+        assert_eq!(upper.materials[0].material, "Mt_Custom_Upper");
+        assert_eq!(upper.materials[0].textures[15], "Armor_760_Upper_Alb.15");
+        for anim in &anims {
+            assert!(!anim.name.contains("Armor_1091"));
         }
     }
 

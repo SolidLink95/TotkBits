@@ -281,6 +281,10 @@ function App() {
         zoom: uiScale,
         width: `${100 / uiScale}vw`,
         height: `${100 / uiScale}vh`,
+        // Viewport units inside a zoomed element still measure the real
+        // viewport, so descendants size themselves from these instead.
+        '--app-width': `${100 / uiScale}vw`,
+        '--app-height': `${100 / uiScale}vh`,
       }}
     > 
       {isFileHovering && (

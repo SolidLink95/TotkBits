@@ -17,11 +17,13 @@ pub mod armor_model;
 pub mod assets;
 pub mod catalog;
 pub mod ecocat;
+pub mod effect_ai;
 pub mod gamedata;
 pub mod messages;
 pub mod physics;
 pub mod rsdb;
 pub mod rstb;
+pub mod shared;
 pub mod sharp_info;
 pub mod vendor;
 mod version;
@@ -148,12 +150,22 @@ pub struct WeaponSpec {
     /// When empty, the standard six actor-specific files are specialized automatically.
     #[serde(default)]
     pub actor_pack: actor_pack::ActorPackPolicy,
-    /// Optional standalone or vanilla-actor SLink parameter source.
-    #[serde(default)]
+    /// Audio: vanilla actor whose `Component/SLink` file is transferred (the
+    /// ActorParam `SLinkRef` then binds it). A plain actor name string, a
+    /// `.bgyml` path, or the tagged `{"source": ...}` form. A name without a
+    /// pack or SLink in the RomFS is skipped and the template's sound stays.
+    #[serde(default, alias = "audio", alias = "sound_actor")]
     pub sound: Option<actor_pack::LinkParameterSource>,
-    /// Optional standalone or vanilla-actor ELink parameter source.
-    #[serde(default)]
+    /// Effect: vanilla actor whose `Component/ELink` file is transferred (the
+    /// ActorParam `ELinkRef` then binds it); same forms and skipping as `sound`.
+    #[serde(default, alias = "effect_actor")]
     pub effect: Option<actor_pack::LinkParameterSource>,
+    /// Advanced effect: XLink keys (asset-call-table entries of the ELink user
+    /// the weapon ends up with, e.g. `古代矢完成` of `Item_Weapon_01`) that a
+    /// generated root AI search-and-emits once at spawn, giving the weapon a
+    /// permanent effect. Empty means no AI is added; see `effect_ai`.
+    #[serde(default, alias = "xlink_keys", alias = "effect_ai_keys")]
+    pub effect_keys: Vec<String>,
     /// Existing vanilla actor whose Phive and Physics entries should be reused.
     #[serde(default, alias = "physics_actor")]
     pub physics: Option<String>,
@@ -229,30 +241,41 @@ pub struct ModGenerationReport {
     pub weapons: Vec<WeaponGenerationReport>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub armors: Vec<armor::ArmorGenerationReport>,
-    pub rstb: rstb::RstbGenerationReport,
+    /// Custom ELink effects generated with the items (in list order).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub elinks: Vec<crate::tools::elink_creator::ElinkReport>,
+    /// `None` when the RSTB pass was skipped (`generate_rstb: false`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rstb: Option<rstb::RstbGenerationReport>,
 }
 
 /// One entry of a mixed specification list. Armor is recognised by its
-/// `Armor_` actor prefix; everything else is a weapon/shield/bow.
+/// `Armor_` actor prefix, a custom ELink effect by its `baseUser` /
+/// `base_user` key; everything else is a weapon/shield/bow.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ItemSpec {
     Weapon(WeaponSpec),
     Armor(armor::ArmorSpec),
+    Elink(crate::tools::elink_creator::ElinkRequest),
 }
 
 impl ItemSpec {
+    /// The actor written, or the ELink user name of an effect entry.
     pub fn actor_name(&self) -> &str {
         match self {
             Self::Weapon(spec) => &spec.actor_name,
             Self::Armor(spec) => &spec.actor_name,
+            Self::Elink(spec) => spec.new_name.trim(),
         }
     }
 
+    /// The vanilla actor cloned, or the ELink user an effect is copied from.
     pub fn template_actor(&self) -> &str {
         match self {
             Self::Weapon(spec) => &spec.template_actor,
             Self::Armor(spec) => &spec.template_actor,
+            Self::Elink(spec) => spec.base_user.trim(),
         }
     }
 
@@ -260,6 +283,7 @@ impl ItemSpec {
         match self {
             Self::Weapon(spec) => spec.vendors.len(),
             Self::Armor(spec) => spec.vendors.len(),
+            Self::Elink(_) => 0,
         }
     }
 
@@ -267,6 +291,15 @@ impl ItemSpec {
         match self {
             Self::Weapon(spec) => spec.validate(asset_root),
             Self::Armor(spec) => spec.validate(asset_root),
+            Self::Elink(spec) => {
+                if spec.base_user.trim().is_empty() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "an ELink entry needs a base user",
+                    ));
+                }
+                crate::tools::elink_creator::validate_new_name(spec.new_name.trim())
+            }
         }
     }
 }
@@ -279,8 +312,14 @@ pub fn load_item_specs(path: &Path) -> io::Result<Vec<ItemSpec>> {
         .extension()
         .and_then(|value| value.to_str())
         .is_some_and(|value| value.eq_ignore_ascii_case("toml"));
+    // Relative link files (`effect: {"source": "file", ...}`) are named
+    // relative to the spec file, like the assets.
+    let base = path.parent().map(Path::to_path_buf).unwrap_or_default();
     if is_toml {
-        return WeaponSpec::from_toml(&text).map(|spec| vec![ItemSpec::Weapon(spec)]);
+        return WeaponSpec::from_toml(&text).map(|mut spec| {
+            spec.anchor_link_paths(&base);
+            vec![ItemSpec::Weapon(spec)]
+        });
     }
     let value: serde_json::Value = serde_json::from_str(&text)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
@@ -295,12 +334,25 @@ pub fn load_item_specs(path: &Path) -> io::Result<Vec<ItemSpec>> {
                 .get("actor_name")
                 .and_then(|name| name.as_str())
                 .is_some_and(|name| name.starts_with("Armor_"));
-            let parsed = if is_armor {
+            let is_elink = value.get("baseUser").or(value.get("base_user")).is_some();
+            let parsed = if is_elink {
+                serde_json::from_value(value).map(ItemSpec::Elink)
+            } else if is_armor {
                 serde_json::from_value(value).map(ItemSpec::Armor)
             } else {
                 serde_json::from_value(value).map(ItemSpec::Weapon)
             };
             parsed.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+        })
+        .map(|spec| {
+            spec.map(|mut spec| {
+                match &mut spec {
+                    ItemSpec::Weapon(weapon) => weapon.anchor_link_paths(&base),
+                    ItemSpec::Armor(armor) => armor.anchor_link_paths(&base),
+                    ItemSpec::Elink(_) => {}
+                }
+                spec
+            })
         })
         .collect()
 }
@@ -314,6 +366,29 @@ pub fn generate_item_mod(
     asset_root: &Path,
     zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
     rstb_level: Option<i32>,
+) -> io::Result<ModGenerationReport> {
+    generate_item_mod_with_options(
+        specs,
+        clean_romfs,
+        output_romfs,
+        asset_root,
+        zstd,
+        rstb_level,
+        true,
+    )
+}
+
+/// [`generate_item_mod`] with the RSTB pass optional: `generate_rstb: false`
+/// leaves the mod without a ResourceSizeTable (for a later `--rstb_only`
+/// run or an external tool such as TKMM) and the report's `rstb` empty.
+pub fn generate_item_mod_with_options(
+    specs: &[ItemSpec],
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    asset_root: &Path,
+    zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
+    rstb_level: Option<i32>,
+    generate_rstb: bool,
 ) -> io::Result<ModGenerationReport> {
     if specs.is_empty() {
         return Err(io::Error::new(
@@ -330,10 +405,11 @@ pub fn generate_item_mod(
                 format!("actor {} is specified more than once", spec.actor_name()),
             ));
         }
-        if clean_romfs
-            .join("Pack/Actor")
-            .join(format!("{}.pack.zs", spec.actor_name()))
-            .is_file()
+        if !matches!(spec, ItemSpec::Elink(_))
+            && clean_romfs
+                .join("Pack/Actor")
+                .join(format!("{}.pack.zs", spec.actor_name()))
+                .is_file()
         {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
@@ -343,33 +419,88 @@ pub fn generate_item_mod(
     }
     assets::ensure_output_outside_romfs(clean_romfs, output_romfs)?;
     fs::create_dir_all(output_romfs)?;
+    let mut stopwatch = Stopwatch::new("mod");
     let mut weapons = Vec::new();
     let mut armors = Vec::new();
+    let mut elinks = Vec::new();
+    // The mod-wide files (GameDataList, Mals, RSDB, SharpInfo, vendor packs)
+    // are opened once, edited by every item and written once below.
+    let mut shared = shared::SharedFiles::new(clean_romfs, output_romfs, zstd.clone());
     for spec in specs {
         match spec {
-            ItemSpec::Weapon(spec) => weapons.push(spec.generate_files(
-                clean_romfs,
-                output_romfs,
-                asset_root,
-                zstd.clone(),
-            )?),
-            ItemSpec::Armor(spec) => armors.push(spec.generate_files(
-                clean_romfs,
-                output_romfs,
-                asset_root,
-                zstd.clone(),
-            )?),
+            ItemSpec::Weapon(spec) => {
+                weapons.push(spec.generate_files_with(&mut shared, asset_root)?)
+            }
+            ItemSpec::Armor(spec) => {
+                armors.push(spec.generate_files_with(&mut shared, asset_root)?)
+            }
+            // The effect goes straight into the mod tree; the single RSTB
+            // pass below covers its ELink and emitter-set files.
+            ItemSpec::Elink(request) => {
+                let request = crate::tools::elink_creator::ElinkRequest {
+                    update_rstb: false,
+                    ..request.clone()
+                };
+                elinks.push(crate::tools::elink_creator::generate(
+                    &request,
+                    clean_romfs,
+                    output_romfs,
+                    zstd.clone(),
+                )?)
+            }
         }
+        stopwatch.lap(&format!("item {}", spec.actor_name()));
     }
-    let rstb = rstb::ModRstbProcessor::new(clean_romfs, output_romfs, zstd)
-        .with_compression_level(rstb_level)
-        .generate()?;
+    shared.flush()?;
+    stopwatch.lap("shared files");
+    let rstb = if generate_rstb {
+        let rstb = rstb::ModRstbProcessor::new(clean_romfs, output_romfs, zstd)
+            .with_compression_level(rstb_level)
+            .generate()?;
+        stopwatch.lap("rstb");
+        Some(rstb)
+    } else {
+        None
+    };
     Ok(ModGenerationReport {
         output_romfs: output_romfs.to_path_buf(),
         weapons,
         armors,
+        elinks,
         rstb,
     })
+}
+
+/// Phase timer for runs with `TOTKBITS_ITEMS_TIMING=1` in the environment:
+/// every lap prints the time since the previous one to stderr, so the slow
+/// steps of a generation show up without a profiler.
+pub(crate) struct Stopwatch {
+    enabled: bool,
+    scope: &'static str,
+    last: std::time::Instant,
+}
+
+impl Stopwatch {
+    pub(crate) fn new(scope: &'static str) -> Self {
+        Self {
+            enabled: std::env::var_os("TOTKBITS_ITEMS_TIMING").is_some_and(|value| value != "0"),
+            scope,
+            last: std::time::Instant::now(),
+        }
+    }
+
+    pub(crate) fn lap(&mut self, label: &str) {
+        let now = std::time::Instant::now();
+        if self.enabled {
+            eprintln!(
+                "[timing] {:<14} {:<32} {:>8.2}s",
+                self.scope,
+                label,
+                (now - self.last).as_secs_f64()
+            );
+        }
+        self.last = now;
+    }
 }
 
 /// Reads one or more weapon specifications. JSON accepts a single object or an
@@ -449,9 +580,11 @@ pub fn generate_weapon_mod_with_rstb_level(
     assets::ensure_output_outside_romfs(clean_romfs, output_romfs)?;
     fs::create_dir_all(output_romfs)?;
     let mut weapons = Vec::with_capacity(specs.len());
+    let mut shared = shared::SharedFiles::new(clean_romfs, output_romfs, zstd.clone());
     for spec in specs {
-        weapons.push(spec.generate_files(clean_romfs, output_romfs, asset_root, zstd.clone())?);
+        weapons.push(spec.generate_files_with(&mut shared, asset_root)?);
     }
+    shared.flush()?;
     let rstb = rstb::ModRstbProcessor::new(clean_romfs, output_romfs, zstd)
         .with_compression_level(rstb_level)
         .generate()?;
@@ -459,8 +592,17 @@ pub fn generate_weapon_mod_with_rstb_level(
         output_romfs: output_romfs.to_path_buf(),
         weapons,
         armors: Vec::new(),
-        rstb,
+        elinks: Vec::new(),
+        rstb: Some(rstb),
     })
+}
+
+impl WeaponSpec {
+    /// Makes relative sound / effect file paths absolute against `base`.
+    pub fn anchor_link_paths(&mut self, base: &Path) {
+        self.sound = self.sound.as_ref().map(|link| link.anchored(base));
+        self.effect = self.effect.as_ref().map(|link| link.anchored(base));
+    }
 }
 
 fn resolve_asset(asset_root: &Path, path: &Path) -> PathBuf {
@@ -507,6 +649,21 @@ impl WeaponSpec {
         output_romfs: &Path,
         zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
     ) -> io::Result<PathBuf> {
+        let mut shared = shared::SharedFiles::new(clean_romfs, output_romfs, zstd);
+        self.clone_actor_pack_with(&mut shared)
+    }
+
+    /// [`WeaponSpec::clone_actor_pack`] with the template lookups served by
+    /// the run's shared tables.
+    pub fn clone_actor_pack_with(
+        &self,
+        shared: &mut shared::SharedFiles<'_>,
+    ) -> io::Result<PathBuf> {
+        let clean_romfs = shared.clean_romfs().to_path_buf();
+        let output_romfs = shared.output_romfs().to_path_buf();
+        let zstd = shared.zstd();
+        let clean_romfs = clean_romfs.as_path();
+        let output_romfs = output_romfs.as_path();
         let kind = self.effective_kind()?;
         actor_pack::validate_item_template_category(
             clean_romfs,
@@ -521,7 +678,7 @@ impl WeaponSpec {
         let policy = if self.actor_pack == actor_pack::ActorPackPolicy::default() {
             let mut parameters = self.weapon_parameters.clone();
             parameters.model_name = Some(self.effective_model_name().to_owned());
-            if rsdb::template_is_shield(clean_romfs, &self.template_actor, zstd.clone())? {
+            if rsdb::template_is_shield_with(shared, &self.template_actor)? {
                 parameters.shield_bash_damage = None;
             }
             // Template packs differ in which component files they carry
@@ -547,6 +704,7 @@ impl WeaponSpec {
             policy,
             self.sound.as_ref(),
             self.effect.as_ref(),
+            &self.effect_keys,
             self.physics.as_deref(),
             self.chemical.as_deref(),
             self.shootable.as_deref(),
@@ -562,6 +720,32 @@ impl WeaponSpec {
         output_romfs: &Path,
         zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
     ) -> io::Result<Vec<PathBuf>> {
+        let mut shared = shared::SharedFiles::new(clean_romfs, output_romfs, zstd);
+        let outputs = self.generate_rsdb_with(&mut shared)?;
+        shared.flush()?;
+        Ok(outputs)
+    }
+
+    /// [`WeaponSpec::generate_rsdb`] on the run's shared tables; they are
+    /// written when `shared` is flushed.
+    pub fn generate_rsdb_with(
+        &self,
+        shared: &mut shared::SharedFiles<'_>,
+    ) -> io::Result<Vec<PathBuf>> {
+        // The ActorInfo row mirrors the injected sound / effect links'
+        // `UserName`, as vanilla rows do for their own link files.
+        let mut overrides = rsdb::WeaponRsdbOverrides::default();
+        for (key, name) in actor_pack::link_user_names(
+            shared.clean_romfs(),
+            self.sound.as_ref(),
+            self.effect.as_ref(),
+            &self.actor_name,
+            shared.zstd(),
+        )? {
+            overrides
+                .actor_info
+                .insert(key.into(), serde_json::Value::String(name));
+        }
         let request = rsdb::WeaponRsdbRequest {
             actor_name: self.actor_name.clone(),
             template_actor: self.template_actor.clone(),
@@ -572,9 +756,9 @@ impl WeaponSpec {
             selling_price: self.vendors.first().and_then(|vendor| vendor.selling_price),
             attachment_damage: self.weapon_parameters.additional_damage,
             shield_bash_damage: self.weapon_parameters.shield_bash_damage,
-            overrides: rsdb::WeaponRsdbOverrides::default(),
+            overrides,
         };
-        request.generate(clean_romfs, output_romfs, zstd)
+        rsdb::WeaponRsdbProcessor::apply_weapon(shared, &request)
     }
 
     /// Adds this weapon to the modifier table used when weapon instances are created.
@@ -593,6 +777,14 @@ impl WeaponSpec {
         )
     }
 
+    /// [`WeaponSpec::generate_sharp_info`] on the run's shared table.
+    pub fn generate_sharp_info_with(
+        &self,
+        shared: &mut shared::SharedFiles<'_>,
+    ) -> io::Result<PathBuf> {
+        sharp_info::apply_weapon_sharp_info(shared, &self.actor_name, &self.template_actor)
+    }
+
     /// Adds this weapon to the selected existing vendor and writes only to mod ROMFS.
     pub fn generate_vendor_pack(
         &self,
@@ -600,10 +792,20 @@ impl WeaponSpec {
         output_romfs: &Path,
         zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
     ) -> io::Result<Vec<vendor::VendorPackReport>> {
-        let processor = vendor::VendorProcessor::new(clean_romfs, output_romfs, zstd);
+        let mut shared = shared::SharedFiles::new(clean_romfs, output_romfs, zstd);
+        let reports = self.generate_vendor_pack_with(&mut shared)?;
+        shared.flush()?;
+        Ok(reports)
+    }
+
+    /// [`WeaponSpec::generate_vendor_pack`] on the run's shared vendor packs.
+    pub fn generate_vendor_pack_with(
+        &self,
+        shared: &mut shared::SharedFiles<'_>,
+    ) -> io::Result<Vec<vendor::VendorPackReport>> {
         let mut reports = Vec::new();
         for target in &self.vendors {
-            reports.extend(processor.add_weapon(&self.actor_name, target)?);
+            reports.extend(vendor::apply_weapon(shared, &self.actor_name, target)?);
         }
         Ok(reports)
     }
@@ -618,8 +820,10 @@ impl WeaponSpec {
         if self.vendors.is_empty() {
             return Ok(None);
         }
-        let rsdb_outputs = self.generate_rsdb(clean_romfs, output_romfs, zstd.clone())?;
-        let vendor_packs = self.generate_vendor_pack(clean_romfs, output_romfs, zstd)?;
+        let mut shared = shared::SharedFiles::new(clean_romfs, output_romfs, zstd);
+        let rsdb_outputs = self.generate_rsdb_with(&mut shared)?;
+        let vendor_packs = self.generate_vendor_pack_with(&mut shared)?;
+        shared.flush()?;
         Ok(Some(vendor::VendorGenerationReport {
             vendor_packs,
             rsdb_outputs,
@@ -664,8 +868,28 @@ impl WeaponSpec {
         asset_root: &Path,
         zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
     ) -> io::Result<WeaponGenerationReport> {
+        let mut shared = shared::SharedFiles::new(clean_romfs, output_romfs, zstd);
+        let report = self.generate_files_with(&mut shared, asset_root)?;
+        shared.flush()?;
+        Ok(report)
+    }
+
+    /// [`WeaponSpec::generate_files`] for one item of a batch: the per-item
+    /// files are written now, the mod-wide ones (messages, RSDB, SharpInfo,
+    /// GameDataList, vendor packs) are edited in `shared` and written when
+    /// the caller flushes it.
+    pub fn generate_files_with(
+        &self,
+        shared: &mut shared::SharedFiles<'_>,
+        asset_root: &Path,
+    ) -> io::Result<WeaponGenerationReport> {
         self.validate(asset_root)?;
-        let actor_pack = self.clone_actor_pack(clean_romfs, output_romfs, zstd.clone())?;
+        let clean_romfs = shared.clean_romfs().to_path_buf();
+        let output_romfs = shared.output_romfs().to_path_buf();
+        let zstd = shared.zstd();
+        let clean_romfs = clean_romfs.as_path();
+        let output_romfs = output_romfs.as_path();
+        let actor_pack = self.clone_actor_pack_with(shared)?;
 
         let model_assets = assets::WeaponModelAssetsRequest {
             base_name: self.template_actor.clone(),
@@ -741,16 +965,16 @@ impl WeaponSpec {
                     .unwrap_or_else(|| self.description.clone()),
             ),
         }
-        .generate_to_mod_romfs(clean_romfs, output_romfs, zstd.clone())?;
-        let rsdb = self.generate_rsdb(clean_romfs, output_romfs, zstd.clone())?;
-        let sharp_info = self.generate_sharp_info(clean_romfs, output_romfs, zstd.clone())?;
+        .apply_to_mod_romfs(shared)?;
+        let rsdb = self.generate_rsdb_with(shared)?;
+        let sharp_info = self.generate_sharp_info_with(shared)?;
         let game_data = gamedata::WeaponGameDataRequest {
             actor_name: self.actor_name.clone(),
             picture_book: true,
             inventory_flags: true,
         }
-        .generate(clean_romfs, output_romfs, zstd.clone())?;
-        let vendor_packs = self.generate_vendor_pack(clean_romfs, output_romfs, zstd)?;
+        .apply(shared)?;
+        let vendor_packs = self.generate_vendor_pack_with(shared)?;
 
         Ok(WeaponGenerationReport {
             actor_name: self.actor_name.clone(),
@@ -1512,7 +1736,7 @@ mod tests {
                     .sum::<usize>()
             );
         }
-        assert!(report.rstb.output.is_file());
+        assert!(report.rstb.as_ref().expect("rstb report").output.is_file());
         fs::write(output_root.join("items_creator_input.json"), input).unwrap();
         config.romfs.clear();
     }
@@ -2546,6 +2770,7 @@ mod tests {
             actor_pack: actor_pack::ActorPackPolicy::default(),
             sound: None,
             effect: None,
+            effect_keys: Vec::new(),
             physics: None,
             replace_bones: false,
             chemical: None,

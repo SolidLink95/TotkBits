@@ -1,12 +1,13 @@
 //! English MALS/MSBT generation for custom weapons.
 
+use super::shared::{PackDocument, SharedFiles};
 use crate::{
     file_format::Pack::PackFile,
     parser::msbt::{document::Message, token::TextPart, Msbt},
     Zstd::TotkZstd,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fs, io, path::Path, sync::Arc};
+use std::{io, path::Path, sync::Arc};
 
 const US_ENGLISH_MALS_PREFIX: &str = "USen.Product.";
 const US_ENGLISH_MALS_SUFFIX: &str = ".sarc.zs";
@@ -52,15 +53,27 @@ impl WeaponMessageRequest {
         output_romfs: &Path,
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<std::path::PathBuf> {
-        let (version, _) = super::version::discover_product_file(
-            &clean_romfs.join("Mals"),
+        let mut shared = SharedFiles::new(clean_romfs, output_romfs, zstd);
+        let output = self.apply_to_mod_romfs(&mut shared)?;
+        shared.flush()?;
+        Ok(output)
+    }
+
+    /// Adds the labels to the run's shared US English Mals; the archive is
+    /// written when `shared` is flushed.
+    pub fn apply_to_mod_romfs(
+        &self,
+        shared: &mut SharedFiles<'_>,
+    ) -> io::Result<std::path::PathBuf> {
+        let (version, clean_source) = super::version::discover_product_file(
+            &shared.clean_romfs().join("Mals"),
             US_ENGLISH_MALS_PREFIX,
             US_ENGLISH_MALS_SUFFIX,
         )?;
         let name =
             super::version::product_name(US_ENGLISH_MALS_PREFIX, &version, US_ENGLISH_MALS_SUFFIX)?;
-        let output = output_romfs.join("Mals").join(name);
-        self.generate_us_english_mals(clean_romfs, &output, zstd)?;
+        let output = shared.output_romfs().join("Mals").join(name);
+        self.apply_us_english_mals(shared, &clean_source, &output)?;
         Ok(output)
     }
 
@@ -71,8 +84,27 @@ impl WeaponMessageRequest {
         output: &Path,
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<()> {
+        let (_, clean_source) = super::version::discover_product_file(
+            &clean_romfs.join("Mals"),
+            US_ENGLISH_MALS_PREFIX,
+            US_ENGLISH_MALS_SUFFIX,
+        )?;
+        let mut shared = SharedFiles::new(clean_romfs, output.parent().unwrap_or(output), zstd);
+        self.apply_us_english_mals(&mut shared, &clean_source, output)?;
+        shared.flush()?;
+        Ok(())
+    }
+
+    /// Adds or replaces this weapon's labels in the shared archive loaded
+    /// from `output` (or `clean_source` when the mod has none yet).
+    pub fn apply_us_english_mals(
+        &self,
+        shared: &mut SharedFiles<'_>,
+        clean_source: &Path,
+        output: &Path,
+    ) -> io::Result<()> {
         validate_actor_name(&self.actor_name)?;
-        ensure_output_outside_romfs(clean_romfs, output)?;
+        ensure_output_outside_romfs(shared.clean_romfs(), output)?;
 
         let display_name = self.text_or_placeholder(&self.display_name, "weapon");
         let description = self.text_or_placeholder(&self.description, "description");
@@ -87,19 +119,7 @@ impl WeaponMessageRequest {
             .filter(|value| !value.trim().is_empty())
             .unwrap_or(&description);
 
-        let (_, clean_source) = super::version::discover_product_file(
-            &clean_romfs.join("Mals"),
-            US_ENGLISH_MALS_PREFIX,
-            US_ENGLISH_MALS_SUFFIX,
-        )?;
-        let source = if output.is_file() {
-            output.to_path_buf()
-        } else {
-            clean_source
-        };
-        let compressed = fs::read(&source)?;
-        let pack = PackFile::from_binary(&compressed, zstd.clone())?;
-        let mut replacements = BTreeMap::new();
+        let document = shared.pack(clean_source, output)?;
 
         // The game reads every label below for a pouch item, so omitted texts
         // fall back to the display name instead of leaving the label out.
@@ -118,52 +138,20 @@ impl WeaponMessageRequest {
             ("Caption", Some(description.as_str())),
             ("BaseName", Some(base_name)),
         ];
-        edit_msbt(
-            &pack,
-            &mut replacements,
-            POUCH_CONTENT,
-            &self.actor_name,
-            &pouch_entries,
-        )?;
+        edit_msbt(document, POUCH_CONTENT, &self.actor_name, &pouch_entries)?;
 
         let attachment_entries = [("Adjective", Some(attachment_adjective))];
-        edit_msbt(
-            &pack,
-            &mut replacements,
-            ATTACHMENT,
-            &self.actor_name,
-            &attachment_entries,
-        )?;
+        edit_msbt(document, ATTACHMENT, &self.actor_name, &attachment_entries)?;
 
         let picture_entries = [
             ("Name", Some(picture_name)),
             ("Caption", Some(picture_description)),
         ];
-        edit_msbt(
-            &pack,
-            &mut replacements,
-            PICTURE_BOOK,
-            &self.actor_name,
-            &picture_entries,
-        )?;
+        edit_msbt(document, PICTURE_BOOK, &self.actor_name, &picture_entries)?;
 
-        if replacements.is_empty() {
-            if source != output {
-                if let Some(parent) = output.parent().filter(|path| !path.as_os_str().is_empty()) {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::copy(source, output)?;
-            }
-            return Ok(());
-        }
-
-        let output_bytes = pack.rebuild_replacing_entries(replacements)?;
-        let verification = PackFile::from_binary(&output_bytes, zstd)?;
-        validate_generated_mals(&verification, self)?;
-        if let Some(parent) = output.parent().filter(|path| !path.as_os_str().is_empty()) {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(output, output_bytes)
+        let actor_name = self.actor_name.clone();
+        document.expect(move |pack| validate_generated_mals(pack, &actor_name));
+        Ok(())
     }
 
     fn text_or_placeholder(&self, value: &str, kind: &str) -> String {
@@ -190,67 +178,59 @@ pub(super) fn generate_pouch_labels(
     description: &str,
     zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<std::path::PathBuf> {
+    let mut shared = SharedFiles::new(clean_romfs, output_romfs, zstd);
+    let output = apply_pouch_labels(&mut shared, actor_name, display_name, description)?;
+    shared.flush()?;
+    Ok(output)
+}
+
+/// [`generate_pouch_labels`] on the run's shared Mals; the archive is
+/// written when `shared` is flushed.
+pub(super) fn apply_pouch_labels(
+    shared: &mut SharedFiles<'_>,
+    actor_name: &str,
+    display_name: &str,
+    description: &str,
+) -> io::Result<std::path::PathBuf> {
     validate_actor_name(actor_name)?;
     require_text(display_name, "display_name")?;
     require_text(description, "description")?;
     let (version, clean_source) = super::version::discover_product_file(
-        &clean_romfs.join("Mals"),
+        &shared.clean_romfs().join("Mals"),
         US_ENGLISH_MALS_PREFIX,
         US_ENGLISH_MALS_SUFFIX,
     )?;
     let name =
         super::version::product_name(US_ENGLISH_MALS_PREFIX, &version, US_ENGLISH_MALS_SUFFIX)?;
-    let output = output_romfs.join("Mals").join(name);
-    ensure_output_outside_romfs(clean_romfs, &output)?;
-    let source = if output.is_file() {
-        output.clone()
-    } else {
-        clean_source
-    };
-    let compressed = fs::read(&source)?;
-    let pack = PackFile::from_binary(&compressed, zstd.clone())?;
-    let mut replacements = BTreeMap::new();
+    let output = shared.output_romfs().join("Mals").join(name);
+    ensure_output_outside_romfs(shared.clean_romfs(), &output)?;
+    let document = shared.pack(&clean_source, &output)?;
     let entries = [("Name", Some(display_name)), ("Caption", Some(description))];
-    edit_msbt(
-        &pack,
-        &mut replacements,
-        POUCH_CONTENT,
-        actor_name,
-        &entries,
-    )?;
-    if let Some(parent) = output.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    if replacements.is_empty() {
-        if source != output {
-            fs::copy(&source, &output)?;
+    edit_msbt(document, POUCH_CONTENT, actor_name, &entries)?;
+    let actor = actor_name.to_owned();
+    document.expect(move |pack| {
+        let data = pack
+            .sarc
+            .get_data(POUCH_CONTENT)
+            .ok_or_else(|| invalid_data("generated MALS lost PouchContent.msbt"))?;
+        let msbt = Msbt::from_bytes(data)?;
+        for suffix in ["Name", "Caption"] {
+            let label = format!("{actor}_{suffix}");
+            if !msbt
+                .messages
+                .iter()
+                .any(|message| message.label.as_deref() == Some(&label))
+            {
+                return Err(invalid_data(format!("generated label is missing: {label}")));
+            }
         }
-        return Ok(output);
-    }
-    let output_bytes = pack.rebuild_replacing_entries(replacements)?;
-    let verification = PackFile::from_binary(&output_bytes, zstd)?;
-    let data = verification
-        .sarc
-        .get_data(POUCH_CONTENT)
-        .ok_or_else(|| invalid_data("generated MALS lost PouchContent.msbt"))?;
-    let msbt = Msbt::from_bytes(data)?;
-    for suffix in ["Name", "Caption"] {
-        let label = format!("{actor_name}_{suffix}");
-        if !msbt
-            .messages
-            .iter()
-            .any(|message| message.label.as_deref() == Some(&label))
-        {
-            return Err(invalid_data(format!("generated label is missing: {label}")));
-        }
-    }
-    fs::write(&output, output_bytes)?;
+        Ok(())
+    });
     Ok(output)
 }
 
 fn edit_msbt(
-    pack: &PackFile<'_>,
-    replacements: &mut BTreeMap<String, Vec<u8>>,
+    document: &mut PackDocument<'_>,
     path: &str,
     actor_name: &str,
     entries: &[(&str, Option<&str>)],
@@ -258,10 +238,9 @@ fn edit_msbt(
     if entries.iter().all(|(_, value)| value.is_none()) {
         return Ok(());
     }
-    let data = pack
-        .sarc
-        .get_data(path)
-        .ok_or_else(|| invalid_data(format!("required MALS entry is missing: {path}")))?;
+    let data = document
+        .entry(path)
+        .map_err(|_| invalid_data(format!("required MALS entry is missing: {path}")))?;
     let mut msbt = Msbt::from_bytes(data)
         .map_err(|error| invalid_data(format!("failed to parse {path}: {error}")))?;
     let original_message_count = msbt.messages.len();
@@ -286,7 +265,7 @@ fn edit_msbt(
         .map_err(|error| invalid_data(format!("failed to rebuild {path}: {error}")))?;
     Msbt::from_bytes(&rebuilt)
         .map_err(|error| invalid_data(format!("rebuilt {path} is invalid: {error}")))?;
-    replacements.insert(path.to_owned(), rebuilt);
+    document.replace(path.to_owned(), rebuilt);
     Ok(())
 }
 
@@ -329,7 +308,7 @@ fn upsert_plain_message(msbt: &mut Msbt, label: &str, value: &str, suffix: &str)
     true
 }
 
-fn validate_generated_mals(pack: &PackFile<'_>, request: &WeaponMessageRequest) -> io::Result<()> {
+fn validate_generated_mals(pack: &PackFile<'_>, actor_name: &str) -> io::Result<()> {
     for (path, suffixes) in [
         (POUCH_CONTENT, vec!["Name", "Caption", "BaseName"]),
         (ATTACHMENT, vec!["Adjective"]),
@@ -341,7 +320,7 @@ fn validate_generated_mals(pack: &PackFile<'_>, request: &WeaponMessageRequest) 
             .ok_or_else(|| invalid_data(format!("generated MALS entry is missing: {path}")))?;
         let msbt = Msbt::from_bytes(data)?;
         for suffix in suffixes {
-            let label = format!("{}_{suffix}", request.actor_name);
+            let label = format!("{actor_name}_{suffix}");
             if !msbt
                 .messages
                 .iter()
@@ -404,6 +383,7 @@ mod tests {
     use crate::parser::binary::Endian;
     use crate::parser::msbt::{header::Header, section::Section};
     use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
+    use std::fs;
 
     fn synthetic_msbt() -> Msbt {
         Msbt {

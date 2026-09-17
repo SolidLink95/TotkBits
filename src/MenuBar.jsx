@@ -276,7 +276,7 @@ function MenuBarDisplay({ updateButton = null }) {
     const { created } = openUtilityDocument('Item creator', 'ITEM_CREATOR');
     if (created) await new Promise((resolve) => requestAnimationFrame(resolve));
     setActiveTab('ITEM_CREATOR');
-    setStatusText('Item creator: clone weapons and armor into a standalone mod');
+    setStatusText('Item creator: clone weapons and armor into a standalone mod, or add a custom ELink effect');
   };
 
 

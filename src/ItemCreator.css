@@ -83,6 +83,7 @@
     background: #2a2a2a;
     padding: 14px 16px;
 }
+.item-creator-panel.elink { display: flex; flex-direction: column; overflow: hidden; }
 .item-creator-form {
     display: grid;
     grid-template-columns: 130px minmax(0, 1fr);
@@ -104,7 +105,11 @@
 .item-creator-form .item-creator-hint { color: #888; font-size: 12px; }
 .item-creator-form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 .item-creator-upgrades { display: flex; flex-direction: column; gap: 6px; }
-.item-creator-upgrade { display: grid; grid-template-columns: 52px 80px 80px minmax(0, 1fr) 28px; gap: 6px; align-items: center; }
+.item-creator-upgrade { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; border: 1px solid #3d3d3d; border-radius: 4px; background: #262626; }
+.item-creator-upgrade-head { display: grid; grid-template-columns: 52px 80px 80px minmax(0, 1fr) 28px; gap: 6px; align-items: center; }
+.item-creator-material-entry { display: grid; grid-template-columns: minmax(0, 1fr) 72px 28px 28px; gap: 6px; align-items: center; }
+.item-creator-material-entry button[hidden] { display: none; }
+.item-creator-material-entry .item-creator-picker-button img, .item-creator-material-entry .item-creator-option img { object-fit: contain; }
 .item-creator-upgrade-rank { color: #d9b74a; font-size: 13px; letter-spacing: 1px; }
 .item-creator-upgrade-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .item-creator-physics { display: flex; flex-direction: column; gap: 6px; }
@@ -112,6 +117,9 @@
 .item-creator-physics-entry > select { min-width: 0; }
 .item-creator-physics-entry .item-creator-picker-button img, .item-creator-physics-entry .item-creator-option img { object-fit: contain; }
 .item-creator-physics-entry button[hidden] { display: none; }
+.item-creator-link-entry { display: grid; grid-template-columns: 110px minmax(0, 1fr) 28px; gap: 6px; align-items: center; }
+.item-creator-link-entry > select { min-width: 0; }
+.item-creator-link-entry button[hidden] { display: none; }
 .item-creator-effect-entry { display: grid; grid-template-columns: minmax(0, 1fr) 72px 28px 28px; gap: 6px; align-items: center; }
 .item-creator-effect-entry button[hidden] { display: none; }
 .item-creator-effect-entry .item-creator-picker-button img, .item-creator-effect-entry .item-creator-option img { object-fit: contain; }

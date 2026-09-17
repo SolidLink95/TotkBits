@@ -1,9 +1,7 @@
 //! Clone-and-patch generation for weapon-related RSDB products.
 
-use crate::{
-    file_format::{BinTextFile::BymlFile, TagProduct::TagProduct},
-    Zstd::TotkZstd,
-};
+use super::shared::SharedFiles;
+use crate::Zstd::TotkZstd;
 use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -99,6 +97,19 @@ impl<'a> WeaponRsdbProcessor<'a> {
     }
 
     pub fn generate_weapon(&self, request: &WeaponRsdbRequest) -> io::Result<Vec<PathBuf>> {
+        Self::ensure_output_outside_romfs(&self.clean_romfs, &self.output_romfs)?;
+        let mut shared = SharedFiles::new(&self.clean_romfs, &self.output_romfs, self.zstd.clone());
+        let outputs = Self::apply_weapon(&mut shared, request)?;
+        shared.flush()?;
+        Ok(outputs)
+    }
+
+    /// Adds the weapon's rows to the run's shared RSDB tables and Tag
+    /// product; the files are written when `shared` is flushed.
+    pub fn apply_weapon(
+        shared: &mut SharedFiles<'_>,
+        request: &WeaponRsdbRequest,
+    ) -> io::Result<Vec<PathBuf>> {
         Self::validate_actor_name(&request.actor_name)?;
         Self::validate_actor_name(&request.template_actor)?;
         if request.buying_price.is_some_and(|price| price < 0)
@@ -111,9 +122,8 @@ impl<'a> WeaponRsdbProcessor<'a> {
         if request.actor_name == request.template_actor {
             return Err(Self::invalid("custom and template actor names must differ"));
         }
-        Self::ensure_output_outside_romfs(&self.clean_romfs, &self.output_romfs)?;
-        let clean_rsdb = self.clean_romfs.join("RSDB");
-        let output_rsdb = self.output_romfs.join("RSDB");
+        let clean_rsdb = shared.clean_romfs().join("RSDB");
+        let output_rsdb = shared.output_romfs().join("RSDB");
         fs::create_dir_all(&output_rsdb)?;
         let (version, actor_info_source) =
             super::version::discover_product_file(&clean_rsdb, ACTOR_INFO_PREFIX, PRODUCT_SUFFIX)?;
@@ -127,9 +137,10 @@ impl<'a> WeaponRsdbProcessor<'a> {
         let pouch_actor_info = Self::versioned_rsdb_name("PouchActorInfo", &version)?;
         let tag_product = Self::versioned_rsdb_name("Tag", &version)?;
         let template_is_shield = Self::pouch_category(
+            shared,
             &clean_rsdb.join(&pouch_actor_info),
+            &output_rsdb.join(&pouch_actor_info),
             &request.template_actor,
-            self.zstd.clone(),
         )?
         .as_deref()
             == Some("Shield");
@@ -180,36 +191,24 @@ impl<'a> WeaponRsdbProcessor<'a> {
         let mut outputs = Vec::with_capacity(5);
         for (name, overrides) in tables {
             let destination = output_rsdb.join(&name);
-            let clean_source = clean_rsdb.join(&name);
-            let source = if destination.is_file() {
-                &destination
-            } else {
-                &clean_source
-            };
             Self::clone_rsdb_row(
-                source,
+                shared,
+                &clean_rsdb.join(&name),
                 &destination,
                 &request.template_actor,
                 &request.actor_name,
                 &overrides,
                 &[],
-                self.zstd.clone(),
             )?;
             outputs.push(destination);
         }
         let tag_output = output_rsdb.join(&tag_product);
-        let clean_tag = clean_rsdb.join(&tag_product);
-        let tag_source = if tag_output.is_file() {
-            &tag_output
-        } else {
-            &clean_tag
-        };
         Self::clone_tag_entry(
-            tag_source,
+            shared,
+            &clean_rsdb.join(&tag_product),
             &tag_output,
             &request.template_actor,
             &request.actor_name,
-            self.zstd.clone(),
         )?;
         outputs.push(tag_output);
         Ok(outputs)
@@ -219,18 +218,21 @@ impl<'a> WeaponRsdbProcessor<'a> {
         super::version::product_name(&format!("{product}.Product."), version, PRODUCT_SUFFIX)
     }
 
+    /// Clones `template_actor`'s row of the shared table loaded from
+    /// `destination` (or `clean_source` when the mod has none yet) as
+    /// `actor_name`'s row; the table is written when `shared` is flushed.
     pub(super) fn clone_rsdb_row(
-        source: &Path,
+        shared: &mut SharedFiles<'_>,
+        clean_source: &Path,
         destination: &Path,
         template_actor: &str,
         actor_name: &str,
         overrides: &BTreeMap<String, JsonValue>,
         removals: &[&str],
-        zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<()> {
-        let mut file = BymlFile::new(source, zstd.clone())
-            .ok_or_else(|| Self::invalid_data(format!("failed to parse {}", source.display())))?;
-        let root = &mut file.pio;
+        let source = clean_source.to_path_buf();
+        let document = shared.byml(clean_source, destination)?;
+        let root = &mut document.file.pio;
         let rows = root.as_mut_array().map_err(|_| {
             Self::invalid_data(format!("RSDB root is not an array: {}", source.display()))
         })?;
@@ -272,33 +274,35 @@ impl<'a> WeaponRsdbProcessor<'a> {
             rows.push(row);
         }
         rows.sort_by_key(|candidate| Self::row_id(candidate).unwrap_or_default());
-        let rebuilt = file.to_binary_preserving_header()?;
-        let reparsed = BymlFile::from_binary(&rebuilt, zstd, destination)?;
-        if !reparsed
-            .pio
-            .as_array()
-            .map_err(|_| Self::invalid_data("generated RSDB root is not an array"))?
-            .iter()
-            .any(|candidate| Self::row_id(candidate).as_deref() == Some(actor_name))
-        {
-            return Err(Self::invalid_data("generated RSDB row is missing"));
-        }
-        file.save(destination.to_string_lossy().into_owned())
+        let actor = actor_name.to_owned();
+        document.expect(move |root| {
+            if !root
+                .as_array()
+                .map_err(|_| Self::invalid_data("generated RSDB root is not an array"))?
+                .iter()
+                .any(|candidate| Self::row_id(candidate).as_deref() == Some(actor.as_str()))
+            {
+                return Err(Self::invalid_data("generated RSDB row is missing"));
+            }
+            Ok(())
+        });
+        Ok(())
     }
 
+    /// Gives `actor_name` the tags of `template_actor` in the shared Tag
+    /// product; the file is written when `shared` is flushed.
     pub(super) fn clone_tag_entry(
-        source: &Path,
+        shared: &mut SharedFiles<'_>,
+        clean_source: &Path,
         destination: &Path,
         template_actor: &str,
         actor_name: &str,
-        zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<()> {
-        let compressed = fs::read(source)?;
-        let mut tag = TagProduct::from_binary(&compressed, source, zstd.clone())
-            .ok_or_else(|| Self::invalid_data("failed to parse clean Tag.Product"))?;
+        let document = shared.tag(clean_source, destination)?;
         let template_path = Self::actor_tag_path(template_actor);
         let new_path = Self::actor_tag_path(actor_name);
-        let inherited = tag
+        let inherited = document
+            .tag
             .actor_tag_data
             .get(&template_path)
             .cloned()
@@ -308,15 +312,11 @@ impl<'a> WeaponRsdbProcessor<'a> {
         let mut selected = inherited;
         selected.sort();
         selected.dedup();
-        tag.actor_tag_data.insert(new_path.clone(), selected);
-        let text = tag.to_text();
-        tag.save(destination.to_string_lossy().into_owned(), &text)?;
-        let saved = fs::read(destination)?;
-        let verification = TagProduct::from_binary(&saved, destination, zstd)
-            .ok_or_else(|| Self::invalid_data("generated Tag.Product is invalid"))?;
-        if !verification.actor_tag_data.contains_key(&new_path) {
-            return Err(Self::invalid_data("generated Tag.Product entry is missing"));
-        }
+        document
+            .tag
+            .actor_tag_data
+            .insert(new_path.clone(), selected);
+        document.expect_path(new_path);
         Ok(())
     }
 
@@ -333,14 +333,18 @@ impl<'a> WeaponRsdbProcessor<'a> {
             .map(ToString::to_string)
     }
 
+    /// `PouchCategory` of `actor_name`'s PouchActorInfo row. Vanilla rows
+    /// are the same in the mod's copy of the table, so the shared document
+    /// serves the lookup without a second parse.
     fn pouch_category(
-        source: &Path,
+        shared: &mut SharedFiles<'_>,
+        clean_source: &Path,
+        destination: &Path,
         actor_name: &str,
-        zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<Option<String>> {
-        let file = BymlFile::new(source, zstd)
-            .ok_or_else(|| Self::invalid_data(format!("failed to parse {}", source.display())))?;
-        let rows = file
+        let document = shared.byml(clean_source, destination)?;
+        let rows = document
+            .file
             .pio
             .as_array()
             .map_err(|_| Self::invalid_data("PouchActorInfo root is not an array"))?;
@@ -384,14 +388,14 @@ impl<'a> WeaponRsdbProcessor<'a> {
     /// One EnhancementMaterialInfo row: the Great Fairy cost to upgrade
     /// `actor` to its next rank.
     pub(super) fn upsert_enhancement_material_rows(
-        source: &Path,
+        shared: &mut SharedFiles<'_>,
+        clean_source: &Path,
         destination: &Path,
         rows: &[EnhancementRow],
-        zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<()> {
-        let mut file = BymlFile::new(source, zstd.clone())
-            .ok_or_else(|| Self::invalid_data(format!("failed to parse {}", source.display())))?;
-        let table = file.pio.as_mut_array().map_err(|_| {
+        let source = clean_source.to_path_buf();
+        let document = shared.byml(clean_source, destination)?;
+        let table = document.file.pio.as_mut_array().map_err(|_| {
             Self::invalid_data(format!("RSDB root is not an array: {}", source.display()))
         })?;
         for row in rows {
@@ -429,24 +433,27 @@ impl<'a> WeaponRsdbProcessor<'a> {
             }
         }
         table.sort_by_key(|candidate| Self::row_id(candidate).unwrap_or_default());
-        let rebuilt = file.to_binary_preserving_header()?;
-        let reparsed = BymlFile::from_binary(&rebuilt, zstd, destination)?;
-        let saved_rows = reparsed
-            .pio
-            .as_array()
-            .map_err(|_| Self::invalid_data("generated EnhancementMaterialInfo is not an array"))?;
-        for row in rows {
-            let row_id = format!("Work/Actor/{}.engine__actor__ActorParam.gyml", row.actor);
-            if !saved_rows
-                .iter()
-                .any(|candidate| Self::row_id(candidate).as_deref() == Some(row_id.as_str()))
-            {
-                return Err(Self::invalid_data(format!(
-                    "generated EnhancementMaterialInfo row is missing: {row_id}"
-                )));
+        let row_ids: Vec<String> = rows
+            .iter()
+            .map(|row| format!("Work/Actor/{}.engine__actor__ActorParam.gyml", row.actor))
+            .collect();
+        document.expect(move |root| {
+            let saved_rows = root.as_array().map_err(|_| {
+                Self::invalid_data("generated EnhancementMaterialInfo is not an array")
+            })?;
+            for row_id in &row_ids {
+                if !saved_rows
+                    .iter()
+                    .any(|candidate| Self::row_id(candidate).as_deref() == Some(row_id.as_str()))
+                {
+                    return Err(Self::invalid_data(format!(
+                        "generated EnhancementMaterialInfo row is missing: {row_id}"
+                    )));
+                }
             }
-        }
-        file.save(destination.to_string_lossy().into_owned())
+            Ok(())
+        });
+        Ok(())
     }
 
     fn json_to_matching_byml(value: &JsonValue, template: &Byml, path: &str) -> io::Result<Byml> {
@@ -557,19 +564,32 @@ pub(super) fn template_is_shield(
     actor_name: &str,
     zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<bool> {
-    let clean_rsdb = clean_romfs.join("RSDB");
+    let mut shared = SharedFiles::new(clean_romfs, clean_romfs, zstd);
+    template_is_shield_with(&mut shared, actor_name)
+}
+
+/// [`template_is_shield`] through the run's shared PouchActorInfo table.
+pub(super) fn template_is_shield_with(
+    shared: &mut SharedFiles<'_>,
+    actor_name: &str,
+) -> io::Result<bool> {
+    let clean_rsdb = shared.clean_romfs().join("RSDB");
     let (version, _) =
         super::version::discover_product_file(&clean_rsdb, ACTOR_INFO_PREFIX, PRODUCT_SUFFIX)?;
-    let pouch = clean_rsdb.join(WeaponRsdbProcessor::versioned_rsdb_name(
-        "PouchActorInfo",
-        &version,
-    )?);
-    Ok(WeaponRsdbProcessor::pouch_category(&pouch, actor_name, zstd)?.as_deref() == Some("Shield"))
+    let table = WeaponRsdbProcessor::versioned_rsdb_name("PouchActorInfo", &version)?;
+    let clean_source = clean_rsdb.join(&table);
+    let destination = shared.output_romfs().join("RSDB").join(&table);
+    Ok(
+        WeaponRsdbProcessor::pouch_category(shared, &clean_source, &destination, actor_name)?
+            .as_deref()
+            == Some("Shield"),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::file_format::TagProduct::TagProduct;
     use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
 
     #[test]

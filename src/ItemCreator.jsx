@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AddElinkPanel from './AddElink';
 import './ItemCreator.css';
 
 const WEAPON_KINDS = [
@@ -16,6 +17,12 @@ const ARMOR_SLOTS = [
     { id: 'Lower', label: 'Lower (legs)', suffix: '_Lower', bone: 'Waist', weights: 'Waist:0.9,Skl_Root:0.05,Root:0.05', offset: '0,-0.06,0', size: '0.32,0.22,0.24' },
 ];
 const BLANK_ICON = 'menu/blank.webp';
+/** List icon of a custom ELink effect entry. */
+const ELINK_ICON = 'effects/Glow.webp';
+/** A mod list entry made on the Add ELink tab (`{baseUser, newName, cloneEsetb, entries}`). */
+const isElinkSpec = (spec) => Boolean(spec) && typeof (spec.baseUser ?? spec.base_user) === 'string';
+const elinkName = (spec) => String(spec.newName ?? spec.new_name ?? '');
+const elinkBase = (spec) => String(spec.baseUser ?? spec.base_user ?? '');
 
 const emptyForm = (tab) => ({
     kind: tab === 'armor' ? 'Head' : 'SmallSword',
@@ -36,6 +43,10 @@ const emptyForm = (tab) => ({
     fbx: '',
     iconPng: '',
     physics: tab === 'armor' ? [emptyDonor()] : '',
+    audio: '',
+    effect: emptyLink(),
+    effectAi: false,
+    effectKeys: '',
     replaceBones: false,
     cube: false,
     cubeSize: '0.24,0.24,0.24',
@@ -95,6 +106,39 @@ const DONOR_MODES = [
     { id: 'name', label: 'Actor name' },
 ];
 const emptyDonor = (mode = 'list') => ({ mode, value: '' });
+/**
+ * How the Effect (ELink) of an item is chosen: a vanilla actor whose ELink
+ * file is copied, an ELinkParam .bgyml / actor pack file used as it is, or
+ * a bare ELink user name (e.g. one made with the Add ELink tab).
+ */
+const LINK_MODES = [
+    { id: 'name', label: 'Actor name' },
+    { id: 'file', label: 'File' },
+    { id: 'user', label: 'User name' },
+];
+const emptyLink = (mode = 'name') => ({ mode, value: '' });
+const isLinkFilePath = (value) => /\.(bgyml|byml|pack|zs)$/i.test(String(value ?? '').trim()) || /[\\/]/.test(String(value ?? ''));
+/** Spec `effect` value of a form link entry: an actor name string, `{source: "file", path}` or `{source: "user_name", user_name}`; undefined when blank. */
+const linkToSpec = (link) => {
+    const value = String(link?.value ?? '').trim();
+    if (!value) return undefined;
+    if (link.mode === 'file') return { source: 'file', path: value };
+    if (link.mode === 'user') return { source: 'user_name', user_name: value };
+    return value;
+};
+/** Form link entry of a spec `effect` value (plain string or tagged object). */
+const linkFromSpec = (value) => {
+    if (value && typeof value === 'object') {
+        const source = String(value.source ?? '').toLowerCase();
+        if (source === 'file' || value.path) return { mode: 'file', value: String(value.path ?? '').trim() };
+        if (['user_name', 'user', 'manual', 'custom'].includes(source) || value.user_name) {
+            return { mode: 'user', value: String(value.user_name ?? value.user ?? value.name ?? '').trim() };
+        }
+        return { mode: 'name', value: String(value.actor_name ?? value.name ?? '').trim() };
+    }
+    const text = String(value ?? '').trim();
+    return { mode: isLinkFilePath(text) ? 'file' : 'name', value: text };
+};
 const isPackPath = (value) => /\.pack(\.zs)?$/i.test(String(value ?? '').trim());
 /** Form donor entry for a spec string: files by extension, catalog armor as list picks, the rest typed. */
 const donorFromSpec = (value, catalogActors = new Set()) => {
@@ -102,52 +146,49 @@ const donorFromSpec = (value, catalogActors = new Set()) => {
     const mode = isPackPath(text) ? 'file' : (catalogActors.has(text) ? 'list' : 'name');
     return { mode, value: text };
 };
+/** Actor name of a spec `sound` / `effect` entry: a string, or the tagged `{source, actor_name | path}` form. */
+const linkDonor = (value) => {
+    if (value && typeof value === 'object') return String(value.actor_name ?? value.name ?? value.path ?? '').trim();
+    return String(value ?? '').trim();
+};
+/** XLink keys of the advanced effect: comma or newline separated, trimmed, without blanks or repeats. */
+const effectKeyList = (value) => {
+    const keys = [];
+    for (const key of String(value ?? '').split(/[,\n]/).map((entry) => entry.trim())) {
+        if (key && !keys.includes(key)) keys.push(key);
+    }
+    return keys;
+};
 /** Physics donor strings of a form or spec (string, string list or {mode, value} list) without blanks. */
 const physicsDonors = (value) => (Array.isArray(value) ? value : [value])
     .map((entry) => String((entry && typeof entry === 'object' ? entry.value : entry) ?? '').trim())
     .filter(Boolean);
-const emptyUpgrade = () => ({ defense: '', rupees: '', materials: '' });
-/** Splits a material list on the commas outside double quotes. */
-const splitMaterials = (value) => {
-    const entries = [];
-    let current = '';
-    let quoted = false;
-    for (const char of String(value ?? '')) {
-        if (char === '"') quoted = !quoted;
-        if (char === ',' && !quoted) { entries.push(current); current = ''; } else current += char;
-    }
-    entries.push(current);
-    return entries;
-};
+/** Ingredients one Great Fairy step may ask for (vanilla rows never use more). */
+const MAX_MATERIALS = 3;
+const emptyMaterial = () => ({ actor: '', count: '' });
+/** One rank: defense, rupees and up to three ingredient rows (the first one is required). */
+const emptyUpgrade = () => ({ defense: '', rupees: '', materials: [emptyMaterial()] });
 /**
- * '"Bokoblin Horn":5, Item_Ore_F:20' -> [{ actor, count }]; quoted entries are
- * pouch names resolved through the catalog, bare ones actor ids; null when
- * malformed or a name is unknown.
+ * Spec / template materials (`{actor, count}`, `{name, number}` or
+ * `[actor, count]`) as form rows; actors vanilla rows spell differently for
+ * the same pouch item (Item_Mushroom_D) become the catalog's entry
+ * (Item_MushroomGet_D). Always at least one row, at most three.
  */
-const parseMaterials = (value, itemNames = {}) => {
-    const byName = new Map(Object.entries(itemNames).map(([actor, name]) => [name.toLowerCase(), actor]));
-    const materials = [];
-    for (const entry of splitMaterials(value)) {
-        const text = entry.trim();
-        if (!text) continue;
-        const match = text.match(/^(?:"([^"]*)"|([A-Za-z0-9_]+))\s*(?::\s*(\d+))?$/);
-        if (!match) return null;
-        const actor = match[1] !== undefined ? byName.get(match[1].trim().toLowerCase()) : match[2];
-        const number = Number(match[3] ?? '1');
-        if (!actor || !Number.isInteger(number) || number < 1) return null;
-        materials.push({ actor, count: number });
-    }
-    return materials;
+const materialsFromSpec = (materials, aliases = {}) => {
+    const rows = (materials || [])
+        .map((material) => {
+            const actor = String(Array.isArray(material) ? material[0] : (material?.actor ?? material?.name ?? '')).trim();
+            const count = Array.isArray(material) ? material[1] : (material?.count ?? material?.number ?? 1);
+            return { actor: aliases[actor] || actor, count: String(count ?? 1) };
+        })
+        .filter((row) => row.actor)
+        .slice(0, MAX_MATERIALS);
+    return rows.length ? rows : [emptyMaterial()];
 };
-/** Materials as '"Bokoblin Horn":5, "Amber":20' (actor ids for unnamed items). */
-const formatMaterials = (materials, itemNames = {}) => (materials || [])
-    .map((material) => {
-        const actor = Array.isArray(material) ? material[0] : (material.actor ?? material.name);
-        const count = Array.isArray(material) ? material[1] : (material.count ?? material.number ?? 1);
-        const name = itemNames[actor];
-        return `${name ? `"${name}"` : actor}:${count}`;
-    })
-    .join(', ');
+/** Form rows as spec materials: blank rows are dropped, a blank count means one. */
+const materialsToSpec = (materials) => (materials || [])
+    .filter((row) => row.actor)
+    .map((row) => ({ actor: row.actor, count: Math.max(1, toInt(row.count) ?? 1) }));
 
 const toInt = (value) => {
     const text = String(value ?? '').trim();
@@ -169,7 +210,7 @@ const toWeights = (value) => {
 };
 
 /** Spec object exactly as `--cli create_weapon` reads it. */
-function buildSpec(tab, form, vendor, itemNames = {}) {
+function buildSpec(tab, form, vendor) {
     const vendors = vendor ? [{
         actor_name: vendor,
         ...(toInt(form.buyingPrice) !== undefined ? { buying_price: toInt(form.buyingPrice) } : {}),
@@ -192,6 +233,10 @@ function buildSpec(tab, form, vendor, itemNames = {}) {
         if (form.seriesName.trim()) spec.series_name = form.seriesName.trim();
         const donors = physicsDonors(form.physics);
         if (donors.length) spec.physics = donors;
+        if (form.audio.trim()) spec.sound = form.audio.trim();
+        const effect = linkToSpec(form.effect);
+        if (effect !== undefined) spec.effect = effect;
+        if (form.effectAi && effectKeyList(form.effectKeys).length) spec.effect_keys = effectKeyList(form.effectKeys);
         if (form.fbx && form.replaceBones) spec.replace_bones = true;
         spec.upgrades_enabled = Boolean(form.upgradesEnabled);
         if (form.dyeable) spec.dyeable = true;
@@ -207,7 +252,7 @@ function buildSpec(tab, form, vendor, itemNames = {}) {
             spec.upgrades = form.upgrades.map((upgrade) => ({
                 defense: toInt(upgrade.defense) ?? 0,
                 rupees: toInt(upgrade.rupees) ?? 0,
-                materials: parseMaterials(upgrade.materials, itemNames) || [],
+                materials: materialsToSpec(upgrade.materials),
             }));
         }
         if (form.cube && !form.fbx) {
@@ -236,6 +281,9 @@ function buildSpec(tab, form, vendor, itemNames = {}) {
         description: form.description.trim(),
         ...(form.baseName.trim() ? { base_name: form.baseName.trim() } : {}),
         ...(form.physics.trim() ? { physics: form.physics.trim() } : {}),
+        ...(form.audio.trim() ? { sound: form.audio.trim() } : {}),
+        ...(linkToSpec(form.effect) !== undefined ? { effect: linkToSpec(form.effect) } : {}),
+        ...(form.effectAi && effectKeyList(form.effectKeys).length ? { effect_keys: effectKeyList(form.effectKeys) } : {}),
         ...(form.fbx && form.replaceBones ? { replace_bones: true } : {}),
         weapon_parameters: parameters,
         assets,
@@ -244,7 +292,7 @@ function buildSpec(tab, form, vendor, itemNames = {}) {
 }
 
 /** Inverse of buildSpec, for the Edit button. */
-function formFromSpec(spec, itemNames = {}, catalogActors = new Set()) {
+function formFromSpec(spec, ingredientAliases = {}, catalogActors = new Set()) {
     const isArmor = spec.actor_name.startsWith('Armor_');
     const tab = isArmor ? 'armor' : 'weapon';
     const form = emptyForm(tab);
@@ -262,6 +310,11 @@ function formFromSpec(spec, itemNames = {}, catalogActors = new Set()) {
     form.physics = isArmor
         ? (donors.length ? donors.map((donor) => donorFromSpec(donor, catalogActors)) : [emptyDonor()])
         : (donors[0] || '');
+    form.audio = linkDonor(spec.sound ?? spec.audio ?? spec.sound_actor);
+    form.effect = linkFromSpec(spec.effect ?? spec.effect_actor);
+    const effectKeys = effectKeyList((spec.effect_keys ?? spec.xlink_keys ?? spec.effect_ai_keys ?? []).join(','));
+    form.effectAi = effectKeys.length > 0;
+    form.effectKeys = effectKeys.join(', ');
     form.replaceBones = Boolean(spec.replace_bones || spec.import_skeleton);
     if (isArmor) {
         form.kind = ARMOR_SLOTS.find((slot) => spec.actor_name.endsWith(slot.suffix))?.id || 'Head';
@@ -278,7 +331,7 @@ function formFromSpec(spec, itemNames = {}, catalogActors = new Set()) {
         form.upgrades = (spec.upgrades || []).map((upgrade) => ({
             defense: upgrade.defense ?? '',
             rupees: upgrade.rupees ?? upgrade.price ?? '',
-            materials: formatMaterials(upgrade.materials || upgrade.items, itemNames),
+            materials: materialsFromSpec(upgrade.materials || upgrade.items, ingredientAliases),
         }));
         const cube = spec.cube || spec.model;
         form.cube = Boolean(cube);
@@ -363,6 +416,9 @@ function ItemCreator({ activeTab, setStatusText }) {
     const [outputDir, setOutputDir] = useState('');
     const [vendor, setVendor] = useState('');
     const [zstdLevel, setZstdLevel] = useState('');
+    const [generateRstb, setGenerateRstb] = useState(true);
+    /** ELink entry of the mod list being edited on the Add ELink tab, if any. */
+    const [elinkEditing, setElinkEditing] = useState(null);
     const [tab, setTab] = useState('weapon');
     const [form, setForm] = useState(() => emptyForm('weapon'));
     const [placeholders, setPlaceholders] = useState({ name: '', description: '' });
@@ -399,7 +455,31 @@ function ItemCreator({ activeTab, setStatusText }) {
     const physicsTemplateActors = useMemo(() => new Set(physicsTemplates.map((template) => template.actor)), [physicsTemplates]);
     // The Bargainer Statues price their goods in poes (ShopParam `MinusRupee`).
     const poeShop = (catalog?.vendors || []).find((entry) => entry.actor === vendor)?.currency === 'MinusRupee';
-    const itemNames = catalog?.itemNames || {};
+    // Great Fairy ingredients: every pouch item a vanilla upgrade asks for,
+    // once each, shown through the template picker with their own icons.
+    const ingredients = catalog?.ingredients || [];
+    const ingredientTemplates = useMemo(() => ingredients.map((ingredient) => ({
+        actor: ingredient.actor,
+        name: ingredient.name || ingredient.actor,
+        kind: 'ingredient',
+        upgraded: false,
+        decayed: false,
+    })), [ingredients]);
+    // Other actors vanilla rows use for the same pouch item -> the listed actor.
+    const ingredientAliases = useMemo(() => Object.fromEntries(ingredients.flatMap((ingredient) =>
+        (ingredient.aliases || []).map((alias) => [alias, ingredient.actor]))), [ingredients]);
+    const [ingredientIcons, setIngredientIcons] = useState({});
+    const ingredientIconsRequested = useRef(false);
+    const ensureIngredientIcons = useCallback(() => {
+        if (ingredientIconsRequested.current || ingredients.length === 0) return;
+        ingredientIconsRequested.current = true;
+        const iconActors = [...new Set(ingredients.map((ingredient) => ingredient.iconActor || ingredient.actor))];
+        invoke('item_creator_ingredient_icons', { names: iconActors })
+            .then((result) => setIngredientIcons(Object.fromEntries(ingredients
+                .map((ingredient) => [ingredient.actor, result[ingredient.iconActor || ingredient.actor]])
+                .filter(([, icon]) => icon))))
+            .catch(() => { ingredientIconsRequested.current = false; });
+    }, [ingredients]);
     const armorEffects = catalog?.armorEffects || [];
     const effectTemplates = useMemo(() => armorEffects.map((effect) => ({
         actor: effect.effectType,
@@ -422,7 +502,7 @@ function ItemCreator({ activeTab, setStatusText }) {
             .catch(() => loadedKinds.current.delete(kind));
     }, []);
     useEffect(() => {
-        const names = [...new Set(items.map((item) => item.template_actor))].filter((name) => !icons[name]);
+        const names = [...new Set(items.map((item) => item.template_actor))].filter((name) => name && !icons[name]);
         if (names.length === 0) return;
         invoke('item_creator_icons', { names })
             .then((result) => setIcons((current) => ({ ...current, ...result })))
@@ -432,10 +512,10 @@ function ItemCreator({ activeTab, setStatusText }) {
     const update = (patch) => setForm((current) => ({ ...current, ...patch }));
 
     const suggestActorName = useCallback((kindId, currentTab, list) => {
-        const taken = new Set([...(catalog?.templates || []).map((template) => template.actor), ...list.map((item) => item.actor_name)]);
+        const taken = new Set([...(catalog?.templates || []).map((template) => template.actor), ...list.map((item) => item.actor_name).filter(Boolean)]);
         if (currentTab === 'armor') {
             const slot = ARMOR_SLOTS.find((entry) => entry.id === kindId) || ARMOR_SLOTS[0];
-            const existing = list.find((item) => item.actor_name.startsWith('Armor_'));
+            const existing = list.find((item) => item.actor_name?.startsWith('Armor_'));
             const project = existing ? existing.actor_name.replace(/_(Head|Upper|Lower)$/, '') : null;
             if (project && !taken.has(`${project}${slot.suffix}`)) return `${project}${slot.suffix}`;
             for (let id = 900; id < 1000; id += 1) {
@@ -455,8 +535,11 @@ function ItemCreator({ activeTab, setStatusText }) {
     const switchTab = (nextTab) => {
         setTab(nextTab);
         setEditingIndex(-1);
+        setElinkEditing(null);
         setFormError('');
         setPlaceholders({ name: '', description: '' });
+        // The ELink tab has no item form of its own.
+        if (nextTab === 'elink') return;
         const next = emptyForm(nextTab);
         next.actorName = suggestActorName(next.kind, nextTab, items);
         setForm(next);
@@ -496,6 +579,14 @@ function ItemCreator({ activeTab, setStatusText }) {
     const updateUpgrade = (index, patch) => update({
         upgrades: form.upgrades.map((upgrade, position) => position === index ? { ...upgrade, ...patch } : upgrade),
     });
+    const updateMaterial = (rank, index, patch) => updateUpgrade(rank, {
+        materials: form.upgrades[rank].materials.map((material, position) => position === index ? { ...material, ...patch } : material),
+    });
+    // Chosen ingredients need their icons even before a picker is opened
+    // (a spec loaded for editing, the template's chain).
+    useEffect(() => {
+        if (tab === 'armor' && form.upgrades.some((upgrade) => upgrade.materials.some((material) => material.actor))) ensureIngredientIcons();
+    }, [tab, form.upgrades, ensureIngredientIcons]);
     const updatePhysics = (index, patch) => update({
         physics: form.physics.map((donor, position) => position === index ? { ...donor, ...patch } : donor),
     });
@@ -512,12 +603,18 @@ function ItemCreator({ activeTab, setStatusText }) {
         const selected = await open({ directory: true, multiple: false });
         if (typeof selected === 'string') setOutputDir(selected);
     };
+    const pickEffectFile = async () => {
+        const selected = await open({ multiple: false, directory: false, filters: [{ name: 'ELink parameter or actor pack', extensions: ['bgyml', 'byml', 'pack', 'zs'] }] });
+        if (typeof selected === 'string') update({ effect: { ...form.effect, value: selected } });
+    };
 
     const validate = () => {
         const actor = form.actorName.trim();
         if (!form.template) return 'Select a template.';
         if (!actor) return 'Enter an actor ID.';
         if (!/^[A-Za-z0-9_]+$/.test(actor)) return 'The actor ID may only contain letters, digits and underscores.';
+        const effectValue = String(form.effect?.value ?? '').trim();
+        if (form.effect?.mode === 'user' && effectValue && !/^[A-Za-z0-9_]+$/.test(effectValue)) return 'The effect user name may only contain letters, digits and underscores.';
         if (tab === 'armor') {
             const slot = ARMOR_SLOTS.find((entry) => entry.id === form.kind);
             if (!actor.startsWith('Armor_') || !actor.endsWith(slot.suffix)) return `Armor IDs for this slot look like Armor_900${slot.suffix}.`;
@@ -531,6 +628,7 @@ function ItemCreator({ activeTab, setStatusText }) {
         if (catalog?.templates.some((template) => template.actor === actor)) return `${actor} already exists in the game.`;
         if (items.some((item, index) => item.actor_name === actor && index !== editingIndex)) return `${actor} is already in the mod.`;
         if (!form.displayName.trim()) return 'Enter a name.';
+        if (form.effectAi && effectKeyList(form.effectKeys).length === 0) return 'Advanced effect: enter at least one XLink key, or untick the box.';
         if (!form.description.trim()) return 'Enter a description.';
         if (tab === 'armor' && form.cube && Object.keys(toWeights(form.cubeWeights)).length === 0) return 'Cube weights must look like Head:0.9,Root:0.1.';
         if (tab === 'armor' && form.upgradesEnabled) {
@@ -541,7 +639,13 @@ function ItemCreator({ activeTab, setStatusText }) {
                 if (defense === undefined || defense < 0) return `Rank ${rank}: enter a defense value.`;
                 const rupees = toInt(upgrade.rupees);
                 if (rupees === undefined || rupees < 0) return `Rank ${rank}: enter the rupee cost (0 is allowed).`;
-                if (parseMaterials(upgrade.materials, itemNames) === null) return `Rank ${rank}: materials must look like "Bokoblin Horn":5, "Amber":20 (pouch names in quotes, or actor ids such as Item_Enemy_77).`;
+                const chosen = upgrade.materials.filter((material) => material.actor);
+                if (chosen.length === 0) return `Rank ${rank}: choose at least the first ingredient.`;
+                if (new Set(chosen.map((material) => material.actor)).size !== chosen.length) return `Rank ${rank}: each ingredient can be listed only once.`;
+                for (const material of chosen) {
+                    const count = toInt(material.count);
+                    if (String(material.count).trim() !== '' && (count === undefined || count < 1)) return `Rank ${rank}: the count of ${ingredients.find((entry) => entry.actor === material.actor)?.name || material.actor} must be at least one.`;
+                }
             }
         }
         return '';
@@ -551,7 +655,7 @@ function ItemCreator({ activeTab, setStatusText }) {
         const problem = validate();
         setFormError(problem);
         if (problem) return;
-        const spec = buildSpec(tab, form, vendor, itemNames);
+        const spec = buildSpec(tab, form, vendor);
         setItems((current) => {
             const next = [...current];
             if (editingIndex >= 0 && editingIndex < next.length) next[editingIndex] = spec;
@@ -572,10 +676,32 @@ function ItemCreator({ activeTab, setStatusText }) {
         setStatus({ kind: '', text: `${spec.actor_name} ${editingIndex >= 0 ? 'updated' : 'added'}. ${nextItems.length} item(s) in the mod.` });
     };
 
+    /** Puts an ELink request from the Add ELink tab into the mod list (replacing the entry being edited). */
+    const commitElink = (spec) => {
+        const replacing = editingIndex >= 0 && editingIndex < items.length;
+        setItems((current) => {
+            const next = [...current];
+            if (replacing) next[editingIndex] = spec; else next.push(spec);
+            return next;
+        });
+        setStatus({ kind: '', text: `ELink ${spec.newName} ${replacing ? 'updated' : 'added'}. ${replacing ? items.length : items.length + 1} entr${(replacing ? items.length : items.length + 1) === 1 ? 'y' : 'ies'} in the mod.` });
+        setEditingIndex(-1);
+        setElinkEditing(null);
+    };
+    const cancelElinkEdit = () => { setEditingIndex(-1); setElinkEditing(null); };
+
     const editItem = () => {
         const spec = items[selectedIndex];
         if (!spec) return;
-        const loaded = formFromSpec(spec, itemNames, physicsTemplateActors);
+        if (isElinkSpec(spec)) {
+            setTab('elink');
+            setElinkEditing(spec);
+            setEditingIndex(selectedIndex);
+            setFormError('');
+            return;
+        }
+        setElinkEditing(null);
+        const loaded = formFromSpec(spec, ingredientAliases, physicsTemplateActors);
         setTab(loaded.tab);
         setForm(loaded.form);
         if (loaded.vendor) setVendor(loaded.vendor);
@@ -586,10 +712,10 @@ function ItemCreator({ activeTab, setStatusText }) {
     const removeItem = () => {
         if (selectedIndex < 0) return;
         setItems((current) => current.filter((_, index) => index !== selectedIndex));
-        if (editingIndex === selectedIndex) setEditingIndex(-1);
+        if (editingIndex === selectedIndex) { setEditingIndex(-1); setElinkEditing(null); }
         setSelectedIndex(-1);
     };
-    const clearItems = () => { setItems([]); setSelectedIndex(-1); setEditingIndex(-1); };
+    const clearItems = () => { setItems([]); setSelectedIndex(-1); setEditingIndex(-1); setElinkEditing(null); };
 
     const exportSpecs = async () => {
         const path = await save({ defaultPath: `${modName || 'items'}.json`, filters: [{ name: 'JSON', extensions: ['json'] }] });
@@ -607,10 +733,11 @@ function ItemCreator({ activeTab, setStatusText }) {
         try {
             const loaded = await invoke('item_creator_load_specs', { path });
             const list = Array.isArray(loaded) ? loaded : [loaded];
-            const valid = list.filter((spec) => spec && typeof spec.actor_name === 'string' && typeof spec.template_actor === 'string');
+            const valid = list.filter((spec) => spec && ((typeof spec.actor_name === 'string' && typeof spec.template_actor === 'string') || isElinkSpec(spec)));
             setItems(valid);
             setSelectedIndex(-1);
             setEditingIndex(-1);
+            setElinkEditing(null);
             const vendorName = valid.find((spec) => spec.vendors?.[0]?.actor_name)?.vendors[0].actor_name;
             if (vendorName) setVendor(vendorName);
             // The spec file names the mod: `C:\mods\MyCape.json` -> `MyCape`.
@@ -635,8 +762,10 @@ function ItemCreator({ activeTab, setStatusText }) {
                 outputDir,
                 modName,
                 zstdLevel: toInt(zstdLevel) ?? null,
+                generateRstb,
             });
-            const summary = `Mod ${modName} created in ${result.seconds.toFixed(1)} s: ${result.weapons.length} weapon(s), ${result.armors.length} armor piece(s), RSTB ${result.rstbEntries} entries.\n${result.outputRomfs}`
+            const rstbText = result.rstbEntries == null ? 'RSTB skipped' : `RSTB ${result.rstbEntries} entries`;
+            const summary = `Mod ${modName} created in ${result.seconds.toFixed(1)} s: ${result.weapons.length} weapon(s), ${result.armors.length} armor piece(s), ${result.elinks.length} ELink(s), ${rstbText}.\n${result.outputRomfs}`
                 + (result.warnings.length ? `\nWarnings:\n${result.warnings.join('\n')}` : '');
             setStatus({ kind: 'ok', text: summary });
             setStatusText(`Mod ${modName} created successfully`);
@@ -650,6 +779,20 @@ function ItemCreator({ activeTab, setStatusText }) {
     };
 
     if (activeTab !== 'ITEM_CREATOR') return null;
+
+    const effectPlaceholder = {
+        name: 'Vanilla actor whose Component/ELink effect file is copied, e.g. Item_Weapon_01 (optional)',
+        file: 'ELinkParam .bgyml or actor .pack(.zs) whose ELink file is used as it is',
+        user: 'ELink user name, e.g. Item_Weapon_01_custom made on the Add ELink tab',
+    };
+    const effectLink = <div className="item-creator-link-entry">
+        <select value={form.effect.mode} onChange={(event) => update({ effect: { mode: event.target.value, value: '' } })}>
+            {LINK_MODES.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
+        </select>
+        <input type="text" value={form.effect.value} placeholder={effectPlaceholder[form.effect.mode]} onChange={(event) => update({ effect: { ...form.effect, value: event.target.value } })} />
+        <button type="button" hidden={form.effect.mode !== 'file'} title="Choose a file" onClick={pickEffectFile}>…</button>
+    </div>;
+    const effectHint = "Effect: Actor name copies a vanilla actor's ELink file; File takes an ELinkParam .bgyml or an actor pack's ELink entry as it is (a modded pack keeps its custom user); User name writes a fresh ELinkParam naming that ELink user (e.g. one created with Add ELink, present in the same mod). The ActorParam ELinkRef binds it and the RSDB ActorInfo ELinkUserName follows.";
 
     const kindOptions = tab === 'armor' ? ARMOR_SLOTS : WEAPON_KINDS;
     const isShield = tab === 'weapon' && form.kind === 'Shield';
@@ -678,6 +821,11 @@ function ItemCreator({ activeTab, setStatusText }) {
                 <option value="">Not sold</option>
                 {(catalog?.vendors || []).map((entry) => <option key={entry.actor} value={entry.actor}>{entry.label}</option>)}
             </select>
+            <label htmlFor="item-creator-rstb">RSTB</label>
+            <div className="item-creator-check">
+                <input id="item-creator-rstb" type="checkbox" checked={generateRstb} onChange={(event) => setGenerateRstb(event.target.checked)} />
+                <label htmlFor="item-creator-rstb" className="item-creator-hint">Generate RSTB (untick to leave the ResourceSizeTable to another tool, e.g. TKMM)</label>
+            </div>
             {/* <label htmlFor="item-creator-zstd">RSTB zstd level</label>
             <input id="item-creator-zstd" type="number" min="1" max="22" placeholder="default" value={zstdLevel} onChange={(event) => setZstdLevel(event.target.value)} /> */}
         </div>
@@ -687,8 +835,16 @@ function ItemCreator({ activeTab, setStatusText }) {
                 <div className="item-creator-tabs">
                     <button type="button" className={tab === 'weapon' ? 'active' : ''} onClick={() => switchTab('weapon')}>Add weapon</button>
                     <button type="button" className={tab === 'armor' ? 'active' : ''} onClick={() => switchTab('armor')}>Add armor</button>
+                    <button type="button" className={tab === 'elink' ? 'active' : ''} onClick={() => switchTab('elink')}>Add ELink</button>
                 </div>
-                <div className="item-creator-panel">
+                <div className={`item-creator-panel${tab === 'elink' ? ' elink' : ''}`}>
+                    <AddElinkPanel
+                        active={tab === 'elink'}
+                        editing={elinkEditing}
+                        takenNames={items.filter((item, index) => isElinkSpec(item) && index !== editingIndex).map(elinkName)}
+                        onCommit={commitElink}
+                        onCancelEdit={cancelElinkEdit} />
+                    {tab !== 'elink' && <>
                     <div className="item-creator-form">
                         <label>{tab === 'armor' ? 'Slot' : 'Type'}</label>
                         <select value={form.kind} onChange={(event) => changeKind(event.target.value)}>
@@ -728,6 +884,21 @@ function ItemCreator({ activeTab, setStatusText }) {
                             </>}
                             <label>Physics</label>
                             <input type="text" value={form.physics} placeholder="Vanilla actor whose Phive / Physics files are copied (optional)" onChange={(event) => update({ physics: event.target.value })} />
+                            <label>Audio</label>
+                            <input type="text" value={form.audio} placeholder="Vanilla actor whose Component/SLink sound file is copied (optional)" onChange={(event) => update({ audio: event.target.value })} />
+                            <label>Effect</label>
+                            {effectLink}
+                            <span className="item-creator-hint">The donor's SLink / ELink file replaces the template's and the ActorParam SLinkRef / ELinkRef binds it. A blank name or one without an actor pack (or that component) in the RomFS is skipped. {effectHint}</span>
+                            <label>Advanced effect</label>
+                            <div className="item-creator-check">
+                                <input id="item-creator-effect-ai" type="checkbox" checked={form.effectAi} onChange={(event) => update({ effectAi: event.target.checked })} />
+                                <label htmlFor="item-creator-effect-ai" className="item-creator-hint">Add a root AI that emits effects of the ELink user at spawn (permanent glow, trail, …)</label>
+                            </div>
+                            {form.effectAi && <>
+                                <label>XLink keys</label>
+                                <input type="text" value={form.effectKeys} placeholder="Asset-call-table names of the effect donor's ELink user, comma separated, e.g. 古代矢完成, 軌跡" onChange={(event) => update({ effectKeys: event.target.value })} />
+                                <span className="item-creator-hint">Writes AI/&lt;actor&gt;_Effect.root.ainb (one OneShotXLinkSearchAndEmit per key) plus its AIInfo and binds them with the ActorParam AIInfoRef. The keys are entries of the ELink user the weapon ends up with (the Effect donor's, e.g. Item_Weapon_01's 古代矢完成 / 軌跡 / 射撃), as listed under that user in ELink2/elink2.Product.*.belnk.zs. Looping entries keep running, so the effect is permanent.</span>
+                            </>}
                             <div className="item-creator-section">Assets</div>
                             <label>Custom fbx model</label>
                             <div className="item-creator-path">
@@ -756,9 +927,9 @@ function ItemCreator({ activeTab, setStatusText }) {
                                     onOpen={() => ensureIcons(form.kind, templates.map((template) => template.actor))}
                                     onChange={(actor) => update({ skinMaterial: actor })}
                                     hideUpgrades={hideUpgrades}
-                                    placeholder="Keep the template's hidden skin materials"
-                                    noneLabel="None (keep the template's list)" />
-                                <span className="item-creator-hint">Copies the chosen actor's ArmorParam HiddenMaterialGroupList (the body-skin materials the piece hides) into the new piece.</span>
+                                    placeholder="Keep the template's material visibility"
+                                    noneLabel="None (keep the template's lists)" />
+                                <span className="item-creator-hint">Copies the chosen actor's ArmorParam material visibility into the new piece: HiddenMaterialGroupList (the body-skin materials the piece hides) and HideMaterialGroupNameList (the body-model material groups it covers, e.g. G_UpperBeltSet, G_Head). A list the donor lacks is dropped so the default applies, as on the donor.</span>
                             </div>
                             <label>Physics</label>
                             <div className="item-creator-physics">
@@ -811,6 +982,25 @@ function ItemCreator({ activeTab, setStatusText }) {
                                     noneLabel="None (keep the template's or physics donor's helper bones)" />
                                 <span className="item-creator-hint">After the physics step, copies the chosen actor's Phive/HelperBone files into the piece (renamed after the actor, replacing the ones already there) and renames its ControllerSetParam, Component/Physics and ActorParam PhysicsRef to match.</span>
                             </div>
+                            <label>Audio</label>
+                            <div className="item-creator-skin-material">
+                                <input type="text" value={form.audio} placeholder="Vanilla actor whose Component/SLink sound file is copied, e.g. Armor_014_Upper (optional)" onChange={(event) => update({ audio: event.target.value })} />
+                                <span className="item-creator-hint">Copies the donor's SLink file into the piece, binds it with the ActorParam SLinkRef and takes the ArmorParam sound keys (SoundMaterial, HasSoundCloth, IsBarefootSound) from the donor. A blank name or one without an actor pack (or SLink) in the RomFS is skipped.</span>
+                            </div>
+                            <label>Effect</label>
+                            <div className="item-creator-skin-material">
+                                {effectLink}
+                                <span className="item-creator-hint">{effectHint} A vanilla donor also lends its ArmorParam wind-effect keys (WindEffectMesh, WindEffectScale); a blank name or one without an actor pack (or ELink) in the RomFS is skipped.</span>
+                            </div>
+                            <label>Advanced effect</label>
+                            <div className="item-creator-check">
+                                <input id="item-creator-effect-ai" type="checkbox" checked={form.effectAi} onChange={(event) => update({ effectAi: event.target.checked })} />
+                                <label htmlFor="item-creator-effect-ai" className="item-creator-hint">Add a root AI that emits effects of the ELink user at spawn (permanent glow, gloom, …)</label>
+                            </div>
+                            {form.effectAi && <div className="item-creator-skin-material">
+                                <input type="text" value={form.effectKeys} placeholder="Asset-call-table names of the effect donor's ELink user, comma separated, e.g. Miasma_Status_In" onChange={(event) => update({ effectKeys: event.target.value })} />
+                                <span className="item-creator-hint">Writes AI/&lt;actor&gt;_Effect.root.ainb (one OneShotXLinkSearchAndEmit per key) plus its AIInfo and binds them with the ActorParam AIInfoRef; upgrade ranks inherit it. The keys are entries of the ELink user the piece ends up with (the Effect donor's, e.g. Player's Miasma_Status_In), as listed under that user in ELink2/elink2.Product.*.belnk.zs. Looping entries keep running, so the effect is permanent.</span>
+                            </div>}
                             <label>Armor effects</label>
                             <div className="item-creator-physics">
                                 {form.armorEffects.map((effect, index) => (
@@ -852,21 +1042,41 @@ function ItemCreator({ activeTab, setStatusText }) {
                             <div className="item-creator-upgrades">
                                 {form.upgrades.map((upgrade, index) => (
                                     <div className="item-creator-upgrade" key={index}>
-                                        <span className="item-creator-upgrade-rank">{'★'.repeat(index + 1)}</span>
-                                        <input type="number" value={upgrade.defense} placeholder="Defense" title="Defense at this rank"
-                                            onChange={(event) => updateUpgrade(index, { defense: event.target.value })} />
-                                        <input type="number" value={upgrade.rupees} placeholder="Rupees" title="Rupees the Great Fairy charges for this step"
-                                            onChange={(event) => updateUpgrade(index, { rupees: event.target.value })} />
-                                        <input type="text" value={upgrade.materials} placeholder='"Bokoblin Horn":5, "Amber":20' title='Materials for this step: "pouch name":count (actor ids such as Item_Enemy_77 work too)'
-                                            onChange={(event) => updateUpgrade(index, { materials: event.target.value })} />
-                                        <button type="button" title="Remove this rank and the ones after it" onClick={() => update({ upgrades: form.upgrades.slice(0, index) })}>×</button>
+                                        <div className="item-creator-upgrade-head">
+                                            <span className="item-creator-upgrade-rank">{'★'.repeat(index + 1)}</span>
+                                            <input type="number" value={upgrade.defense} placeholder="Defense" title="Defense at this rank"
+                                                onChange={(event) => updateUpgrade(index, { defense: event.target.value })} />
+                                            <input type="number" value={upgrade.rupees} placeholder="Rupees" title="Rupees the Great Fairy charges for this step"
+                                                onChange={(event) => updateUpgrade(index, { rupees: event.target.value })} />
+                                            <span className="item-creator-hint">Ingredients (first required, up to {MAX_MATERIALS})</span>
+                                            <button type="button" title="Remove this rank and the ones after it" onClick={() => update({ upgrades: form.upgrades.slice(0, index) })}>×</button>
+                                        </div>
+                                        {upgrade.materials.map((material, slot) => (
+                                            <div className="item-creator-material-entry" key={slot}>
+                                                <TemplatePicker
+                                                    templates={ingredientTemplates}
+                                                    value={material.actor}
+                                                    icons={ingredientIcons}
+                                                    onOpen={ensureIngredientIcons}
+                                                    onChange={(actor) => updateMaterial(index, slot, { actor })}
+                                                    placeholder={slot === 0 ? 'Choose an ingredient' : 'None (optional)'}
+                                                    noneLabel={slot === 0 ? null : 'None'} />
+                                                <input type="number" min="1" value={material.count} placeholder="Count" title="How many the Great Fairy asks for"
+                                                    disabled={!material.actor} onChange={(event) => updateMaterial(index, slot, { count: event.target.value })} />
+                                                <button type="button" title="Remove this ingredient" disabled={upgrade.materials.length <= 1}
+                                                    onClick={() => updateUpgrade(index, { materials: upgrade.materials.filter((_, position) => position !== slot) })}>−</button>
+                                                <button type="button" title="Add another ingredient" hidden={slot !== upgrade.materials.length - 1 || upgrade.materials.length >= MAX_MATERIALS}
+                                                    disabled={!material.actor}
+                                                    onClick={() => updateUpgrade(index, { materials: [...upgrade.materials, emptyMaterial()] })}>+</button>
+                                            </div>
+                                        ))}
                                     </div>
                                 ))}
                                 <div className="item-creator-upgrade-actions">
                                     <button type="button" disabled={form.upgrades.length >= MAX_UPGRADES} onClick={() => update({ upgrades: [...form.upgrades, emptyUpgrade()] })}>Add rank</button>
                                     <button type="button" disabled={templateUpgrades.length === 0} title="Copy the template's Great Fairy chain (defense, rupees and materials per rank)"
-                                        onClick={() => update({ upgrades: templateUpgrades.slice(0, MAX_UPGRADES).map((entry) => ({ defense: entry.defense ?? '', rupees: entry.rupees ?? '', materials: formatMaterials(entry.materials, itemNames) })) })}>Use template's upgrades</button>
-                                    <span className="item-creator-hint">{form.upgrades.length ? `${form.upgrades.length} custom rank(s) (the rest of the chain is dropped)` : 'Empty: the four ranks are derived from the template.'}</span>
+                                        onClick={() => update({ upgrades: templateUpgrades.slice(0, MAX_UPGRADES).map((entry) => ({ defense: entry.defense ?? '', rupees: entry.rupees ?? '', materials: materialsFromSpec(entry.materials, ingredientAliases) })) })}>Use template's upgrades</button>
+                                    <span className="item-creator-hint">{form.upgrades.length ? `${form.upgrades.length} custom rank(s) (the rest of the chain is dropped). The ingredient list holds every item a vanilla Great Fairy upgrade asks for.` : 'Empty: the four ranks are derived from the template.'}</span>
                                 </div>
                             </div>
                             </>}
@@ -918,6 +1128,7 @@ function ItemCreator({ activeTab, setStatusText }) {
                             {editingIndex >= 0 ? 'Update item' : (tab === 'armor' ? 'Add armor to mod' : 'Add weapon to mod')}
                         </button>
                     </div>
+                    </>}
                 </div>
             </div>
 
@@ -926,14 +1137,14 @@ function ItemCreator({ activeTab, setStatusText }) {
                 <div className="item-creator-list">
                     {items.length === 0 && <div className="item-creator-empty">No items yet.</div>}
                     {items.map((item, index) => <div
-                        key={`${item.actor_name}-${index}`}
+                        key={`${isElinkSpec(item) ? elinkName(item) : item.actor_name}-${index}`}
                         className={`item-creator-item${index === selectedIndex ? ' selected' : ''}`}
                         onClick={() => setSelectedIndex(index)}
                         onDoubleClick={() => { setSelectedIndex(index); setTimeout(editItem, 0); }}>
-                        <img src={icons[item.template_actor] || BLANK_ICON} alt="" />
+                        <img src={isElinkSpec(item) ? ELINK_ICON : (icons[item.template_actor] || BLANK_ICON)} alt="" />
                         <span className="item-creator-option-name">
-                            <span>{item.actor_name}</span>
-                            <small>{item.display_name}</small>
+                            <span>{isElinkSpec(item) ? elinkName(item) : item.actor_name}</span>
+                            <small>{isElinkSpec(item) ? `ELink effect from ${elinkBase(item)}` : item.display_name}</small>
                         </span>
                     </div>)}
                 </div>

@@ -127,6 +127,27 @@ pub struct Catalog {
     pub item_names: BTreeMap<String, String>,
     /// Every `ArmorEffectType` found in the base (non-upgrade) armor packs.
     pub armor_effects: Vec<ArmorEffectEntry>,
+    /// Every pouch item a vanilla Great Fairy step asks for, once each.
+    pub ingredients: Vec<IngredientEntry>,
+}
+
+/// One Great Fairy ingredient: a pouch item some vanilla
+/// EnhancementMaterialInfo row asks for.
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngredientEntry {
+    /// Actor written into the spec and the EnhancementMaterial file, as the
+    /// vanilla rows name it (`Item_Enemy_77`, `Animal_Fish_AC`, `BeeHome`).
+    pub actor: String,
+    /// Pouch display name, empty when no label exists.
+    pub name: String,
+    /// Actor whose `UI/Tex/Icon/<actor>.bntx.zs` draws the item: the
+    /// ActorInfo `ActorName` redirect for live fish, plants and mushrooms
+    /// (`Animal_Fish_AC` -> `Item_FishGet_AC`), otherwise the actor itself.
+    pub icon_actor: String,
+    /// Other actors vanilla rows use for the same pouch item (the rows mix
+    /// `Item_Mushroom_D` and `Item_MushroomGet_D`, which the pouch merges).
+    pub aliases: Vec<String>,
 }
 
 /// Values a template carries, used to pre-fill the form.
@@ -301,7 +322,8 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
         .map(|template| template.actor.as_str())
         .collect();
     let (armor_effects, helper_bone_actors, cloth_actors) =
-        scan_base_armor(&actor_dir, &base_armor, zstd);
+        scan_base_armor(&actor_dir, &base_armor, zstd.clone());
+    let ingredients = upgrade_ingredients(clean_romfs, &item_names, zstd).unwrap_or_default();
     for template in &mut templates {
         template.helper_bones = helper_bone_actors.contains(&template.actor);
         template.cloth = cloth_actors.contains(&template.actor);
@@ -313,6 +335,7 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
         vendors,
         item_names,
         armor_effects,
+        ingredients,
     })
 }
 
@@ -569,25 +592,232 @@ pub fn icons(names: &[String]) -> HashMap<String, String> {
     result
 }
 
-/// `.cache/webp` next to the executable, above the build directory, or in
-/// the repository during development.
-pub fn icon_directory() -> Option<PathBuf> {
+/// Every pouch item a vanilla EnhancementMaterialInfo row asks for, each
+/// once: rows naming the same pouch item through different actors (the
+/// ActorInfo `ActorName` redirect merges `Item_Mushroom_D` into
+/// `Item_MushroomGet_D`) collapse into one entry whose `actor` is the
+/// redirect target when a row uses it, otherwise the first actor seen.
+/// Sorted by pouch name.
+pub(super) fn upgrade_ingredients(
+    clean_romfs: &Path,
+    item_names: &BTreeMap<String, String>,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<Vec<IngredientEntry>> {
+    let rsdb = clean_romfs.join("RSDB");
+    let (_, cost_source) = super::version::discover_product_file(
+        &rsdb,
+        "EnhancementMaterialInfo.Product.",
+        ".rstbl.byml.zs",
+    )?;
+    let invalid = |what: &str| io::Error::new(io::ErrorKind::InvalidData, what.to_owned());
+    let costs = BymlFile::new(&cost_source, zstd.clone())
+        .ok_or_else(|| invalid("invalid EnhancementMaterialInfo"))?;
+    let bare_actor = |path: &str| -> String {
+        path.trim_start_matches("Work/Actor/")
+            .split('.')
+            .next()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let mut used: BTreeSet<String> = BTreeSet::new();
+    for row in costs
+        .pio
+        .as_array()
+        .map_err(|_| invalid("EnhancementMaterialInfo is not an array"))?
+    {
+        let Ok(map) = row.as_map() else { continue };
+        let Some(Ok(items)) = map.get("Items").map(|items| items.as_array()) else {
+            continue;
+        };
+        for item in items {
+            if let Some(actor) = item
+                .as_map()
+                .ok()
+                .and_then(|item| item.get("Actor")?.as_string().ok())
+            {
+                let actor = bare_actor(actor);
+                if !actor.is_empty() {
+                    used.insert(actor);
+                }
+            }
+        }
+    }
+    // ActorInfo `ActorName`: the pouch actor an item turns into when picked up.
+    let redirects: BTreeMap<String, String> = (|| {
+        let (_, source) =
+            super::version::discover_product_file(&rsdb, "ActorInfo.Product.", ".rstbl.byml.zs")
+                .ok()?;
+        let file = BymlFile::new(&source, zstd)?;
+        let rows = file.pio.as_array().ok()?;
+        Some(
+            rows.iter()
+                .filter_map(|row| {
+                    let map = row.as_map().ok()?;
+                    let actor = map.get("__RowId")?.as_string().ok()?.as_str();
+                    let target = map.get("ActorName")?.as_string().ok()?.as_str();
+                    (used.contains(actor) && target != actor)
+                        .then(|| (actor.to_owned(), target.to_owned()))
+                })
+                .collect(),
+        )
+    })()
+    .unwrap_or_default();
+    let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for actor in &used {
+        let identity = redirects.get(actor).unwrap_or(actor).clone();
+        groups.entry(identity).or_default().push(actor.clone());
+    }
+    let mut ingredients: Vec<IngredientEntry> = groups
+        .into_iter()
+        .map(|(identity, members)| {
+            let actor = if members.contains(&identity) {
+                identity.clone()
+            } else {
+                members[0].clone()
+            };
+            let name = [&actor, &identity]
+                .into_iter()
+                .chain(&members)
+                .find_map(|candidate| item_names.get(candidate))
+                .cloned()
+                .unwrap_or_default();
+            IngredientEntry {
+                aliases: members
+                    .iter()
+                    .filter(|member| **member != actor)
+                    .cloned()
+                    .collect(),
+                icon_actor: identity,
+                actor,
+                name,
+            }
+        })
+        .collect();
+    ingredients.sort_by(|a, b| {
+        (a.name.is_empty(), &a.name, &a.actor).cmp(&(b.name.is_empty(), &b.name, &b.actor))
+    });
+    Ok(ingredients)
+}
+
+/// Icons of Great Fairy ingredients (keyed by the icon actor) as data URLs.
+/// They live in `.cache/ingredients/<actor>.webp` next to the base icons'
+/// `.cache/webp`; a missing one is decoded from the RomFS
+/// `UI/Tex/Icon/<actor>.bntx.zs`, scaled to 128 px, saved there and served.
+pub fn ingredient_icons(
+    clean_romfs: &Path,
+    zstd: Arc<TotkZstd<'_>>,
+    names: &[String],
+) -> HashMap<String, String> {
+    use base64::Engine;
+    let mut result = HashMap::new();
+    let dir = ingredient_icon_directory();
+    for name in names {
+        if name.is_empty() || name.contains(['/', '\\', '.']) {
+            continue;
+        }
+        let cached = dir.as_ref().map(|dir| dir.join(format!("{name}.webp")));
+        let bytes = match cached.as_ref().and_then(|path| fs::read(path).ok()) {
+            Some(bytes) => bytes,
+            None => match render_icon_webp(clean_romfs, zstd.clone(), name) {
+                Ok(bytes) => {
+                    if let Some(path) = &cached {
+                        let _ = fs::write(path, &bytes);
+                    }
+                    bytes
+                }
+                Err(_) => continue,
+            },
+        };
+        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+        result.insert(name.clone(), format!("data:image/webp;base64,{encoded}"));
+    }
+    result
+}
+
+/// `UI/Tex/Icon/<actor>.bntx.zs` decoded, scaled to 128 px and encoded as a
+/// lossless WebP.
+fn render_icon_webp(
+    clean_romfs: &Path,
+    zstd: Arc<TotkZstd<'_>>,
+    actor: &str,
+) -> io::Result<Vec<u8>> {
+    let source = clean_romfs.join(format!("UI/Tex/Icon/{actor}.bntx.zs"));
+    let compressed = fs::read(&source)?;
+    let data = zstd.try_decompress(&compressed)?;
+    let invalid = |error: String| io::Error::new(io::ErrorKind::InvalidData, error);
+    let bntx =
+        crate::parser::bntx::BntxFile::parse(&data).map_err(|error| invalid(error.to_string()))?;
+    let image = bntx
+        .decode_texture(0)
+        .map_err(|error| invalid(error.to_string()))?;
+    let image = if image.width() == ICON_SIZE && image.height() == ICON_SIZE {
+        image
+    } else {
+        image::imageops::resize(
+            &image,
+            ICON_SIZE,
+            ICON_SIZE,
+            image::imageops::FilterType::Lanczos3,
+        )
+    };
+    let mut bytes = Vec::new();
+    image::codecs::webp::WebPEncoder::new_lossless(&mut bytes)
+        .encode(
+            image.as_raw(),
+            image.width(),
+            image.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .map_err(|error| invalid(error.to_string()))?;
+    Ok(bytes)
+}
+
+/// Edge length of the cached icons (the base icons in `.cache/webp` are 128 px too).
+const ICON_SIZE: u32 = 128;
+
+/// `.cache` folders to look in: next to the executable, up to three levels
+/// above it (the build directory), the repository during development, and
+/// the working directory.
+fn cache_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Ok(exe_dir) = crate::utils::running_exe_dir() {
-        candidates.push(exe_dir.join(".cache/webp"));
+        candidates.push(exe_dir.join(".cache"));
         let mut ancestor = exe_dir.clone();
         for _ in 0..3 {
             if let Some(parent) = ancestor.parent() {
                 ancestor = parent.to_path_buf();
-                candidates.push(ancestor.join(".cache/webp"));
+                candidates.push(ancestor.join(".cache"));
             }
         }
     }
-    candidates.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.cache/webp"));
+    candidates.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.cache"));
     if let Ok(cwd) = std::env::current_dir() {
-        candidates.push(cwd.join(".cache/webp"));
+        candidates.push(cwd.join(".cache"));
     }
-    candidates.into_iter().find(|path| path.is_dir())
+    candidates
+}
+
+/// `.cache/webp` next to the executable, above the build directory, or in
+/// the repository during development.
+pub fn icon_directory() -> Option<PathBuf> {
+    cache_candidates()
+        .into_iter()
+        .map(|cache| cache.join("webp"))
+        .find(|path| path.is_dir())
+}
+
+/// `.cache/ingredients`, a sibling of the base icons' `.cache/webp` (created
+/// on demand inside the first existing `.cache`, or next to the executable).
+fn ingredient_icon_directory() -> Option<PathBuf> {
+    let candidates = cache_candidates();
+    let cache = candidates
+        .iter()
+        .find(|cache| cache.join("webp").is_dir())
+        .or_else(|| candidates.iter().find(|cache| cache.is_dir()))
+        .or_else(|| candidates.first())?;
+    let dir = cache.join("ingredients");
+    fs::create_dir_all(&dir).ok()?;
+    Some(dir)
 }
 
 /// Removes MSBT control tags such as `{{icon type="PristineWeaponSparkle"}}`.
@@ -796,6 +1026,55 @@ fn pouch_prices(
 mod tests {
     use super::*;
     use crate::TotkConfig::TotkConfig;
+
+    /// Diagnostic against the TOTK dump: every Great Fairy ingredient once,
+    /// named, with a decodable icon (cached into `.cache/ingredients`).
+    #[test]
+    #[ignore = "needs the TOTK dump"]
+    fn upgrade_ingredients_from_romfs() {
+        let romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        if !romfs.is_dir() {
+            return;
+        }
+        let mut config = TotkConfig::safe_new(false).unwrap();
+        config.romfs = romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(TotkZstd::new(Arc::new(config), 16).unwrap());
+        let catalog = catalog(romfs, zstd.clone()).unwrap();
+        let ingredients = &catalog.ingredients;
+        eprintln!("{} ingredients", ingredients.len());
+        for entry in ingredients {
+            eprintln!(
+                "{:<28} {:<20} icon {:<20} aliases {:?}",
+                entry.name, entry.actor, entry.icon_actor, entry.aliases
+            );
+        }
+        let actors: BTreeSet<&str> = ingredients.iter().map(|e| e.actor.as_str()).collect();
+        assert_eq!(actors.len(), ingredients.len(), "actors repeat");
+        assert!(actors.contains("Item_Enemy_77"));
+        assert!(actors.contains("BeeHome"));
+        assert!(actors.contains("Animal_Fish_AC"));
+        // The rows mix the live and picked-up mushroom D; the pouch merges them.
+        let mushroom = ingredients
+            .iter()
+            .find(|e| e.actor == "Item_MushroomGet_D")
+            .unwrap();
+        assert_eq!(mushroom.aliases, vec!["Item_Mushroom_D".to_owned()]);
+        assert!(!actors.contains("Item_Mushroom_D"));
+        let fish = ingredients
+            .iter()
+            .find(|e| e.actor == "Animal_Fish_AC")
+            .unwrap();
+        assert_eq!(fish.icon_actor, "Item_FishGet_AC");
+        let unnamed: Vec<_> = ingredients.iter().filter(|e| e.name.is_empty()).collect();
+        assert!(unnamed.is_empty(), "unnamed ingredients: {unnamed:?}");
+        let icon_actors: Vec<String> = ingredients.iter().map(|e| e.icon_actor.clone()).collect();
+        let icons = ingredient_icons(romfs, zstd, &icon_actors);
+        let missing: Vec<_> = icon_actors
+            .iter()
+            .filter(|actor| !icons.contains_key(*actor))
+            .collect();
+        assert!(missing.is_empty(), "icons missing for {missing:?}");
+    }
 
     /// Diagnostic against the TOTK dump: the catalog must list every weapon
     /// family and armor slot with pouch names, and template values must load.
