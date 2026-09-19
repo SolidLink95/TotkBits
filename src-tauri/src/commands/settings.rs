@@ -1,9 +1,9 @@
 use crate::utils::Pathlib;
-use crate::{DocumentState::DocumentState, Open_and_Save::SendData, Settings::NO_WINDOW_FLAG};
+use crate::{DocumentState::DocumentState, Open_and_Save::SendData};
 use rfd::MessageDialog;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::{fs, os::windows::process::CommandExt, path::Path, process::Command};
+use std::{fs, path::Path};
 use tauri::Manager;
 
 #[tauri::command]
@@ -217,23 +217,12 @@ pub fn edit_config(app_handle: tauri::AppHandle, documentId: String) -> Result<(
                 app,
                 app.zstd.totk_config.config_path.clone()
             );
-            // Command::new("explorer.exe")
             let dir_path = Pathlib::new(&file_path).parent.replace("/", "\\");
-            // let explorer_arg = format!("/e,\"{}\"", &dir_path);
-            println!("{}", &dir_path);
-            // Command::new("explorer.exe")
-            // Command::new("explorer.exe")
-            //     .creation_flags(NO_WINDOW_FLAG)
-            //     .arg(&explorer_arg)
-            //     .spawn()
-            //     .map(|_| ())
-            //     .map_err(|error| format!("failed to launch Explorer for {explorer_arg}: {error}"))
-            Command::new("cmd.exe")
-                // .creation_flags(NO_WINDOW_FLAG)
-                .args(["/c", "start", "", &dir_path])
+            crate::Settings::hidden_command("explorer.exe")
+                .arg(&dir_path)
                 .spawn()
                 .map(|_| ())
-                .map_err(|error| format!("failed to open folder: {error}"))
+                .map_err(|error| format!("failed to open folder {dir_path}: {error}"))
         },
         Err,
     )

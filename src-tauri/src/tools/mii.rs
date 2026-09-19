@@ -217,6 +217,11 @@ fn safe_mii_filename(name: &str) -> String {
 #[allow(non_snake_case)]
 #[tauri::command]
 pub fn read_mii_name(app_handle: tauri::AppHandle, documentId: String) -> Result<String, String> {
+    crate::Settings::catch_panic(move || read_mii_name_impl(app_handle, documentId))
+}
+
+#[allow(non_snake_case)]
+fn read_mii_name_impl(app_handle: tauri::AppHandle, documentId: String) -> Result<String, String> {
     let documents = app_handle.state::<crate::DocumentState::DocumentState>();
     let (file_type, path, internal_data) = documents.with(&documentId, |app| {
         (
@@ -390,6 +395,17 @@ pub fn download_mii_glb(
     documentId: String,
     databasePath: Option<String>,
 ) -> Result<String, String> {
+    crate::Settings::catch_panic(move || {
+        download_mii_glb_impl(app_handle, documentId, databasePath)
+    })
+}
+
+#[allow(non_snake_case)]
+fn download_mii_glb_impl(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    databasePath: Option<String>,
+) -> Result<String, String> {
     let documents = app_handle.state::<crate::DocumentState::DocumentState>();
     let (file_type, path, mii_data, parent) = documents.with(&documentId, |app| {
         (
@@ -432,6 +448,14 @@ pub fn read_glb_preview(
     app_handle: tauri::AppHandle,
     documentId: String,
 ) -> Result<String, String> {
+    crate::Settings::catch_panic(move || read_glb_preview_impl(app_handle, documentId))
+}
+
+#[allow(non_snake_case)]
+fn read_glb_preview_impl(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+) -> Result<String, String> {
     let documents = app_handle.state::<crate::DocumentState::DocumentState>();
     let (file_type, bytes) = documents.with(&documentId, |app| {
         (
@@ -449,6 +473,15 @@ pub fn read_glb_preview(
 #[allow(non_snake_case)]
 #[tauri::command]
 pub fn export_loaded_glb(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    output: String,
+) -> Result<String, String> {
+    crate::Settings::catch_panic(move || export_loaded_glb_impl(app_handle, documentId, output))
+}
+
+#[allow(non_snake_case)]
+fn export_loaded_glb_impl(
     app_handle: tauri::AppHandle,
     documentId: String,
     output: String,

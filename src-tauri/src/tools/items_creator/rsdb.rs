@@ -136,15 +136,6 @@ impl<'a> WeaponRsdbProcessor<'a> {
         let game_actor_info = Self::versioned_rsdb_name("GameActorInfo", &version)?;
         let pouch_actor_info = Self::versioned_rsdb_name("PouchActorInfo", &version)?;
         let tag_product = Self::versioned_rsdb_name("Tag", &version)?;
-        let template_is_shield = Self::pouch_category(
-            shared,
-            &clean_rsdb.join(&pouch_actor_info),
-            &output_rsdb.join(&pouch_actor_info),
-            &request.template_actor,
-        )?
-        .as_deref()
-            == Some("Shield");
-
         let model_name = request.model_name.as_deref().unwrap_or(&request.actor_name);
         let mut actor = request.overrides.actor_info.clone();
         actor.insert(
@@ -161,10 +152,8 @@ impl<'a> WeaponRsdbProcessor<'a> {
         if let Some(value) = request.attachment_damage {
             attachment.insert("AttachmentAdditionalDamage".into(), value.into());
         }
-        if !template_is_shield {
-            if let Some(value) = request.shield_bash_damage {
-                attachment.insert("AttachmentShieldBashDamage".into(), value.into());
-            }
+        if let Some(value) = request.shield_bash_damage {
+            attachment.insert("AttachmentShieldBashDamage".into(), value.into());
         }
 
         let mut game = request.overrides.game_actor_info.clone();
@@ -331,35 +320,6 @@ impl<'a> WeaponRsdbProcessor<'a> {
             .as_string()
             .ok()
             .map(ToString::to_string)
-    }
-
-    /// `PouchCategory` of `actor_name`'s PouchActorInfo row. Vanilla rows
-    /// are the same in the mod's copy of the table, so the shared document
-    /// serves the lookup without a second parse.
-    fn pouch_category(
-        shared: &mut SharedFiles<'_>,
-        clean_source: &Path,
-        destination: &Path,
-        actor_name: &str,
-    ) -> io::Result<Option<String>> {
-        let document = shared.byml(clean_source, destination)?;
-        let rows = document
-            .file
-            .pio
-            .as_array()
-            .map_err(|_| Self::invalid_data("PouchActorInfo root is not an array"))?;
-        let row = rows
-            .iter()
-            .find(|row| Self::row_id(row).as_deref() == Some(actor_name))
-            .ok_or_else(|| {
-                Self::invalid_data(format!("PouchActorInfo row is missing: {actor_name}"))
-            })?;
-        Ok(row
-            .as_map()
-            .ok()
-            .and_then(|row| row.get("PouchCategory"))
-            .and_then(|value| value.as_string().ok())
-            .map(ToString::to_string))
     }
 
     /// BYML value for a field the template row does not carry: strings,
@@ -557,33 +517,6 @@ impl<'a> WeaponRsdbProcessor<'a> {
     fn invalid_data(message: impl Into<String>) -> io::Error {
         io::Error::new(io::ErrorKind::InvalidData, message.into())
     }
-}
-
-pub(super) fn template_is_shield(
-    clean_romfs: &Path,
-    actor_name: &str,
-    zstd: Arc<TotkZstd<'_>>,
-) -> io::Result<bool> {
-    let mut shared = SharedFiles::new(clean_romfs, clean_romfs, zstd);
-    template_is_shield_with(&mut shared, actor_name)
-}
-
-/// [`template_is_shield`] through the run's shared PouchActorInfo table.
-pub(super) fn template_is_shield_with(
-    shared: &mut SharedFiles<'_>,
-    actor_name: &str,
-) -> io::Result<bool> {
-    let clean_rsdb = shared.clean_romfs().join("RSDB");
-    let (version, _) =
-        super::version::discover_product_file(&clean_rsdb, ACTOR_INFO_PREFIX, PRODUCT_SUFFIX)?;
-    let table = WeaponRsdbProcessor::versioned_rsdb_name("PouchActorInfo", &version)?;
-    let clean_source = clean_rsdb.join(&table);
-    let destination = shared.output_romfs().join("RSDB").join(&table);
-    Ok(
-        WeaponRsdbProcessor::pouch_category(shared, &clean_source, &destination, actor_name)?
-            .as_deref()
-            == Some("Shield"),
-    )
 }
 
 #[cfg(test)]

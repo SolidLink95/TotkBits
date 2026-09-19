@@ -19,7 +19,6 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tegra_swizzle::surface::BlockDim;
 use tegra_swizzle::BlockHeight;
 
@@ -1451,7 +1450,7 @@ pub(crate) fn encode_astc_level(
     image
         .save_with_format(&png, image::ImageFormat::Png)
         .map_err(|error| BntxError::new(0, error.to_string()))?;
-    let output = Command::new(encoder)
+    let output = crate::Settings::hidden_command(encoder)
         .arg(if srgb { "-cs" } else { "-cl" })
         .arg(&png)
         .arg(&astc)

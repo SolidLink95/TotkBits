@@ -4,7 +4,6 @@ use std::{
     collections::BTreeMap,
     env, fs,
     path::{Path, PathBuf},
-    process::Command,
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -51,7 +50,7 @@ impl SevenZipCmd {
 
         validate_command_listing(executable, &archive)?;
 
-        let result = Command::new(executable)
+        let result = crate::Settings::hidden_command(executable)
             .arg("x")
             .arg(&archive)
             .arg(format!("-o{}", output.display()))
@@ -89,7 +88,7 @@ impl SevenZipCmd {
                 .map_err(|e| format!("failed to stage 7z entry {name}: {e}"))?;
         }
 
-        let result = Command::new(executable)
+        let result = crate::Settings::hidden_command(executable)
             .current_dir(&input)
             .arg("a")
             .arg("-t7z")
@@ -198,7 +197,7 @@ fn command_error(action: &str, output: &std::process::Output) -> String {
 }
 
 fn validate_command_listing(executable: &Path, archive: &Path) -> ArchiveResult<()> {
-    let result = Command::new(executable)
+    let result = crate::Settings::hidden_command(executable)
         .arg("l")
         .arg("-slt")
         .arg("-ba")

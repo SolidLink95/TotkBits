@@ -419,6 +419,8 @@ pub fn generate_item_mod_with_options(
     }
     assets::ensure_output_outside_romfs(clean_romfs, output_romfs)?;
     fs::create_dir_all(output_romfs)?;
+    let specs = expand_auto_effect_keys(specs, clean_romfs, zstd.clone())?;
+    let specs = specs.as_slice();
     let mut stopwatch = Stopwatch::new("mod");
     let mut weapons = Vec::new();
     let mut armors = Vec::new();
@@ -469,6 +471,100 @@ pub fn generate_item_mod_with_options(
         elinks,
         rstb,
     })
+}
+
+/// The `effect_keys` entry that stands for "the calls edited in the custom
+/// ELink this item uses" (case-insensitive; `*` is accepted too).
+pub const AUTO_EFFECT_KEYS: &str = "auto";
+
+fn is_auto_effect_key(key: &str) -> bool {
+    let key = key.trim();
+    key.eq_ignore_ascii_case(AUTO_EFFECT_KEYS) || key == "*"
+}
+
+/// Replaces an [`AUTO_EFFECT_KEYS`] entry of a weapon's or armor piece's
+/// `effect_keys` with the search keys of the asset calls edited in the ELink
+/// entry of the same list that its `effect` names (`{"source": "user_name"}`),
+/// so the effect AI emits exactly the customised calls. Other keys are kept;
+/// specs without the entry pass through untouched.
+fn expand_auto_effect_keys(
+    specs: &[ItemSpec],
+    clean_romfs: &Path,
+    zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
+) -> io::Result<Vec<ItemSpec>> {
+    let mut expanded = specs.to_vec();
+    let mut vanilla = None;
+    for spec in &mut expanded {
+        let (actor, effect, keys) = match spec {
+            ItemSpec::Weapon(spec) => (&spec.actor_name, &spec.effect, &mut spec.effect_keys),
+            ItemSpec::Armor(spec) => (&spec.actor_name, &spec.effect, &mut spec.effect_keys),
+            ItemSpec::Elink(_) => continue,
+        };
+        if !keys.iter().any(|key| is_auto_effect_key(key)) {
+            continue;
+        }
+        let user = match effect {
+            Some(actor_pack::LinkParameterSource::UserName { user_name }) => user_name.trim(),
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "{actor}: effect_keys \"{AUTO_EFFECT_KEYS}\" needs the effect to name an ELink user of this list ({{\"source\": \"user_name\", \"user_name\": …}})"
+                    ),
+                ));
+            }
+        };
+        let elink = specs
+            .iter()
+            .find_map(|spec| match spec {
+                ItemSpec::Elink(request) if request.new_name.trim() == user => Some(request),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "{actor}: effect_keys \"{AUTO_EFFECT_KEYS}\" needs an ELink entry named {user} in the same list"
+                    ),
+                )
+            })?;
+        let text = match &vanilla {
+            Some(text) => std::sync::Arc::clone(text),
+            None => {
+                let text = crate::tools::elink_creator::vanilla_text(clean_romfs, zstd.clone())?;
+                vanilla = Some(text.clone());
+                text
+            }
+        };
+        let derived = crate::tools::elink_creator::edited_entry_keys(
+            &text,
+            elink.base_user.trim(),
+            &elink.entries,
+        )?;
+        if derived.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "{actor}: effect_keys \"{AUTO_EFFECT_KEYS}\" found no edited asset call in the ELink entry {user}; edit the calls to emit (e.g. give them a Bone) or list the keys by name"
+                ),
+            ));
+        }
+        let mut resolved: Vec<String> = Vec::new();
+        for key in keys.iter() {
+            let candidates: Vec<String> = if is_auto_effect_key(key) {
+                derived.clone()
+            } else {
+                vec![key.clone()]
+            };
+            for candidate in candidates {
+                if !resolved.contains(&candidate) {
+                    resolved.push(candidate);
+                }
+            }
+        }
+        *keys = resolved;
+    }
+    Ok(expanded)
 }
 
 /// Phase timer for runs with `TOTKBITS_ITEMS_TIMING=1` in the environment:
@@ -678,9 +774,6 @@ impl WeaponSpec {
         let policy = if self.actor_pack == actor_pack::ActorPackPolicy::default() {
             let mut parameters = self.weapon_parameters.clone();
             parameters.model_name = Some(self.effective_model_name().to_owned());
-            if rsdb::template_is_shield_with(shared, &self.template_actor)? {
-                parameters.shield_bash_damage = None;
-            }
             // Template packs differ in which component files they carry
             // themselves, so the policy is derived from the real pack.
             generated_policy = actor_pack::ActorPackPolicy::standard_item_clone_for_template(
@@ -750,7 +843,11 @@ impl WeaponSpec {
             actor_name: self.actor_name.clone(),
             template_actor: self.template_actor.clone(),
             model_name: Some(self.effective_model_name().to_owned()),
-            max_life: self.weapon_parameters.max_life,
+            max_life: if self.weapon_parameters.indestructible {
+                None
+            } else {
+                self.weapon_parameters.max_life
+            },
             equipment_performance: self.weapon_parameters.base_attack,
             buying_price: self.vendors.first().and_then(|vendor| vendor.buying_price),
             selling_price: self.vendors.first().and_then(|vendor| vendor.selling_price),

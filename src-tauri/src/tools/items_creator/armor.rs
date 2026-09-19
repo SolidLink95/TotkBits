@@ -900,6 +900,18 @@ impl ArmorSpec {
                     let components = map_child_mut(&mut document.pio, "Components")?;
                     components.insert(kind.component_key().into(), byml_string(format!("?{path}")));
                 }
+                // Vanilla armor templates carry no XLink component, and
+                // without one the game never creates the piece's SLink /
+                // ELink users: the shared ActorBasic reference binds them.
+                // The rank packs clone this ActorParam, so every embedded
+                // copy carries it.
+                if !links.is_empty() && actor_pack::needs_xlink_component(&document.pio) {
+                    let components = map_child_mut(&mut document.pio, "Components")?;
+                    components.insert(
+                        "XLinkRef".into(),
+                        byml_string(actor_pack::XLINK_ACTOR_BASIC_REF),
+                    );
+                }
                 if let Some(effect_ai) = &effect_ai {
                     let components = map_child_mut(&mut document.pio, "Components")?;
                     components.insert(

@@ -84,9 +84,9 @@ impl TypeTable {
             }))
         };
         for source_index in additions {
-            let named = source
-                .named_types
-                .get(source_index as usize - 1)
+            let named = (source_index as usize)
+                .checked_sub(1)
+                .and_then(|index| source.named_types.get(index))
                 .ok_or_else(|| invalid("source TYPE record is missing"))?;
             let remap = |index: u32| {
                 source_to_merged

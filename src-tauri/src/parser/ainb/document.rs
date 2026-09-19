@@ -325,7 +325,13 @@ impl AinbDocument {
             node_parameter_tail_bytes.push(if tail_size == 0 {
                 String::new()
             } else {
-                data[end - tail_size..end]
+                data.get(end - tail_size..end)
+                    .ok_or_else(|| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("AINB node {index} parameters end past the file"),
+                        )
+                    })?
                     .iter()
                     .map(|byte| format!("{byte:02x}"))
                     .collect()

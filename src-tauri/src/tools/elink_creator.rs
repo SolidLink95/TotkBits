@@ -1,8 +1,10 @@
 //! "Add ELink" tool: clones a user of `ELink2/elink2.Product.*.belnk.zs` under
 //! a new name with edited asset-call parameters (position, rotation, scale,
 //! color, emission, bone, emitter set), clones the user's own emitter-set file
-//! `Effect/<user>.Nin_NX_NVN.esetb.byml.zs` under the new name and refreshes
-//! the output mod's RSTB.
+//! `Effect/<user>.Nin_NX_NVN.esetb.byml.zs` under the new name, registers
+//! that file in `Effect/EffectFileInfo.Product.*.Nin_NX_NVN.byml.zs` (the
+//! game only loads emitter-set files listed there) and refreshes the output
+//! mod's RSTB.
 //!
 //! The ELink text produced by the native converter is a brace tree: a line
 //! ending in `{` opens a node, a lone `}` closes it and everything else is a
@@ -14,6 +16,7 @@
 use crate::{
     file_format::Xlink::Xlink_rs, tools::items_creator::rstb::ModRstbProcessor, Zstd::TotkZstd,
 };
+use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -222,6 +225,12 @@ pub struct AssetEntry {
     /// Human readable location: table, blend/switch branches, asset name.
     pub path: String,
     pub asset_name: String,
+    /// Name of the asset-call node holding this call, the key an XLink
+    /// search (`OneShotXLinkSearchAndEmit`, the items creator's effect AI)
+    /// looks up: the table entry for a top-level call (`Throw_Activate`),
+    /// the branch node for a nested one (`古代矢完成` under
+    /// `ArrowCharge_Complete`).
+    pub key: String,
     /// Current values of the editable parameters that the text spells out
     /// (strings unquoted, floats as written, `CURVE` for curve-driven ones).
     pub params: BTreeMap<String, String>,
@@ -282,6 +291,21 @@ struct AssetNode<'a> {
     table: String,
     path: String,
     asset_name: String,
+    key: String,
+}
+
+/// The searchable name of the node whose `Execute = Asset` child is an
+/// asset call, or `None` for a structural node (`Execute = Blend` …).
+fn search_key(label: &str) -> Option<String> {
+    if label.starts_with("Execute = ") {
+        return None;
+    }
+    let name = match label.split_once(" => ") {
+        Some((_, name)) => name.trim(),
+        None => label,
+    };
+    let name = strip_hash(name).trim();
+    (!name.is_empty()).then(|| name.to_owned())
 }
 
 fn collect_assets<'a>(
@@ -311,6 +335,7 @@ fn collect_assets<'a>(
                 node: child,
                 table: trail.first().cloned().unwrap_or_default(),
                 path: path.join(" › "),
+                key: search_key(&node.label).unwrap_or_else(|| asset_name.clone()),
                 asset_name,
             });
             continue;
@@ -374,9 +399,44 @@ pub fn user_assets(text: &str, user: &str) -> io::Result<Vec<AssetEntry>> {
             table: asset.table,
             path: asset.path,
             asset_name: asset.asset_name,
+            key: asset.key,
             params: entry_params(asset.node, &lines),
         })
         .collect())
+}
+
+/// The XLink search keys of the asset calls `edits` change (an edit with no
+/// parameters is ignored), in edit order without repeats: what an effect AI
+/// should emit so exactly the customised calls play. A search finds calls by
+/// name, so an edited call whose name another call of the user shares
+/// (`ポイントライト` sits under both `Blade` and `ArrowCharge` of
+/// `Item_Weapon_01`) is rejected: the game could emit the other one.
+pub fn edited_entry_keys(text: &str, user: &str, edits: &[EntryEdit]) -> io::Result<Vec<String>> {
+    let assets = user_assets(text, user)?;
+    let mut keys: Vec<String> = Vec::new();
+    for edit in edits.iter().filter(|edit| !edit.params.is_empty()) {
+        let asset = assets
+            .get(edit.id)
+            .ok_or_else(|| invalid(format!("asset entry {} does not exist in {user}", edit.id)))?;
+        let twins: Vec<String> = assets
+            .iter()
+            .filter(|other| other.id != asset.id && other.key == asset.key)
+            .map(|other| format!("{} ({})", other.id, other.path))
+            .collect();
+        if !twins.is_empty() {
+            return Err(invalid(format!(
+                "asset entry {} ({}) cannot be emitted by name: {user} also has {} named {}; edit an entry with a unique name instead (its RuntimeAssetName can be changed to the same emitter set)",
+                asset.id,
+                asset.path,
+                twins.join(", "),
+                asset.key
+            )));
+        }
+        if !keys.contains(&asset.key) {
+            keys.push(asset.key.clone());
+        }
+    }
+    Ok(keys)
 }
 
 /// Number of asset calls of every user (for the picker).
@@ -640,7 +700,11 @@ pub fn elink_text(path: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Arc<String
     let modified = fs::metadata(path)
         .and_then(|meta| meta.modified())
         .map_err(|error| io::Error::new(error.kind(), format!("{}: {error}", path.display())))?;
-    if let Some((stamp, text)) = text_cache().lock().unwrap().get(path) {
+    if let Some((stamp, text)) = text_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(path)
+    {
         if *stamp == modified {
             return Ok(text.clone());
         }
@@ -649,7 +713,7 @@ pub fn elink_text(path: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Arc<String
     let text = Arc::new(Xlink_rs::new(zstd)?.binary_to_yaml(&data)?);
     text_cache()
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .insert(path.to_path_buf(), (modified, text.clone()));
     Ok(text)
 }
@@ -662,6 +726,110 @@ pub fn vanilla_text(romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Arc<Str
 
 pub fn esetb_path(romfs: &Path, user: &str) -> PathBuf {
     romfs.join("Effect").join(format!("{user}{ESETB_SUFFIX}"))
+}
+
+/// RomFS-relative path of the versioned emitter-set registry
+/// (`Effect/EffectFileInfo.Product.NNN.Nin_NX_NVN.byml.zs`).
+pub fn effect_file_info_relative_path(romfs: &Path) -> io::Result<String> {
+    let dir = romfs.join("Effect");
+    let mut best: Option<(u32, String)> = None;
+    for entry in fs::read_dir(&dir)
+        .map_err(|error| io::Error::new(error.kind(), format!("{}: {error}", dir.display())))?
+    {
+        let name = entry?.file_name().to_string_lossy().into_owned();
+        let Some(version) = name
+            .strip_prefix("EffectFileInfo.Product.")
+            .and_then(|rest| rest.strip_suffix(".Nin_NX_NVN.byml.zs"))
+            .and_then(|version| version.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        if best.as_ref().map_or(true, |(v, _)| version > *v) {
+            best = Some((version, name));
+        }
+    }
+    best.map(|(_, name)| format!("Effect/{name}"))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "no Effect/EffectFileInfo.Product.*.Nin_NX_NVN.byml.zs in the RomFS",
+            )
+        })
+}
+
+/// Registers `user` in the emitter-set registry `info`: `BinaryDict` maps
+/// the name to itself and `EsetbList` lists it (inserted where the mostly
+/// alphabetical list would have it). Returns whether anything changed.
+pub fn register_esetb_user(info: &mut Byml, user: &str) -> io::Result<bool> {
+    let root = info
+        .as_mut_map()
+        .map_err(|_| invalid("EffectFileInfo root is not a map"))?;
+    let mut changed = false;
+    let dict = root
+        .get_mut("BinaryDict")
+        .ok_or_else(|| invalid("EffectFileInfo has no BinaryDict"))?
+        .as_mut_map()
+        .map_err(|_| invalid("EffectFileInfo BinaryDict is not a map"))?;
+    if !dict.contains_key(user) {
+        dict.insert(user.into(), Byml::String(user.into()));
+        changed = true;
+    }
+    let list = root
+        .get_mut("EsetbList")
+        .ok_or_else(|| invalid("EffectFileInfo has no EsetbList"))?
+        .as_mut_array()
+        .map_err(|_| invalid("EffectFileInfo EsetbList is not an array"))?;
+    let listed = list
+        .iter()
+        .any(|value| value.as_string().is_ok_and(|name| name.as_str() == user));
+    if !listed {
+        let index = list
+            .iter()
+            .position(|value| value.as_string().is_ok_and(|name| name.as_str() > user))
+            .unwrap_or(list.len());
+        list.insert(index, Byml::String(user.into()));
+        changed = true;
+    }
+    Ok(changed)
+}
+
+/// Writes the registry with `user` added below `output_romfs`, building on
+/// the mod's own copy when a previous run left one.
+fn register_esetb_in_mod(
+    clean_romfs: &Path,
+    output_romfs: &Path,
+    user: &str,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<PathBuf> {
+    let relative = effect_file_info_relative_path(clean_romfs)?;
+    let destination = output_romfs.join(&relative);
+    let source = if destination.is_file() {
+        destination.clone()
+    } else {
+        clean_romfs.join(&relative)
+    };
+    let data = zstd.try_decompress(&fs::read(&source).map_err(|error| {
+        io::Error::new(error.kind(), format!("{}: {error}", source.display()))
+    })?)?;
+    let mut info = Byml::from_binary(&data)
+        .map_err(|error| invalid(format!("{}: {error}", source.display())))?;
+    register_esetb_user(&mut info, user)?;
+    // Written with the version the vanilla file carries (5), which the
+    // writer's default header does not reproduce.
+    let mut binary = Vec::new();
+    info.write(&mut io::Cursor::new(&mut binary), roead::Endian::Little, 4)
+        .map_err(|error| invalid(format!("EffectFileInfo serialization failed: {error}")))?;
+    if binary.len() < 4 || data.len() < 4 {
+        return Err(invalid("EffectFileInfo header is truncated"));
+    }
+    binary[2..4].copy_from_slice(&data[2..4]);
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&destination, zstd.compress_zs(&binary)?).map_err(|error| {
+        io::Error::new(error.kind(), format!("{}: {error}", destination.display()))
+    })?;
+    Ok(destination)
 }
 
 /// A copy of the decompressed emitter-set file `data` whose PTCL header names
@@ -732,6 +900,9 @@ pub struct ElinkReport {
     pub output_romfs: PathBuf,
     pub elink: PathBuf,
     pub esetb: Option<PathBuf>,
+    /// The emitter-set registry with the new user added (written whenever
+    /// an emitter-set file was cloned).
+    pub effect_file_info: Option<PathBuf>,
     pub rstb_entries: Option<usize>,
     pub edited_entries: usize,
     pub notes: Vec<String>,
@@ -793,20 +964,33 @@ pub fn generate(
     fs::write(&destination, compressed).map_err(|error| {
         io::Error::new(error.kind(), format!("{}: {error}", destination.display()))
     })?;
-    text_cache().lock().unwrap().remove(&destination);
+    text_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&destination);
 
     let mut esetb = None;
+    let mut effect_file_info = None;
     if request.clone_esetb {
         let source = esetb_path(clean_romfs, base_user);
         if source.is_file() {
             let data = zstd.try_decompress(&fs::read(&source)?)?;
             let renamed = rename_esetb(&data, base_user, new_name)?;
             let target = esetb_path(output_romfs, new_name);
-            fs::create_dir_all(target.parent().expect("Effect folder"))?;
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
             fs::write(&target, zstd.compress_zs(&renamed)?).map_err(|error| {
                 io::Error::new(error.kind(), format!("{}: {error}", target.display()))
             })?;
             esetb = Some(target);
+            // The game loads only the emitter-set files the registry lists.
+            effect_file_info = Some(register_esetb_in_mod(
+                clean_romfs,
+                output_romfs,
+                new_name,
+                zstd.clone(),
+            )?);
         } else {
             notes.push(format!(
                 "{base_user} has no emitter-set file of its own (it only uses shared effects from Effect/static), so none was cloned"
@@ -824,6 +1008,7 @@ pub fn generate(
         output_romfs: output_romfs.to_path_buf(),
         elink: destination,
         esetb,
+        effect_file_info,
         rstb_entries,
         new_name: new_name.to_owned(),
         base_user: base_user.to_owned(),
@@ -840,23 +1025,83 @@ pub fn generate(
 mod tests {
     use super::*;
 
-    const SAMPLE: &str = "Metadata {\n  ModuleType = ELink\n}\nUsers {\n  Other {\n    Unknown = 0\n  }\n  Item_Weapon_01 {\n    Unknown = 0\n    LocalProperties {\n      Attachment_IsAttached\n    }\n    AssetCallTables {\n      Blade[0x6e007fe2] {\n        EmitCount = 1\n        Execute = Blend {\n          鏃[0xd9e18d9d] {\n            Execute = Asset {\n              AssetName = \"鏃\"\n              RuntimeAssetName = \"Wpn_AncientArrow_Blade\"\n              Scale = 1.60000002\n              PositionX = -0.109999999\n              Bone = \"Root\"\n            }\n          }\n        }\n      }\n      OnPouch[0x7eca75ba] {\n        Execute = Switch (Local::Attachment_IsAttached) {\n          (<value> == 1) => Held[0xdf69978e] {\n            Execute = Asset {\n              AssetName = \"Held\"\n              RuntimeAssetName = \"Wpn_AncientArrow_Blade_OnPouch\"\n              Red = CURVE\n            }\n          }\n        }\n      }\n    }\n  }\n}\n";
+    const SAMPLE: &str = "Metadata {\n  ModuleType = ELink\n}\nUsers {\n  Other {\n    Unknown = 0\n  }\n  Item_Weapon_01 {\n    Unknown = 0\n    LocalProperties {\n      Attachment_IsAttached\n    }\n    AssetCallTables {\n      Blade[0x6e007fe2] {\n        EmitCount = 1\n        Execute = Blend {\n          鏃[0xd9e18d9d] {\n            Execute = Asset {\n              AssetName = \"鏃\"\n              RuntimeAssetName = \"Wpn_AncientArrow_Blade\"\n              Scale = 1.60000002\n              PositionX = -0.109999999\n              Bone = \"Root\"\n            }\n          }\n        }\n      }\n      OnPouch[0x7eca75ba] {\n        Execute = Switch (Local::Attachment_IsAttached) {\n          (<value> == 1) => Held[0xdf69978e] {\n            Execute = Asset {\n              AssetName = \"Held\"\n              RuntimeAssetName = \"Wpn_AncientArrow_Blade_OnPouch\"\n              Red = CURVE\n            }\n          }\n        }\n      }\n      Charge[0x11111111] {\n        Execute = Blend {\n          Light[0x22222222] {\n            Execute = Asset {\n              AssetName = \"Light\"\n              RuntimeAssetName = \"Charge_Light\"\n            }\n          }\n        }\n      }\n      Blade2[0x33333333] {\n        Execute = Blend {\n          Light[0x44444444] {\n            Execute = Asset {\n              AssetName = \"Light\"\n              RuntimeAssetName = \"Blade_Light\"\n            }\n          }\n        }\n      }\n    }\n  }\n}\n";
 
     #[test]
     fn lists_users_and_assets() {
         assert_eq!(list_users(SAMPLE).unwrap(), vec!["Other", "Item_Weapon_01"]);
         let assets = user_assets(SAMPLE, "Item_Weapon_01").unwrap();
-        assert_eq!(assets.len(), 2);
+        assert_eq!(assets.len(), 4);
         assert_eq!(assets[0].table, "Blade");
         assert_eq!(assets[0].path, "Blade › 鏃");
         assert_eq!(assets[0].params["Scale"], "1.60000002");
         assert_eq!(assets[0].params["Bone"], "Root");
+        assert_eq!(assets[0].key, "鏃");
         assert_eq!(
             assets[1].path,
             "OnPouch › Held ⟨Attachment_IsAttached == 1⟩"
         );
         assert_eq!(assets[1].params["Red"], "CURVE");
-        assert_eq!(asset_counts(SAMPLE).unwrap()["Item_Weapon_01"], 2);
+        assert_eq!(assets[1].key, "Held");
+        assert_eq!(asset_counts(SAMPLE).unwrap()["Item_Weapon_01"], 4);
+        assert_eq!(assets[2].key, "Light");
+        assert_eq!(assets[3].key, "Light");
+        // Keys of the edited calls only, in edit order, without repeats.
+        let mut bone = BTreeMap::new();
+        bone.insert("Bone".to_owned(), Some("Wrist_R".to_owned()));
+        let edits = vec![
+            EntryEdit {
+                id: 1,
+                params: bone.clone(),
+            },
+            EntryEdit {
+                id: 0,
+                params: BTreeMap::new(),
+            },
+            EntryEdit {
+                id: 1,
+                params: bone,
+            },
+        ];
+        assert_eq!(
+            edited_entry_keys(SAMPLE, "Item_Weapon_01", &edits).unwrap(),
+            vec!["Held".to_owned()]
+        );
+        assert!(edited_entry_keys(
+            SAMPLE,
+            "Item_Weapon_01",
+            &[EntryEdit {
+                id: 9,
+                params: Default::default()
+            }]
+        )
+        .unwrap()
+        .is_empty());
+        let mut missing = BTreeMap::new();
+        missing.insert("Bone".to_owned(), Some("X".to_owned()));
+        assert!(edited_entry_keys(
+            SAMPLE,
+            "Item_Weapon_01",
+            &[EntryEdit {
+                id: 9,
+                params: missing.clone()
+            }]
+        )
+        .is_err());
+        // A name two calls share cannot be emitted by name.
+        let ambiguous = edited_entry_keys(
+            SAMPLE,
+            "Item_Weapon_01",
+            &[EntryEdit {
+                id: 2,
+                params: missing,
+            }],
+        )
+        .unwrap_err();
+        assert!(
+            ambiguous.to_string().contains("3 (Blade2 › Light)"),
+            "{ambiguous}"
+        );
     }
 
     #[test]
@@ -927,7 +1172,17 @@ mod tests {
         let report = generate(&request, &romfs, &out, zstd.clone()).unwrap();
         println!("{report:#?}");
         assert!(report.esetb.as_ref().unwrap().is_file());
-        assert!(report.rstb_entries.unwrap() >= 2);
+        let info = zstd
+            .try_decompress(&fs::read(report.effect_file_info.as_ref().unwrap()).unwrap())
+            .unwrap();
+        assert_eq!(&info[..4], b"YB\x05\x00");
+        let info = Byml::from_binary(&info).unwrap();
+        assert!(info.as_map().unwrap()["EsetbList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v.as_string().unwrap().as_str() == "Item_Weapon_01_custom"));
+        assert!(report.rstb_entries.unwrap() >= 3);
         let text = elink_text(&report.elink, zstd.clone()).unwrap();
         assert!(list_users(&text)
             .unwrap()
@@ -958,6 +1213,48 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn registers_user_in_effect_file_info() {
+        let mut dict = roead::byml::Map::default();
+        dict.insert(
+            "Item_Weapon_01".into(),
+            Byml::String("Item_Weapon_01".into()),
+        );
+        let mut root = roead::byml::Map::default();
+        root.insert("BinaryDict".into(), Byml::Map(dict));
+        root.insert(
+            "EsetbList".into(),
+            Byml::Array(vec![
+                Byml::String("Item_Weapon_01".into()),
+                Byml::String("Keese".into()),
+                Byml::String("Zora".into()),
+            ]),
+        );
+        let mut info = Byml::Map(root);
+        assert!(register_esetb_user(&mut info, "Monk_Maz_Koshia_Wrist_R").unwrap());
+        let root = info.as_map().unwrap();
+        assert_eq!(
+            root["BinaryDict"].as_map().unwrap()["Monk_Maz_Koshia_Wrist_R"]
+                .as_string()
+                .unwrap(),
+            "Monk_Maz_Koshia_Wrist_R"
+        );
+        let list: Vec<&str> = root["EsetbList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_string().unwrap().as_str())
+            .collect();
+        assert_eq!(
+            list,
+            ["Item_Weapon_01", "Keese", "Monk_Maz_Koshia_Wrist_R", "Zora"]
+        );
+        // Registering again changes nothing.
+        assert!(!register_esetb_user(&mut info, "Monk_Maz_Koshia_Wrist_R").unwrap());
+        let mut bare = Byml::Map(roead::byml::Map::default());
+        assert!(register_esetb_user(&mut bare, "X").is_err());
     }
 
     #[test]

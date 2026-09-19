@@ -100,6 +100,11 @@ pub struct WeaponParameterOverrides {
     pub base_attack: Option<i32>,
     #[serde(default)]
     pub max_life: Option<i32>,
+    /// Writes `InitInvincibilityType: InvincibleNoDamageReaction` into the
+    /// actor's LifeParam so the item never loses durability; `max_life` is
+    /// then ignored.
+    #[serde(default)]
+    pub indestructible: bool,
     #[serde(default)]
     pub additional_damage: Option<i32>,
     #[serde(default)]
@@ -156,6 +161,9 @@ pub struct WeaponPackRequest {
     pub base_attack: Option<i32>,
     #[serde(default, alias = "dur")]
     pub durability: Option<i32>,
+    /// The item never loses durability (LifeParam `InitInvincibilityType`).
+    #[serde(default, alias = "invincible")]
+    pub indestructible: bool,
     #[serde(default)]
     pub chemical_ref: Option<String>,
     /// Existing vanilla actor whose complete chemical bundle should be reused.
@@ -339,18 +347,17 @@ impl WeaponPackRequest {
             )));
         }
         validate_item_template_category(clean_romfs, &self.template_actor, kind, zstd.clone())?;
-        let shield_bash_damage =
-            if super::rsdb::template_is_shield(clean_romfs, &self.template_actor, zstd.clone())? {
-                None
-            } else {
-                self.shield_bash_damage
-            };
         let overrides = WeaponParameterOverrides {
             model_name: self.model_name.clone(),
             base_attack: self.base_attack,
-            max_life: self.durability,
+            max_life: if self.indestructible {
+                None
+            } else {
+                self.durability
+            },
+            indestructible: self.indestructible,
             additional_damage: self.attachment_damage,
-            shield_bash_damage,
+            shield_bash_damage: self.shield_bash_damage,
             chemical_ref: self.chemical_ref.clone(),
         };
         let mut policy = if explicit_kind.is_some() {
@@ -452,6 +459,22 @@ pub fn clone_vanilla_actor_pack_with_links(
         // The donor's file supersedes the template's own link entry.
         replaced_prefixes.push(kind.entry_prefix());
         injected.push(InjectedPackEntry { path, data });
+    }
+    // A link user only works on an actor that has an XLink component; a
+    // template without one (and without a parent to inherit it from) gets
+    // the shared ActorBasic reference.
+    if !injected.is_empty() {
+        let pack_path = clean_romfs
+            .join("Pack/Actor")
+            .join(format!("{template_actor}.pack.zs"));
+        let pack = PackFile::from_binary(&fs::read(&pack_path)?, zstd.clone())?;
+        if needs_xlink_component(&parse_pack_byml(&pack, &template_actor_file)?) {
+            policy.parameter_edits.push(string_edit_insert(
+                &actor_file,
+                &["Components", "XLinkRef"],
+                XLINK_ACTOR_BASIC_REF.to_owned(),
+            ));
+        }
     }
     // Advanced effect: a root AI that emits the chosen ELink keys at spawn.
     // It supersedes whatever root AI the template had.
@@ -1176,7 +1199,7 @@ impl ActorPackPolicy {
             "AttachmentRef" => {
                 overrides.additional_damage.is_some() || overrides.shield_bash_damage.is_some()
             }
-            "LifeRef" => overrides.max_life.is_some(),
+            "LifeRef" => overrides.max_life.is_some() || overrides.indestructible,
             "ModelInfoRef" => overrides.model_name.is_some(),
             _ => overrides.base_attack.is_some() || write_kind,
         };
@@ -1387,14 +1410,24 @@ impl ActorPackPolicy {
             };
             parameter_edits.push(i32_edit(&parameter_file, &[strength_key], value));
         }
-        if let Some(value) = overrides.max_life {
+        if overrides.indestructible {
+            parameter_edits.push(string_edit_insert(
+                &life_param_file,
+                &["InitInvincibilityType"],
+                "InvincibleNoDamageReaction".to_owned(),
+            ));
+        } else if let Some(value) = overrides.max_life {
             parameter_edits.push(i32_edit(&life_file, &["MaxLife"], value));
         }
         if let Some(value) = overrides.additional_damage {
             parameter_edits.push(i32_edit(&attachment_file, &["AdditionalDamage"], value));
         }
         if let Some(value) = overrides.shield_bash_damage {
-            parameter_edits.push(i32_edit(&attachment_file, &["ShieldBashDamage"], value));
+            // Vanilla shields carry no ShieldBashDamage of their own, so the
+            // key is added when the template's AttachmentParam lacks it.
+            let mut edit = i32_edit(&attachment_file, &["ShieldBashDamage"], value);
+            edit.insert_if_missing = true;
+            parameter_edits.push(edit);
         }
         if let Some(value) = overrides.chemical_ref {
             parameter_edits.push(BymlParameterEdit {
@@ -1625,6 +1658,31 @@ pub fn load_weapon_actor_info(
 
 fn parse_pack_byml(pack: &PackFile<'_>, path: &str) -> io::Result<Byml> {
     pack.byml_file(path).map(|file| file.pio)
+}
+
+/// The shared XLink component every actor with its own SLink / ELink user
+/// needs. Vanilla armor has no XLink component at all (the only vanilla
+/// piece with an ELink user, the Korok mask, binds exactly this one); the
+/// file lives in `Pack/ResidentCommon.pack.zs`, so the reference alone is
+/// enough. Without it the game never instantiates the link users of the
+/// actor and every emit, including the effect AI's, silently does nothing.
+pub(super) const XLINK_ACTOR_BASIC_REF: &str =
+    "?Component/XLink/ActorBasic.engine__component__XLinkParam.bgyml";
+
+/// Whether `actor_param` needs [`XLINK_ACTOR_BASIC_REF`] inserted before a
+/// link component can work: it declares no `XLinkRef` of its own and has no
+/// `$parent` that could inherit one (weapon actors inherit `DirectWeapon`
+/// from `Weapon_Base`, which must not be overridden).
+pub(super) fn needs_xlink_component(actor_param: &Byml) -> bool {
+    let Ok(map) = actor_param.as_map() else {
+        return false;
+    };
+    if map.contains_key("$parent") {
+        return false;
+    }
+    !map.get("Components")
+        .and_then(|components| components.as_map().ok())
+        .is_some_and(|components| components.contains_key("XLinkRef"))
 }
 
 fn expect_map<'a>(value: &'a Byml, path: &str) -> io::Result<&'a roead::byml::Map> {
@@ -2022,6 +2080,33 @@ fn invalid(message: impl Into<String>) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn xlink_component_is_needed_only_without_parent_or_own_reference() {
+        let armor = Byml::from_text(
+            "Category: Armor
+Components:
+  ELinkRef: '?Component/ELink/X.engine__component__ELinkParam.bgyml'
+",
+        )
+        .unwrap();
+        assert!(needs_xlink_component(&armor));
+        let bound = Byml::from_text(
+            "Category: Armor
+Components:
+  XLinkRef: '?Component/XLink/ActorBasic.engine__component__XLinkParam.bgyml'
+",
+        )
+        .unwrap();
+        assert!(!needs_xlink_component(&bound));
+        let weapon = Byml::from_text(
+            "$parent: Work/Actor/Weapon_Sword_Base.engine__actor__ActorParam.gyml
+Components: {}
+",
+        )
+        .unwrap();
+        assert!(!needs_xlink_component(&weapon));
+    }
     use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
     use roead::sarc::{Sarc, SarcWriter};
 
@@ -2118,6 +2203,7 @@ mod tests {
                 model_name: Some("Weapon_Lsword_005".into()),
                 base_attack: Some(18),
                 max_life: Some(27),
+                indestructible: false,
                 additional_damage: Some(18),
                 shield_bash_damage: Some(18),
                 chemical_ref: None,
@@ -2583,6 +2669,7 @@ mod tests {
                 model_name: Some("Weapon_Lsword_005".into()),
                 base_attack: Some(18),
                 max_life: Some(27),
+                indestructible: false,
                 additional_damage: Some(18),
                 shield_bash_damage: Some(18),
                 chemical_ref: None,
@@ -2702,6 +2789,7 @@ mod tests {
             model_name: None,
             base_attack: None,
             durability: None,
+            indestructible: false,
             chemical_ref: None,
             chemical: Some("Weapon_Lsword_103".into()),
             attachment_damage: None,
@@ -2835,6 +2923,7 @@ mod tests {
             model_name: None,
             base_attack: None,
             durability: None,
+            indestructible: false,
             chemical_ref: None,
             chemical: None,
             attachment_damage: None,

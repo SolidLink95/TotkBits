@@ -102,7 +102,7 @@ pub(crate) fn cache_directory() -> PathBuf {
 pub fn get_startup_data(
     state: tauri::State<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
-    Ok((*state.inner()).clone())
+    crate::Settings::catch_panic(move || Ok((*state.inner()).clone()))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

@@ -102,7 +102,13 @@
     text-transform: uppercase;
 }
 .item-creator-form .item-creator-check { display: flex; align-items: center; gap: 8px; }
+.item-creator-keys-row { display: flex; gap: 6px; align-items: center; }
+.item-creator-keys-row input { flex: 1; min-width: 0; }
+.item-creator-keys-row button { white-space: nowrap; }
 .item-creator-form .item-creator-hint { color: #888; font-size: 12px; }
+/* A hint placed directly in the two-column form takes the field column of its own row
+   instead of swallowing the next label cell and shifting everything after it. */
+.item-creator-form > .item-creator-hint { grid-column: 2; }
 .item-creator-form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 .item-creator-upgrades { display: flex; flex-direction: column; gap: 6px; }
 .item-creator-upgrade { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; border: 1px solid #3d3d3d; border-radius: 4px; background: #262626; }
@@ -197,7 +203,7 @@
 
 .item-creator-footer { flex: none; display: flex; flex-direction: column; gap: 8px; }
 .item-creator-header, .item-creator-toprow { flex: none; }
-.item-creator-footer .item-creator-primary { padding: 10px; font-size: 15px; }
+.item-creator-content-actions .item-creator-primary { padding: 10px; font-size: 15px; margin-top: 6px; }
 .item-creator-status {
     padding: 8px 12px;
     border-radius: 3px;

@@ -613,6 +613,9 @@ fn sample_components(
 }
 
 fn evaluate_channel(channel: &SplineChannel, time: f32) -> io::Result<f32> {
+    if channel.times.is_empty() || channel.values.len() != channel.times.len() {
+        return Err(invalid("G1A spline channel has no keyframes"));
+    }
     let index = channel
         .times
         .iter()

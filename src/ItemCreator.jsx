@@ -33,6 +33,7 @@ const emptyForm = (tab) => ({
     baseName: '',
     baseAttack: '',
     maxLife: '',
+    indestructible: false,
     additionalDamage: '',
     shieldBashDamage: '',
     defense: '',
@@ -267,9 +268,10 @@ function buildSpec(tab, form, vendor) {
     }
     const parameters = {};
     if (toInt(form.baseAttack) !== undefined) parameters.base_attack = toInt(form.baseAttack);
-    if (toInt(form.maxLife) !== undefined) parameters.max_life = toInt(form.maxLife);
+    if (form.indestructible) parameters.indestructible = true;
+    else if (toInt(form.maxLife) !== undefined) parameters.max_life = toInt(form.maxLife);
     if (toInt(form.additionalDamage) !== undefined) parameters.additional_damage = toInt(form.additionalDamage);
-    if (toInt(form.shieldBashDamage) !== undefined) parameters.shield_bash_damage = toInt(form.shieldBashDamage);
+    if (form.kind === 'Shield' && toInt(form.shieldBashDamage) !== undefined) parameters.shield_bash_damage = toInt(form.shieldBashDamage);
     const assets = {};
     if (form.fbx) assets.fbx = form.fbx;
     if (form.iconPng) assets.icon_png = form.iconPng;
@@ -346,6 +348,7 @@ function formFromSpec(spec, ingredientAliases = {}, catalogActors = new Set()) {
         form.baseName = spec.base_name || '';
         form.baseAttack = spec.weapon_parameters?.base_attack ?? '';
         form.maxLife = spec.weapon_parameters?.max_life ?? '';
+        form.indestructible = Boolean(spec.weapon_parameters?.indestructible);
         form.additionalDamage = spec.weapon_parameters?.additional_damage ?? '';
         form.shieldBashDamage = spec.weapon_parameters?.shield_bash_damage ?? '';
     }
@@ -416,7 +419,7 @@ function ItemCreator({ activeTab, setStatusText }) {
     const [outputDir, setOutputDir] = useState('');
     const [vendor, setVendor] = useState('');
     const [zstdLevel, setZstdLevel] = useState('');
-    const [generateRstb, setGenerateRstb] = useState(true);
+    const [generateRstb, setGenerateRstb] = useState(false);
     /** ELink entry of the mod list being edited on the Add ELink tab, if any. */
     const [elinkEditing, setElinkEditing] = useState(null);
     const [tab, setTab] = useState('weapon');
@@ -425,6 +428,7 @@ function ItemCreator({ activeTab, setStatusText }) {
     const [templateUpgrades, setTemplateUpgrades] = useState([]);
     const [hideUpgrades, setHideUpgrades] = useState(true);
     const [items, setItems] = useState([]);
+    const [fillingKeys, setFillingKeys] = useState(false);
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [editingIndex, setEditingIndex] = useState(-1);
     const [formError, setFormError] = useState('');
@@ -740,9 +744,13 @@ function ItemCreator({ activeTab, setStatusText }) {
             setElinkEditing(null);
             const vendorName = valid.find((spec) => spec.vendors?.[0]?.actor_name)?.vendors[0].actor_name;
             if (vendorName) setVendor(vendorName);
-            // The spec file names the mod: `C:\mods\MyCape.json` -> `MyCape`.
-            const stem = path.split(/[\\/]/).pop().replace(/\.[^.]*$/, '');
+            // The spec file names the mod and places it: `C:\mods\MyCape.json`
+            // -> mod `MyCape` written next to the file, in `C:\mods`.
+            const parts = path.split(/[\\/]/);
+            const stem = parts.pop().replace(/\.[^.]*$/, '');
             if (stem) setModName(stem);
+            const parent = parts.join('\\');
+            if (parent) setOutputDir(parent);
             setStatus({ kind: 'ok', text: `Loaded ${valid.length} item(s) from ${path}` });
         } catch (reason) {
             setStatus({ kind: 'error', text: String(reason) });
@@ -785,6 +793,40 @@ function ItemCreator({ activeTab, setStatusText }) {
         file: 'ELinkParam .bgyml or actor .pack(.zs) whose ELink file is used as it is',
         user: 'ELink user name, e.g. Item_Weapon_01_custom made on the Add ELink tab',
     };
+    // "From ELink entries": the effect AI keys of the calls edited in the
+    // ELink entry of this mod that the Effect (User name) points at.
+    const effectElinkSpec = form.effectAi && form.effect.mode === 'user'
+        ? items.find((item) => isElinkSpec(item) && elinkName(item) === form.effect.value.trim()) || null
+        : null;
+    const fillEffectKeysFromElink = async () => {
+        if (!effectElinkSpec) return;
+        setFillingKeys(true);
+        try {
+            const entries = await invoke('elink_user_assets', { user: elinkBase(effectElinkSpec) });
+            const edits = (effectElinkSpec.entries || []).filter((edit) => edit && Object.keys(edit.params || {}).length > 0);
+            const keys = [];
+            for (const edit of edits) {
+                const entry = entries.find((candidate) => candidate.id === edit.id);
+                if (!entry || !entry.key) continue;
+                const twins = entries.filter((candidate) => candidate.id !== entry.id && candidate.key === entry.key);
+                if (twins.length) {
+                    setStatus({ kind: 'error', text: `Entry ${entry.id} (${entry.path}) cannot be emitted by name: ${elinkBase(effectElinkSpec)} also has ${twins.map((twin) => `${twin.id} (${twin.path})`).join(', ')} named ${entry.key}. Edit an entry with a unique name instead (its emitter set can be changed to the same one).` });
+                    return;
+                }
+                if (!keys.includes(entry.key)) keys.push(entry.key);
+            }
+            if (!keys.length) {
+                setStatus({ kind: 'error', text: `No edited asset call in the ELink entry ${elinkName(effectElinkSpec)}: edit the calls to emit (e.g. give them a Bone) first.` });
+            } else {
+                update({ effectKeys: keys.join(', ') });
+                setStatus({ kind: '', text: `XLink keys taken from ${elinkName(effectElinkSpec)}: ${keys.join(', ')}` });
+            }
+        } catch (reason) {
+            setStatus({ kind: 'error', text: `Could not read the ELink entries: ${reason}` });
+        } finally {
+            setFillingKeys(false);
+        }
+    };
     const effectLink = <div className="item-creator-link-entry">
         <select value={form.effect.mode} onChange={(event) => update({ effect: { mode: event.target.value, value: '' } })}>
             {LINK_MODES.map((mode) => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
@@ -824,7 +866,7 @@ function ItemCreator({ activeTab, setStatusText }) {
             <label htmlFor="item-creator-rstb">RSTB</label>
             <div className="item-creator-check">
                 <input id="item-creator-rstb" type="checkbox" checked={generateRstb} onChange={(event) => setGenerateRstb(event.target.checked)} />
-                <label htmlFor="item-creator-rstb" className="item-creator-hint">Generate RSTB (untick to leave the ResourceSizeTable to another tool, e.g. TKMM)</label>
+                <label htmlFor="item-creator-rstb" className="item-creator-hint">Generate RSTB (off by default: TKMM rebuilds the ResourceSizeTable itself; tick it for a mod installed without a merger)</label>
             </div>
             {/* <label htmlFor="item-creator-zstd">RSTB zstd level</label>
             <input id="item-creator-zstd" type="number" min="1" max="22" placeholder="default" value={zstdLevel} onChange={(event) => setZstdLevel(event.target.value)} /> */}
@@ -833,9 +875,9 @@ function ItemCreator({ activeTab, setStatusText }) {
         <div className="item-creator-body">
             <div className="item-creator-main">
                 <div className="item-creator-tabs">
-                    <button type="button" className={tab === 'weapon' ? 'active' : ''} onClick={() => switchTab('weapon')}>Add weapon</button>
-                    <button type="button" className={tab === 'armor' ? 'active' : ''} onClick={() => switchTab('armor')}>Add armor</button>
-                    <button type="button" className={tab === 'elink' ? 'active' : ''} onClick={() => switchTab('elink')}>Add ELink</button>
+                    <button type="button" className={tab === 'weapon' ? 'active' : ''} onClick={() => switchTab('weapon')}>weapon</button>
+                    <button type="button" className={tab === 'armor' ? 'active' : ''} onClick={() => switchTab('armor')}>armor</button>
+                    <button type="button" className={tab === 'elink' ? 'active' : ''} onClick={() => switchTab('elink')}>ELink</button>
                 </div>
                 <div className={`item-creator-panel${tab === 'elink' ? ' elink' : ''}`}>
                     <AddElinkPanel
@@ -872,13 +914,20 @@ function ItemCreator({ activeTab, setStatusText }) {
                             <div className="item-creator-section">Stats</div>
                             <label>{isShield ? 'Guard power' : 'Attack'}</label>
                             <input type="number" value={form.baseAttack} onChange={(event) => update({ baseAttack: event.target.value })} />
-                            <label>Durability</label>
-                            <input type="number" value={form.maxLife} onChange={(event) => update({ maxLife: event.target.value })} />
+                            <label>Indestructible</label>
+                            <div className="item-creator-check">
+                                <input id="item-creator-indestructible" type="checkbox" checked={form.indestructible} onChange={(event) => update({ indestructible: event.target.checked })} />
+                                <label htmlFor="item-creator-indestructible" className="item-creator-hint">Never loses durability or breaks (LifeParam InitInvincibilityType: InvincibleNoDamageReaction)</label>
+                            </div>
+                            {!form.indestructible && <>
+                                <label>Durability</label>
+                                <input type="number" value={form.maxLife} onChange={(event) => update({ maxLife: event.target.value })} />
+                            </>}
                             {!isBow && <>
                                 <label>Fuse damage</label>
                                 <input type="number" value={form.additionalDamage} onChange={(event) => update({ additionalDamage: event.target.value })} />
                             </>}
-                            {!isShield && !isBow && <>
+                            {isShield && <>
                                 <label>Shield bash damage</label>
                                 <input type="number" value={form.shieldBashDamage} onChange={(event) => update({ shieldBashDamage: event.target.value })} />
                             </>}
@@ -896,8 +945,11 @@ function ItemCreator({ activeTab, setStatusText }) {
                             </div>
                             {form.effectAi && <>
                                 <label>XLink keys</label>
-                                <input type="text" value={form.effectKeys} placeholder="Asset-call-table names of the effect donor's ELink user, comma separated, e.g. 古代矢完成, 軌跡" onChange={(event) => update({ effectKeys: event.target.value })} />
-                                <span className="item-creator-hint">Writes AI/&lt;actor&gt;_Effect.root.ainb (one OneShotXLinkSearchAndEmit per key) plus its AIInfo and binds them with the ActorParam AIInfoRef. The keys are entries of the ELink user the weapon ends up with (the Effect donor's, e.g. Item_Weapon_01's 古代矢完成 / 軌跡 / 射撃), as listed under that user in ELink2/elink2.Product.*.belnk.zs. Looping entries keep running, so the effect is permanent.</span>
+                                <div className="item-creator-keys-row">
+                                    <input type="text" value={form.effectKeys} placeholder="Asset-call names of the effect donor's ELink user, comma separated, e.g. 古代矢完成, 軌跡 — or auto" onChange={(event) => update({ effectKeys: event.target.value })} />
+                                    <button type="button" disabled={!effectElinkSpec || fillingKeys} title={effectElinkSpec ? `Keys of the calls edited in the ELink entry ${elinkName(effectElinkSpec)}` : 'Available when the Effect is a User name matching an ELink entry of this mod'} onClick={fillEffectKeysFromElink}>From ELink entries</button>
+                                </div>
+                                <span className="item-creator-hint">Writes AI/&lt;actor&gt;_Effect.root.ainb (one OneShotXLinkSearchAndEmit per key) plus its AIInfo and binds them with the ActorParam AIInfoRef. The keys are entries of the ELink user the weapon ends up with (the Effect donor's, e.g. Item_Weapon_01's 古代矢完成 / 軌跡 / 射撃), as listed under that user in ELink2/elink2.Product.*.belnk.zs; the word auto stands for the calls edited in the ELink entry the Effect names. Looping entries keep running, so the effect is permanent.</span>
                             </>}
                             <div className="item-creator-section">Assets</div>
                             <label>Custom fbx model</label>
@@ -997,9 +1049,13 @@ function ItemCreator({ activeTab, setStatusText }) {
                                 <input id="item-creator-effect-ai" type="checkbox" checked={form.effectAi} onChange={(event) => update({ effectAi: event.target.checked })} />
                                 <label htmlFor="item-creator-effect-ai" className="item-creator-hint">Add a root AI that emits effects of the ELink user at spawn (permanent glow, gloom, …)</label>
                             </div>
+                            {form.effectAi && <label>XLink keys</label>}
                             {form.effectAi && <div className="item-creator-skin-material">
-                                <input type="text" value={form.effectKeys} placeholder="Asset-call-table names of the effect donor's ELink user, comma separated, e.g. Miasma_Status_In" onChange={(event) => update({ effectKeys: event.target.value })} />
-                                <span className="item-creator-hint">Writes AI/&lt;actor&gt;_Effect.root.ainb (one OneShotXLinkSearchAndEmit per key) plus its AIInfo and binds them with the ActorParam AIInfoRef; upgrade ranks inherit it. The keys are entries of the ELink user the piece ends up with (the Effect donor's, e.g. Player's Miasma_Status_In), as listed under that user in ELink2/elink2.Product.*.belnk.zs. Looping entries keep running, so the effect is permanent.</span>
+                                <div className="item-creator-keys-row">
+                                    <input type="text" value={form.effectKeys} placeholder="Asset-call names of the effect donor's ELink user, comma separated, e.g. Miasma_Status_In — or auto" onChange={(event) => update({ effectKeys: event.target.value })} />
+                                    <button type="button" disabled={!effectElinkSpec || fillingKeys} title={effectElinkSpec ? `Keys of the calls edited in the ELink entry ${elinkName(effectElinkSpec)}` : 'Available when the Effect is a User name matching an ELink entry of this mod'} onClick={fillEffectKeysFromElink}>From ELink entries</button>
+                                </div>
+                                <span className="item-creator-hint">Writes AI/&lt;actor&gt;_Effect.root.ainb (one OneShotXLinkSearchAndEmit per key) plus its AIInfo and binds them with the ActorParam AIInfoRef; upgrade ranks inherit it. The keys are entries of the ELink user the piece ends up with (the Effect donor's, e.g. Player's Miasma_Status_In), as listed under that user in ELink2/elink2.Product.*.belnk.zs; the word auto stands for the calls edited in the ELink entry the Effect names. Looping entries keep running, so the effect is permanent.</span>
                             </div>}
                             <label>Armor effects</label>
                             <div className="item-creator-physics">
@@ -1154,14 +1210,14 @@ function ItemCreator({ activeTab, setStatusText }) {
                     <button type="button" disabled={items.length === 0} onClick={clearItems}>Clear list</button>
                     <button type="button" disabled={items.length === 0} onClick={exportSpecs}>Export JSON…</button>
                     <button type="button" onClick={importSpecs}>Import JSON…</button>
+                    <button type="button" className="item-creator-primary" disabled={generating || items.length === 0 || !catalog} onClick={createMod}>
+                        {generating ? 'Creating mod…' : 'Create mod'}
+                    </button>
                 </div>
             </div>
         </div>
 
         <footer className="item-creator-footer">
-            <button type="button" className="item-creator-primary" disabled={generating || items.length === 0 || !catalog} onClick={createMod}>
-                {generating ? 'Creating mod…' : 'Create mod'}
-            </button>
             <div className={`item-creator-status ${status.kind}`}>{status.text}</div>
         </footer>
     </section>;
