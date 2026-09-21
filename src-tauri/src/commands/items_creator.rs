@@ -70,6 +70,35 @@ pub fn item_creator_ingredient_icons(
     )
 }
 
+/// Icons of Zonai capsules keyed by capsule actor (data URLs); made from
+/// the RomFS into `.cache/zonai` the first time they are asked for.
+#[tauri::command]
+pub fn item_creator_zonai_icons(names: Vec<String>) -> Result<HashMap<String, String>, String> {
+    crate::Settings::catch_panic_with(
+        move || {
+            let (config, romfs) = clean_romfs()?;
+            Ok(catalog::zonai_icons(&romfs, zstd(config)?, &names))
+        },
+        Err,
+    )
+}
+
+/// Every editable parameter of a vanilla actor's pack (Zonai devices and
+/// their companions), plus the actors the pack references.
+#[tauri::command]
+pub fn item_creator_zonai_params(
+    actor: String,
+) -> Result<items_creator::zonai::ParamInspection, String> {
+    crate::Settings::catch_panic_with(
+        move || {
+            let (config, romfs) = clean_romfs()?;
+            items_creator::zonai::inspect_params(&romfs, &actor, zstd(config)?)
+                .map_err(|error| error.to_string())
+        },
+        Err,
+    )
+}
+
 #[tauri::command]
 pub fn item_creator_load_specs(path: String) -> Result<serde_json::Value, String> {
     crate::Settings::catch_panic_with(
@@ -102,6 +131,8 @@ pub struct ItemCreatorResult {
     pub armors: Vec<String>,
     /// Custom ELink users written with the mod.
     pub elinks: Vec<String>,
+    /// Zonai device actors written with the mod.
+    pub zonai: Vec<String>,
     /// `None` when the RSTB pass was skipped.
     pub rstb_entries: Option<usize>,
     pub seconds: f64,
@@ -111,7 +142,8 @@ pub struct ItemCreatorResult {
 /// Writes `<outputDir>/<modName>/items_creator_input.json`, generates the mod
 /// into `<outputDir>/<modName>/romfs` and drops the report next to it. Runs
 /// on a worker thread; the UI polls its returned promise. `generateRstb`
-/// (default true) false skips the ResourceSizeTable pass.
+/// (default true) false skips the ResourceSizeTable pass; `malsLanguage`
+/// picks the Mals archive of the labels (RomFS default when omitted).
 #[tauri::command]
 pub async fn item_creator_generate(
     specs: serde_json::Value,
@@ -119,6 +151,7 @@ pub async fn item_creator_generate(
     modName: String,
     zstdLevel: Option<i32>,
     generateRstb: Option<bool>,
+    malsLanguage: Option<String>,
 ) -> Result<ItemCreatorResult, String> {
     let mod_name = modName.trim().to_owned();
     if mod_name.is_empty()
@@ -159,6 +192,7 @@ pub async fn item_creator_generate(
             zstd,
             zstdLevel,
             generateRstb.unwrap_or(true),
+            malsLanguage.as_deref(),
         )
         .map_err(|error| error.to_string())?;
         let report_path = mod_dir.join("items_creator_report.json");
@@ -185,6 +219,13 @@ pub async fn item_creator_generate(
                 warnings.push(format!("{}: {note}", elink.new_name));
             }
         }
+        for device in &report.zonai {
+            for texture in &device.ui_textures {
+                if let Some(warning) = &texture.warning {
+                    warnings.push(format!("{}: {warning}", device.actor_name));
+                }
+            }
+        }
         Ok(ItemCreatorResult {
             output_romfs: output_romfs.to_string_lossy().into_owned(),
             spec_path: spec_path.to_string_lossy().into_owned(),
@@ -196,6 +237,7 @@ pub async fn item_creator_generate(
                 .collect(),
             armors: report.armors.iter().map(|a| a.actor_name.clone()).collect(),
             elinks: report.elinks.iter().map(|e| e.new_name.clone()).collect(),
+            zonai: report.zonai.iter().map(|z| z.actor_name.clone()).collect(),
             rstb_entries: report.rstb.as_ref().map(|rstb| rstb.entries.len()),
             seconds: started.elapsed().as_secs_f64(),
             warnings,

@@ -340,23 +340,61 @@ mod tests {
     #[test]
     #[ignore]
     fn dump_koshia_hat_shapes() {
-        for path in ["../res/1/Monk_Maz_Koshia_ex2/romfs/Model/Armor_760.Armor_760_Head.bfres.mc", "E:/TOTK_modding/0100F2C0115B6000/romfs/Model/Armor_1091.Armor_1091_Head.bfres.mc"] {
+        for path in [
+            "../res/1/Monk_Maz_Koshia_ex2/romfs/Model/Armor_760.Armor_760_Head.bfres.mc",
+            "E:/TOTK_modding/0100F2C0115B6000/romfs/Model/Armor_1091.Armor_1091_Head.bfres.mc",
+        ] {
             let raw = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).unwrap();
-            let data = if crate::Settings::Magic::is_mcpk(&raw) { crate::compression::meshcodec::MeshCodec::decompress(&raw).unwrap() } else { raw };
+            let data = if crate::Settings::Magic::is_mcpk(&raw) {
+                crate::compression::meshcodec::MeshCodec::decompress(&raw).unwrap()
+            } else {
+                raw
+            };
             let file = crate::file_format::Model3D::bfres::BfresFile::from_bytes(&data).unwrap();
             println!("=== {path}");
             let albedo = if path.contains("Armor_760") {
-                let tex = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../res/1/Monk_Maz_Koshia_ex2/romfs/TexToGo/Armor_760_Head_Alb.0.txtg")).unwrap();
+                let tex =
+                    std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(
+                        "../res/1/Monk_Maz_Koshia_ex2/romfs/TexToGo/Armor_760_Head_Alb.0.txtg",
+                    ))
+                    .unwrap();
                 let doc = crate::parser::textogo::TexToGoFile::parse(&tex).unwrap();
                 let img = crate::parser::textogo::writer::to_rgba(&doc).unwrap();
                 println!("albedo {}x{}", img.width(), img.height());
                 Some(img)
-            } else { None };
-            println!("materials={} meshes={} bones={}", file.materials.len(), file.render.meshes.len(), file.render.bones.len());
+            } else {
+                None
+            };
+            println!(
+                "materials={} meshes={} bones={}",
+                file.materials.len(),
+                file.render.meshes.len(),
+                file.render.bones.len()
+            );
             for (i, b) in file.render.bones.iter().enumerate() {
-                let parent = if b.parent_index >= 0 { file.render.bones.get(b.parent_index as usize).map(|p| p.name.as_str()).unwrap_or("?") } else { "-" };
-                if b.name.starts_with("Neckless") || b.name.starts_with("Veil") || b.name.starts_with("HairE_2") || b.name == "Hat" || b.name.starts_with("CardA_2") || b.name.starts_with("Neck") || b.name == "Head" || b.name == "Root" || b.name == "Skl_Root" {
-                    println!("  bone[{i}] {} parent={} smooth={} rigid={} t={:?}", b.name, parent, b.smooth_matrix_index, b.rigid_matrix_index, b.translation);
+                let parent = if b.parent_index >= 0 {
+                    file.render
+                        .bones
+                        .get(b.parent_index as usize)
+                        .map(|p| p.name.as_str())
+                        .unwrap_or("?")
+                } else {
+                    "-"
+                };
+                if b.name.starts_with("Neckless")
+                    || b.name.starts_with("Veil")
+                    || b.name.starts_with("HairE_2")
+                    || b.name == "Hat"
+                    || b.name.starts_with("CardA_2")
+                    || b.name.starts_with("Neck")
+                    || b.name == "Head"
+                    || b.name == "Root"
+                    || b.name == "Skl_Root"
+                {
+                    println!(
+                        "  bone[{i}] {} parent={} smooth={} rigid={} t={:?}",
+                        b.name, parent, b.smooth_matrix_index, b.rigid_matrix_index, b.translation
+                    );
                 }
             }
             for (i, m) in file.materials.iter().enumerate() {
@@ -364,24 +402,74 @@ mod tests {
                 println!("  mat[{i}] {}", &json[..json.len().min(700)]);
             }
             for (i, mesh) in file.render.meshes.iter().enumerate() {
-                let mat = file.materials.get(mesh.material_index as usize).map(|m| serde_json::to_value(m).ok().and_then(|v| v.get("name").and_then(|n| n.as_str().map(String::from))).unwrap_or_default()).unwrap_or_default();
-                let bone = file.render.bones.get(mesh.bone_index as usize).map(|b| b.name.clone()).unwrap_or_default();
-                let mut lo = [f32::MAX; 3]; let mut hi = [f32::MIN; 3];
-                for p in &mesh.positions { for k in 0..3 { lo[k] = lo[k].min(p[k]); hi[k] = hi[k].max(p[k]); } }
+                let mat = file
+                    .materials
+                    .get(mesh.material_index as usize)
+                    .map(|m| {
+                        serde_json::to_value(m)
+                            .ok()
+                            .and_then(|v| v.get("name").and_then(|n| n.as_str().map(String::from)))
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default();
+                let bone = file
+                    .render
+                    .bones
+                    .get(mesh.bone_index as usize)
+                    .map(|b| b.name.clone())
+                    .unwrap_or_default();
+                let mut lo = [f32::MAX; 3];
+                let mut hi = [f32::MIN; 3];
+                for p in &mesh.positions {
+                    for k in 0..3 {
+                        lo[k] = lo[k].min(p[k]);
+                        hi[k] = hi[k].max(p[k]);
+                    }
+                }
                 let mut used: std::collections::BTreeSet<u16> = Default::default();
-                for (idx, w) in mesh.bone_indices.iter().zip(&mesh.bone_weights) { for k in 0..4 { if w[k] > 0.0 { used.insert(mesh.skin_bones.get(idx[k] as usize).copied().unwrap_or(idx[k])); } } }
-                let names: Vec<String> = used.iter().map(|b| file.render.bones.get(*b as usize).map(|x| x.name.clone()).unwrap_or(format!("#{b}"))).collect();
+                for (idx, w) in mesh.bone_indices.iter().zip(&mesh.bone_weights) {
+                    for k in 0..4 {
+                        if w[k] > 0.0 {
+                            used.insert(
+                                mesh.skin_bones
+                                    .get(idx[k] as usize)
+                                    .copied()
+                                    .unwrap_or(idx[k]),
+                            );
+                        }
+                    }
+                }
+                let names: Vec<String> = used
+                    .iter()
+                    .map(|b| {
+                        file.render
+                            .bones
+                            .get(*b as usize)
+                            .map(|x| x.name.clone())
+                            .unwrap_or(format!("#{b}"))
+                    })
+                    .collect();
                 println!("  mesh[{i}] {} mat={}({}) bone={}({}) skin={} cloth={}/{} verts={} idx={} y=[{:.2},{:.2}] bones={:?}", mesh.name, mesh.material_index, mat, mesh.bone_index, bone, mesh.vertex_skin_count, mesh.is_cloth, mesh.cloth_id, mesh.positions.len(), mesh.indices.len(), lo[1], hi[1], names);
-                let mut ulo = [f32::MAX; 2]; let mut uhi = [f32::MIN; 2];
-                for uv in &mesh.uv0 { for k in 0..2 { ulo[k] = ulo[k].min(uv[k]); uhi[k] = uhi[k].max(uv[k]); } }
+                let mut ulo = [f32::MAX; 2];
+                let mut uhi = [f32::MIN; 2];
+                for uv in &mesh.uv0 {
+                    for k in 0..2 {
+                        ulo[k] = ulo[k].min(uv[k]);
+                        uhi[k] = uhi[k].max(uv[k]);
+                    }
+                }
                 if let Some(alb) = &albedo {
                     let (w, h) = alb.dimensions();
-                    let mut low = 0usize; let mut sum = 0u64;
+                    let mut low = 0usize;
+                    let mut sum = 0u64;
                     for uv in &mesh.uv0 {
                         let x = ((uv[0].rem_euclid(1.0)) * w as f32) as u32 % w;
                         let y = ((uv[1].rem_euclid(1.0)) * h as f32) as u32 % h;
                         let a = alb.get_pixel(x, y)[3];
-                        sum += a as u64; if a < 128 { low += 1; }
+                        sum += a as u64;
+                        if a < 128 {
+                            low += 1;
+                        }
                     }
                     let n = mesh.uv0.len().max(1);
                     println!("        uv0 u=[{:.2},{:.2}] v=[{:.2},{:.2}]  albedo alpha: avg={} below128={}/{}", ulo[0], uhi[0], ulo[1], uhi[1], sum / n as u64, low, n);

@@ -1,0 +1,36 @@
+/* Zonai form of the Item creator: the Parameters section inside the shared .item-creator-form grid. */
+.item-creator-form > .item-creator-param-section { grid-column: 1 / -1; }
+.item-creator-param-targets { flex-wrap: wrap; }
+.item-creator-param-targets button { background: #262626; color: #aaa; }
+.item-creator-param-targets button.active { background: #3a3a3a; color: #fff; }
+
+.item-creator-params {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+    gap: 10px;
+    height: 380px;
+}
+.item-creator-param-files, .item-creator-param-values { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; }
+.item-creator-param-shared { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.item-creator-param-file-list, .item-creator-param-list {
+    flex: 1;
+    overflow: auto;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #222;
+    min-height: 0;
+}
+.item-creator-param-file { border-bottom: 1px solid #333; font-size: 13px; }
+.item-creator-param-file.shared .item-creator-option-name > span { color: #bbb; }
+.item-creator-param-file.selected .item-creator-option-name > span, .item-creator-param-file.selected small { color: #fff; }
+.item-creator-param-modified { color: #f0b52a; }
+.item-creator-param-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #999; font-size: 12px; }
+.item-creator-param-filter { flex: none; width: 180px; }
+.item-creator-param-list { display: flex; flex-direction: column; gap: 2px; padding: 4px; background: #2a2a2a; }
+.item-creator-param { display: grid; grid-template-columns: minmax(0, 1fr) 220px 28px; gap: 8px; align-items: center; font-size: 12px; color: #bbb; }
+.item-creator-param.edited { color: #ffd77a; }
+.item-creator-param-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: Consolas, monospace; }
+.item-creator-param-name em { color: #7fa6d6; font-style: normal; font-size: 11px; margin-left: 6px; }
+.item-creator-param input.edited { border-color: #d9a01c; }
+.item-creator-param input[type="checkbox"] { justify-self: start; }
+.item-creator-param button { padding: 2px 6px; font-size: 12px; }

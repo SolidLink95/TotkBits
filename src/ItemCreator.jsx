@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AddElinkPanel from './AddElink';
+import AddZonaiPanel from './AddZonai';
+import TemplatePicker, { BLANK_ICON } from './TemplatePicker';
 import './ItemCreator.css';
 
 const WEAPON_KINDS = [
@@ -16,13 +18,15 @@ const ARMOR_SLOTS = [
     { id: 'Upper', label: 'Upper (body)', suffix: '_Upper', bone: 'Spine_2', weights: 'Spine_2:0.9,Skl_Root:0.05,Root:0.05', offset: '0,0,0', size: '0.34,0.30,0.26' },
     { id: 'Lower', label: 'Lower (legs)', suffix: '_Lower', bone: 'Waist', weights: 'Waist:0.9,Skl_Root:0.05,Root:0.05', offset: '0,-0.06,0', size: '0.32,0.22,0.24' },
 ];
-const BLANK_ICON = 'menu/blank.webp';
 /** List icon of a custom ELink effect entry. */
 const ELINK_ICON = 'effects/Glow.webp';
 /** A mod list entry made on the Add ELink tab (`{baseUser, newName, cloneEsetb, entries}`). */
 const isElinkSpec = (spec) => Boolean(spec) && typeof (spec.baseUser ?? spec.base_user) === 'string';
 const elinkName = (spec) => String(spec.newName ?? spec.new_name ?? '');
 const elinkBase = (spec) => String(spec.baseUser ?? spec.base_user ?? '');
+/** A mod list entry made on the Zonai tab (`kind: "Zonai"`, or a `SpObj_` template). */
+const isZonaiSpec = (spec) => Boolean(spec) && !isElinkSpec(spec)
+    && (String(spec.kind ?? '').toLowerCase() === 'zonai' || /^SpObj_/.test(String(spec.template_actor ?? '')));
 
 const emptyForm = (tab) => ({
     kind: tab === 'armor' ? 'Head' : 'SmallSword',
@@ -355,61 +359,6 @@ function formFromSpec(spec, ingredientAliases = {}, catalogActors = new Set()) {
     return { tab, form, vendor: vendor?.actor_name || '' };
 }
 
-const templateLabel = (template) => `${template.name || template.actor}${template.decayed ? ' (decayed)' : ''}`;
-
-function TemplatePicker({ templates, value, icons, onChange, onOpen, disabled, hideUpgrades, onHideUpgrades, placeholder = 'Select a template', noneLabel = null }) {
-    const [isOpen, setIsOpen] = useState(false);
-    const [filter, setFilter] = useState('');
-    const ref = useRef(null);
-    useEffect(() => {
-        if (!isOpen) return undefined;
-        const close = (event) => { if (ref.current && !ref.current.contains(event.target)) setIsOpen(false); };
-        document.addEventListener('mousedown', close);
-        return () => document.removeEventListener('mousedown', close);
-    }, [isOpen]);
-    const selected = templates.find((template) => template.actor === value);
-    const query = filter.trim().toLowerCase();
-    const hasUpgrades = templates.some((template) => template.upgraded);
-    const candidates = hideUpgrades ? templates.filter((template) => !template.upgraded) : templates;
-    const visible = query
-        ? candidates.filter((template) => template.actor.toLowerCase().includes(query) || template.name.toLowerCase().includes(query))
-        : candidates;
-    return <div className="item-creator-picker" ref={ref}>
-        {hasUpgrades && onHideUpgrades && <div className="item-creator-check">
-            <input id="item-creator-hide-upgrades" type="checkbox" checked={hideUpgrades} onChange={(event) => onHideUpgrades(event.target.checked)} />
-            <label htmlFor="item-creator-hide-upgrades" className="item-creator-hint">Hide upgrades (Great Fairy ranks of vanilla armor)</label>
-        </div>}
-        <button type="button" className="item-creator-picker-button" disabled={disabled} onClick={() => { setIsOpen((open) => !open); if (!isOpen) onOpen(); }}>
-            <img src={icons[value] || BLANK_ICON} alt="" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = BLANK_ICON; }} />
-            <span className="item-creator-option-name">
-                <span>{selected ? templateLabel(selected) : placeholder}</span>
-                {selected && <small>{selected.actor}</small>}
-            </span>
-            <span className="item-creator-caret">▾</span>
-        </button>
-        {isOpen && <div className="item-creator-picker-list">
-            <input type="text" autoFocus placeholder="Filter by name or actor…" value={filter} onChange={(event) => setFilter(event.target.value)} />
-            {noneLabel && !query && <div
-                className={`item-creator-option${!value ? ' selected' : ''}`}
-                onClick={() => { onChange(''); setIsOpen(false); setFilter(''); }}>
-                <img src={BLANK_ICON} alt="" />
-                <span className="item-creator-option-name"><span>{noneLabel}</span></span>
-            </div>}
-            {visible.length === 0 && <div className="item-creator-empty">No templates match.</div>}
-            {visible.map((template) => <div
-                key={template.actor}
-                className={`item-creator-option${template.actor === value ? ' selected' : ''}`}
-                onClick={() => { onChange(template.actor); setIsOpen(false); setFilter(''); }}>
-                <img src={icons[template.actor] || BLANK_ICON} alt="" loading="lazy" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = BLANK_ICON; }} />
-                <span className="item-creator-option-name">
-                    <span>{templateLabel(template)}</span>
-                    <small>{template.actor}</small>
-                </span>
-            </div>)}
-        </div>}
-    </div>;
-}
-
 function ItemCreator({ activeTab, setStatusText }) {
     const [catalog, setCatalog] = useState(null);
     const [catalogError, setCatalogError] = useState('');
@@ -420,8 +369,12 @@ function ItemCreator({ activeTab, setStatusText }) {
     const [vendor, setVendor] = useState('');
     const [zstdLevel, setZstdLevel] = useState('');
     const [generateRstb, setGenerateRstb] = useState(false);
+    /** Mals language the labels go into ('' = the RomFS default). */
+    const [language, setLanguage] = useState('');
     /** ELink entry of the mod list being edited on the Add ELink tab, if any. */
     const [elinkEditing, setElinkEditing] = useState(null);
+    /** Zonai entry of the mod list being edited on the Zonai tab, if any. */
+    const [zonaiEditing, setZonaiEditing] = useState(null);
     const [tab, setTab] = useState('weapon');
     const [form, setForm] = useState(() => emptyForm('weapon'));
     const [placeholders, setPlaceholders] = useState({ name: '', description: '' });
@@ -442,6 +395,7 @@ function ItemCreator({ activeTab, setStatusText }) {
             .then((result) => {
                 setCatalog(result);
                 setVendor((current) => current || result.vendors.find((entry) => entry.actor === 'Npc_TripMaster_00')?.actor || result.vendors[0]?.actor || '');
+                setLanguage((current) => current || result.defaultLanguage || '');
             })
             .catch((reason) => setCatalogError(String(reason)));
     }, [activeTab, catalog]);
@@ -506,12 +460,27 @@ function ItemCreator({ activeTab, setStatusText }) {
             .catch(() => loadedKinds.current.delete(kind));
     }, []);
     useEffect(() => {
-        const names = [...new Set(items.map((item) => item.template_actor))].filter((name) => name && !icons[name]);
+        const names = [...new Set(items.filter((item) => !isZonaiSpec(item)).map((item) => item.template_actor))].filter((name) => name && !icons[name]);
         if (names.length === 0) return;
         invoke('item_creator_icons', { names })
             .then((result) => setIcons((current) => ({ ...current, ...result })))
             .catch(() => {});
     }, [items, icons]);
+    // Zonai entries show their template's capsule icon (cached from the RomFS).
+    useEffect(() => {
+        const devices = catalog?.zonai || [];
+        const missing = [...new Set(items.filter(isZonaiSpec).map((item) => item.template_actor))]
+            .map((actor) => devices.find((device) => device.actor === actor))
+            .filter((device) => device && device.hasIcon && !icons[device.actor]);
+        if (missing.length === 0) return;
+        invoke('item_creator_zonai_icons', { names: missing.map((device) => device.capsule) })
+            .then((result) => setIcons((current) => ({
+                ...current,
+                ...Object.fromEntries(missing.map((device) => [device.actor, result[device.capsule]]).filter(([, icon]) => icon)),
+            })))
+            .catch(() => {});
+    }, [items, icons, catalog]);
+    const mergeIcons = useCallback((result) => setIcons((current) => ({ ...current, ...result })), []);
 
     const update = (patch) => setForm((current) => ({ ...current, ...patch }));
 
@@ -540,10 +509,11 @@ function ItemCreator({ activeTab, setStatusText }) {
         setTab(nextTab);
         setEditingIndex(-1);
         setElinkEditing(null);
+        setZonaiEditing(null);
         setFormError('');
         setPlaceholders({ name: '', description: '' });
-        // The ELink tab has no item form of its own.
-        if (nextTab === 'elink') return;
+        // The ELink and Zonai tabs have no item form of their own.
+        if (nextTab === 'elink' || nextTab === 'zonai') return;
         const next = emptyForm(nextTab);
         next.actorName = suggestActorName(next.kind, nextTab, items);
         setForm(next);
@@ -694,17 +664,43 @@ function ItemCreator({ activeTab, setStatusText }) {
     };
     const cancelElinkEdit = () => { setEditingIndex(-1); setElinkEditing(null); };
 
+    /** Puts a Zonai device from the Zonai tab into the mod list (replacing the entry being edited). */
+    const commitZonai = (spec) => {
+        const replacing = editingIndex >= 0 && editingIndex < items.length;
+        setItems((current) => {
+            const next = [...current];
+            if (replacing) next[editingIndex] = spec; else next.push(spec);
+            return next;
+        });
+        const count = replacing ? items.length : items.length + 1;
+        setStatus({ kind: '', text: `Zonai device ${spec.actor_name} ${replacing ? 'updated' : 'added'}. ${count} entr${count === 1 ? 'y' : 'ies'} in the mod.` });
+        setEditingIndex(-1);
+        setZonaiEditing(null);
+    };
+    const cancelZonaiEdit = () => { setEditingIndex(-1); setZonaiEditing(null); };
+
     const editItem = () => {
         const spec = items[selectedIndex];
         if (!spec) return;
         if (isElinkSpec(spec)) {
             setTab('elink');
             setElinkEditing(spec);
+            setZonaiEditing(null);
             setEditingIndex(selectedIndex);
             setFormError('');
             return;
         }
+        if (isZonaiSpec(spec)) {
+            setTab('zonai');
+            setZonaiEditing(spec);
+            setElinkEditing(null);
+            setEditingIndex(selectedIndex);
+            setFormError('');
+            if (spec.vendors?.[0]?.actor_name) setVendor(spec.vendors[0].actor_name);
+            return;
+        }
         setElinkEditing(null);
+        setZonaiEditing(null);
         const loaded = formFromSpec(spec, ingredientAliases, physicsTemplateActors);
         setTab(loaded.tab);
         setForm(loaded.form);
@@ -716,10 +712,10 @@ function ItemCreator({ activeTab, setStatusText }) {
     const removeItem = () => {
         if (selectedIndex < 0) return;
         setItems((current) => current.filter((_, index) => index !== selectedIndex));
-        if (editingIndex === selectedIndex) { setEditingIndex(-1); setElinkEditing(null); }
+        if (editingIndex === selectedIndex) { setEditingIndex(-1); setElinkEditing(null); setZonaiEditing(null); }
         setSelectedIndex(-1);
     };
-    const clearItems = () => { setItems([]); setSelectedIndex(-1); setEditingIndex(-1); setElinkEditing(null); };
+    const clearItems = () => { setItems([]); setSelectedIndex(-1); setEditingIndex(-1); setElinkEditing(null); setZonaiEditing(null); };
 
     const exportSpecs = async () => {
         const path = await save({ defaultPath: `${modName || 'items'}.json`, filters: [{ name: 'JSON', extensions: ['json'] }] });
@@ -742,6 +738,7 @@ function ItemCreator({ activeTab, setStatusText }) {
             setSelectedIndex(-1);
             setEditingIndex(-1);
             setElinkEditing(null);
+            setZonaiEditing(null);
             const vendorName = valid.find((spec) => spec.vendors?.[0]?.actor_name)?.vendors[0].actor_name;
             if (vendorName) setVendor(vendorName);
             // The spec file names the mod and places it: `C:\mods\MyCape.json`
@@ -771,9 +768,10 @@ function ItemCreator({ activeTab, setStatusText }) {
                 modName,
                 zstdLevel: toInt(zstdLevel) ?? null,
                 generateRstb,
+                malsLanguage: language || null,
             });
             const rstbText = result.rstbEntries == null ? 'RSTB skipped' : `RSTB ${result.rstbEntries} entries`;
-            const summary = `Mod ${modName} created in ${result.seconds.toFixed(1)} s: ${result.weapons.length} weapon(s), ${result.armors.length} armor piece(s), ${result.elinks.length} ELink(s), ${rstbText}.\n${result.outputRomfs}`
+            const summary = `Mod ${modName} created in ${result.seconds.toFixed(1)} s: ${result.weapons.length} weapon(s), ${result.armors.length} armor piece(s), ${(result.zonai || []).length} Zonai device(s), ${result.elinks.length} ELink(s), ${rstbText}.\n${result.outputRomfs}`
                 + (result.warnings.length ? `\nWarnings:\n${result.warnings.join('\n')}` : '');
             setStatus({ kind: 'ok', text: summary });
             setStatusText(`Mod ${modName} created successfully`);
@@ -844,7 +842,7 @@ function ItemCreator({ activeTab, setStatusText }) {
         <header className="item-creator-header">
             <div>
                 <h1 id="item-creator-title">Item Creator</h1>
-                <p>Clone vanilla weapons, shields, bows and armor into a standalone mod. {catalog ? `${catalog.templates.length} templates from ${catalog.romfs}` : ''}</p>
+                <p>Clone vanilla weapons, shields, bows, armor and Zonai devices into a standalone mod. {catalog ? `${catalog.templates.length} templates from ${catalog.romfs}` : ''}</p>
             </div>
         </header>
         {catalogError && <div className="item-creator-status error">{catalogError}</div>}
@@ -863,6 +861,14 @@ function ItemCreator({ activeTab, setStatusText }) {
                 <option value="">Not sold</option>
                 {(catalog?.vendors || []).map((entry) => <option key={entry.actor} value={entry.actor}>{entry.label}</option>)}
             </select>
+            <label htmlFor="item-creator-language">Language</label>
+            <div className="item-creator-language">
+                <select id="item-creator-language" value={language} disabled={!catalog?.languages?.length} onChange={(event) => setLanguage(event.target.value)}>
+                    {!(catalog?.languages || []).length && <option value="">RomFS default</option>}
+                    {(catalog?.languages || []).map((entry) => <option key={entry} value={entry}>{entry}{entry === catalog?.defaultLanguage ? ' (default)' : ''}</option>)}
+                </select>
+                <span className="item-creator-hint">Mals archive that receives the item names and descriptions</span>
+            </div>
             <label htmlFor="item-creator-rstb">RSTB</label>
             <div className="item-creator-check">
                 <input id="item-creator-rstb" type="checkbox" checked={generateRstb} onChange={(event) => setGenerateRstb(event.target.checked)} />
@@ -877,6 +883,7 @@ function ItemCreator({ activeTab, setStatusText }) {
                 <div className="item-creator-tabs">
                     <button type="button" className={tab === 'weapon' ? 'active' : ''} onClick={() => switchTab('weapon')}>weapon</button>
                     <button type="button" className={tab === 'armor' ? 'active' : ''} onClick={() => switchTab('armor')}>armor</button>
+                    <button type="button" className={tab === 'zonai' ? 'active' : ''} onClick={() => switchTab('zonai')}>Zonai</button>
                     <button type="button" className={tab === 'elink' ? 'active' : ''} onClick={() => switchTab('elink')}>ELink</button>
                 </div>
                 <div className={`item-creator-panel${tab === 'elink' ? ' elink' : ''}`}>
@@ -886,7 +893,22 @@ function ItemCreator({ activeTab, setStatusText }) {
                         takenNames={items.filter((item, index) => isElinkSpec(item) && index !== editingIndex).map(elinkName)}
                         onCommit={commitElink}
                         onCancelEdit={cancelElinkEdit} />
-                    {tab !== 'elink' && <>
+                    <AddZonaiPanel
+                        active={tab === 'zonai'}
+                        catalog={catalog}
+                        vendor={vendor}
+                        poeShop={poeShop}
+                        editing={zonaiEditing}
+                        takenNames={items.flatMap((item, index) => {
+                            if (index === editingIndex || isElinkSpec(item)) return [];
+                            const names = [item.actor_name];
+                            if (isZonaiSpec(item)) names.push(item.capsule_name, ...(item.companions || []).map((companion) => companion.actor_name));
+                            return names.filter(Boolean);
+                        })}
+                        onCommit={commitZonai}
+                        onCancelEdit={cancelZonaiEdit}
+                        onIcons={mergeIcons} />
+                    {tab !== 'elink' && tab !== 'zonai' && <>
                     <div className="item-creator-form">
                         <label>{tab === 'armor' ? 'Slot' : 'Type'}</label>
                         <select value={form.kind} onChange={(event) => changeKind(event.target.value)}>
@@ -1200,7 +1222,7 @@ function ItemCreator({ activeTab, setStatusText }) {
                         <img src={isElinkSpec(item) ? ELINK_ICON : (icons[item.template_actor] || BLANK_ICON)} alt="" />
                         <span className="item-creator-option-name">
                             <span>{isElinkSpec(item) ? elinkName(item) : item.actor_name}</span>
-                            <small>{isElinkSpec(item) ? `ELink effect from ${elinkBase(item)}` : item.display_name}</small>
+                            <small>{isElinkSpec(item) ? `ELink effect from ${elinkBase(item)}` : (isZonaiSpec(item) ? `Zonai device from ${item.template_actor}: ${item.display_name}` : item.display_name)}</small>
                         </span>
                     </div>)}
                 </div>

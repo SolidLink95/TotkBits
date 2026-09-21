@@ -129,6 +129,13 @@ pub struct Catalog {
     pub armor_effects: Vec<ArmorEffectEntry>,
     /// Every pouch item a vanilla Great Fairy step asks for, once each.
     pub ingredients: Vec<IngredientEntry>,
+    /// Every vanilla Zonai device that has a capsule (the Zonai templates).
+    pub zonai: Vec<super::zonai::ZonaiDeviceEntry>,
+    /// Languages the RomFS ships a Mals archive for (`USen`, `EUen`, `JPja`, ...).
+    pub languages: Vec<String>,
+    /// The language labels go into unless another is chosen: US English,
+    /// else EU English, else the first archive.
+    pub default_language: String,
 }
 
 /// One Great Fairy ingredient: a pouch item some vanilla
@@ -207,8 +214,12 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
             format!("RomFS has no Pack/Actor folder: {}", actor_dir.display()),
         ));
     }
-    let names = pouch_labels(clean_romfs, zstd.clone()).unwrap_or_default();
-    let places = location_names(clean_romfs, zstd.clone()).unwrap_or_default();
+    let languages = super::messages::mals_languages(clean_romfs);
+    let default_language =
+        super::messages::default_mals_language(clean_romfs).unwrap_or_else(|| "USen".to_owned());
+    let mals_prefix = format!("{default_language}.Product.");
+    let names = pouch_labels(clean_romfs, &mals_prefix, zstd.clone()).unwrap_or_default();
+    let places = location_names(clean_romfs, &mals_prefix, zstd.clone()).unwrap_or_default();
     let (decayed_actors, pristine_actors) =
         weapon_variants(clean_romfs, zstd.clone()).unwrap_or_default();
     let upgraded_actors = upgraded_armor(clean_romfs, zstd.clone()).unwrap_or_default();
@@ -323,7 +334,9 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
         .collect();
     let (armor_effects, helper_bone_actors, cloth_actors) =
         scan_base_armor(&actor_dir, &base_armor, zstd.clone());
-    let ingredients = upgrade_ingredients(clean_romfs, &item_names, zstd).unwrap_or_default();
+    let ingredients =
+        upgrade_ingredients(clean_romfs, &item_names, zstd.clone()).unwrap_or_default();
+    let zonai = super::zonai::zonai_devices(clean_romfs, zstd, &item_names).unwrap_or_default();
     for template in &mut templates {
         template.helper_bones = helper_bone_actors.contains(&template.actor);
         template.cloth = cloth_actors.contains(&template.actor);
@@ -336,6 +349,9 @@ pub fn catalog(clean_romfs: &Path, zstd: Arc<TotkZstd<'_>>) -> io::Result<Catalo
         item_names,
         armor_effects,
         ingredients,
+        zonai,
+        languages,
+        default_language,
     })
 }
 
@@ -432,7 +448,11 @@ pub fn template_info(
         actor: actor.to_owned(),
         ..Default::default()
     };
-    if let Ok(labels) = pouch_labels(clean_romfs, zstd.clone()) {
+    let mals_prefix = format!(
+        "{}.Product.",
+        super::messages::default_mals_language(clean_romfs).unwrap_or_else(|| "USen".to_owned())
+    );
+    if let Ok(labels) = pouch_labels(clean_romfs, &mals_prefix, zstd.clone()) {
         if let Some((name, caption)) = labels.get(actor) {
             info.name = strip_control_tags(name);
             info.description = strip_control_tags(caption);
@@ -708,9 +728,30 @@ pub fn ingredient_icons(
     zstd: Arc<TotkZstd<'_>>,
     names: &[String],
 ) -> HashMap<String, String> {
+    romfs_icons(clean_romfs, zstd, names, "ingredients")
+}
+
+/// Icons of Zonai capsules (keyed by capsule actor) as data URLs, cached in
+/// `.cache/zonai/<actor>.webp` like the ingredient icons.
+pub fn zonai_icons(
+    clean_romfs: &Path,
+    zstd: Arc<TotkZstd<'_>>,
+    names: &[String],
+) -> HashMap<String, String> {
+    romfs_icons(clean_romfs, zstd, names, "zonai")
+}
+
+/// `UI/Tex/Icon/<name>.bntx.zs` of every name as a data URL, served from
+/// `.cache/<folder>/<name>.webp` and decoded from the RomFS into it on first use.
+fn romfs_icons(
+    clean_romfs: &Path,
+    zstd: Arc<TotkZstd<'_>>,
+    names: &[String],
+    folder: &str,
+) -> HashMap<String, String> {
     use base64::Engine;
     let mut result = HashMap::new();
-    let dir = ingredient_icon_directory();
+    let dir = icon_cache_directory(folder);
     for name in names {
         if name.is_empty() || name.contains(['/', '\\', '.']) {
             continue;
@@ -806,16 +847,17 @@ pub fn icon_directory() -> Option<PathBuf> {
         .find(|path| path.is_dir())
 }
 
-/// `.cache/ingredients`, a sibling of the base icons' `.cache/webp` (created
-/// on demand inside the first existing `.cache`, or next to the executable).
-fn ingredient_icon_directory() -> Option<PathBuf> {
+/// `.cache/<folder>` (`ingredients`, `zonai`), a sibling of the base icons'
+/// `.cache/webp` (created on demand inside the first existing `.cache`, or
+/// next to the executable).
+fn icon_cache_directory(folder: &str) -> Option<PathBuf> {
     let candidates = cache_candidates();
     let cache = candidates
         .iter()
         .find(|cache| cache.join("webp").is_dir())
         .or_else(|| candidates.iter().find(|cache| cache.is_dir()))
         .or_else(|| candidates.first())?;
-    let dir = cache.join("ingredients");
+    let dir = cache.join(folder);
     fs::create_dir_all(&dir).ok()?;
     Some(dir)
 }
@@ -900,13 +942,11 @@ fn weapon_variants(
 /// Label -> text of `LocationMsg/Location.msbt` (map location names).
 fn location_names(
     clean_romfs: &Path,
+    mals_prefix: &str,
     zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<BTreeMap<String, String>> {
-    let (_, source) = super::version::discover_product_file(
-        &clean_romfs.join("Mals"),
-        "USen.Product.",
-        ".sarc.zs",
-    )?;
+    let (_, source) =
+        super::version::discover_product_file(&clean_romfs.join("Mals"), mals_prefix, ".sarc.zs")?;
     let pack = PackFile::from_binary(&fs::read(&source)?, zstd)?;
     let data = pack
         .sarc
@@ -934,13 +974,11 @@ fn location_names(
 /// `<actor>_Name` / `<actor>_Caption` of `ActorMsg/PouchContent.msbt`.
 fn pouch_labels(
     clean_romfs: &Path,
+    mals_prefix: &str,
     zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<BTreeMap<String, (String, String)>> {
-    let (_, source) = super::version::discover_product_file(
-        &clean_romfs.join("Mals"),
-        "USen.Product.",
-        ".sarc.zs",
-    )?;
+    let (_, source) =
+        super::version::discover_product_file(&clean_romfs.join("Mals"), mals_prefix, ".sarc.zs")?;
     let pack = PackFile::from_binary(&fs::read(&source)?, zstd)?;
     let data = pack
         .sarc

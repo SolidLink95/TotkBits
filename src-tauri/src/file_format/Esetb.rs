@@ -192,6 +192,23 @@ impl<'a> Esetb<'a> {
         Ok(self.to_binary())
     }
 
+    /// Rebuilds an Esetb from its own text form. The text the app emits still
+    /// carries the original `PtclBin` blob next to the editable `PTCL_JSON`, so
+    /// a caller without an opened file (the CLI) can still apply PTCL edits.
+    pub fn from_text_with_ptclbin(text: &str, zstd: Arc<TotkZstd<'a>>) -> io::Result<Esetb<'a>> {
+        let mut pio = Byml::from_text(text).map_err(io::Error::other)?;
+        let map = pio.as_mut_map().map_err(io::Error::other)?;
+        if !matches!(map.get(PTCL_BIN_KEY), Some(Byml::FileData(_))) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "esetb text has no PtclBin blob to rebuild from",
+            ));
+        }
+        map.remove(PTCL_JSON_KEY);
+        let bytes = pio.to_binary(roead::Endian::Little);
+        Self::from_binary(&bytes, zstd)
+    }
+
     pub fn save_from_text(&mut self, path: &str, text: &str) -> io::Result<()> {
         self.update_from_text(text)?;
         self.byml.save(path.to_string())?;

@@ -1756,6 +1756,39 @@ mod tests {
         assert!(BfresFile::from_bytes(b"not a bfres file").is_err());
     }
 
+    /// `BFRES_FILE=<path> cargo test dump_bfres_bounds -- --ignored --nocapture`
+    /// prints the vertex bounds of every mesh and of the whole model, for
+    /// checking a collision shape or ActorInfo `ModelAabb` against a model.
+    #[test]
+    #[ignore]
+    fn dump_bfres_bounds() {
+        let Ok(path) = std::env::var("BFRES_FILE") else {
+            return;
+        };
+        let parsed = BfresFile::from_path(Path::new(&path))
+            .unwrap_or_else(|error| panic!("{path}: {error}"));
+        let mut all = ([f32::MAX; 3], [f32::MIN; 3]);
+        for mesh in &parsed.render.meshes {
+            let mut bounds = ([f32::MAX; 3], [f32::MIN; 3]);
+            for position in &mesh.positions {
+                for axis in 0..3 {
+                    bounds.0[axis] = bounds.0[axis].min(position[axis]);
+                    bounds.1[axis] = bounds.1[axis].max(position[axis]);
+                    all.0[axis] = all.0[axis].min(position[axis]);
+                    all.1[axis] = all.1[axis].max(position[axis]);
+                }
+            }
+            println!(
+                "{}: {} vertices, min {:?} max {:?}",
+                mesh.name,
+                mesh.positions.len(),
+                bounds.0,
+                bounds.1
+            );
+        }
+        println!("model: min {:?} max {:?}", all.0, all.1);
+    }
+
     #[test]
     fn opens_generated_weapon_pseudo_mcpk() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))

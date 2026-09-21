@@ -214,6 +214,9 @@ pub fn get_binary_by_filetype(
             if let Some(esetb) = &mut opened_file.esetb {
                 esetb.update_from_text(text).ok()?;
                 rawdata = esetb.to_binary();
+            } else if let Ok(mut esetb) = Esetb::from_text_with_ptclbin(text, zstd.clone()) {
+                // No opened file (CLI text_to_bin): the text still embeds PtclBin.
+                rawdata = esetb.text_to_binary(text).ok()?;
             }
         }
         TotkFileType::ASB => {

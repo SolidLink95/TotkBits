@@ -645,7 +645,7 @@ fn prepare_shootable_edits(
     Ok(())
 }
 
-fn prepare_chemical_entries(
+pub(super) fn prepare_chemical_entries(
     clean_romfs: &Path,
     actor_name: &str,
     zstd: Arc<TotkZstd<'_>>,

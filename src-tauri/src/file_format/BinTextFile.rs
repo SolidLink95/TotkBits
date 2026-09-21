@@ -317,7 +317,8 @@ impl<'a> BymlFile<'_> {
         f_handle.read_to_end(&mut buffer)?;
         let (rawdata, compression) = zstd.try_decompress_all_ordered_safe(&buffer, &path);
         println!(
-            "[BYML] Binary comp dict {:?}, is byml? {}",
+            "[BYML] {} Binary comp dict {:?}, is byml? {}",
+            &Pathlib::new(path).name,
             &compression,
             Magic::is_byml(&rawdata)
         );

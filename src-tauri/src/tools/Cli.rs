@@ -97,6 +97,8 @@ impl CliCommand {
                 | "create_weapon"
                 | "merge_skeletons"
                 | "hkcl_to_bphcl"
+                | "bphsh_to_obj"
+                | "obj_to_bphsh"
                 | "txtg_edit"
                 | "txtg"
                 | "--txtg"
@@ -111,6 +113,8 @@ impl CliCommand {
                 | "create_weapon"
                 | "merge_skeletons"
                 | "hkcl_to_bphcl"
+                | "bphsh_to_obj"
+                | "obj_to_bphsh"
                 | "txtg_edit"
                 | "txtg"
                 | "--txtg"
@@ -120,7 +124,7 @@ impl CliCommand {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--no_rstb] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc.exe>]\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--no_rstb] [--lang <USen|EUen|...>] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc.exe>]\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -146,6 +150,8 @@ impl CliCommand {
                 | "create_weapon"
                 | "merge_skeletons"
                 | "hkcl_to_bphcl"
+                | "bphsh_to_obj"
+                | "obj_to_bphsh"
                 | "txtg_edit"
                 | "txtg"
                 | "--txtg"
@@ -221,6 +227,8 @@ impl CliCommand {
             "bntx_edit" => return self.bntx_edit(),
             "merge_skeletons" => return self.merge_skeletons(),
             "hkcl_to_bphcl" => return self.hkcl_to_bphcl(),
+            "bphsh_to_obj" => return self.bphsh_to_obj(),
+            "obj_to_bphsh" => return self.obj_to_bphsh(),
             "txtg_edit" | "txtg" | "--txtg" => return self.txtg_edit(),
             _ => {}
         }
@@ -828,6 +836,191 @@ impl CliCommand {
     /// 7400. `--compare` reports skeleton parity against a reference FBX
     /// (names, order, hierarchy, LimbNode/Null, transforms within
     /// tolerance); a mismatch exits with code 3.
+    /// `bphsh_to_obj -i <in.bphsh[.zs]> -o <out.obj | dir>`: extracts a TOTK
+    /// mesh shape into an indexed OBJ plus a `<name>.json` material file
+    /// next to it (see `parser::physics::bphsh::obj`).
+    fn bphsh_to_obj(&self) -> Result<(), CliError> {
+        use crate::parser::physics::bphsh::{obj, reader};
+        let (input, output, _) = self.in_out_args()?;
+        let bytes = fs::read(&input)
+            .map_err(|e| CliError::new(1, format!("failed to read {}: {e}", input.display())))?;
+        let bytes = if reader::is_phive(&bytes) {
+            bytes
+        } else {
+            self.zstd()
+                .map_err(|e| CliError::new(1, e))?
+                .try_decompress_for_path(&input, &bytes)
+                .map(|(data, _)| data)
+                .map_err(|e| CliError::new(1, format!("failed to decompress input: {e}")))?
+        };
+        let parsed = reader::parse(&bytes)
+            .map_err(|e| CliError::new(2, format!("failed to parse bphsh: {e}")))?;
+        let geometry = obj::indexed_geometry(&parsed.shape);
+        let (text, json) = obj::to_obj(&geometry).map_err(|e| CliError::new(3, e.to_string()))?;
+        let obj_path = if output.is_dir() || output.extension().is_none() {
+            let stem = input
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "shape".into());
+            let stem = stem
+                .trim_end_matches(".zs")
+                .trim_end_matches(".bphsh")
+                .trim_end_matches(".Nin_NX_NVN")
+                .to_owned();
+            output.join(format!("{stem}.obj"))
+        } else {
+            output.clone()
+        };
+        let json_path = obj_path.with_extension("json");
+        write_output(&obj_path, text.as_bytes()).map_err(|e| CliError::new(3, e))?;
+        write_output(&json_path, json.as_bytes()).map_err(|e| CliError::new(3, e))?;
+        let shape = &parsed.shape.shape;
+        println!(
+            "saved {} and {} ({} vertices, {} triangles, {} materials; {} sections, {} primitives)",
+            obj_path.display(),
+            json_path.display(),
+            geometry.vertices.len(),
+            geometry.triangles.len(),
+            geometry.materials.len(),
+            shape.sections.len(),
+            shape
+                .sections
+                .iter()
+                .map(|s| s.primitives.len())
+                .sum::<usize>()
+        );
+        Ok(())
+    }
+
+    /// `obj_to_bphsh -i <in.obj> -o <out.bphsh[.zs]> [--mat <materials.json>]
+    /// [--no_weld] [--keep_order] [--max_error N]`: builds a TOTK mesh shape
+    /// from an OBJ. Materials come from the JSON (`--mat`, else `<in>.json`
+    /// when present, else the default material). Vertices with identical
+    /// positions are welded and the geometry is put in canonical order unless
+    /// told otherwise, so the result depends on the geometry alone.
+    fn obj_to_bphsh(&self) -> Result<(), CliError> {
+        use crate::parser::physics::bphsh::{builder, obj, shape::BphshShape, writer};
+        let (input, output, extra) = self.in_out_args()?;
+        let mut materials = None;
+        let mut options = builder::BuildOptions {
+            weld: true,
+            canonical: true,
+            ..Default::default()
+        };
+        let mut i = 0;
+        while i < extra.len() {
+            match extra[i].as_str() {
+                "--mat" => {
+                    i += 1;
+                    materials = Some(PathBuf::from(
+                        extra
+                            .get(i)
+                            .ok_or_else(|| CliError::new(1, "--mat requires a value"))?,
+                    ));
+                }
+                "--no_weld" => options.weld = false,
+                "--keep_order" => options.canonical = false,
+                "--max_error" => {
+                    i += 1;
+                    let value = extra
+                        .get(i)
+                        .ok_or_else(|| CliError::new(1, "--max_error requires a value"))?;
+                    options.max_vertex_error = value
+                        .parse()
+                        .ok()
+                        .filter(|v: &f32| *v > 0.0)
+                        .ok_or_else(|| CliError::new(1, format!("invalid --max_error {value}")))?;
+                }
+                other => return Err(CliError::new(1, format!("unknown argument {other}"))),
+            }
+            i += 1;
+        }
+        let text = fs::read_to_string(&input)
+            .map_err(|e| CliError::new(1, format!("failed to read {}: {e}", input.display())))?;
+        let materials = materials.or_else(|| {
+            let sidecar = input.with_extension("json");
+            sidecar.is_file().then_some(sidecar)
+        });
+        let json = match &materials {
+            Some(path) => Some(fs::read_to_string(path).map_err(|e| {
+                CliError::new(1, format!("failed to read {}: {e}", path.display()))
+            })?),
+            None => None,
+        };
+        let geometry = obj::from_obj(&text, json.as_deref())
+            .map_err(|e| CliError::new(2, format!("failed to read OBJ: {e}")))?;
+        let shape = builder::build_with_options(&geometry, options)
+            .ok_or_else(|| CliError::new(2, "the OBJ holds no usable triangles"))?;
+        let (material_table, collision_masks) = obj::material_tables(&geometry);
+        let sections = shape.sections.len();
+        let primitives: usize = shape.sections.iter().map(|s| s.primitives.len()).sum();
+        let bytes = writer::write(&BphshShape {
+            shape,
+            materials: material_table,
+            collision_masks,
+        })
+        .map_err(|e| CliError::new(3, e.to_string()))?;
+        let compress = output
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .ends_with(".zs");
+        let saved = if compress {
+            self.zstd()
+                .map_err(|e| CliError::new(1, e))?
+                .compress_zs(&bytes)
+                .map_err(|e| CliError::new(3, format!("failed to compress: {e}")))?
+        } else {
+            bytes
+        };
+        write_output(&output, &saved).map_err(|e| CliError::new(3, e))?;
+        println!(
+            "saved {} ({} bytes{}; {} vertices, {} triangles -> {} sections, {} primitives, {} materials)",
+            output.display(),
+            saved.len(),
+            if compress { ", zstd" } else { "" },
+            geometry.vertices.len(),
+            geometry.triangles.len(),
+            sections,
+            primitives,
+            geometry.materials.len()
+        );
+        Ok(())
+    }
+
+    /// `-i <input> -o <output>` plus the remaining arguments, for the
+    /// operations that take their paths as flags.
+    fn in_out_args(&self) -> Result<(PathBuf, PathBuf, Vec<String>), CliError> {
+        let mut input = None;
+        let mut output = None;
+        let mut rest = Vec::new();
+        let mut i = 0;
+        while i < self.extra.len() {
+            match self.extra[i].as_str() {
+                "-i" => {
+                    i += 1;
+                    input = Some(PathBuf::from(
+                        self.extra
+                            .get(i)
+                            .ok_or_else(|| CliError::new(1, "-i requires a value"))?,
+                    ));
+                }
+                "-o" => {
+                    i += 1;
+                    output = Some(PathBuf::from(
+                        self.extra
+                            .get(i)
+                            .ok_or_else(|| CliError::new(1, "-o requires a value"))?,
+                    ));
+                }
+                other => rest.push(other.to_owned()),
+            }
+            i += 1;
+        }
+        let input = input.ok_or_else(|| CliError::new(1, "-i <input> is required"))?;
+        let output = output.ok_or_else(|| CliError::new(1, "-o <output> is required"))?;
+        Ok((input, output, rest))
+    }
+
     /// `hkcl_to_bphcl -i <in.hkcl> -o <out> [--pack <actor.pack.zs>] [--scale N]`:
     /// without `--pack` the output is a bare BPHCL, with it the pack is copied
     /// to the output with the converted cloth installed.
@@ -1398,6 +1591,7 @@ impl CliCommand {
         let mut rstb_only = false;
         let mut generate_rstb = true;
         let mut zstd_level = None;
+        let mut mals_language = None;
         let args = &self.extra;
         let mut i = 0;
         while i < args.len() {
@@ -1414,6 +1608,7 @@ impl CliCommand {
                 "--plan" => plan_only = true,
                 "--rstb_only" => rstb_only = true,
                 "--no_rstb" => generate_rstb = false,
+                "--lang" => mals_language = Some(take(&mut i)?),
                 "--zstd_level" => {
                     let value = take(&mut i)?;
                     zstd_level =
@@ -1493,6 +1688,14 @@ impl CliCommand {
                     spec.base_user.trim(),
                     spec.entries.len()
                 ),
+                ItemSpec::Zonai(spec) => println!(
+                    "{}: Zonai device from {} ({} parameter file(s), {} companion(s), {} vendor(s))",
+                    spec.actor_name,
+                    spec.template_actor,
+                    spec.params.len(),
+                    spec.companions.len(),
+                    spec.vendors.len()
+                ),
             }
         }
         if plan_only {
@@ -1528,6 +1731,7 @@ impl CliCommand {
             zstd,
             zstd_level,
             generate_rstb,
+            mals_language.as_deref(),
         )
         .map_err(|e| e.to_string())?;
         for weapon in &report.weapons {
@@ -1635,6 +1839,51 @@ impl CliCommand {
             println!("  edited      {} asset call(s)", elink.edited_entries);
             for note in &elink.notes {
                 println!("  note        {note}");
+            }
+        }
+        for device in &report.zonai {
+            println!(
+                "{} (Zonai device from {}, capsule {}):",
+                device.actor_name, device.template_actor, device.capsule_name
+            );
+            println!("  pack        {}", device.actor_pack.display());
+            println!("  capsule     {}", device.capsule_pack.display());
+            for file in &device.private_files {
+                println!("  private     {file}");
+            }
+            for companion in &device.companions {
+                println!(
+                    "  companion   {} from {} -> {}",
+                    companion.actor_name,
+                    companion.template_actor,
+                    companion.actor_pack.display()
+                );
+            }
+            if let Some(model) = &device.model {
+                println!("  model       {}", model.display());
+            }
+            for texture in &device.ui_textures {
+                println!(
+                    "  icon        {} ({}x{}, {})",
+                    texture.destination.display(),
+                    texture.width,
+                    texture.height,
+                    texture.format
+                );
+                if let Some(warning) = &texture.warning {
+                    println!("  warning     {warning}");
+                }
+            }
+            for path in &device.rsdb {
+                println!("  rsdb        {}", path.display());
+            }
+            for vendor in &device.vendor_packs {
+                println!(
+                    "  vendor      {} x{} in {}",
+                    vendor.vendor_actor,
+                    vendor.quantity,
+                    vendor.output.display()
+                );
             }
         }
         match &report.rstb {

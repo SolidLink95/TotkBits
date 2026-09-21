@@ -7,6 +7,7 @@ pub mod bphcl;
 pub mod bphcl_to_hkcl;
 pub mod bphhb;
 pub mod bphhb_mapping;
+pub mod bphsh;
 pub mod bphyssb;
 pub mod compactor;
 pub mod hkcl;

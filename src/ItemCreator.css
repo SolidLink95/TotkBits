@@ -49,6 +49,9 @@
 }
 .item-creator-toprow label { color: #bbb; text-align: right; white-space: nowrap; }
 .item-creator-path { display: flex; gap: 6px; }
+.item-creator-language { display: flex; gap: 10px; align-items: center; }
+.item-creator-language select { width: 140px; }
+.item-creator-language .item-creator-hint { color: #888; font-size: 12px; }
 .item-creator-path input { flex: 1; }
 
 .item-creator-tabs { display: flex; gap: 2px; }

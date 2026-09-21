@@ -1,5 +1,7 @@
 pub mod Cli;
 pub mod RstbEstimate;
+pub mod coacd;
+pub mod convex_hull;
 pub mod elink_creator;
 pub mod hkcl_convert;
 pub mod items_creator;

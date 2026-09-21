@@ -16,6 +16,7 @@ pub mod armor;
 pub mod armor_model;
 pub mod assets;
 pub mod catalog;
+pub mod collision;
 pub mod ecocat;
 pub mod effect_ai;
 pub mod gamedata;
@@ -27,6 +28,7 @@ pub mod shared;
 pub mod sharp_info;
 pub mod vendor;
 mod version;
+pub mod zonai;
 
 const SHARP_INFO: &str = "GameParameter/SharpInfo/Default.game__weapon__SharpInfoTable.bgyml";
 
@@ -244,6 +246,9 @@ pub struct ModGenerationReport {
     /// Custom ELink effects generated with the items (in list order).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub elinks: Vec<crate::tools::elink_creator::ElinkReport>,
+    /// Zonai devices (device + capsule + companions) generated with the items.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub zonai: Vec<zonai::ZonaiGenerationReport>,
     /// `None` when the RSTB pass was skipped (`generate_rstb: false`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rstb: Option<rstb::RstbGenerationReport>,
@@ -251,13 +256,15 @@ pub struct ModGenerationReport {
 
 /// One entry of a mixed specification list. Armor is recognised by its
 /// `Armor_` actor prefix, a custom ELink effect by its `baseUser` /
-/// `base_user` key; everything else is a weapon/shield/bow.
+/// `base_user` key, a Zonai device by `kind: "Zonai"` or a `SpObj_`
+/// template; everything else is a weapon/shield/bow.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ItemSpec {
     Weapon(WeaponSpec),
     Armor(armor::ArmorSpec),
     Elink(crate::tools::elink_creator::ElinkRequest),
+    Zonai(zonai::ZonaiSpec),
 }
 
 impl ItemSpec {
@@ -267,6 +274,15 @@ impl ItemSpec {
             Self::Weapon(spec) => &spec.actor_name,
             Self::Armor(spec) => &spec.actor_name,
             Self::Elink(spec) => spec.new_name.trim(),
+            Self::Zonai(spec) => &spec.actor_name,
+        }
+    }
+
+    /// Further actors the entry writes (a Zonai capsule and companions).
+    pub fn extra_actor_names(&self) -> Vec<String> {
+        match self {
+            Self::Zonai(spec) => spec.extra_actor_names(),
+            _ => Vec::new(),
         }
     }
 
@@ -276,6 +292,7 @@ impl ItemSpec {
             Self::Weapon(spec) => &spec.template_actor,
             Self::Armor(spec) => &spec.template_actor,
             Self::Elink(spec) => spec.base_user.trim(),
+            Self::Zonai(spec) => &spec.template_actor,
         }
     }
 
@@ -284,6 +301,7 @@ impl ItemSpec {
             Self::Weapon(spec) => spec.vendors.len(),
             Self::Armor(spec) => spec.vendors.len(),
             Self::Elink(_) => 0,
+            Self::Zonai(spec) => spec.vendors.len(),
         }
     }
 
@@ -291,6 +309,7 @@ impl ItemSpec {
         match self {
             Self::Weapon(spec) => spec.validate(asset_root),
             Self::Armor(spec) => spec.validate(asset_root),
+            Self::Zonai(spec) => spec.validate(asset_root),
             Self::Elink(spec) => {
                 if spec.base_user.trim().is_empty() {
                     return Err(io::Error::new(
@@ -335,8 +354,18 @@ pub fn load_item_specs(path: &Path) -> io::Result<Vec<ItemSpec>> {
                 .and_then(|name| name.as_str())
                 .is_some_and(|name| name.starts_with("Armor_"));
             let is_elink = value.get("baseUser").or(value.get("base_user")).is_some();
+            let is_zonai = value
+                .get("kind")
+                .and_then(|kind| kind.as_str())
+                .is_some_and(|kind| kind.eq_ignore_ascii_case(zonai::KIND))
+                || value
+                    .get("template_actor")
+                    .and_then(|name| name.as_str())
+                    .is_some_and(|name| name.starts_with("SpObj_"));
             let parsed = if is_elink {
                 serde_json::from_value(value).map(ItemSpec::Elink)
+            } else if is_zonai {
+                serde_json::from_value(value).map(ItemSpec::Zonai)
             } else if is_armor {
                 serde_json::from_value(value).map(ItemSpec::Armor)
             } else {
@@ -349,7 +378,7 @@ pub fn load_item_specs(path: &Path) -> io::Result<Vec<ItemSpec>> {
                 match &mut spec {
                     ItemSpec::Weapon(weapon) => weapon.anchor_link_paths(&base),
                     ItemSpec::Armor(armor) => armor.anchor_link_paths(&base),
-                    ItemSpec::Elink(_) => {}
+                    ItemSpec::Elink(_) | ItemSpec::Zonai(_) => {}
                 }
                 spec
             })
@@ -375,12 +404,16 @@ pub fn generate_item_mod(
         zstd,
         rstb_level,
         true,
+        None,
     )
 }
 
 /// [`generate_item_mod`] with the RSTB pass optional: `generate_rstb: false`
 /// leaves the mod without a ResourceSizeTable (for a later `--rstb_only`
 /// run or an external tool such as TKMM) and the report's `rstb` empty.
+/// `mals_language` picks the Mals archive the labels go into (`USen`,
+/// `EUen`, ...); `None` takes the RomFS default (see
+/// [`messages::default_mals_language`]).
 pub fn generate_item_mod_with_options(
     specs: &[ItemSpec],
     clean_romfs: &Path,
@@ -389,6 +422,7 @@ pub fn generate_item_mod_with_options(
     zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
     rstb_level: Option<i32>,
     generate_rstb: bool,
+    mals_language: Option<&str>,
 ) -> io::Result<ModGenerationReport> {
     if specs.is_empty() {
         return Err(io::Error::new(
@@ -399,22 +433,26 @@ pub fn generate_item_mod_with_options(
     let mut seen = std::collections::BTreeSet::new();
     for spec in specs {
         spec.validate(asset_root)?;
-        if !seen.insert(spec.actor_name()) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("actor {} is specified more than once", spec.actor_name()),
-            ));
-        }
-        if !matches!(spec, ItemSpec::Elink(_))
-            && clean_romfs
-                .join("Pack/Actor")
-                .join(format!("{}.pack.zs", spec.actor_name()))
-                .is_file()
-        {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                format!("actor {} already exists in clean ROMFS", spec.actor_name()),
-            ));
+        let mut names = vec![spec.actor_name().to_owned()];
+        names.extend(spec.extra_actor_names());
+        for name in names {
+            if !seen.insert(name.clone()) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("actor {name} is specified more than once"),
+                ));
+            }
+            if !matches!(spec, ItemSpec::Elink(_))
+                && clean_romfs
+                    .join("Pack/Actor")
+                    .join(format!("{name}.pack.zs"))
+                    .is_file()
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!("actor {name} already exists in clean ROMFS"),
+                ));
+            }
         }
     }
     assets::ensure_output_outside_romfs(clean_romfs, output_romfs)?;
@@ -425,9 +463,11 @@ pub fn generate_item_mod_with_options(
     let mut weapons = Vec::new();
     let mut armors = Vec::new();
     let mut elinks = Vec::new();
+    let mut zonai = Vec::new();
     // The mod-wide files (GameDataList, Mals, RSDB, SharpInfo, vendor packs)
     // are opened once, edited by every item and written once below.
-    let mut shared = shared::SharedFiles::new(clean_romfs, output_romfs, zstd.clone());
+    let mut shared = shared::SharedFiles::new(clean_romfs, output_romfs, zstd.clone())
+        .with_mals_language(mals_language)?;
     for spec in specs {
         match spec {
             ItemSpec::Weapon(spec) => {
@@ -436,6 +476,7 @@ pub fn generate_item_mod_with_options(
             ItemSpec::Armor(spec) => {
                 armors.push(spec.generate_files_with(&mut shared, asset_root)?)
             }
+            ItemSpec::Zonai(spec) => zonai.push(spec.generate_files_with(&mut shared, asset_root)?),
             // The effect goes straight into the mod tree; the single RSTB
             // pass below covers its ELink and emitter-set files.
             ItemSpec::Elink(request) => {
@@ -469,6 +510,7 @@ pub fn generate_item_mod_with_options(
         weapons,
         armors,
         elinks,
+        zonai,
         rstb,
     })
 }
@@ -498,7 +540,7 @@ fn expand_auto_effect_keys(
         let (actor, effect, keys) = match spec {
             ItemSpec::Weapon(spec) => (&spec.actor_name, &spec.effect, &mut spec.effect_keys),
             ItemSpec::Armor(spec) => (&spec.actor_name, &spec.effect, &mut spec.effect_keys),
-            ItemSpec::Elink(_) => continue,
+            ItemSpec::Elink(_) | ItemSpec::Zonai(_) => continue,
         };
         if !keys.iter().any(|key| is_auto_effect_key(key)) {
             continue;
@@ -689,6 +731,7 @@ pub fn generate_weapon_mod_with_rstb_level(
         weapons,
         armors: Vec::new(),
         elinks: Vec::new(),
+        zonai: Vec::new(),
         rstb: Some(rstb),
     })
 }

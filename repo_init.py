@@ -4,6 +4,8 @@ import shutil
 import os, sys, stat
 from time import time
 import requests
+import zipfile
+
 # from tauri_build import build_dotnet
 
 try:
@@ -41,7 +43,6 @@ ASTCENC_ZIP_URL = "https://github.com/ARM-software/astc-encoder/releases/downloa
 def install_astcenc(bin_path):
     """ASTC textures (inventory icons) are encoded with ARM's astcenc, kept as
     bin/cpp/astcenc-*.exe so the app finds them next to the executable."""
-    import zipfile
     cpp_dir = Path(bin_path) / "cpp"
     cpp_dir.mkdir(parents=True, exist_ok=True)
     if any(cpp_dir.glob("astcenc-*.exe")):
@@ -59,9 +60,39 @@ def install_astcenc(bin_path):
     archive.unlink()
 
 
+COACD_WHEEL_URL = "https://github.com/SarahWeiii/CoACD/releases/download/1.0.14/coacd-1.0.14-cp39-abi3-win_amd64.whl"
+
+
+def install_coacd(bin_path):
+    """The items creator's convex collision (Zonai `physics_obj`) runs CoACD
+    through its C API. The prebuilt lib_coacd.dll ships inside the Python
+    wheel of the CoACD release; only the DLL is kept, as bin/dlls/lib_coacd.dll."""
+    dll_dir = Path(bin_path) / "dlls"
+    dll_dir.mkdir(parents=True, exist_ok=True)
+    target = dll_dir / "lib_coacd.dll"
+    if target.is_file():
+        print("[+] lib_coacd.dll already present in bin/dlls")
+        return
+    archive = dll_dir / "coacd.whl"
+    print("[+] Downloading CoACD")
+    download_file(COACD_WHEEL_URL, archive)
+    try:
+        with zipfile.ZipFile(archive) as bundle:
+            members = [
+                name for name in bundle.namelist() if Path(name).name == "lib_coacd.dll"
+            ]
+            if not members:
+                raise RuntimeError("lib_coacd.dll is missing from the CoACD wheel")
+            target.write_bytes(bundle.read(members[0]))
+            print("[+] Extracted lib_coacd.dll -> bin/dlls")
+    finally:
+        archive.unlink(missing_ok=True)
+
+
 def remove_file(file):
     x = Path(file)
-    if not x.is_file(): return
+    if not x.is_file():
+        return
     file_str = str(x)
     try:
         subprocess.run(["cmd", "/c", "del", file_str], check=True)
@@ -112,23 +143,33 @@ def copy_files(bin_path):
         shutil.copyfile(file1, file2)
         print(f"[+] Copied {file1} -> {file2}")
 
+
 def safe_copy(file1, file2, verbose=True):
     file1, file2 = Path(file1), Path(file2)
-    if not file1.is_file(): return
-    if file2.is_file(): return
-    if verbose: print(f"Copying: {file1.name}")
+    if not file1.is_file():
+        return
+    if file2.is_file():
+        return
+    if verbose:
+        print(f"Copying: {file1.name}")
     shutil.copyfile(file1, file2)
-    
+
+
 def safe_copy_dir(dir1, dir2, verbose=True):
     dir1, dir2 = Path(dir1), Path(dir2)
-    if not dir1.is_dir(): return
-    if dir2.is_dir() and next(dir2.glob("*"), None) is not None: return
-    if verbose: print(f"Copying folder: {dir1.name}")
+    if not dir1.is_dir():
+        return
+    if dir2.is_dir() and next(dir2.glob("*"), None) is not None:
+        return
+    if verbose:
+        print(f"Copying folder: {dir1.name}")
     shutil.copytree(dir1, dir2)
+
 
 def npm_install():
     p = subprocess.run(["cmd", "/c", "npm", "install"], check=True)
     return p
+
 
 def repo_init():
     cwd_path = Path(__file__).parent
@@ -150,7 +191,7 @@ def repo_init():
     dll_dir.mkdir(parents=True, exist_ok=True)
     for file in misc_dir.glob("*.dll"):
         safe_copy(file, dll_dir / file.name)
-        
+
     files = list(misc_dir.glob("*.bin"))
     files += list(misc_dir.glob("*.json"))
     files += list(misc_dir.glob("*.txt"))
@@ -165,6 +206,7 @@ def repo_init():
     # Download dlls
     download_files()
     install_astcenc(bin_path)
+    install_coacd(bin_path)
 
     print(
         "\n[+] Totkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file"

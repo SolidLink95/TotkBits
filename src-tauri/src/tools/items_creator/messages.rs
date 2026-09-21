@@ -1,4 +1,6 @@
-//! English MALS/MSBT generation for custom weapons.
+//! MALS/MSBT generation for custom items: the labels go into the Mals
+//! archive of the run's language (`SharedFiles::mals_language`, US English
+//! when the RomFS has it, else EU English, else the first archive found).
 
 use super::shared::{PackDocument, SharedFiles};
 use crate::{
@@ -11,6 +13,46 @@ use std::{io, path::Path, sync::Arc};
 
 const US_ENGLISH_MALS_PREFIX: &str = "USen.Product.";
 const US_ENGLISH_MALS_SUFFIX: &str = ".sarc.zs";
+
+/// Every language the RomFS ships a Mals archive for (`Mals/<Lang>.Product.<version>.sarc.zs`), sorted.
+pub fn mals_languages(clean_romfs: &Path) -> Vec<String> {
+    let mut languages: Vec<String> = std::fs::read_dir(clean_romfs.join("Mals"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter_map(|entry| {
+                    let name = entry.file_name();
+                    let name = name.to_str()?;
+                    let stem = name.strip_suffix(US_ENGLISH_MALS_SUFFIX)?;
+                    let (language, rest) = stem.split_once(".Product.")?;
+                    (!language.is_empty()
+                        && !rest.is_empty()
+                        && rest.bytes().all(|value| value.is_ascii_digit()))
+                    .then(|| language.to_owned())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    languages.sort();
+    languages.dedup();
+    languages
+}
+
+/// The language custom labels go into unless one is chosen: US English,
+/// else EU English, else the first archive of the RomFS.
+pub fn default_mals_language(clean_romfs: &Path) -> Option<String> {
+    let languages = mals_languages(clean_romfs);
+    ["USen", "EUen"]
+        .iter()
+        .map(|preferred| (*preferred).to_owned())
+        .find(|preferred| languages.contains(preferred))
+        .or_else(|| languages.first().cloned())
+}
+
+/// `<Lang>.Product.` of the run's language.
+fn mals_prefix(shared: &SharedFiles<'_>) -> String {
+    format!("{}.Product.", shared.mals_language())
+}
 const POUCH_CONTENT: &str = "ActorMsg/PouchContent.msbt";
 const ATTACHMENT: &str = "ActorMsg/Attachment.msbt";
 const PICTURE_BOOK: &str = "ActorMsg/PictureBook.msbt";
@@ -65,13 +107,13 @@ impl WeaponMessageRequest {
         &self,
         shared: &mut SharedFiles<'_>,
     ) -> io::Result<std::path::PathBuf> {
+        let prefix = mals_prefix(shared);
         let (version, clean_source) = super::version::discover_product_file(
             &shared.clean_romfs().join("Mals"),
-            US_ENGLISH_MALS_PREFIX,
+            &prefix,
             US_ENGLISH_MALS_SUFFIX,
         )?;
-        let name =
-            super::version::product_name(US_ENGLISH_MALS_PREFIX, &version, US_ENGLISH_MALS_SUFFIX)?;
+        let name = super::version::product_name(&prefix, &version, US_ENGLISH_MALS_SUFFIX)?;
         let output = shared.output_romfs().join("Mals").join(name);
         self.apply_us_english_mals(shared, &clean_source, &output)?;
         Ok(output)
@@ -195,13 +237,13 @@ pub(super) fn apply_pouch_labels(
     validate_actor_name(actor_name)?;
     require_text(display_name, "display_name")?;
     require_text(description, "description")?;
+    let prefix = mals_prefix(shared);
     let (version, clean_source) = super::version::discover_product_file(
         &shared.clean_romfs().join("Mals"),
-        US_ENGLISH_MALS_PREFIX,
+        &prefix,
         US_ENGLISH_MALS_SUFFIX,
     )?;
-    let name =
-        super::version::product_name(US_ENGLISH_MALS_PREFIX, &version, US_ENGLISH_MALS_SUFFIX)?;
+    let name = super::version::product_name(&prefix, &version, US_ENGLISH_MALS_SUFFIX)?;
     let output = shared.output_romfs().join("Mals").join(name);
     ensure_output_outside_romfs(shared.clean_romfs(), &output)?;
     let document = shared.pack(&clean_source, &output)?;
@@ -226,6 +268,32 @@ pub(super) fn apply_pouch_labels(
         }
         Ok(())
     });
+    Ok(output)
+}
+
+/// `ActorMsg/Attachment.msbt` `<actor>_Name` / `<actor>_Adjective`: what the
+/// game shows for an actor fused to a weapon or shield (Zonai devices).
+pub(super) fn apply_attachment_labels(
+    shared: &mut SharedFiles<'_>,
+    actor_name: &str,
+    display_name: &str,
+    adjective: &str,
+) -> io::Result<std::path::PathBuf> {
+    validate_actor_name(actor_name)?;
+    require_text(display_name, "display_name")?;
+    require_text(adjective, "adjective")?;
+    let prefix = mals_prefix(shared);
+    let (version, clean_source) = super::version::discover_product_file(
+        &shared.clean_romfs().join("Mals"),
+        &prefix,
+        US_ENGLISH_MALS_SUFFIX,
+    )?;
+    let name = super::version::product_name(&prefix, &version, US_ENGLISH_MALS_SUFFIX)?;
+    let output = shared.output_romfs().join("Mals").join(name);
+    ensure_output_outside_romfs(shared.clean_romfs(), &output)?;
+    let document = shared.pack(&clean_source, &output)?;
+    let entries = [("Name", Some(display_name)), ("Adjective", Some(adjective))];
+    edit_msbt(document, ATTACHMENT, actor_name, &entries)?;
     Ok(output)
 }
 

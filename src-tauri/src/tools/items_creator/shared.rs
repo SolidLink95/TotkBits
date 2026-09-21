@@ -128,6 +128,8 @@ pub struct SharedFiles<'a> {
     clean_romfs: PathBuf,
     output_romfs: PathBuf,
     zstd: Arc<TotkZstd<'a>>,
+    /// Language of the Mals archive the labels go into (`USen`, `EUen`, ...).
+    mals_language: String,
     entries: BTreeMap<PathBuf, Entry<'a>>,
 }
 
@@ -137,8 +139,34 @@ impl<'a> SharedFiles<'a> {
             clean_romfs: clean_romfs.to_path_buf(),
             output_romfs: output_romfs.to_path_buf(),
             zstd,
+            mals_language: super::messages::default_mals_language(clean_romfs)
+                .unwrap_or_else(|| "USen".to_owned()),
             entries: BTreeMap::new(),
         }
+    }
+
+    /// Chooses the Mals language of the run; `None` / blank keeps the
+    /// RomFS default (US English, else EU English, else the first archive).
+    /// A language the RomFS has no archive for is rejected.
+    pub fn with_mals_language(mut self, language: Option<&str>) -> io::Result<Self> {
+        if let Some(language) = language.map(str::trim).filter(|value| !value.is_empty()) {
+            let available = super::messages::mals_languages(&self.clean_romfs);
+            if !available.iter().any(|value| value == language) {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!(
+                        "the RomFS has no Mals archive for language {language} (available: {})",
+                        available.join(", ")
+                    ),
+                ));
+            }
+            self.mals_language = language.to_owned();
+        }
+        Ok(self)
+    }
+
+    pub fn mals_language(&self) -> &str {
+        &self.mals_language
     }
 
     pub fn clean_romfs(&self) -> &Path {
