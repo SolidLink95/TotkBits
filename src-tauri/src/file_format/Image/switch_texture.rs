@@ -110,21 +110,45 @@ pub fn swizzle_astc(
     block_height: usize,
     block_height_log2: u8,
 ) -> io::Result<Vec<u8>> {
+    swizzle_blocks(
+        width,
+        height,
+        linear,
+        block_width,
+        block_height,
+        16,
+        block_height_log2,
+    )
+}
+
+/// Tiles already encoded linear blocks (`block_width`x`block_height`
+/// texels, `bytes_per_block` each) into the Tegra block-linear layout with
+/// the given block height; the result is padded to whole GOB rows.
+pub fn swizzle_blocks(
+    width: u32,
+    height: u32,
+    linear: &[u8],
+    block_width: usize,
+    block_height: usize,
+    bytes_per_block: usize,
+    block_height_log2: u8,
+) -> io::Result<Vec<u8>> {
     check_dimensions(width, height)?;
     let mut block_dim = BlockDim::uncompressed();
     block_dim.width = NonZeroUsize::new(block_width)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ASTC block width is zero"))?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "block width is zero"))?;
     block_dim.height = NonZeroUsize::new(block_height)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ASTC block height is zero"))?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "block height is zero"))?;
     let tegra_block_height = BlockHeight::new(1usize << block_height_log2)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid Tegra block height"))?;
-    let expected =
-        (width as usize).div_ceil(block_width) * (height as usize).div_ceil(block_height) * 16;
+    let expected = (width as usize).div_ceil(block_width)
+        * (height as usize).div_ceil(block_height)
+        * bytes_per_block;
     if linear.len() < expected {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "ASTC surface holds {} bytes, {expected} needed for {width}x{height}",
+                "surface holds {} bytes, {expected} needed for {width}x{height}",
                 linear.len()
             ),
         ));
@@ -136,11 +160,86 @@ pub fn swizzle_astc(
         &linear[..expected],
         block_dim,
         Some(tegra_block_height),
-        16,
+        bytes_per_block,
         1,
         1,
     )
     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
+}
+
+/// Inverse of [`swizzle_blocks`]: the linear block rows of a swizzled surface.
+pub fn deswizzle_blocks(
+    width: u32,
+    height: u32,
+    swizzled: &[u8],
+    block_width: usize,
+    block_height: usize,
+    bytes_per_block: usize,
+    block_height_log2: u8,
+) -> io::Result<Vec<u8>> {
+    check_dimensions(width, height)?;
+    let mut block_dim = BlockDim::uncompressed();
+    block_dim.width = NonZeroUsize::new(block_width)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "block width is zero"))?;
+    block_dim.height = NonZeroUsize::new(block_height)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "block height is zero"))?;
+    let tegra_block_height = BlockHeight::new(1usize << block_height_log2)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid Tegra block height"))?;
+    deswizzle_surface(
+        width as usize,
+        height as usize,
+        1,
+        swizzled,
+        block_dim,
+        Some(tegra_block_height),
+        bytes_per_block,
+        1,
+        1,
+    )
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
+}
+
+/// Length of a swizzled surface as TexToGo stores it: the Tegra layout is
+/// generated in whole 512-byte GOBs, but the game's files stop after the
+/// last byte a texel actually lands on (a 16x16 BC1 mip is 128 bytes, an
+/// 8x8 one 32, everything smaller 8). The length is found by swizzling a
+/// sentinel surface of the same shape and dropping the untouched tail.
+pub fn compact_swizzled_len(
+    width: u32,
+    height: u32,
+    block_width: usize,
+    block_height: usize,
+    bytes_per_block: usize,
+    block_height_log2: u8,
+) -> io::Result<usize> {
+    check_dimensions(width, height)?;
+    let mut block_dim = BlockDim::uncompressed();
+    block_dim.width = NonZeroUsize::new(block_width)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "block width is zero"))?;
+    block_dim.height = NonZeroUsize::new(block_height)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "block height is zero"))?;
+    let tegra_block_height = BlockHeight::new(1usize << block_height_log2)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid Tegra block height"))?;
+    let linear_len = (width as usize).div_ceil(block_width)
+        * (height as usize).div_ceil(block_height)
+        * bytes_per_block;
+    let sentinel = vec![0xFFu8; linear_len];
+    let swizzled = swizzle_surface(
+        width as usize,
+        height as usize,
+        1,
+        &sentinel,
+        block_dim,
+        Some(tegra_block_height),
+        bytes_per_block,
+        1,
+        1,
+    )
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+    Ok(swizzled
+        .iter()
+        .rposition(|&byte| byte != 0)
+        .map_or(0, |index| index + 1))
 }
 
 pub fn decode(
@@ -573,6 +672,11 @@ mod component_selector_tests {
 /// `(block width, block height, bytes per block)` of a surface format.
 pub fn block_layout(format: ImageFormat) -> io::Result<(u32, u32, u32)> {
     format_layout(format)
+}
+
+/// Bytes per 4x4 block (or per texel for uncompressed formats).
+pub fn bytes_per_block(format: ImageFormat) -> io::Result<usize> {
+    format_layout(format).map(|(_, _, bytes)| bytes as usize)
 }
 
 fn format_layout(format: ImageFormat) -> io::Result<(u32, u32, u32)> {

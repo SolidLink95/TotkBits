@@ -126,7 +126,7 @@ impl CliCommand {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--no_rstb] [--lang <USen|EUen|...>] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli coacd_decompose -i <mesh.obj|request.json> -o <pieces.json|pieces.obj> [--threshold N] [--max_hulls N] [--prep_res N] [--no_preprocess] [--no_merge] [--seed N] [--time_limit SECONDS]\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0|mc> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--set_tex MATERIAL <slot|_n0> TEXTURE]... [--rename_bone FROM TO]... [--rename_mat FROM TO]... [--info] [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--no_rstb] [--lang <USen|EUen|...>] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc.exe>] [--compact]\n  Totkbits.exe --cli coacd_decompose -i <mesh.obj|request.json> -o <pieces.json|pieces.obj> [--threshold N] [--max_hulls N] [--prep_res N] [--no_preprocess] [--no_merge] [--seed N] [--time_limit SECONDS]\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -419,8 +419,15 @@ impl CliCommand {
     }
 
     fn compress(&self) -> Result<(), String> {
-        let dictionary = parse_dictionary(&self.file_type)?;
         let bytes = fs::read(&self.input).map_err(|e| format!("failed to read input: {e}"))?;
+        if self.file_type.eq_ignore_ascii_case("mc") {
+            // Toolbox-style pseudo MeshCodec wrapper (MCPK + zstd 1.5.5 frame),
+            // the same bytes `bfres_edit` writes, without a resave.
+            let compressed = crate::compression::meshcodec::MeshCodec::compress(&bytes)
+                .map_err(|e| format!("failed to compress input: {e}"))?;
+            return write_output(&self.output, &compressed);
+        }
+        let dictionary = parse_dictionary(&self.file_type)?;
         let compressed = if dictionary == ZstdDictionary::Yaz0 {
             crate::Zstd::TotkZstd::compress_yaz0(&bytes)
         } else {
@@ -607,6 +614,10 @@ impl CliCommand {
         let mut skeleton_files: Vec<String> = Vec::new();
         let mut totk_path = None;
         let mut renames: Vec<(String, String)> = Vec::new();
+        let mut set_textures: Vec<(String, String, String)> = Vec::new();
+        let mut bone_renames: Vec<(String, String)> = Vec::new();
+        let mut material_renames: Vec<(String, String)> = Vec::new();
+        let mut info_only = false;
         let args = &self.extra;
         let mut i = 0;
         while i < args.len() {
@@ -625,6 +636,23 @@ impl CliCommand {
             match args[i].as_str() {
                 "-i" => input = Some(take(&mut i)?),
                 "-o" => output = Some(take(&mut i)?),
+                "--info" => info_only = true,
+                "--rename_bone" => {
+                    let from = take(&mut i)?;
+                    let to = take(&mut i)?;
+                    bone_renames.push((from, to));
+                }
+                "--rename_mat" => {
+                    let from = take(&mut i)?;
+                    let to = take(&mut i)?;
+                    material_renames.push((from, to));
+                }
+                "--set_tex" => {
+                    let material = take(&mut i)?;
+                    let slot = take(&mut i)?;
+                    let texture = take(&mut i)?;
+                    set_textures.push((material, slot, texture));
+                }
                 "--swap_int_name" => internal_name = Some(take(&mut i)?),
                 "--swap_model_name" => model_name = Some(take(&mut i)?),
                 "--fbx" => fbx = Some(take(&mut i)?),
@@ -646,8 +674,10 @@ impl CliCommand {
         let Some(input) = input else {
             return Err(fail(1, "-i <input bfres> is required"));
         };
-        let Some(output) = output else {
-            return Err(fail(1, "-o <output bfres> is required"));
+        let output = match output {
+            Some(output) => output,
+            None if info_only => String::new(),
+            None => return Err(fail(1, "-o <output bfres> is required")),
         };
         if import_skeleton && fbx.is_none() {
             return Err(fail(1, "--import_skeleton requires --fbx"));
@@ -667,7 +697,20 @@ impl CliCommand {
                 .map_err(|e| fail(1, format!("{}: {e}", input.display())))?;
         }
         if !crate::Settings::Magic::is_bfres(&raw) {
-            return Err(fail(1, format!("{} is not a bfres file", input.display())));
+            let head: String = raw
+                .iter()
+                .take(16)
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            return Err(fail(
+                1,
+                format!(
+                    "{} is not a bfres file ({} bytes after unwrapping, starts {head})",
+                    input.display(),
+                    raw.len()
+                ),
+            ));
         }
 
         let romfs = totk_path.map(PathBuf::from).or_else(|| {
@@ -701,6 +744,87 @@ impl CliCommand {
                 .unwrap_or_default(),
             file.model_count()
         );
+        if info_only {
+            for (m, model) in file.models.iter().enumerate() {
+                println!(
+                    "model[{m}] {} ({} bones, {} shapes, {} materials)",
+                    model.name,
+                    model.skeleton.bones.len(),
+                    model.shapes.len(),
+                    model.materials.len()
+                );
+                for (index, material) in model.materials.iter().enumerate() {
+                    println!(
+                        "  material[{index}] {} shader={}/{}",
+                        material.name, material.shader_archive, material.shading_model
+                    );
+                    for (slot, texture) in material.texture_refs.iter().enumerate() {
+                        let sampler = material
+                            .samplers
+                            .get(slot)
+                            .map(|s| s.name.as_str())
+                            .unwrap_or("?");
+                        println!("    tex[{slot}] {sampler:<6} = {texture}");
+                    }
+                    for (key, value) in &material.sampler_assign {
+                        println!("    sampler_assign {key} -> {value}");
+                    }
+                }
+                for shape in &model.shapes {
+                    let material = model
+                        .materials
+                        .get(usize::from(shape.material_index))
+                        .map(|m| m.name.as_str())
+                        .unwrap_or("?");
+                    let vb = model
+                        .vertex_buffers
+                        .get(usize::from(shape.vertex_buffer_index));
+                    let attribs = vb
+                        .map(|vb| {
+                            vb.attributes
+                                .iter()
+                                .map(|a| {
+                                    format!("{}:{:02x}{:02x}", a.name, a.format[0], a.format[1])
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        })
+                        .unwrap_or_default();
+                    let indices = shape
+                        .meshes
+                        .iter()
+                        .map(|m| m.index_count.to_string())
+                        .collect::<Vec<_>>()
+                        .join("/");
+                    let radius = shape
+                        .radius_list
+                        .first()
+                        .map(|r| format!("{:.3}", r[0]))
+                        .unwrap_or_default();
+                    let bounds = shape
+                        .boundings
+                        .first()
+                        .map(|b| {
+                            format!(
+                                "c=({:.2},{:.2},{:.2}) e=({:.2},{:.2},{:.2})",
+                                b[0], b[1], b[2], b[3], b[4], b[5]
+                            )
+                        })
+                        .unwrap_or_default();
+                    println!(
+                        "  shape {} -> {material} | verts={} vskin={} skin_bones={} bone={} lods={} indices={} radius={radius} {bounds} | {attribs}",
+                        shape.name,
+                        vb.map(|vb| vb.vertex_count).unwrap_or(0),
+                        shape.vertex_skin_count,
+                        shape.skin_bone_indices.len(),
+                        shape.bone_index,
+                        shape.meshes.len(),
+                        indices
+                    );
+                }
+            }
+            return Ok(());
+        }
         if model_name.is_some() && file.model_count() >= 2 {
             return Err(fail(
                 2,
@@ -823,6 +947,101 @@ impl CliCommand {
                 changed += file.rename_texture_slots(from, to);
             }
             println!("renamed {changed} texture slot(s)");
+        }
+        for (from, to) in &bone_renames {
+            // `--rename_bone FROM TO`: exact bone name match in every model;
+            // the saver rebuilds the bone dictionary from the names.
+            let mut changed = 0;
+            for model in &mut file.models {
+                for bone in &mut model.skeleton.bones {
+                    if bone.name == *from {
+                        bone.name = to.clone();
+                        changed += 1;
+                    }
+                }
+            }
+            if changed == 0 {
+                return Err(fail(2, format!("--rename_bone: no bone named {from}")));
+            }
+            println!("bone {from} -> {to}");
+        }
+        for (from, to) in &material_renames {
+            // `--rename_mat FROM TO`: exact material name match in every model;
+            // shapes reference materials by index and the saver rebuilds the
+            // material dictionary from the names, so only the name changes.
+            let mut changed = 0;
+            for model in &mut file.models {
+                if model.materials.iter().any(|m| m.name == *to) {
+                    return Err(fail(
+                        2,
+                        format!("--rename_mat: a material named {to} already exists"),
+                    ));
+                }
+                for material in &mut model.materials {
+                    if material.name == *from {
+                        material.name = to.clone();
+                        changed += 1;
+                    }
+                }
+            }
+            if changed == 0 {
+                return Err(fail(2, format!("--rename_mat: no material named {from}")));
+            }
+            println!("material {from} -> {to}");
+        }
+        for (material_name, slot, texture) in &set_textures {
+            // `--set_tex MATERIAL SLOT TEXTURE`: SLOT is a texture slot index
+            // or a sampler name such as `_n0`; only that texture reference
+            // changes, the material is otherwise untouched.
+            let mut found = false;
+            for model in &mut file.models {
+                for material in &mut model.materials {
+                    if material.name != *material_name {
+                        continue;
+                    }
+                    found = true;
+                    let index = match slot.parse::<usize>() {
+                        Ok(index) => index,
+                        Err(_) => {
+                            let names = material
+                                .samplers
+                                .iter()
+                                .map(|s| s.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            material
+                                .samplers
+                                .iter()
+                                .position(|s| s.name == *slot)
+                                .ok_or_else(|| {
+                                    fail(
+                                        2,
+                                        format!(
+                                            "--set_tex: material {material_name} has no sampler {slot} (has: {names})"
+                                        ),
+                                    )
+                                })?
+                        }
+                    };
+                    let count = material.texture_refs.len();
+                    let current = material.texture_refs.get_mut(index).ok_or_else(|| {
+                        fail(
+                            2,
+                            format!(
+                                "--set_tex: material {material_name} has {count} texture slot(s), no slot {index}"
+                            ),
+                        )
+                    })?;
+                    println!("{material_name} tex[{index}] {slot}: {current} -> {texture}");
+                    *current = texture.clone();
+                }
+            }
+            if !found {
+                return Err(fail(
+                    2,
+                    format!("--set_tex: no material named {material_name}"),
+                ));
+            }
         }
 
         let saved = file
@@ -1214,6 +1433,7 @@ impl CliCommand {
         let mut output = None;
         let mut png = None;
         let mut astcenc = None;
+        let mut style = textogo_writer::SurfaceStyle::Padded;
         let args = &self.extra;
         let mut i = 0;
         while i < args.len() {
@@ -1228,6 +1448,7 @@ impl CliCommand {
                 "-o" => output = Some(take(&mut i)?),
                 "--png" => png = Some(take(&mut i)?),
                 "--astcenc" => astcenc = Some(take(&mut i)?),
+                "--compact" => style = textogo_writer::SurfaceStyle::Compact,
                 other => return Err(CliError::new(1, format!("unknown argument {other}"))),
             }
             i += 1;
@@ -1294,10 +1515,11 @@ impl CliCommand {
         } else {
             None
         };
-        let encoded = textogo_writer::from_rgba_with_encoder(&image, &texture, encoder.as_deref())
-            .map_err(|e| CliError::new(3, format!("{}: {e}", png.display())))?;
-        let mut bytes =
-            textogo_writer::write(&encoded).map_err(|e| CliError::new(3, e.to_string()))?;
+        let encoded =
+            textogo_writer::from_rgba_with_options(&image, &texture, encoder.as_deref(), style)
+                .map_err(|e| CliError::new(3, format!("{}: {e}", png.display())))?;
+        let mut bytes = textogo_writer::write_with_style(&encoded, style)
+            .map_err(|e| CliError::new(3, e.to_string()))?;
         let compress = output
             .extension()
             .and_then(|value| value.to_str())

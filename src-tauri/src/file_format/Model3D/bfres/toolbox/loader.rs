@@ -629,10 +629,16 @@ pub fn load(data: &[u8], ext: &ExternalStrings) -> Result<ResFile, BfresError> {
         buffer_offset,
     };
 
-    let block = read_u16(data, 0x16)? as usize;
-    if data.get(block..block + 4) != Some(b"_STR") {
-        return Err(BfresError::new(block, "missing _STR block"));
-    }
+    // The header stores the first block offset in 16 bits, so files whose
+    // string block sits past 64 KiB (large vertex/index buffers come first)
+    // carry the offset modulo 0x10000: walk the 64 KiB multiples until the
+    // `_STR` signature is found.
+    let block_low = read_u16(data, 0x16)? as usize;
+    let block = (0..)
+        .map(|wrap| block_low + wrap * 0x1_0000)
+        .take_while(|&candidate| candidate + 4 <= data.len())
+        .find(|&candidate| data.get(candidate..candidate + 4) == Some(b"_STR"))
+        .ok_or_else(|| BfresError::new(block_low, "missing _STR block"))?;
     let string_count = read_u32(data, block + 0x10)? as usize;
     let mut original_strings = Vec::new();
     let mut cursor = block + 0x14;

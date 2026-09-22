@@ -1708,7 +1708,12 @@ impl<'a> Saver<'a> {
         let alignment = self.data_alignment();
         self.align(alignment);
         let total = (self.w.position() - self.buffer_info_offset) as u32;
-        self.write_u32_at(self.ofs_total_buffer_size, total);
+        // Files without vertex buffers (skeleton-only `.Skeleton.bfres`) have
+        // no buffer-info block, so the size field was never allocated;
+        // patching the default position 0 would overwrite the FRES magic.
+        if self.ofs_total_buffer_size != 0 {
+            self.write_u32_at(self.ofs_total_buffer_size, total);
+        }
         self.memory_pool_offset = self.w.position();
         self.zeros(288);
         let pointers = self.memory_pool_pointers.clone();
