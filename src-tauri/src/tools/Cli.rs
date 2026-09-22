@@ -102,6 +102,7 @@ impl CliCommand {
                 | "txtg_edit"
                 | "txtg"
                 | "--txtg"
+                | "coacd_decompose"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
         let valid_arguments = if operation == "decompress_dir" {
@@ -118,13 +119,14 @@ impl CliCommand {
                 | "txtg_edit"
                 | "txtg"
                 | "--txtg"
+                | "coacd_decompose"
         ) {
             arguments.len() >= 3
         } else {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--no_rstb] [--lang <USen|EUen|...>] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc.exe>]\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--no_rstb] [--lang <USen|EUen|...>] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc.exe>]\n  Totkbits.exe --cli coacd_decompose -i <mesh.obj|request.json> -o <pieces.json|pieces.obj> [--threshold N] [--max_hulls N] [--prep_res N] [--no_preprocess] [--no_merge] [--seed N] [--time_limit SECONDS]\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -155,6 +157,7 @@ impl CliCommand {
                 | "txtg_edit"
                 | "txtg"
                 | "--txtg"
+                | "coacd_decompose"
         ) {
             return Some(Self {
                 operation,
@@ -230,6 +233,7 @@ impl CliCommand {
             "bphsh_to_obj" => return self.bphsh_to_obj(),
             "obj_to_bphsh" => return self.obj_to_bphsh(),
             "txtg_edit" | "txtg" | "--txtg" => return self.txtg_edit(),
+            "coacd_decompose" => return self.coacd_decompose(),
             _ => {}
         }
         let result = match self.operation.as_str() {
@@ -989,6 +993,128 @@ impl CliCommand {
 
     /// `-i <input> -o <output>` plus the remaining arguments, for the
     /// operations that take their paths as flags.
+    /// Convex decomposition through CoACD. The app runs this as a worker
+    /// process (`request.json` in, `pieces.json` out) so a crash inside the
+    /// library never reaches the UI; with an OBJ in and out it doubles as a
+    /// manual tool.
+    fn coacd_decompose(&self) -> Result<(), CliError> {
+        use crate::tools::{
+            coacd::{self, CoacdOptions, DecomposeRequest, DecomposeResponse},
+            items_creator::collision::parse_obj,
+        };
+        let (input, output, extra) = self.in_out_args()?;
+        let mut options = CoacdOptions::default();
+        let mut explicit = Vec::new();
+        let mut i = 0;
+        let value_after = |i: usize, flag: &str| -> Result<&String, CliError> {
+            extra
+                .get(i)
+                .ok_or_else(|| CliError::new(1, format!("{flag} requires a value")))
+        };
+        while i < extra.len() {
+            match extra[i].as_str() {
+                "--threshold" => {
+                    i += 1;
+                    let value = value_after(i, "--threshold")?;
+                    options.threshold = value
+                        .parse()
+                        .map_err(|_| CliError::new(1, format!("invalid --threshold {value}")))?;
+                    explicit.push("threshold");
+                }
+                "--max_hulls" => {
+                    i += 1;
+                    let value = value_after(i, "--max_hulls")?;
+                    options.max_convex_hulls = value
+                        .parse()
+                        .map_err(|_| CliError::new(1, format!("invalid --max_hulls {value}")))?;
+                    explicit.push("max_hulls");
+                }
+                "--prep_res" => {
+                    i += 1;
+                    let value = value_after(i, "--prep_res")?;
+                    options.preprocess_resolution = value
+                        .parse()
+                        .map_err(|_| CliError::new(1, format!("invalid --prep_res {value}")))?;
+                    explicit.push("prep_res");
+                }
+                "--seed" => {
+                    i += 1;
+                    let value = value_after(i, "--seed")?;
+                    options.seed = value
+                        .parse()
+                        .map_err(|_| CliError::new(1, format!("invalid --seed {value}")))?;
+                    explicit.push("seed");
+                }
+                "--time_limit" => {
+                    i += 1;
+                    let value = value_after(i, "--time_limit")?;
+                    options.time_limit_seconds = value
+                        .parse()
+                        .map_err(|_| CliError::new(1, format!("invalid --time_limit {value}")))?;
+                    explicit.push("time_limit");
+                }
+                "--no_preprocess" => {
+                    options.preprocess = false;
+                    explicit.push("no_preprocess");
+                }
+                "--no_merge" => {
+                    options.merge = false;
+                    explicit.push("no_merge");
+                }
+                other => return Err(CliError::new(1, format!("unknown argument {other}"))),
+            }
+            i += 1;
+        }
+        let is_json = input
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"));
+        let (vertices, triangles, options) = if is_json {
+            if !explicit.is_empty() {
+                return Err(CliError::new(
+                    1,
+                    "a request.json carries its own options; drop the --flags",
+                ));
+            }
+            let bytes = fs::read(&input).map_err(|e| {
+                CliError::new(1, format!("failed to read {}: {e}", input.display()))
+            })?;
+            let request: DecomposeRequest = serde_json::from_slice(&bytes)
+                .map_err(|e| CliError::new(1, format!("{}: {e}", input.display())))?;
+            (request.vertices, request.triangles, request.options)
+        } else {
+            let text = fs::read_to_string(&input).map_err(|e| {
+                CliError::new(1, format!("failed to read {}: {e}", input.display()))
+            })?;
+            let (vertices, triangles) =
+                parse_obj(&text).map_err(|e| CliError::new(1, e.to_string()))?;
+            (vertices, triangles, options)
+        };
+        let started = std::time::Instant::now();
+        let pieces = coacd::decompose(&vertices, &triangles, &options)
+            .map_err(|e| CliError::new(1, e.to_string()))?;
+        eprintln!(
+            "[coacd_decompose] {} piece(s) from {} triangles in {:.1?}",
+            pieces.len(),
+            triangles.len(),
+            started.elapsed()
+        );
+        let is_obj_output = output
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("obj"));
+        let bytes = if is_obj_output {
+            coacd::pieces_to_obj(&pieces).into_bytes()
+        } else {
+            serde_json::to_vec(&DecomposeResponse { pieces })
+                .map_err(|e| CliError::new(3, e.to_string()))?
+        };
+        if let Some(parent) = output.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&output, bytes)
+            .map_err(|e| CliError::new(3, format!("failed to write {}: {e}", output.display())))?;
+        Ok(())
+    }
+
     fn in_out_args(&self) -> Result<(PathBuf, PathBuf, Vec<String>), CliError> {
         let mut input = None;
         let mut output = None;

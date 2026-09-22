@@ -40,6 +40,9 @@ pub const DEFAULT_MATERIAL: &str = "Material_Stone";
 const THRESHOLD: f64 = 0.04;
 /// Manifold preprocessing resolution (custom OBJ exports are rarely watertight).
 const PREPROCESS_RESOLUTION: i32 = 60;
+/// Wall-clock budget of one decomposition: the ship hull (a few thousand
+/// triangles) takes about two minutes, so this only stops runaway inputs.
+const TIME_LIMIT_SECONDS: f64 = 1800.0;
 
 /// One Polytope entry.
 #[derive(Clone, Debug, PartialEq)]
@@ -102,6 +105,7 @@ impl ConvexCollision {
             max_convex_hulls: MAX_PIECES,
             preprocess: true,
             preprocess_resolution: PREPROCESS_RESOLUTION,
+            time_limit_seconds: TIME_LIMIT_SECONDS,
             ..CoacdOptions::default()
         };
         eprintln!(

@@ -41,7 +41,7 @@ python tauri_build.py         # full Windows release: clean, NSIS bundle, silent
 .\update_git_libs.bat         # cargo update the git deps (roead, meshcodec_bindings, xlink2_bindings)
 ```
 
-`repo_init.py` is not optional. It copies `src-tauri/misc/*.{bin,json,txt}` into `src-tauri/bin/` and downloads native sidecars (`bin/dlls/xlink_tool.dll`, `bin/dlls/meshcodec.dll`, `bin/cpp/oead_byml_pipe.exe`, and ARM's `bin/cpp/astcenc-*.exe`, the only external encoder the items creator and BNTX editing may run). Those paths are resolved relative to the executable directory at runtime and are declared as bundle `resources` in `src-tauri/tauri.conf.json`; without them XLink, MeshCodec, and GameDataList silently degrade to errors.
+`repo_init.py` is not optional. It copies `src-tauri/misc/*.{bin,json,txt}` into `src-tauri/bin/` and downloads native sidecars (`bin/dlls/xlink_tool.dll`, `bin/dlls/meshcodec.dll`, `bin/cpp/oead_byml_pipe.exe`, and ARM's `bin/cpp/astcenc-*.exe`, the only external encoder the items creator and BNTX editing may run). It also downloads `bin/dlls/lib_coacd.dll` from the CoACD fork's release (https://github.com/SolidLink95/CoACD): the app only accepts that fork's fault-tolerant `CoACD_runSafe` API and runs it in a `--cli coacd_decompose` worker process (`src-tauri/src/tools/coacd.rs`). Those paths are resolved relative to the executable directory at runtime and are declared as bundle `resources` in `src-tauri/tauri.conf.json`; without them XLink, MeshCodec, and GameDataList silently degrade to errors.
 
 Build prerequisites beyond the Rust/Node toolchain: LLVM (for the C++ bindings crates) and CMake.
 

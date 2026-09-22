@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from pathlib import Path
 import shutil
 import os, sys, stat
@@ -60,33 +61,29 @@ def install_astcenc(bin_path):
     archive.unlink()
 
 
-COACD_WHEEL_URL = "https://github.com/SarahWeiii/CoACD/releases/download/1.0.14/coacd-1.0.14-cp39-abi3-win_amd64.whl"
+COACD_DLL_URL = "https://github.com/SolidLink95/CoACD/releases/download/v1.0/lib_coacd.dll"
 
 
 def install_coacd(bin_path):
     """The items creator's convex collision (Zonai `physics_obj`) runs CoACD
-    through its C API. The prebuilt lib_coacd.dll ships inside the Python
-    wheel of the CoACD release; only the DLL is kept, as bin/dlls/lib_coacd.dll."""
+    through the fault-tolerant C API (`CoACD_runSafe`) of the CoACD fork
+    (https://github.com/SolidLink95/CoACD); its release ships the prebuilt
+    bin/dlls/lib_coacd.dll. The upstream wheel's DLL lacks that API and is
+    refused by the app, so such a copy is replaced."""
     dll_dir = Path(bin_path) / "dlls"
     dll_dir.mkdir(parents=True, exist_ok=True)
     target = dll_dir / "lib_coacd.dll"
     if target.is_file():
-        print("[+] lib_coacd.dll already present in bin/dlls")
-        return
-    archive = dll_dir / "coacd.whl"
-    print("[+] Downloading CoACD")
-    download_file(COACD_WHEEL_URL, archive)
-    try:
-        with zipfile.ZipFile(archive) as bundle:
-            members = [
-                name for name in bundle.namelist() if Path(name).name == "lib_coacd.dll"
-            ]
-            if not members:
-                raise RuntimeError("lib_coacd.dll is missing from the CoACD wheel")
-            target.write_bytes(bundle.read(members[0]))
-            print("[+] Extracted lib_coacd.dll -> bin/dlls")
-    finally:
-        archive.unlink(missing_ok=True)
+        if b"CoACD_runSafe" in target.read_bytes():
+            print("[+] lib_coacd.dll already present in bin/dlls")
+            return
+        print("[!] bin/dlls/lib_coacd.dll lacks CoACD_runSafe (upstream build); replacing it")
+    print("[+] Downloading lib_coacd.dll")
+    download_file(COACD_DLL_URL, target)
+    if b"CoACD_runSafe" not in target.read_bytes():
+        target.unlink(missing_ok=True)
+        raise RuntimeError(f"the lib_coacd.dll from {COACD_DLL_URL} does not export CoACD_runSafe")
+    print("[+] Downloaded lib_coacd.dll -> bin/dlls")
 
 
 def remove_file(file):
