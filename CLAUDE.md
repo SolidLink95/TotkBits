@@ -6,13 +6,12 @@ TotkBits is a Windows-only Tauri 2 desktop app for inspecting and editing Ninten
 
 ## Repository boundaries
 
-Never read, write, or execute anything outside `%USERPROFILE%\Desktop\coding\TotkBits` (or its mirror `W:\coding\TotkBits`). Put temporary and test files in `./tmp/` (gitignored). Never read `*.rs` files under `src-tauri/misc/` — those are backups, not build inputs.
+Never read, write, or execute anything outside the project directory: the folder holding this file, i.e. the parent of `CARGO_MANIFEST_DIR` (`src-tauri/`). **Never write anything outside the project directory**, on any drive. That includes the harness scratchpad directory, the system temp folder, the local app-data folders, the user profile and the persistent memory directory: do not save memories for this project, keep such notes in this file instead. Put **every** temporary, scratch, test and build file in `./tmp/_CLAUDE/` (gitignored) — never in a sibling folder under `./tmp/`. This applies to intermediate scripts, patch files, build trees, downloaded sources, smoke-test output and backups alike. Run long commands in the foreground: a background run makes the harness write its output file outside the project. Never read `*.rs` files under `src-tauri/misc/` — those are backups, not build inputs.
 
 Exceptions:
 
-- `E:\TOTK_modding\0100F2C0115B6000\romfs` — **read-only** access is granted (a TOTK RomFS dump, useful as test input). Never write, delete, or move anything there.
-- `E:\Yuzu\dumps\Sports` — **read-only** access is granted (a Nintendo Switch Sports dump, useful as test input). Never write, delete, or move anything there.
-- All writes outside the repo working set — test fixtures, scratch output, copies of RomFS files — are permitted **only inside `./tmp/`**.
+- The game dumps configured in the app's `TotkConfig` (the TOTK, BOTW, AOC and Tomodachi RomFS paths in `config.toml`) and any dump folder the user names in a task — **read-only** access is granted (useful as test input). Never write, delete, or move anything there. Resolve their location from the config or the task, never from this file.
+- All writes outside the repo working set — test fixtures, scratch output, copies of RomFS files — are permitted **only inside `./tmp/_CLAUDE/`**.
 
 ### In-scope paths
 
@@ -21,7 +20,7 @@ Only these are part of the working set — they are the same paths `.vscode/sett
 - `src/` — the whole React frontend.
 - `src-tauri/` — the Rust backend, **except** `target/`, `bin/`, `external/`, `gen/`, `Cargo.lock`, and `*.rs` under `misc/`.
 - The text files sitting directly in the repo root (`*.md`, `package.json`, `vite.config.js`, `index.html`, `repo_init.py`, `tauri_build.py`, `*.bat`, `.gitignore`, `.gitmodules`).
-- `tmp/` — your own scratch area: read, write and list it freely (it is gitignored and hidden from VS Code, but not from you).
+- `tmp/_CLAUDE/` — your only scratch area: read, write and list it freely (it is gitignored and hidden from VS Code, but not from you). The rest of `tmp/` holds the user's own files; read them when a task needs them, but do not create anything there.
 
 Everything else in the repo is out of scope: `ext_projects/`, `preview/`, `public/`, `target/`, `res/`, `bin/`, `dist/`, `node_modules/`, `.cargo/`, `.codex/`, and any `__pycache__`. Do not grep, read, or edit inside them, and do not cite them as evidence — they are build output, vendored sources, or backups. If a task genuinely needs one of them (e.g. editing `repo_init.py`'s payload in `src-tauri/misc/`), say so and ask first.
 
@@ -41,7 +40,7 @@ python tauri_build.py         # full Windows release: clean, NSIS bundle, silent
 .\update_git_libs.bat         # cargo update the git deps (roead, meshcodec_bindings, xlink2_bindings)
 ```
 
-`repo_init.py` is not optional. It copies `src-tauri/misc/*.{bin,json,txt}` into `src-tauri/bin/` and downloads native sidecars (`bin/dlls/xlink_tool.dll`, `bin/dlls/meshcodec.dll`, `bin/cpp/oead_byml_pipe.exe`, and ARM's `bin/cpp/astcenc-*.exe`, the only external encoder the items creator and BNTX editing may run). It also downloads `bin/dlls/lib_coacd.dll` from the CoACD fork's release (https://github.com/SolidLink95/CoACD): the app only accepts that fork's fault-tolerant `CoACD_runSafe` API and runs it in a `--cli coacd_decompose` worker process (`src-tauri/src/tools/coacd.rs`). Those paths are resolved relative to the executable directory at runtime and are declared as bundle `resources` in `src-tauri/tauri.conf.json`; without them XLink, MeshCodec, and GameDataList silently degrade to errors.
+`repo_init.py` is not optional. It copies `src-tauri/misc/*.{bin,json,txt}` into `src-tauri/bin/` and downloads native sidecars (`bin/dlls/xlink_tool.dll`, `bin/dlls/meshcodec.dll`, `bin/cpp/oead_byml_pipe.exe`, and ARM's astcenc 5.7.0 core codec as `bin/dlls/astcenc-avx2-shared.dll` / `bin/dlls/astcenc-sse4.1-shared.dll`, loaded in process by `src-tauri/src/file_format/Image/astcenc.rs` for every ASTC encode the items creator, BNTX and TexToGo editing do). It also downloads `bin/dlls/lib_coacd.dll` from the CoACD fork's release (https://github.com/SolidLink95/CoACD): the app only accepts that fork's fault-tolerant `CoACD_runSafe` API and runs it in a `--cli coacd_decompose` worker process (`src-tauri/src/tools/coacd.rs`). Those paths are resolved relative to the executable directory at runtime and are declared as bundle `resources` in `src-tauri/tauri.conf.json`; without them XLink, MeshCodec, and GameDataList silently degrade to errors.
 
 Build prerequisites beyond the Rust/Node toolchain: LLVM (for the C++ bindings crates) and CMake.
 
@@ -71,7 +70,7 @@ The tab-dispatch chains live in `src/ButtonClicks.jsx` (repeated per entry point
 - `TotkApp.rs` — `TotkBitsApp`, the per-document state machine: opened file, SARC pack comparer, nested archives, internal file, and all open/save/add/rename/extract/search operations.
 - `TauriCommands.rs` — thin module that re-exports `commands/*.rs` (split by domain: archives, audio, files, general, physics, rstb, settings, visuals) and defines the document-access macros plus native error dialogs.
 - `Zstd.rs` — `TotkZstd`, `ZsDic`, `TotkFileType`, `ZstdDictionary`. TOTK's zstd dictionaries come from the configured RomFS. **The app must start without a RomFS**: `TotkZstd::dictionaryless()` is the degraded path that keeps plain/empty-dictionary files working while dictionary-dependent operations return `NotFound`. Don't reintroduce hard failures here.
-- `TotkConfig.rs` — TOML config at `%LOCALAPPDATA%\Totkbits\config.toml` (falls back to `%APPDATA%`, then exe dir); holds RomFS paths for TOTK/BOTW/AOC/Tomodachi plus editor preferences. Also imports NX Editor's `%LOCALAPPDATA%\Totk\config.json` when present.
+- `TotkConfig.rs` — TOML `config.toml` resolved in `TotkConfig::safe_new` (local app data, then roaming app data, then the exe dir); holds RomFS paths for TOTK/BOTW/AOC/Tomodachi plus editor preferences. Also imports NX Editor's `config.json` from its own local app-data folder when present.
 - `file_format/` — one module per container/format (SARC/Pack, RSTB, BYML, AAMP, MSBT, AINB, ASB, Xlink, Esetb, BfevFile, TagProduct, GameDataList, bphcl/bphhb/hkcl, plus `Archive/`, `Audio/`, `Image/`, `Model3D/`, `Mii/`, `SMO/`, `Animation/`).
 - `parser/` — the low-level binary readers/writers those format modules sit on top of. Format detection and dispatch: `Zstd.rs`, `utils/magic.rs`, `Open_and_Save.rs` (`open_file_from_disk_name_guess`, `file_from_bytes_to_senddata`, `get_binary_by_filetype`).
 - `Comparer.rs` / `NestedSarc.rs` — vanilla-vs-mod diffing and recursive archive-in-archive editing.

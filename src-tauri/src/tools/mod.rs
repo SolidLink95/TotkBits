@@ -6,3 +6,4 @@ pub mod elink_creator;
 pub mod hkcl_convert;
 pub mod items_creator;
 pub mod mii;
+pub mod txtg_edit;

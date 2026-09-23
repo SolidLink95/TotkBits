@@ -2372,9 +2372,14 @@ fn write_dye_slices(
                             Some(tint) => tint_rgba(&picture, tint),
                             None => picture.clone(),
                         };
-                        let encoded = textogo_writer::from_rgba(&image, &parsed)
-                            .and_then(|slice_file| textogo_writer::write(&slice_file))
-                            .map_err(|error| invalid_data(format!("{old}.{slice}: {error}")))?;
+                        let encoded = crate::tools::txtg_edit::encode_replacement(
+                            &parsed,
+                            &image,
+                            crate::tools::txtg_edit::SurfaceStyle::Compact,
+                        )
+                        .map_err(|error| {
+                            io::Error::new(error.kind(), format!("{old}.{slice}: {error}"))
+                        })?;
                         let destination = texture_output.join(format!("{new_base}.{slice}.txtg"));
                         fs::write(&destination, encoded)?;
                         copied.push(destination);

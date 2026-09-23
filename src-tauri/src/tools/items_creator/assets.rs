@@ -466,7 +466,7 @@ impl WeaponBntxAssetRequest {
                 ) {
                     // Vanilla inventory icons are ASTC: the native replacer
                     // has no ASTC encoder, so they go through the Toolbox
-                    // importer, which drives the bundled astcenc.
+                    // importer, which drives the bundled astcenc library.
                     Err(error) if error.kind() == io::ErrorKind::Unsupported => {
                         replace_astc_bntx_like_toolbox(
                             &source,
@@ -555,7 +555,7 @@ fn clone_bntx_like_toolbox(
 
 /// Replaces the single texture of an ASTC BNTX from a picture the way the
 /// Toolbox CLI does (`--replace_tex`): same surface format and mip count,
-/// blocks encoded by `bin/cpp/astcenc-*.exe`, saved as Toolbox would.
+/// blocks encoded by the bundled astcenc library, saved as Toolbox would.
 fn replace_astc_bntx_like_toolbox(
     source: &Path,
     destination: &Path,
@@ -563,7 +563,7 @@ fn replace_astc_bntx_like_toolbox(
     new_name: &str,
     zstd: &TotkZstd<'_>,
 ) -> io::Result<BntxReplacementReport> {
-    use crate::parser::bntx::{find_astc_encoder, BntxFile};
+    use crate::parser::bntx::BntxFile;
     let bytes = fs::read(source)?;
     let raw = if crate::Settings::Magic::is_bntx(&bytes) {
         bytes
@@ -577,12 +577,9 @@ fn replace_astc_bntx_like_toolbox(
             file.textures.len()
         )));
     }
-    let encoder = find_astc_encoder(None).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::NotFound,
-            "no astcenc executable found: put astcenc-avx2.exe into bin/cpp or set ASTCENC",
-        )
-    })?;
+    if !crate::file_format::Image::astcenc::is_available() {
+        return Err(crate::file_format::Image::astcenc::missing_error());
+    }
     let old_name = file.textures[0].name.clone();
     if file.name == old_name {
         file.set_internal_name(new_name);
@@ -605,7 +602,7 @@ fn replace_astc_bntx_like_toolbox(
             image::imageops::FilterType::Lanczos3,
         )
     };
-    file.replace_texture_from_rgba(0, &picture, Some(&encoder))
+    file.replace_texture_from_rgba(0, &picture)
         .map_err(|error| invalid_data(error.to_string()))?;
     let is_zs = destination
         .extension()

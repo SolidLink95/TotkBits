@@ -9,10 +9,10 @@
 //! Zstandard build), so `parse(write(parse(x)))` matches `parse(x)` in every
 //! field except the compressed sizes.
 use super::{TexToGoError, TexToGoFile, TexToGoSurface};
-use crate::file_format::Image::switch_texture;
+use crate::file_format::Image::{astcenc, switch_texture};
 use crate::parser::binary::BinaryWriter;
 use image::RgbaImage;
-use std::{io::Write, path::Path};
+use std::io::Write;
 
 /// The Zstandard level closest to the game's surfaces.
 pub const ZSTD_LEVEL: i32 = 22;
@@ -182,30 +182,19 @@ pub fn astc_block_from_textogo(header: &super::TexToGoHeader) -> Option<(u32, u3
 /// Encodes `image` with the format, mip count and settings of `like`. The
 /// hash is kept from `like`: it is not derived from the image data (files
 /// with identical pixels carry different hashes), so it cannot be computed.
-/// ASTC formats are refused; see [`from_rgba_with_encoder`].
-pub fn from_rgba(image: &RgbaImage, like: &TexToGoFile) -> Result<TexToGoFile, TexToGoError> {
-    from_rgba_with_encoder(image, like, None)
-}
-
-/// [`from_rgba`] that also encodes the ASTC formats through ARM's astcenc
-/// (the `astcenc` executable; `None` refuses ASTC): each mip is compressed
+/// ASTC formats go through the bundled astcenc library (each mip compressed
 /// as sRGB colour with `-thorough`, then tiled the way the game stores the
-/// blocks. The header keeps the format of `like`, so the file stays the
+/// blocks); the header keeps the format of `like`, so the file stays the
 /// same kind of texture it was.
-pub fn from_rgba_with_encoder(
-    image: &RgbaImage,
-    like: &TexToGoFile,
-    astcenc: Option<&Path>,
-) -> Result<TexToGoFile, TexToGoError> {
-    from_rgba_with_options(image, like, astcenc, SurfaceStyle::Compact)
+pub fn from_rgba(image: &RgbaImage, like: &TexToGoFile) -> Result<TexToGoFile, TexToGoError> {
+    from_rgba_with_options(image, like, SurfaceStyle::Compact)
 }
 
-/// [`from_rgba_with_encoder`] with an explicit [`SurfaceStyle`]. Pair the
-/// result with [`write_with_style`] and the same style.
+/// [`from_rgba`] with an explicit [`SurfaceStyle`]. Pair the result with
+/// [`write_with_style`] and the same style.
 pub fn from_rgba_with_options(
     image: &RgbaImage,
     like: &TexToGoFile,
-    astcenc: Option<&Path>,
     style: SurfaceStyle,
 ) -> Result<TexToGoFile, TexToGoError> {
     if like.header.depth != 1 {
@@ -215,11 +204,8 @@ pub fn from_rgba_with_options(
         ));
     }
     let astc = astc_block_from_textogo(&like.header);
-    if astc.is_some() && astcenc.is_none() {
-        return Err(error(
-            60,
-            "ASTC TexToGo textures need an external astcenc encoder",
-        ));
+    if astc.is_some() && !astcenc::is_available() {
+        return Err(error(60, astcenc::missing_error().to_string()));
     }
     let format = match astc {
         Some(_) => None,
@@ -262,44 +248,30 @@ pub fn from_rgba_with_options(
         };
         let data = match (astc, format) {
             (Some((block_width, block_height)), _) => {
-                let encoder = astcenc.ok_or_else(|| error(60, "astcenc is required"))?;
-                let temp_dir = astc_temp_dir()?;
-                let result = crate::parser::bntx::encode_astc_level(
-                    &level,
-                    block_width,
-                    block_height,
-                    true,
-                    encoder,
-                    &temp_dir,
-                    u32::from(mip),
+                let blocks = astcenc::encode(&level, block_width, block_height, true)
+                    .map_err(|e| error(0, format!("mip {mip}: {e}")))?;
+                let log2 = switch_texture::inferred_block_height_log2(mip_height, block_height);
+                switch_texture::swizzle_astc(
+                    mip_width,
+                    mip_height,
+                    &blocks,
+                    block_width as usize,
+                    block_height as usize,
+                    log2,
                 )
-                .map_err(|e| error(0, format!("mip {mip}: {e}")))
-                .and_then(|blocks| {
-                    let log2 = switch_texture::inferred_block_height_log2(mip_height, block_height);
-                    switch_texture::swizzle_astc(
+                .and_then(|swizzled| match style {
+                    SurfaceStyle::Padded => Ok(swizzled),
+                    SurfaceStyle::Compact => compact(
+                        swizzled,
                         mip_width,
                         mip_height,
-                        &blocks,
                         block_width as usize,
                         block_height as usize,
+                        16,
                         log2,
-                    )
-                    .and_then(|swizzled| match style {
-                        SurfaceStyle::Padded => Ok(swizzled),
-                        SurfaceStyle::Compact => compact(
-                            swizzled,
-                            mip_width,
-                            mip_height,
-                            block_width as usize,
-                            block_height as usize,
-                            16,
-                            log2,
-                        ),
-                    })
-                    .map_err(|e| error(0, format!("mip {mip}: {e}")))
-                });
-                let _ = std::fs::remove_dir_all(&temp_dir);
-                result?
+                    ),
+                })
+                .map_err(|e| error(0, format!("mip {mip}: {e}")))?
             }
             (None, Some(format)) => {
                 let log2 = switch_texture::inferred_block_height_log2(mip_height, 4);
@@ -395,20 +367,6 @@ fn compact(
     Ok(swizzled)
 }
 
-/// A fresh scratch folder for the PNG/ASTC exchange files of astcenc.
-fn astc_temp_dir() -> Result<std::path::PathBuf, TexToGoError> {
-    let dir = std::env::temp_dir().join(format!(
-        "totkbits_txtg_astc_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::create_dir_all(&dir).map_err(|e| error(0, e.to_string()))?;
-    Ok(dir)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -454,8 +412,7 @@ mod tests {
             };
             let template = TexToGoFile::parse(&template).unwrap();
             let image = image::open(&png).unwrap().to_rgba8();
-            let encoded =
-                from_rgba_with_options(&image, &template, None, SurfaceStyle::Padded).unwrap();
+            let encoded = from_rgba_with_options(&image, &template, SurfaceStyle::Padded).unwrap();
             let written = write_with_style(&encoded, SurfaceStyle::Padded).unwrap();
             let _ = std::fs::create_dir_all(root.join("out"));
             let _ = std::fs::write(root.join("out").join(format!("{stem}.txtg")), &written);
@@ -766,7 +723,7 @@ mod tests {
     }
 
     #[test]
-    fn refuses_astc_and_layered_inputs() {
+    fn detects_astc_and_refuses_layered_inputs() {
         let Some(original) = romfs_texture("Armor_022_Head_Alb.txtg") else {
             return;
         };
@@ -775,22 +732,23 @@ mod tests {
         let mut astc = parsed.clone();
         astc.header.format = 0x101;
         assert_eq!(astc_block_from_textogo(&astc.header), Some((4, 4)));
-        assert!(from_rgba(&image, &astc).is_err());
+        // ASTC is encoded through the bundled library when it is present
+        assert_eq!(from_rgba(&image, &astc).is_ok(), astcenc::is_available());
         let mut layered = parsed.clone();
         layered.header.depth = 2;
         assert!(from_rgba(&image, &layered).is_err());
         let _ = PathBuf::new();
     }
 
-    /// ASTC textures re-encoded through astcenc keep their header and decode
+    /// ASTC textures re-encoded through the astcenc library keep their header and decode
     /// close to the original: 4x4 (`Armor_160_Head_Alb` 0x101 and
     /// `Armor_171_Belt_Alb` 0x102), 8x8 (`GrassCoverAlb` 0x106) and 10x8
     /// (`Cloth_Lambda_Base_A_Nrm` 0x102).
     #[test]
     fn encodes_astc_back_through_astcenc() {
-        let Some(encoder) = crate::parser::bntx::find_astc_encoder(None) else {
+        if !astcenc::is_available() {
             return;
-        };
+        }
         for (name, format, block) in [
             ("Armor_160_Head_Alb.txtg", 0x101u16, (4, 4)),
             ("Armor_171_Belt_Alb.txtg", 0x102u16, (4, 4)),
@@ -808,11 +766,7 @@ mod tests {
                 "{name}"
             );
             let image = to_rgba(&parsed).unwrap();
-            assert!(
-                from_rgba(&image, &parsed).is_err(),
-                "{name} without astcenc"
-            );
-            let encoded = from_rgba_with_encoder(&image, &parsed, Some(&encoder)).unwrap();
+            let encoded = from_rgba(&image, &parsed).unwrap();
             assert_eq!(encoded.header, parsed.header, "{name} header");
             assert_eq!(encoded.surfaces.len(), parsed.surfaces.len(), "{name}");
             // Vanilla trims the tail of the smallest tiled mips (16x16 ASTC 4x4

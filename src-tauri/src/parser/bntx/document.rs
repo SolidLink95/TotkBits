@@ -6,7 +6,7 @@
 //! KillzXGaming fork Toolbox ships), the saver is a port of `BntxFileSaver`
 //! that reproduces Toolbox's byte layout, and the importer follows
 //! `TextureImporterSettings.FromBitMap` + `SwizzleSurfaceMipMaps` (ASTC
-//! blocks come from ARM's astcenc, exactly like the C# side; BC formats are
+//! blocks come from ARM's astcenc library, exactly like the C# side; BC formats are
 //! encoded natively and are the one part that is not byte-identical).
 
 use super::BntxError;
@@ -18,7 +18,7 @@ use image_dds::ImageFormat;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tegra_swizzle::surface::BlockDim;
 use tegra_swizzle::BlockHeight;
 
@@ -179,18 +179,18 @@ impl BntxFile {
     }
 
     /// Replaces the image of texture `index` from a picture file, keeping
-    /// the surface format (ASTC through astcenc, BC natively). Returns a
-    /// warning text when something could not be matched exactly.
+    /// the surface format (ASTC through the bundled astcenc library, BC
+    /// natively). Returns a warning text when something could not be
+    /// matched exactly.
     pub fn replace_texture_from_file(
         &mut self,
         index: usize,
         picture: &Path,
-        encoder: Option<&Path>,
     ) -> Result<Option<String>> {
         let image = image::open(picture)
             .map_err(|error| BntxError::new(0, format!("{}: {error}", picture.display())))?
             .to_rgba8();
-        self.replace_texture_from_rgba(index, &image, encoder)
+        self.replace_texture_from_rgba(index, &image)
     }
 
     /// [`Self::replace_texture_from_file`] for an already decoded picture.
@@ -198,14 +198,13 @@ impl BntxFile {
         &mut self,
         index: usize,
         image: &RgbaImage,
-        encoder: Option<&Path>,
     ) -> Result<Option<String>> {
         let texture = self
             .textures
             .get_mut(index)
             .ok_or_else(|| BntxError::new(0, format!("texture index {index} out of range")))?;
         let mip_count = u32::from(texture.mip_count);
-        replace_texture_from_image(texture, image, mip_count, encoder)
+        replace_texture_from_image(texture, image, mip_count)
     }
 
     /// Decodes texture `index` (first array slice, mip 0) to an RGBA image.
@@ -1338,49 +1337,6 @@ const DEFAULT_TEXTURE_LAYOUT2: u32 = 0x010007;
 /// `TextureImporterSettings.Alignment` default.
 const DEFAULT_ALIGNMENT: u32 = 512;
 
-const ASTC_ENCODER_NAMES: [&str; 4] = [
-    "astcenc-avx2.exe",
-    "astcenc-sse4.1.exe",
-    "astcenc-sse2.exe",
-    "astcenc.exe",
-];
-
-/// Locates ARM's astcenc: an explicit path, the `ASTCENC` environment
-/// variable, the bundled `bin/cpp/` folder (next to the executable, or in
-/// `src-tauri` during development), the executable directory, then PATH.
-pub fn find_astc_encoder(explicit: Option<&Path>) -> Option<PathBuf> {
-    if let Some(path) = explicit {
-        return path.is_file().then(|| path.to_path_buf());
-    }
-    if let Ok(value) = std::env::var("ASTCENC") {
-        let path = PathBuf::from(value);
-        if path.is_file() {
-            return Some(path);
-        }
-    }
-    let mut dirs: Vec<PathBuf> = Vec::new();
-    if let Ok(exe_dir) = crate::utils::running_exe_dir() {
-        dirs.push(exe_dir.join("bin/cpp"));
-    }
-    dirs.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bin/cpp"));
-    if let Ok(exe_dir) = crate::utils::running_exe_dir() {
-        dirs.push(exe_dir.join("bin"));
-        dirs.push(exe_dir);
-    }
-    if let Some(path) = std::env::var_os("PATH") {
-        dirs.extend(std::env::split_paths(&path));
-    }
-    for dir in dirs {
-        for name in ASTC_ENCODER_NAMES {
-            let candidate = dir.join(name);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    None
-}
-
 /// `STGenericTexture.GenerateTotalMipCount`.
 fn total_mip_count(width: u32, height: u32) -> u32 {
     let mut count = 1;
@@ -1434,123 +1390,62 @@ fn channels_by_format(format: u32) -> [u8; 4] {
     }
 }
 
-/// Encodes one mip level to ASTC blocks with astcenc, exactly like the C#
-/// CLI helper: `astcenc -cs|-cl in.png out.astc WxH -thorough -silent`.
+/// Encodes one mip level to ASTC blocks through the bundled astcenc
+/// library, configured like the C# CLI helper's
+/// `astcenc -cs|-cl in.png out.astc WxH -thorough` (the same bytes).
 pub(crate) fn encode_astc_level(
     image: &RgbaImage,
     block_width: u32,
     block_height: u32,
     srgb: bool,
-    encoder: &Path,
-    temp_dir: &Path,
     level: u32,
 ) -> Result<Vec<u8>> {
-    let png = temp_dir.join(format!("mip{level}.png"));
-    let astc = temp_dir.join(format!("mip{level}.astc"));
-    image
-        .save_with_format(&png, image::ImageFormat::Png)
-        .map_err(|error| BntxError::new(0, error.to_string()))?;
-    let output = crate::Settings::hidden_command(encoder)
-        .arg(if srgb { "-cs" } else { "-cl" })
-        .arg(&png)
-        .arg(&astc)
-        .arg(format!("{block_width}x{block_height}"))
-        .arg("-thorough")
-        .arg("-silent")
-        .output()
-        .map_err(|error| BntxError::new(0, format!("cannot run {}: {error}", encoder.display())))?;
-    if !output.status.success() || !astc.is_file() {
-        return err(format!(
-            "astcenc failed ({}) for mip {level}: {} {}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout).trim(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    let file = std::fs::read(&astc)?;
-    if file.len() < 16 || file.get(..4) != Some(&[0x13, 0xAB, 0xA1, 0x5C][..]) {
-        return err(format!(
-            "astcenc produced an unexpected file for mip {level}"
-        ));
-    }
-    let (file_block_width, file_block_height) = (
-        file.get(4).copied().unwrap_or_default(),
-        file.get(5).copied().unwrap_or_default(),
-    );
-    if u32::from(file_block_width) != block_width || u32::from(file_block_height) != block_height {
-        return err(format!(
-            "astcenc produced {file_block_width}x{file_block_height} blocks instead of {block_width}x{block_height}"
-        ));
-    }
-    Ok(file.get(16..).unwrap_or_default().to_vec())
+    crate::file_format::Image::astcenc::encode(image, block_width, block_height, srgb)
+        .map_err(|error| BntxError::new(0, format!("astcenc failed for mip {level}: {error}")))
 }
 
 /// Encodes a mip chain to linear (untiled) block data, mip levels packed
 /// back to back the way `TextureHelper.GetCurrentMipSize` expects.
-fn encode_linear_mips(
-    image: &RgbaImage,
-    format: u32,
-    mip_count: u32,
-    encoder: Option<&Path>,
-) -> Result<Vec<u8>> {
+fn encode_linear_mips(image: &RgbaImage, format: u32, mip_count: u32) -> Result<Vec<u8>> {
     let is_astc = switch_texture::astc_block_from_bntx(format);
-    let temp_dir = std::env::temp_dir().join(format!(
-        "totkbits_astc_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    if is_astc.is_some() {
-        std::fs::create_dir_all(&temp_dir)?;
+    if is_astc.is_some() && !crate::file_format::Image::astcenc::is_available() {
+        return Err(BntxError::new(
+            0,
+            crate::file_format::Image::astcenc::missing_error().to_string(),
+        ));
     }
-    let result = (|| {
-        let mut data = Vec::new();
-        for level in 0..mip_count {
-            let width = (image.width() >> level).max(1);
-            let height = (image.height() >> level).max(1);
-            let resized;
-            let mip: &RgbaImage = if level == 0 {
-                image
-            } else {
-                resized = image::imageops::resize(
-                    image,
-                    width,
-                    height,
-                    image::imageops::FilterType::CatmullRom,
-                );
-                &resized
-            };
-            let blocks = match is_astc {
-                Some((block_width, block_height)) => {
-                    let encoder = encoder.ok_or_else(|| {
-                        BntxError::new(
-                            0,
-                            "no astcenc executable found; pass --astcenc, set ASTCENC or put astcenc-avx2.exe into bin/cpp",
-                        )
-                    })?;
-                    encode_astc_level(
-                        mip,
-                        block_width as u32,
-                        block_height as u32,
-                        format & 0xff == 6,
-                        encoder,
-                        &temp_dir,
-                        level,
-                    )?
-                }
-                None => {
-                    let image_format = switch_texture::format_from_bntx(format)?;
-                    switch_texture::encode(mip, image_format, 0, true)?
-                }
-            };
-            data.extend_from_slice(&blocks);
-        }
-        Ok(data)
-    })();
-    let _ = std::fs::remove_dir_all(&temp_dir);
-    result
+    let mut data = Vec::new();
+    for level in 0..mip_count {
+        let width = (image.width() >> level).max(1);
+        let height = (image.height() >> level).max(1);
+        let resized;
+        let mip: &RgbaImage = if level == 0 {
+            image
+        } else {
+            resized = image::imageops::resize(
+                image,
+                width,
+                height,
+                image::imageops::FilterType::CatmullRom,
+            );
+            &resized
+        };
+        let blocks = match is_astc {
+            Some((block_width, block_height)) => encode_astc_level(
+                mip,
+                block_width as u32,
+                block_height as u32,
+                format & 0xff == 6,
+                level,
+            )?,
+            None => {
+                let image_format = switch_texture::format_from_bntx(format)?;
+                switch_texture::encode(mip, image_format, 0, true)?
+            }
+        };
+        data.extend_from_slice(&blocks);
+    }
+    Ok(data)
 }
 
 /// `TegraX1Swizzle.swizzle` for one mip level.
@@ -1637,7 +1532,6 @@ fn replace_texture_from_image(
     texture: &mut BntxTexture,
     image: &RgbaImage,
     requested_mip_count: u32,
-    encoder: Option<&Path>,
 ) -> Result<Option<String>> {
     let format = texture.format;
     let (block_width, block_height, bpp) = block_layout(format)?;
@@ -1666,7 +1560,7 @@ fn replace_texture_from_image(
         });
     }
 
-    let linear = encode_linear_mips(image, format, mip_count, encoder)?;
+    let linear = encode_linear_mips(image, format, mip_count)?;
 
     // FromBitMap
     let channels = channels_by_format(format);
@@ -1857,11 +1751,12 @@ mod tests {
         ) else {
             return;
         };
-        let encoder = find_astc_encoder(None).expect("astcenc not found");
+        assert!(
+            crate::file_format::Image::astcenc::is_available(),
+            "astcenc not found"
+        );
         let mut file = BntxFile::parse(&raw).unwrap();
-        let warning = file
-            .replace_texture_from_file(0, &png, Some(&encoder))
-            .unwrap();
+        let warning = file.replace_texture_from_file(0, &png).unwrap();
         assert_eq!(warning, None);
         assert_eq!(file.save_like_toolbox_zs().unwrap(), expected);
     }
@@ -1877,11 +1772,13 @@ mod tests {
         };
         let png = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../tmp/_CLAUDE/bntx_test/test_icon.png");
-        let encoder = find_astc_encoder(None).expect("astcenc not found");
+        assert!(
+            crate::file_format::Image::astcenc::is_available(),
+            "astcenc not found"
+        );
         let mut file = BntxFile::parse(&raw).unwrap();
         file.rename_texture(0, "Armor_777_Upper").unwrap();
-        file.replace_texture_from_file(0, &png, Some(&encoder))
-            .unwrap();
+        file.replace_texture_from_file(0, &png).unwrap();
         assert_eq!(file.save_like_toolbox_zs().unwrap(), expected);
     }
 
@@ -1899,10 +1796,12 @@ mod tests {
         };
         let png = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../tmp/_CLAUDE/bntx_test/small.png");
-        let encoder = find_astc_encoder(None).expect("astcenc not found");
+        assert!(
+            crate::file_format::Image::astcenc::is_available(),
+            "astcenc not found"
+        );
         let mut file = BntxFile::parse(&raw).unwrap();
-        file.replace_texture_from_file(0, &png, Some(&encoder))
-            .unwrap();
+        file.replace_texture_from_file(0, &png).unwrap();
         assert_eq!(file.textures[0].width, 128);
         assert_eq!(file.save_like_toolbox_zs().unwrap(), expected);
     }

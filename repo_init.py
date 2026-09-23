@@ -5,15 +5,67 @@ import shutil
 import os, sys, stat
 from time import time
 import requests
-import zipfile
 
 # from tauri_build import build_dotnet
 
-try:
-    from tqdm import tqdm  # type: ignore
-except ImportError:
-    print("Install tqdm first using command: pip install tqdm")
-    sys.exit(1)
+class ProgressBar:
+    """Minimal progress bar (standard library only): a fixed-width bar with
+    a byte count and the transfer rate, redrawn in place on a TTY and printed
+    once at the end otherwise."""
+
+    WIDTH = 30
+
+    def __init__(self, desc, total):
+        self.desc = str(desc)
+        self.total = max(int(total or 0), 0)
+        self.done = 0
+        self.start = time()
+        self.last_draw = 0.0
+        self.tty = sys.stdout.isatty()
+
+    def __enter__(self):
+        self.draw(force=True)
+        return self
+
+    def __exit__(self, *_):
+        self.draw(force=True, final=True)
+
+    @staticmethod
+    def human(size):
+        size = float(size)
+        for unit in ("B", "KiB", "MiB", "GiB"):
+            if size < 1024 or unit == "GiB":
+                return f"{int(size)}{unit}" if unit == "B" else f"{size:.1f}{unit}"
+            size /= 1024
+        return f"{size:.1f}GiB"
+
+    def update(self, count):
+        self.done += count
+        self.draw()
+
+    def draw(self, force=False, final=False):
+        now = time()
+        if not force and now - self.last_draw < 0.1:
+            return
+        self.last_draw = now
+        elapsed = max(now - self.start, 1e-6)
+        rate = self.human(self.done / elapsed) + "/s"
+        if self.total:
+            fraction = min(self.done / self.total, 1.0)
+            filled = int(self.WIDTH * fraction)
+            bar = "#" * filled + "-" * (self.WIDTH - filled)
+            text = f"{self.desc} [{bar}] {fraction * 100:5.1f}% {self.human(self.done)}/{self.human(self.total)} {rate}"
+        else:
+            text = f"{self.desc} {self.human(self.done)} {rate}"
+        if self.tty:
+            sys.stdout.write(chr(13) + text + " " * 4)
+            if final:
+                sys.stdout.write(chr(10))
+            sys.stdout.flush()
+        elif final:
+            print(text)
+
+
 CWD = Path(__file__).parent.resolve()
 
 
@@ -25,6 +77,14 @@ def download_files():
         "https://github.com/SolidLink95/oead/releases/download/v1.0/oead_byml_pipe.exe": "src-tauri/bin/cpp/oead_byml_pipe.exe",
         "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/meshcodec.dll": "src-tauri/bin/dlls/meshcodec.dll",
         "https://raw.githubusercontent.com/SolidLink95/roead/master/data/botw_hashed_names.txt": "src-tauri/bin/botw_hashed_names.txt",
+        # ARM's astc-encoder 5.7.0 core codec as shared libraries (built from the
+        # upstream sources with -DASTCENC_SHAREDLIB=ON, AVX2 + SSE4.1, static MSVC
+        # runtime); loaded in process by src-tauri/src/file_format/Image/astcenc.rs
+        "https://github.com/SolidLink95/TotkBits/releases/download/v1.0.1/astcenc-avx2-shared.dll": "src-tauri/bin/dlls/astcenc-avx2-shared.dll",
+        "https://github.com/SolidLink95/TotkBits/releases/download/v1.0.1/astcenc-sse4.1-shared.dll": "src-tauri/bin/dlls/astcenc-sse4.1-shared.dll",
+        # CoACD fork with the fault-tolerant CoACD_runSafe API the app requires
+        # (https://github.com/SolidLink95/CoACD); used by src-tauri/src/tools/coacd.rs
+        "https://github.com/SolidLink95/CoACD/releases/download/v1.0/lib_coacd.dll": "src-tauri/bin/dlls/lib_coacd.dll",
         # "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/meshcodec.exp": "src-tauri/bin/dlls/meshcodec.exp",
         # "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/MeshCodec.lib": "src-tauri/bin/dlls/MeshCodec.lib",
     }
@@ -38,51 +98,6 @@ def download_files():
     print(f"[+] Downloaded {len(files.keys())} files")
 
 
-ASTCENC_ZIP_URL = "https://github.com/ARM-software/astc-encoder/releases/download/5.7.0/astcenc-5.7.0-windows-x64.zip"
-
-
-def install_astcenc(bin_path):
-    """ASTC textures (inventory icons) are encoded with ARM's astcenc, kept as
-    bin/cpp/astcenc-*.exe so the app finds them next to the executable."""
-    cpp_dir = Path(bin_path) / "cpp"
-    cpp_dir.mkdir(parents=True, exist_ok=True)
-    if any(cpp_dir.glob("astcenc-*.exe")):
-        print("[+] astcenc already present in bin/cpp")
-        return
-    archive = cpp_dir / "astcenc.zip"
-    print("[+] Downloading astcenc")
-    download_file(ASTCENC_ZIP_URL, archive)
-    with zipfile.ZipFile(archive) as bundle:
-        for member in bundle.namelist():
-            name = Path(member).name
-            if name.startswith("astcenc-") and name.endswith(".exe"):
-                (cpp_dir / name).write_bytes(bundle.read(member))
-                print(f"[+] Extracted {name} -> bin/cpp")
-    archive.unlink()
-
-
-COACD_DLL_URL = "https://github.com/SolidLink95/CoACD/releases/download/v1.0/lib_coacd.dll"
-
-
-def install_coacd(bin_path):
-    """The items creator's convex collision (Zonai `physics_obj`) runs CoACD
-    through the fault-tolerant C API (`CoACD_runSafe`) of the CoACD fork
-    (https://github.com/SolidLink95/CoACD); its release ships the prebuilt
-    bin/dlls/lib_coacd.dll. The upstream wheel's DLL lacks that API and is
-    refused by the app, so such a copy is replaced."""
-    dll_dir = Path(bin_path) / "dlls"
-    dll_dir.mkdir(parents=True, exist_ok=True)
-    target = dll_dir / "lib_coacd.dll"
-    if target.is_file():
-        if b"CoACD_runSafe" in target.read_bytes():
-            print("[+] lib_coacd.dll already present in bin/dlls")
-            return
-        print("[!] bin/dlls/lib_coacd.dll lacks CoACD_runSafe (upstream build); replacing it")
-    print("[+] Downloading lib_coacd.dll")
-    download_file(COACD_DLL_URL, target)
-    if b"CoACD_runSafe" not in target.read_bytes():
-        target.unlink(missing_ok=True)
-        raise RuntimeError(f"the lib_coacd.dll from {COACD_DLL_URL} does not export CoACD_runSafe")
     print("[+] Downloaded lib_coacd.dll -> bin/dlls")
 
 
@@ -120,13 +135,7 @@ def download_file(url, local_path):
     total_size = int(response.headers.get("content-length", 0))
     local_path = str(local_path)
     # Open a local file for writing in binary mode
-    with open(local_path, "wb") as f, tqdm(
-        desc=local_path,
-        total=total_size,
-        unit="iB",
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as bar:
+    with open(local_path, "wb") as f, ProgressBar(local_path, total_size) as bar:
         # Write the response content to the local file in chunks
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
@@ -202,8 +211,6 @@ def repo_init():
 
     # Download dlls
     download_files()
-    install_astcenc(bin_path)
-    install_coacd(bin_path)
 
     print(
         "\n[+] Totkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file"

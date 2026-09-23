@@ -1375,7 +1375,7 @@ pub(super) fn generate_ui_texture(
         Ok(report) => report,
         Err(error)
             if request.png_source.is_some()
-                && error.to_string().contains("no astcenc executable found") =>
+                && error.to_string().contains("astcenc library not found") =>
         {
             let partial = output_romfs.join(&request.texture_destination);
             if partial.is_file() {
