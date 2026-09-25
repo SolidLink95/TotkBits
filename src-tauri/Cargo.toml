@@ -50,7 +50,7 @@ bitvec = "1.0.1"
 serde_yaml = "0.9.32"
 walkdir = "2"
 zip = { version = "2.2.2", default-features = false, features = ["deflate"] }
-sevenz-rust = "0.6.1"
+sevenz-rust2 = "0.23.0"
 byteordered = "0.6.0"
 sha2 = "0.10"
 digest = "0.10"
