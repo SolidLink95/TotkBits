@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { getDocumentsSnapshot, invoke, subscribeDocuments } from './DocumentState';
 import Tomodachi, { findTomodachiTexture } from './Tomodachi';
+import BphshPanel from './BphshPanel';
 import './Bfres3DView.css';
 
 const celGradient = new THREE.DataTexture(
@@ -1197,6 +1198,10 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [fbxTextureFormat, setFbxTextureFormat] = useState('png');
     const [exportingModel, setExportingModel] = useState(false);
     const [replacingModel, setReplacingModel] = useState(false);
+    // Bumped after a BPHSH material or geometry edit so the preview reloads
+    // from the regenerated GLB instead of the cached inspection.
+    const [bphshRevision, setBphshRevision] = useState(0);
+    const isBphsh = document?.fileType === 'BPHSH';
 
     useEffect(() => {
         const purge = (event) => {
@@ -1470,7 +1475,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     if (pathCached && hasCompleteTextureResolution(pathCached)) {
                         return { path, value: pathCached };
                     }
-                    const value = document.fileType === 'GLB'
+                    const value = document.fileType === 'GLB' || document.fileType === 'BPHSH'
                         ? await inspectGlb(document.title, document.id)
                         : await invoke('inspect_3d_model', { path });
                     if (hasCompleteTextureResolution(value)) {
@@ -1514,7 +1519,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             cancelled = true;
             finishLoading();
         };
-    }, [activeTab, document?.id, document?.fullPath, modelPathsKey]);
+    }, [activeTab, document?.id, document?.fullPath, modelPathsKey, bphshRevision]);
 
     const embeddedAnimations = useMemo(() => (bfres?.sections || []).filter((section) =>
         ['FSKA', 'FSHU', 'FSHA', 'FTXP', 'FVIS', 'FMAA'].includes(String.fromCharCode(...section.signature))), [bfres]);
@@ -1727,6 +1732,13 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             }));
         }
     };
+    const reloadBphshPreview = () => {
+        const key = (document?.fullPath || '').replace(/\\/g, '/').toLowerCase();
+        modelInspectionCache.delete(key);
+        setSelectedMesh('');
+        setSelectedMaterial(null);
+        setBphshRevision((value) => value + 1);
+    };
     const renderViewport = async () => {
         if (!captureViewportRef.current || renderingViewport) return;
         const stem = (document?.title || bfres?.name || 'model').replace(/\.[^.]+$/, '');
@@ -1903,6 +1915,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     </label></>}
                     
                 </section>}
+                {isBphsh && <BphshPanel documentId={document?.id} documentTitle={document?.title} revision={bphshRevision} colors={Object.fromEntries((bfres?.materials || []).map((material) => [material.name, material.color]))} setStatusText={setStatusText} onShapeChanged={reloadBphshPreview} />}
                 {panel === 'resources' && <NodeInspector detail={detail} textures={bfres?.resolvedTextures} />}
                 {/* LM3 models carry no BFRES header, so the panel only renders
                     when the header actually exists. */}

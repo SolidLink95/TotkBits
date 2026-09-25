@@ -32,6 +32,8 @@ impl Magic {
             Some("RSTB")
         } else if Self::is_bfres(data) {
             Some("BFRES")
+        } else if Self::is_bphsh(data) {
+            Some("BPHSH")
         } else if Self::is_bphcl(data) {
             Some("BPHCL")
         } else if Self::is_hkrg(data) {
@@ -104,6 +106,8 @@ impl Magic {
             TotkFileType::Bntx
         } else if Self::is_dds(data) || Self::is_png(data) || Self::is_g1t(data) {
             TotkFileType::Image
+        } else if Self::is_bphsh(data) {
+            TotkFileType::Bphsh
         } else if Self::is_bphcl(data) {
             TotkFileType::Bphcl
         } else if Self::is_hkrg(data) {
@@ -266,6 +270,18 @@ impl Magic {
     #[inline]
     pub fn is_bphcl(data: &[u8]) -> bool {
         data.starts_with(b"Phive\0")
+    }
+    /// A Phive mesh shape (`.bphsh`): every Phive container starts the same
+    /// way, but only shapes carry version `0.4` with the tagfile at 0x30
+    /// (cloth is type 3 at offset 10, static compounds are `2.x`).
+    #[inline]
+    pub fn is_bphsh(data: &[u8]) -> bool {
+        data.len() >= 0x30
+            && data.starts_with(b"Phive ")
+            && data[6..8] == [1, 0]
+            && data[10] == 0
+            && data[11] == 4
+            && data[0x0C..0x10] == [0x30, 0, 0, 0]
     }
     #[inline]
     pub fn is_hkcl(data: &[u8]) -> bool {

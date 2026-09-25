@@ -51,6 +51,10 @@ impl VertexConversion {
         let inv = 1.0 / calc_bit_scale(max_vertex_error);
         (65536.0 - 2.0) * inv
     }
+    /// The largest extent a 16-bit section of this conversion can hold.
+    fn max_extent(&self) -> f32 {
+        (65536.0 - 2.0) * self.bit_scale16_inv[0]
+    }
     fn section_offset(&self, domain: &Aabb) -> [u32; 3] {
         let mut out = [0u32; 3];
         for i in 0..3 {
@@ -1519,13 +1523,42 @@ fn build_section_from_primitives(
     section
 }
 
+/// Encodes a section's vertices. A section whose domain exceeds the 16-bit
+/// range (a single primitive wider than `max_extent`, which the grouping
+/// leaves alone in its section) is stored the way Havok does: the offset
+/// marker `0x7FFFFFFF` and raw `f32` positions, two 16-bit triples each.
 fn quantize_section(conv: &VertexConversion, section: &mut TempSection) {
+    let ext = section.original_domain.extents();
+    if ext.iter().any(|e| *e > conv.max_extent()) {
+        section.section_offset = FLOAT_VERTEX_SECTION_OFFSET;
+        section.quantized = section
+            .vertices
+            .iter()
+            .flat_map(|v| {
+                let [x, y, z] = v.map(f32::to_bits);
+                let lo = |b: u32| (b & 0xFFFF) as u16;
+                let hi = |b: u32| (b >> 16) as u16;
+                [[lo(x), hi(x), lo(y)], [hi(y), lo(z), hi(z)]]
+            })
+            .collect();
+        return;
+    }
     section.section_offset = conv.section_offset(&section.original_domain);
     section.quantized = section
         .vertices
         .iter()
         .map(|v| conv.pack(*v, section.section_offset))
         .collect();
+}
+
+/// World position of vertex `id` as the file will hold it: the original
+/// float in a float section, the unpacked 16-bit value otherwise.
+fn section_vertex(conv: &VertexConversion, section: &TempSection, id: usize) -> [f32; 3] {
+    if section.section_offset == FLOAT_VERTEX_SECTION_OFFSET {
+        section.vertices.get(id).copied().unwrap_or_default()
+    } else {
+        conv.unpack(section.quantized[id], section.section_offset)
+    }
 }
 
 fn refit_section_bvh(conv: &VertexConversion, section: &mut TempSection) {
@@ -1543,7 +1576,7 @@ fn refit_section_bvh(conv: &VertexConversion, section: &mut TempSection) {
                 let count = if prim.is_triangle() { 3 } else { 4 };
                 let mut aabb = Aabb::empty();
                 for v in 0..count {
-                    let p = conv.unpack(section.quantized[ids[v] as usize], section.section_offset);
+                    let p = section_vertex(conv, section, ids[v] as usize);
                     aabb.include_point(p);
                 }
                 updated.set_lane(c, converter.convert(&aabb));
@@ -1631,13 +1664,25 @@ fn check_flat_convex_quad(a: [f32; 3], b: [f32; 3], c: [f32; 3], d: [f32; 3]) ->
 }
 
 fn mark_flat_convex_quads(conv: &VertexConversion, section: &mut TempSection) {
-    for (i, p) in section.primitives.iter_mut().enumerate() {
-        if p.is_triangle() {
-            continue;
-        }
-        let corner = |id: u8| conv.unpack(section.quantized[id as usize], section.section_offset);
-        let flat = check_flat_convex_quad(corner(p.a), corner(p.b), corner(p.c), corner(p.d));
-        if set_flat_convex_quad(p, flat) {
+    let flats: Vec<Option<bool>> = section
+        .primitives
+        .iter()
+        .map(|p| {
+            if p.is_triangle() {
+                return None;
+            }
+            let corner = |id: u8| section_vertex(conv, section, id as usize);
+            Some(check_flat_convex_quad(
+                corner(p.a),
+                corner(p.b),
+                corner(p.c),
+                corner(p.d),
+            ))
+        })
+        .collect();
+    for (i, flat) in flats.into_iter().enumerate() {
+        let Some(flat) = flat else { continue };
+        if set_flat_convex_quad(&mut section.primitives[i], flat) {
             section.interior[i].swap(0, 1);
         }
     }
@@ -2063,7 +2108,7 @@ pub fn build_with_options(geometry: &Geometry, options: BuildOptions) -> Option<
             let ids = prim.ids();
             let count = if prim.is_triangle() { 3 } else { 4 };
             for v in 0..count {
-                let p = conv.unpack(section.quantized[ids[v] as usize], section.section_offset);
+                let p = section_vertex(&conv, section, ids[v] as usize);
                 section.refit_domain.include_point(p);
             }
         }

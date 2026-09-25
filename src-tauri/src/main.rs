@@ -28,8 +28,9 @@ use crate::DocumentState::DocumentState as Documents;
 use crate::Settings::{get_startup_data, StartupData};
 use crate::TauriCommands::{
     add_archive_bytes, add_click, add_empty_byml_file, add_files_from_dir_recursively,
-    add_to_dir_click, build_physics_merge_graph, check_if_update_needed, clear_rfl_miis,
-    clear_search_in_sarc, close_all_opened_files, close_document, commit_rebuilt_physics_document,
+    add_to_dir_click, bphsh_apply_materials, bphsh_export_obj, bphsh_info, bphsh_replace_obj,
+    build_physics_merge_graph, check_if_update_needed, clear_rfl_miis, clear_search_in_sarc,
+    close_all_opened_files, close_document, commit_rebuilt_physics_document,
     compact_bphcl_document, compare_files, compare_internal_file_with_vanila,
     convert_hkcl_into_pack, edit_config, edit_internal_file, edit_nested_sarc_file, elink_generate,
     elink_user_assets, elink_users, exit_app, expand_nested_sarc, export_bfwav_node,
@@ -167,6 +168,10 @@ fn run() -> Result<(), tools::Cli::CliError> {
             open_file_from_path,
             edit_internal_file,
             open_bphcl_leaf,
+            bphsh_info,
+            bphsh_apply_materials,
+            bphsh_export_obj,
+            bphsh_replace_obj,
             list_open_bphcl_documents,
             list_bphcl_selectable_nodes,
             list_open_hkcl_documents,

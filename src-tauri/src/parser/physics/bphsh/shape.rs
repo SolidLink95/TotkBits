@@ -192,8 +192,42 @@ pub struct GeometrySection {
     pub bit_offset: [i16; 3],
 }
 
+/// Section offset marking a section whose vertex buffer holds raw `f32`
+/// positions (12 bytes each) instead of 16-bit quantized ones. TOTK's
+/// large dungeon shapes carry a few such sections; the buffer still reads
+/// and writes as 16-bit words, so files round-trip unchanged.
+pub const FLOAT_VERTEX_SECTION_OFFSET: [u32; 3] = [0x7FFF_FFFF; 3];
+
 impl GeometrySection {
     pub const MAX_VERTICES: usize = 256;
+
+    /// Whether the vertex buffer holds raw `f32` positions.
+    pub fn has_float_vertices(&self) -> bool {
+        self.section_offset == FLOAT_VERTEX_SECTION_OFFSET
+    }
+
+    /// Vertices the primitives can index: two 16-bit triples make one
+    /// float vertex in a float section.
+    pub fn vertex_count(&self) -> usize {
+        if self.has_float_vertices() {
+            self.vertices.len() / 2
+        } else {
+            self.vertices.len()
+        }
+    }
+
+    /// Position of float vertex `index` (little-endian `f32` x, y, z spread
+    /// over the words of two consecutive 16-bit triples).
+    pub fn float_vertex(&self, index: usize) -> [f32; 3] {
+        let a = self.vertices.get(index * 2).copied().unwrap_or_default();
+        let b = self
+            .vertices
+            .get(index * 2 + 1)
+            .copied()
+            .unwrap_or_default();
+        let word = |lo: u16, hi: u16| f32::from_bits((hi as u32) << 16 | lo as u32);
+        [word(a[0], a[1]), word(a[2], b[0]), word(b[1], b[2])]
+    }
 }
 
 /// `hknpMeshShapePrimitiveMapping`, present on some shapes.
@@ -234,6 +268,19 @@ impl MeshShape {
     pub fn section_shift(&self) -> u32 {
         let section_bits = bit_width(self.sections.len() as i64 - 1);
         (self.num_shape_key_bits as u32).saturating_sub(section_bits)
+    }
+
+    /// World position of vertex `index` of `section`, whichever encoding
+    /// the section uses.
+    pub fn vertex_position(&self, section: &GeometrySection, index: usize) -> [f32; 3] {
+        if section.has_float_vertices() {
+            section.float_vertex(index)
+        } else {
+            self.unpack_vertex(
+                section,
+                section.vertices.get(index).copied().unwrap_or_default(),
+            )
+        }
     }
 
     /// Unpacks a quantized vertex of `section` to world units.

@@ -146,3 +146,20 @@ button.bfres-row:hover, button.bfres-row.selected { background: #253543; }
     border-color: #4c86aa;
     color: white;
 }
+
+/* BPHSH collision panel (3D tab) */
+.bphsh-panel { flex-wrap: wrap; align-items: center; }
+.bphsh-panel > header { width: 100%; margin: 0 0 4px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.bphsh-panel > header small { color: #7f8d9b; font-size: 11px; white-space: nowrap; }
+.bphsh-table { flex: 0 1 auto; max-height: 48%; min-height: 120px; overflow: auto; border-bottom: 1px solid #303946; font-size: 11px; }
+.bphsh-table table { width: 100%; border-collapse: collapse; color: #dce3ea; }
+.bphsh-table th, .bphsh-table td { padding: 5px 6px; border-bottom: 1px solid #27313b; text-align: left; vertical-align: top; }
+.bphsh-table th { position: sticky; top: 0; z-index: 1; background: #202730; color: #7f8d9c; font-size: 10px; font-weight: 500; text-transform: uppercase; }
+.bphsh-table td strong { display: inline; font-weight: 600; }
+.bphsh-table td small { display: block; color: #7f8d9b; margin-top: 2px; }
+.bphsh-table input, .bphsh-table select { width: 100%; min-width: 90px; box-sizing: border-box; padding: 3px 5px; border: 1px solid #46515d; border-radius: 3px; background: #171c22; color: #e2e8ee; font-size: 11px; }
+.bphsh-field { display: grid; gap: 3px; }
+.bphsh-field select { color: #9ca9b6; font-size: 10px; }
+.bphsh-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border: 1px solid #0006; border-radius: 2px; vertical-align: middle; }
+.bphsh-error { margin: 0; padding: 6px 12px; color: #ff8c8c; font-size: 11px; border-bottom: 1px solid #303946; }
+.bphsh-note { margin: 0; padding: 8px 10px; color: #8493a3; font-size: 10px; line-height: 1.4; }

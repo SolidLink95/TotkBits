@@ -36,6 +36,7 @@ pub enum TotkFileType {
     Aamp,
     Bntx,
     Bphcl,
+    Bphsh,
     Bphhb,
     Hkcl,
     Hkrg,

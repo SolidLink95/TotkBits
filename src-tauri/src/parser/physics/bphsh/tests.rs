@@ -133,20 +133,24 @@ fn corpus_rebuild_is_a_fixed_point() {
         ..Default::default()
     };
     let mut stable = 0usize;
-    let mut unstable = Vec::new();
     let mut skipped = 0usize;
+    let mut unstable = Vec::new();
     for (path, _, parsed) in parsed_corpus(limit().min(800)) {
-        let geometry = obj::indexed_geometry(&parsed.shape);
-        // A few vanilla files hold junk sections (section offsets of
-        // 0x7FFFFFFF, corners millions of units out): not meaningful input.
-        if geometry
-            .vertices
+        // Shapes with float sections encode a vertex shared by an oversize
+        // primitive and a regular one twice (exact and snapped), so their
+        // decoded geometry is not the builder's input space; the builder is
+        // exercised on them by `oversize_triangles_build_float_sections`.
+        if parsed
+            .shape
+            .shape
+            .sections
             .iter()
-            .any(|v| v.iter().any(|c| !c.is_finite() || c.abs() > 1e5))
+            .any(|s| s.has_float_vertices())
         {
             skipped += 1;
             continue;
         }
+        let geometry = obj::indexed_geometry(&parsed.shape);
         let Some(first) = build_bytes(&geometry, options) else {
             continue;
         };
@@ -161,7 +165,7 @@ fn corpus_rebuild_is_a_fixed_point() {
         }
     }
     eprintln!(
-        "bphsh fixed point: {stable} stable, {} unstable, {skipped} junk inputs skipped",
+        "bphsh fixed point: {stable} stable, {} unstable, {skipped} float-section inputs skipped",
         unstable.len()
     );
     for line in unstable.iter().take(10) {
@@ -319,8 +323,8 @@ fn corpus_layout_report() {
                 (sec.primitives.len() * 2).div_ceil(8)
             );
             let mut aabb = super::shape::Aabb::empty();
-            for v in &sec.vertices {
-                aabb.include_point(shape.unpack_vertex(sec, *v));
+            for v in 0..sec.vertex_count() {
+                aabb.include_point(shape.vertex_position(sec, v));
             }
             let off_grid = (0..3).any(|axis| {
                 let extent = aabb.max[axis] - aabb.min[axis];
@@ -384,8 +388,9 @@ fn describe(shape: &super::shape::MeshShape) -> String {
         for (p, prim) in sec.primitives.iter().enumerate() {
             writeln!(s, "   prim{p}: {:?}", prim.ids()).unwrap();
         }
-        for (v, vert) in sec.vertices.iter().enumerate() {
-            let w = shape.unpack_vertex(sec, *vert);
+        for v in 0..sec.vertex_count() {
+            let w = shape.vertex_position(sec, v);
+            let vert = sec.vertices.get(v).copied().unwrap_or_default();
             writeln!(
                 s,
                 "   v{v}: {vert:?} = [{:.4}, {:.4}, {:.4}]",
@@ -607,4 +612,288 @@ fn explain_fixed_point_failure() {
             break;
         }
     }
+    for (label, shape, geometry) in [("s1", &s1, &g2), ("s2", &s2, &g3), ("s3", &s3, &g3)] {
+        let _ = geometry;
+        for (i, sec) in shape.shape.shape.sections.iter().enumerate() {
+            let positions: Vec<[f32; 3]> = (0..sec.vertex_count())
+                .map(|v| shape.shape.shape.vertex_position(sec, v))
+                .collect();
+            let mut unique: Vec<[u32; 3]> = positions.iter().map(|p| p.map(f32::to_bits)).collect();
+            unique.sort();
+            unique.dedup();
+            eprintln!(
+                "  {label} section {i}: float={} prims={} verts={} unique={} offset={:?} first={:?}",
+                sec.has_float_vertices(),
+                sec.primitives.len(),
+                sec.vertex_count(),
+                unique.len(),
+                sec.section_offset.map(|v| v as i32),
+                positions.first()
+            );
+        }
+    }
+    let multiplicity = |g: &obj::Geometry| {
+        let mut m: BTreeMap<[u32; 3], usize> = BTreeMap::new();
+        for v in &g.vertices {
+            *m.entry(v.map(f32::to_bits)).or_default() += 1;
+        }
+        m
+    };
+    let (m2, m3) = (multiplicity(&g2), multiplicity(&g3));
+    for (key, count) in &m3 {
+        let other = m2.get(key).copied().unwrap_or(0);
+        if other != *count {
+            eprintln!(
+                "  multiplicity {:?}: g2 {other} vs g3 {count}",
+                key.map(f32::from_bits)
+            );
+        }
+    }
+}
+
+/// `BPHSH_FILE=<name> cargo test inspect_int_max_sections -- --ignored --nocapture`:
+/// dumps the sections whose offset is `0x7FFFFFFF` (seen in large dungeon
+/// shapes) next to their 8-bit BVH bounds and the top-level lanes pointing
+/// at them, and counts how many corpus files hold such sections.
+#[test]
+#[ignore]
+fn inspect_int_max_sections() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tmp/_bphsh");
+    if let Ok(name) = std::env::var("BPHSH_FILE") {
+        let bytes = fs::read(root.join(&name)).unwrap();
+        let parsed = reader::parse(&bytes).unwrap();
+        let mesh = &parsed.shape.shape;
+        eprintln!(
+            "bit_scale16={:?} inv={:?}",
+            mesh.bit_scale16, mesh.bit_scale16_inv
+        );
+        for (si, sec) in mesh.sections.iter().enumerate() {
+            if sec.section_offset != [0x7FFF_FFFF; 3] {
+                continue;
+            }
+            eprintln!("--- section {si}: bit_offset={:?} scale8inv={:?} prims={} verts={} bvh={} bits={:?}",
+                sec.bit_offset, sec.bit_scale8_inv, sec.primitives.len(), sec.vertices.len(), sec.bvh.len(), sec.interior_primitive_bits);
+            for (ni, node) in mesh.top_level_tree.iter().enumerate() {
+                if node.is_leaf {
+                    for lane in 0..4 {
+                        if node.data[lane] as usize == si {
+                            let a = node.lane_aabb(lane);
+                            eprintln!(
+                                "  top-level node {ni} lane {lane}: min={:?} max={:?}",
+                                a.min, a.max
+                            );
+                        }
+                    }
+                }
+            }
+            for (bi, node) in sec.bvh.iter().enumerate() {
+                for lane in 0..4 {
+                    if !node.lane_valid(lane) {
+                        continue;
+                    }
+                    let l = node.lane(lane);
+                    let dec = |b: u8, axis: usize| {
+                        (b as i32 + sec.bit_offset[axis] as i32) as f32 * sec.bit_scale8_inv[axis]
+                    };
+                    eprintln!("  bvh{bi} leaf={} lane{lane} data={} x[{:.3},{:.3}] y[{:.3},{:.3}] z[{:.3},{:.3}]",
+                        node.is_leaf(), node.data[lane], dec(l[0],0), dec(l[1],0), dec(l[2],1), dec(l[3],1), dec(l[4],2), dec(l[5],2));
+                }
+            }
+            for (pi, prim) in sec.primitives.iter().enumerate() {
+                eprintln!("  prim{pi} ids={:?}", prim.ids());
+            }
+            for (vi, v) in sec.vertices.iter().enumerate() {
+                let a = [
+                    v[0] as f32 * mesh.bit_scale16_inv[0],
+                    v[1] as f32 * mesh.bit_scale16_inv[1],
+                    v[2] as f32 * mesh.bit_scale16_inv[2],
+                ];
+                let c = [
+                    sec.bit_offset[0] as f32 * sec.bit_scale8_inv[0] + a[0],
+                    sec.bit_offset[1] as f32 * sec.bit_scale8_inv[1] + a[1],
+                    sec.bit_offset[2] as f32 * sec.bit_scale8_inv[2] + a[2],
+                ];
+                eprintln!(
+                    "  v{vi} raw={:?} (a) no-offset={:.3?} (c) bitOffset8+raw={:.3?}",
+                    v, a, c
+                );
+            }
+        }
+        return;
+    }
+    let mut files = 0;
+    let mut hits = Vec::new();
+    for path in corpus() {
+        files += 1;
+        let bytes = fs::read(&path).unwrap();
+        let parsed = reader::parse(&bytes).unwrap();
+        let n = parsed
+            .shape
+            .shape
+            .sections
+            .iter()
+            .filter(|s| s.section_offset == [0x7FFF_FFFF; 3])
+            .count();
+        let any_huge = parsed.shape.shape.sections.iter().any(|s| {
+            s.section_offset
+                .iter()
+                .any(|o| (*o as i32).unsigned_abs() > 1 << 24)
+        });
+        if n > 0 || any_huge {
+            hits.push((
+                file_name(&path),
+                n,
+                parsed.shape.shape.sections.len(),
+                any_huge,
+            ));
+        }
+    }
+    eprintln!(
+        "{} of {files} files hold INT_MAX/huge-offset sections",
+        hits.len()
+    );
+    for h in &hits {
+        eprintln!("  {:?}", h);
+    }
+}
+
+/// Every vanilla section's decoded vertices must lie inside the top-level
+/// tree lane that points at the section (within the quantization slack);
+/// this is what catches a wrong vertex encoding such as the float sections.
+#[test]
+fn corpus_vertices_fit_their_top_level_lanes() {
+    let mut checked_files = 0;
+    let mut float_sections = 0;
+    let mut failures = Vec::new();
+    for path in corpus().into_iter().take(limit()) {
+        let bytes = fs::read(&path).unwrap();
+        let parsed = reader::parse(&bytes).unwrap();
+        let mesh = &parsed.shape.shape;
+        checked_files += 1;
+        for node in mesh.top_level_tree.iter().filter(|n| n.is_leaf) {
+            for lane in 0..4 {
+                if !node.lane_valid(lane) {
+                    continue;
+                }
+                let Some(section) = mesh.sections.get(node.data[lane] as usize) else {
+                    continue;
+                };
+                if section.has_float_vertices() {
+                    float_sections += 1;
+                }
+                let bounds = node.lane_aabb(lane);
+                let slack = 0.5;
+                for v in 0..section.vertex_count() {
+                    let p = mesh.vertex_position(section, v);
+                    let outside = (0..3).any(|axis| {
+                        p[axis] < bounds.min[axis] - slack || p[axis] > bounds.max[axis] + slack
+                    });
+                    if outside {
+                        failures.push(format!(
+                            "{} section {} (float={}) vertex {v} {p:?} outside lane {:?}..{:?}",
+                            file_name(&path),
+                            node.data[lane],
+                            section.has_float_vertices(),
+                            bounds.min,
+                            bounds.max
+                        ));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    eprintln!(
+        "checked {checked_files} files, {float_sections} float sections, {} sections out of bounds",
+        failures.len()
+    );
+    for failure in failures.iter().take(20) {
+        eprintln!("  {failure}");
+    }
+    assert!(failures.is_empty());
+}
+
+/// A primitive wider than a 16-bit section (128 m at the default error)
+/// must come out as a float section and survive the round trip exactly.
+#[test]
+fn oversize_triangles_build_float_sections() {
+    let geometry = obj::Geometry {
+        vertices: vec![
+            [-150.123, 0.5, -150.75],
+            [150.25, 0.5, -150.75],
+            [0.0, 0.5, 150.5],
+            [1.0, 2.0, 3.0],
+            [2.0, 2.0, 3.0],
+            [1.0, 3.0, 3.0],
+        ],
+        triangles: vec![
+            obj::Triangle {
+                a: 0,
+                b: 1,
+                c: 2,
+                material: 0,
+            },
+            obj::Triangle {
+                a: 3,
+                b: 4,
+                c: 5,
+                material: 0,
+            },
+        ],
+        materials: vec![obj::Material::default()],
+    };
+    let shape = builder::build(&geometry).expect("builds");
+    let float_sections: Vec<_> = shape
+        .sections
+        .iter()
+        .filter(|s| s.has_float_vertices())
+        .collect();
+    assert_eq!(
+        float_sections.len(),
+        1,
+        "one float section for the big triangle"
+    );
+    assert_eq!(float_sections[0].vertex_count(), 3);
+    let (materials, collision_masks) = obj::material_tables(&geometry);
+    let bytes = writer::write(&BphshShape {
+        shape,
+        materials,
+        collision_masks,
+    })
+    .unwrap();
+    let reread = reader::parse(&bytes).unwrap();
+    let back = obj::indexed_geometry(&reread.shape);
+    let big: Vec<[f32; 3]> = back
+        .vertices
+        .iter()
+        .copied()
+        .filter(|v| v[0].abs() > 100.0 || v[2].abs() > 100.0)
+        .collect();
+    assert_eq!(big.len(), 3);
+    for expected in &geometry.vertices[..3] {
+        assert!(
+            big.contains(expected),
+            "{expected:?} kept exactly, got {big:?}"
+        );
+    }
+    let rebuilt = build_bytes(
+        &back,
+        builder::BuildOptions {
+            canonical: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let again = obj::indexed_geometry(&reader::parse(&rebuilt).unwrap().shape);
+    assert_eq!(
+        build_bytes(
+            &again,
+            builder::BuildOptions {
+                canonical: true,
+                ..Default::default()
+            }
+        )
+        .unwrap(),
+        rebuilt
+    );
 }

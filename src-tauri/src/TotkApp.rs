@@ -1271,6 +1271,9 @@ impl<'a> TotkBitsApp<'a> {
         if !dest_file.is_empty() && !check_if_save_in_romfs(&dest_file, self.zstd.clone()) {
             match save_data.tab.as_str() {
                 "3D" => {
+                    if self.opened_file.bphsh.is_some() {
+                        return self.save_bphsh(Some(dest_file.clone()));
+                    }
                     let bytes = match &self.opened_file.custom_g1m {
                         Some(bytes) => bytes,
                         None => {
@@ -1661,6 +1664,69 @@ impl<'a> TotkBitsApp<'a> {
     }
 
     // #[allow(unused_variables)]
+    /// Writes the opened BPHSH mesh shape to `destination` (Save As) or its
+    /// own path (Save). The file keeps the compression it was opened with;
+    /// a `.zs` destination of an uncompressed shape gets the Zs dictionary,
+    /// and a plain `.bphsh` destination opts out of compression.
+    fn save_bphsh(&mut self, destination: Option<String>) -> Option<SendData> {
+        let mut data = SendData::default();
+        data.tab = "ERROR".into();
+        let destination = destination.unwrap_or_else(|| self.opened_file.path.full_path.clone());
+        if destination.is_empty() {
+            data.status_text = "Error: BPHSH has no save path".into();
+            return Some(data);
+        }
+        if check_if_save_in_romfs(&destination, self.zstd.clone()) {
+            data.status_text = "Error: refusing to save inside romfs".into();
+            return Some(data);
+        }
+        let Some(bphsh) = self.opened_file.bphsh.as_ref() else {
+            data.status_text = "Error: no BPHSH is opened".into();
+            return Some(data);
+        };
+        let raw = match bphsh.raw_binary() {
+            Ok(raw) => raw,
+            Err(error) => {
+                data.status_text = format!("Error: failed to serialize BPHSH: {error}");
+                return Some(data);
+            }
+        };
+        let compression = compression_for_save_as(self.opened_file.compression, Some(&destination))
+            .or_else(|| {
+                destination
+                    .to_ascii_lowercase()
+                    .ends_with(".zs")
+                    .then_some(ZstdDictionary::Zs)
+            });
+        let bytes = match compression {
+            Some(dictionary) => match self.zstd.compress_with_dictionary(&raw, dictionary) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    data.status_text = format!("Error: failed to compress BPHSH: {error}");
+                    return Some(data);
+                }
+            },
+            None => raw,
+        };
+        if let Err(error) = fs::write(&destination, bytes) {
+            data.status_text = format!("Error: failed to save BPHSH: {error}");
+            return Some(data);
+        }
+        self.opened_file.path = Pathlib::new(destination.clone());
+        self.opened_file.compression = compression;
+        data.tab = "3D".into();
+        data.file_type = TotkFileType::Bphsh;
+        data.path = self.opened_file.path.clone();
+        data.file_label = format!("{} [BPHSH]", data.path.name);
+        data.file_metadata = match compression {
+            Some(dictionary) => format!("[BPHSH] [3D] [{dictionary:?}]"),
+            None => "[BPHSH] [3D]".into(),
+        };
+        data.status_text = format!("Saved BPHSH {destination}");
+        data.read_only = false;
+        Some(data)
+    }
+
     pub fn save(&mut self, mut save_data: SaveData) -> Option<SendData> {
         if save_data.tab == "AUDIO"
             && self
@@ -1681,6 +1747,9 @@ impl<'a> TotkBitsApp<'a> {
 
         match save_data.tab.as_str() {
             "3D" => {
+                if self.opened_file.bphsh.is_some() {
+                    return self.save_bphsh(None);
+                }
                 let destination = self.opened_file.path.full_path.clone();
                 if destination.is_empty() {
                     data.tab = "ERROR".into();

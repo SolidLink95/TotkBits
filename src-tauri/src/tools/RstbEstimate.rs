@@ -569,6 +569,7 @@ impl SizeRule {
             | TotkFileType::Xlink
             | TotkFileType::Text => Self::Fixed(256),
             TotkFileType::Evfl => Self::Fixed(288),
+            TotkFileType::Bphsh => Self::Fixed(368),
             TotkFileType::Bfres => Self::Bfres,
             TotkFileType::Restbl => {
                 return Err(RstbEstimateError::new(

@@ -140,6 +140,15 @@ fn group_name(material: &Material, used: &mut BTreeMap<String, usize>) -> String
     group
 }
 
+/// The OBJ group names of `materials`, in table order (`Stone00`, `Stone01`, …).
+pub fn group_names(materials: &[Material]) -> Vec<String> {
+    let mut used = BTreeMap::new();
+    materials
+        .iter()
+        .map(|material| group_name(material, &mut used))
+        .collect()
+}
+
 /// Writes `geometry` as OBJ text plus the material JSON (pretty printed).
 pub fn to_obj(geometry: &Geometry) -> io::Result<(String, String)> {
     use std::fmt::Write;
@@ -274,18 +283,43 @@ pub fn indexed_geometry(shape: &BphshShape) -> Geometry {
     let mesh: &MeshShape = &shape.shape;
     let mut geometry = Geometry::default();
     let mut shared: HashMap<[i32; 3], u32> = HashMap::new();
-    for (s, section) in mesh.sections.iter().enumerate() {
-        let keys: Vec<[i32; 3]> = section
-            .vertices
-            .iter()
-            .map(|v| {
-                [
-                    (v[0] as i32).wrapping_add(section.section_offset[0] as i32),
-                    (v[1] as i32).wrapping_add(section.section_offset[1] as i32),
-                    (v[2] as i32).wrapping_add(section.section_offset[2] as i32),
-                ]
-            })
+    // 16-bit sections first: a float-section vertex whose grid point already
+    // exists joins it (keeping the snapped position), so the merge does not
+    // depend on section order and a rebuild of the result is stable.
+    let mut order: Vec<usize> = (0..mesh.sections.len())
+        .filter(|s| !mesh.sections[*s].has_float_vertices())
+        .collect();
+    order.extend((0..mesh.sections.len()).filter(|s| mesh.sections[*s].has_float_vertices()));
+    for s in order {
+        let section = &mesh.sections[s];
+        let positions: Vec<[f32; 3]> = (0..section.vertex_count())
+            .map(|i| mesh.vertex_position(section, i))
             .collect();
+        // Merge key: the quantized grid coordinate, for float sections too.
+        let keys: Vec<[i32; 3]> = if section.has_float_vertices() {
+            positions
+                .iter()
+                .map(|p| {
+                    [
+                        (p[0] * mesh.bit_scale16[0]).round() as i32,
+                        (p[1] * mesh.bit_scale16[1]).round() as i32,
+                        (p[2] * mesh.bit_scale16[2]).round() as i32,
+                    ]
+                })
+                .collect()
+        } else {
+            section
+                .vertices
+                .iter()
+                .map(|v| {
+                    [
+                        (v[0] as i32).wrapping_add(section.section_offset[0] as i32),
+                        (v[1] as i32).wrapping_add(section.section_offset[1] as i32),
+                        (v[2] as i32).wrapping_add(section.section_offset[2] as i32),
+                    ]
+                })
+                .collect()
+        };
         let mut counts: HashMap<[i32; 3], u32> = HashMap::new();
         for key in &keys {
             *counts.entry(*key).or_default() += 1;
@@ -294,7 +328,7 @@ pub fn indexed_geometry(shape: &BphshShape) -> Geometry {
             .iter()
             .enumerate()
             .map(|(i, key)| {
-                let position = mesh.unpack_vertex(section, section.vertices[i]);
+                let position = positions[i];
                 if counts[key] == 1 {
                     if let Some(index) = shared.get(key) {
                         return *index;

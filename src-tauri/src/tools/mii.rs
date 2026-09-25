@@ -463,7 +463,7 @@ fn read_glb_preview_impl(
             app.opened_file.visual_data.clone(),
         )
     });
-    if file_type != TotkFileType::Glb {
+    if !matches!(file_type, TotkFileType::Glb | TotkFileType::Bphsh) {
         return Err("active document is not a GLB preview".into());
     }
     let bytes = bytes.ok_or_else(|| "GLB preview data is missing".to_string())?;
@@ -496,7 +496,7 @@ fn export_loaded_glb_impl(
             app.opened_file.visual_data.clone(),
         )
     });
-    if file_type != TotkFileType::Glb {
+    if !matches!(file_type, TotkFileType::Glb | TotkFileType::Bphsh) {
         return Err("active document is not a GLB".into());
     }
     let bytes = bytes.ok_or_else(|| "GLB data is missing".to_string())?;

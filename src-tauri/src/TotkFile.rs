@@ -246,7 +246,7 @@ impl<'a> TotkFile<'a> {
                 }
             }
             TotkFileType::Bfres | TotkFileType::Fbx | TotkFileType::G1M => "3D",
-            TotkFileType::Glb => "3D",
+            TotkFileType::Glb | TotkFileType::Bphsh => "3D",
             TotkFileType::Bntx | TotkFileType::Image | TotkFileType::Mii => "IMAGE",
             TotkFileType::Amta => "AMTA",
             TotkFileType::Bwav | TotkFileType::Bfwav | TotkFileType::Riff => "AUDIO",
@@ -481,6 +481,7 @@ impl<'a> TotkFile<'a> {
                 ));
             }
             TotkFileType::Bphhb
+            | TotkFileType::Bphsh
             | TotkFileType::Bphyssb
             | TotkFileType::Hkcl
             | TotkFileType::Hkrg => {

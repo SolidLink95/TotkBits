@@ -9,6 +9,7 @@ pub mod SimpleOpeners;
 pub mod TagProduct;
 pub mod bphcl;
 pub mod bphhb;
+pub mod bphsh;
 pub mod bphyssb;
 pub mod hkcl;
 pub mod hkrg;

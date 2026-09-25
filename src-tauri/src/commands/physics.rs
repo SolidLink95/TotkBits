@@ -351,3 +351,109 @@ pub fn rescale_bphcl_document(
         Err,
     )
 }
+
+// ---------------------------------------------------------------------------
+// BPHSH mesh shapes (3D tab)
+// ---------------------------------------------------------------------------
+
+fn bphsh_document_error() -> String {
+    "the active document is not a BPHSH mesh shape".to_string()
+}
+
+/// The material table and name lists of the opened `.bphsh`.
+#[tauri::command]
+pub fn bphsh_info(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+) -> Result<crate::file_format::bphsh::BphshInfo, String> {
+    crate::Settings::catch_panic(move || {
+        app_handle
+            .state::<DocumentState>()
+            .with(&documentId, |app| {
+                app.opened_file
+                    .bphsh
+                    .as_ref()
+                    .map(|file| file.info())
+                    .ok_or_else(bphsh_document_error)
+            })
+    })
+}
+
+/// Rewrites the material tables from the panel rows and refreshes the
+/// preview; the change is written to disk by Save / Save As.
+#[tauri::command]
+pub fn bphsh_apply_materials(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    materials: Vec<crate::file_format::bphsh::BphshMaterialRow>,
+) -> Result<crate::file_format::bphsh::BphshInfo, String> {
+    crate::Settings::catch_panic(move || {
+        app_handle
+            .state::<DocumentState>()
+            .with_mut(&documentId, |app| {
+                let name = app.opened_file.path.name.clone();
+                let (glb, info) = {
+                    let file = app
+                        .opened_file
+                        .bphsh
+                        .as_mut()
+                        .ok_or_else(bphsh_document_error)?;
+                    file.apply_materials(&materials)?;
+                    (file.glb(&name), file.info())
+                };
+                app.opened_file.visual_data = Some(glb);
+                Ok(info)
+            })
+    })
+}
+
+/// Exports the opened shape as `<output>.obj` plus its material JSON.
+#[tauri::command]
+pub fn bphsh_export_obj(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    output: String,
+) -> Result<String, String> {
+    crate::Settings::catch_panic(move || {
+        app_handle
+            .state::<DocumentState>()
+            .with(&documentId, |app| {
+                let file = app
+                    .opened_file
+                    .bphsh
+                    .as_ref()
+                    .ok_or_else(bphsh_document_error)?;
+                file.export_obj(std::path::Path::new(&output))
+                    .map(|(obj, json)| format!("{} and {}", obj.display(), json.display()))
+                    .map_err(|error| error.to_string())
+            })
+    })
+}
+
+/// Rebuilds the opened shape from an OBJ (materials from `<obj>.json` when
+/// present, else the current materials of the same group names).
+#[tauri::command]
+pub fn bphsh_replace_obj(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    obj: String,
+) -> Result<crate::file_format::bphsh::BphshInfo, String> {
+    crate::Settings::catch_panic(move || {
+        app_handle
+            .state::<DocumentState>()
+            .with_mut(&documentId, |app| {
+                let name = app.opened_file.path.name.clone();
+                let (glb, info) = {
+                    let file = app
+                        .opened_file
+                        .bphsh
+                        .as_mut()
+                        .ok_or_else(bphsh_document_error)?;
+                    file.replace_from_obj(std::path::Path::new(&obj))?;
+                    (file.glb(&name), file.info())
+                };
+                app.opened_file.visual_data = Some(glb);
+                Ok(info)
+            })
+    })
+}

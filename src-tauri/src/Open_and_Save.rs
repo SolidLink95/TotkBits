@@ -200,6 +200,9 @@ pub fn get_binary_by_filetype(
         TotkFileType::Bphcl => {
             rawdata = opened_file.bphcl.as_ref()?.raw_binary();
         }
+        TotkFileType::Bphsh => {
+            rawdata = opened_file.bphsh.as_ref()?.raw_binary().ok()?;
+        }
         TotkFileType::Hkcl => return None,
         TotkFileType::Bphhb => return None,
         TotkFileType::Hkrg => return None,
@@ -600,6 +603,8 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
         BfevFile::open_bfev(path, zstd)
     } else if uncompressed_name.ends_with(".msbt") || uncompressed_name.ends_with(".msyt") {
         MsbtFile::open_mstb(path)
+    } else if uncompressed_name.ends_with(".bphsh") {
+        crate::file_format::bphsh::BphshFile::open(path, zstd)
     } else if uncompressed_name.ends_with(".bphcl") {
         crate::file_format::bphcl::BphclFile::open(path)
     } else if uncompressed_name.ends_with(".hkcl") {
@@ -731,6 +736,13 @@ fn file_from_bytes_name_guess<'a>(
     }
     if uncompressed_name.ends_with(".msbt") || uncompressed_name.ends_with(".msyt") {
         if let Some(result) = MsbtFile::open_mstb_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".bphsh") {
+        if let Some(result) =
+            crate::file_format::bphsh::BphshFile::open_binary(bytes, path_ref, zstd.clone())
+        {
             return Some(result);
         }
     }
@@ -1016,6 +1028,13 @@ fn file_from_disk_content_guess<'a>(
     }
     if crate::file_format::Image::ImageDocument::supports(file_name, &bytes, Some(zstd.as_ref())) {
         if let Some(result) = crate::file_format::Image::ImageDocument::open(file_name, &zstd) {
+            return Some(result);
+        }
+    }
+    if Magic::is_bphsh(&probe) {
+        if let Some(result) =
+            crate::file_format::bphsh::BphshFile::open_binary(&bytes, file_name, zstd.clone())
+        {
             return Some(result);
         }
     }
