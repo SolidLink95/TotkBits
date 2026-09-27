@@ -28,6 +28,7 @@ mod rescale;
 mod section;
 mod sim_cloth;
 mod skeleton;
+mod transform;
 mod type_body;
 mod type_hash;
 mod type_interface;
@@ -64,6 +65,10 @@ pub use rescale::{RescaleReport, MAX_SCALE, MIN_SCALE};
 pub use section::Section;
 pub use sim_cloth::SimCloth;
 pub use skeleton::Skeleton;
+pub use transform::{
+    default_transform_yaml, parse_transform_yaml, reset_use_flags, TransformReport, TransformSheet,
+    TransformSpec, TRANSFORM_LEAF,
+};
 pub use type_body::TypeBody;
 pub use type_hash::TypeHash;
 pub use type_interface::TypeInterface;

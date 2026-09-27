@@ -468,6 +468,10 @@ pub struct SendData {
     pub read_only: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_modded_path: Option<String>,
+    /// Set by saves that rewrite the edited text (a BPHCL `Transform.yaml`
+    /// with its applied blocks switched off): the editor reloads `text`.
+    #[serde(default)]
+    pub refresh_editor_text: bool,
 }
 
 impl Default for SendData {
@@ -486,6 +490,7 @@ impl Default for SendData {
             compare_data: DiffComparer::default(),
             read_only: false,
             parent_modded_path: None,
+            refresh_editor_text: false,
         }
     }
 }

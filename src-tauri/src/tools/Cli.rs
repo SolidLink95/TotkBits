@@ -97,6 +97,7 @@ impl CliCommand {
                 | "create_weapon"
                 | "merge_skeletons"
                 | "hkcl_to_bphcl"
+                | "bphcl_edit"
                 | "bphsh_to_obj"
                 | "obj_to_bphsh"
                 | "txtg_edit"
@@ -114,6 +115,7 @@ impl CliCommand {
                 | "create_weapon"
                 | "merge_skeletons"
                 | "hkcl_to_bphcl"
+                | "bphcl_edit"
                 | "bphsh_to_obj"
                 | "obj_to_bphsh"
                 | "txtg_edit"
@@ -152,6 +154,7 @@ impl CliCommand {
                 | "create_weapon"
                 | "merge_skeletons"
                 | "hkcl_to_bphcl"
+                | "bphcl_edit"
                 | "bphsh_to_obj"
                 | "obj_to_bphsh"
                 | "txtg_edit"
@@ -230,6 +233,7 @@ impl CliCommand {
             "bntx_edit" => return self.bntx_edit(),
             "merge_skeletons" => return self.merge_skeletons(),
             "hkcl_to_bphcl" => return self.hkcl_to_bphcl(),
+            "bphcl_edit" => return self.bphcl_edit(),
             "bphsh_to_obj" => return self.bphsh_to_obj(),
             "obj_to_bphsh" => return self.obj_to_bphsh(),
             "txtg_edit" | "txtg" | "--txtg" => return self.txtg_edit(),
@@ -753,6 +757,27 @@ impl CliCommand {
                     model.shapes.len(),
                     model.materials.len()
                 );
+                if std::env::var("BFRES_BONES").is_ok() {
+                    for (b, bone) in model.skeleton.bones.iter().enumerate() {
+                        let w = crate::file_format::Model3D::bfres::toolbox::bone_world_matrix(
+                            &model.skeleton.bones,
+                            b,
+                        );
+                        let flat: Vec<String> = w
+                            .iter()
+                            .flat_map(|row| row.iter().map(|v| format!("{v:.6}")))
+                            .collect();
+                        println!(
+                            "  bone[{b}] {} parent={} flags=0x{:x} pos=({:.5},{:.5},{:.5}) rot=({:.5},{:.5},{:.5},{:.5}) world=[{}]",
+                            bone.name,
+                            bone.parent_index,
+                            bone.flags,
+                            bone.position[0], bone.position[1], bone.position[2],
+                            bone.rotation[0], bone.rotation[1], bone.rotation[2], bone.rotation[3],
+                            flat.join(",")
+                        );
+                    }
+                }
                 for (index, material) in model.materials.iter().enumerate() {
                     println!(
                         "  material[{index}] {} shader={}/{}",
@@ -1421,6 +1446,562 @@ impl CliCommand {
         Ok(())
     }
 
+    /// `bphcl_edit -i <in.bphcl[.zs]> [-o <out.bphcl>] [--info] [--members <Type>]
+    /// [--keep_cloth <name>]... [--remove_cloth <name>]...
+    /// [--merge_from <donor.bphcl[.zs]> --merge_cloth <name>]...
+    /// [--prune_collidables] [--compact] [--transfer_motion <scale>]
+    /// [--damping <per second>] [--gravity_scale <scale>]
+    /// [--local_range_scale <scale>] [--bones] [--rename_bone OLD=NEW]...
+    /// [--bone_pose NAME=tx,ty,tz,qx,qy,qz,qw]... [--transform <Transform.yaml>]`:
+    /// headless cloth-package editing through the
+    /// document operations the Physics Merge workspace uses (complete-cloth
+    /// import, cloth removal, collidable pruning) plus per-cloth simulation
+    /// tuning through the TYPE reflection. `--transfer_motion` scales the
+    /// translation/rotation blend the solver takes from the character's own
+    /// motion (0 = the cloth ignores player movement, 1 = vanilla),
+    /// `--damping` overrides `globalDampingPerSecond` and `--gravity_scale`
+    /// scales the gravity vector of every `hclSimClothData`. Operations run
+    /// in the order merge, remove/keep, prune, tune; the result is reparsed
+    /// and its item graph validated before it is written.
+    fn bphcl_edit(&self) -> Result<(), CliError> {
+        use crate::parser::physics::bphcl::{BphclDocument, Member, Reflect};
+        let mut input = None;
+        let mut output = None;
+        let mut info = false;
+        let mut members = Vec::new();
+        let mut keep = Vec::new();
+        let mut remove = Vec::new();
+        let mut merges: Vec<(String, String)> = Vec::new();
+        let mut merge_from: Option<String> = None;
+        let mut prune = false;
+        let mut transfer_motion = None;
+        let mut damping = None;
+        let mut gravity_scale = None;
+        let mut local_range_scale = None;
+        let mut compact = false;
+        let mut transform_sheet: Option<String> = None;
+        let mut list_bones = false;
+        let mut renames: Vec<(String, String)> = Vec::new();
+        let mut poses: Vec<(String, [f32; 7])> = Vec::new();
+        let args = &self.extra;
+        let mut i = 0;
+        while i < args.len() {
+            let take = |i: &mut usize| -> Result<String, CliError> {
+                *i += 1;
+                args.get(*i)
+                    .cloned()
+                    .ok_or_else(|| CliError::new(1, format!("{} requires a value", args[*i - 1])))
+            };
+            let float = |name: &str, value: String| -> Result<f32, CliError> {
+                value
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|v| v.is_finite())
+                    .ok_or_else(|| CliError::new(1, format!("invalid {name} {value}")))
+            };
+            match args[i].as_str() {
+                "-i" => input = Some(take(&mut i)?),
+                "-o" => output = Some(take(&mut i)?),
+                "--info" => info = true,
+                "--members" => members.push(take(&mut i)?),
+                "--keep_cloth" => keep.push(take(&mut i)?),
+                "--remove_cloth" => remove.push(take(&mut i)?),
+                "--merge_from" => merge_from = Some(take(&mut i)?),
+                "--merge_cloth" => {
+                    let name = take(&mut i)?;
+                    let from = merge_from.clone().ok_or_else(|| {
+                        CliError::new(1, "--merge_cloth must follow --merge_from <donor.bphcl>")
+                    })?;
+                    merges.push((from, name));
+                }
+                "--prune_collidables" => prune = true,
+                "--compact" => compact = true,
+                "--transform" => transform_sheet = Some(take(&mut i)?),
+                "--bones" => list_bones = true,
+                "--rename_bone" => {
+                    let value = take(&mut i)?;
+                    let (old, new) = value
+                        .split_once('=')
+                        .ok_or_else(|| CliError::new(1, "--rename_bone expects OLD=NEW"))?;
+                    renames.push((old.trim().to_owned(), new.trim().to_owned()));
+                }
+                "--bone_pose" => {
+                    let value = take(&mut i)?;
+                    let (name, numbers) = value.split_once('=').ok_or_else(|| {
+                        CliError::new(1, "--bone_pose expects NAME=tx,ty,tz,qx,qy,qz,qw")
+                    })?;
+                    let parsed: Vec<f32> = numbers
+                        .split(',')
+                        .map(|v| v.trim().parse::<f32>())
+                        .collect::<Result<_, _>>()
+                        .map_err(|_| CliError::new(1, format!("invalid --bone_pose {value}")))?;
+                    if parsed.len() != 7 {
+                        return Err(CliError::new(1, "--bone_pose needs 7 numbers"));
+                    }
+                    let mut pose = [0f32; 7];
+                    pose.copy_from_slice(&parsed);
+                    poses.push((name.trim().to_owned(), pose));
+                }
+                "--transfer_motion" => {
+                    transfer_motion = Some(float("--transfer_motion", take(&mut i)?)?)
+                }
+                "--damping" => damping = Some(float("--damping", take(&mut i)?)?),
+                "--gravity_scale" => gravity_scale = Some(float("--gravity_scale", take(&mut i)?)?),
+                "--local_range_scale" => {
+                    local_range_scale = Some(float("--local_range_scale", take(&mut i)?)?)
+                }
+                other => return Err(CliError::new(1, format!("unknown argument {other}"))),
+            }
+            i += 1;
+        }
+        let input = input.ok_or_else(|| CliError::new(1, "-i <in.bphcl> is required"))?;
+        let read_document = |path: &str| -> Result<BphclDocument, CliError> {
+            let bytes = fs::read(path)
+                .map_err(|e| CliError::new(1, format!("failed to read {path}: {e}")))?;
+            let bytes = if crate::Settings::Magic::is_zstd(&bytes) {
+                self.zstd()
+                    .map_err(|e| CliError::new(1, e))?
+                    .try_decompress_for_path(Path::new(path), &bytes)
+                    .map(|(data, _)| data)
+                    .map_err(|e| CliError::new(1, format!("failed to decompress {path}: {e}")))?
+            } else {
+                bytes
+            };
+            BphclDocument::parse(&bytes)
+                .map_err(|e| CliError::new(3, format!("{path} is not a valid BPHCL: {e}")))
+        };
+        let reparse = |bytes: Vec<u8>, what: &str| -> Result<BphclDocument, CliError> {
+            let document = BphclDocument::parse(&bytes).map_err(|e| {
+                CliError::new(3, format!("{what}: rebuilt BPHCL did not reparse: {e}"))
+            })?;
+            document.validate_item_graph().map_err(|e| {
+                CliError::new(3, format!("{what}: rebuilt item graph is invalid: {e}"))
+            })?;
+            Ok(document)
+        };
+        /// Offset and type of a member path such as
+        /// `["transferMotionData", "maxTranslationBlend"]` below `base`.
+        fn resolve(
+            reflect: &Reflect<'_>,
+            type_index: u32,
+            base: u32,
+            path: &[&str],
+        ) -> Result<Member, CliError> {
+            let mut current = Member {
+                name: String::new(),
+                offset: base,
+                type_index,
+            };
+            for field in path {
+                let member = reflect.member(current.type_index, field).ok_or_else(|| {
+                    CliError::new(
+                        3,
+                        format!(
+                            "type {} has no member {field}",
+                            reflect.type_name(current.type_index)
+                        ),
+                    )
+                })?;
+                current = Member {
+                    name: member.name,
+                    offset: current.offset + member.offset,
+                    type_index: member.type_index,
+                };
+            }
+            Ok(current)
+        }
+        let mut document = read_document(&input)?;
+        let mut changed = false;
+
+        for (from, name) in &merges {
+            let source = read_document(from)?;
+            let position = source
+                .cloth
+                .iter()
+                .position(|cloth| &cloth.name == name)
+                .ok_or_else(|| CliError::new(1, format!("{from} has no cloth named {name}")))?;
+            let bytes = document
+                .merge_complete_cloth(&source, position)
+                .map_err(|e| CliError::new(3, format!("merging {name}: {e}")))?;
+            document = reparse(bytes, "merge")?;
+            println!("merged cloth {name} from {from}");
+            changed = true;
+        }
+        if !keep.is_empty() {
+            for name in &keep {
+                if !document.cloth.iter().any(|cloth| &cloth.name == name) {
+                    return Err(CliError::new(
+                        1,
+                        format!("--keep_cloth {name}: no such cloth"),
+                    ));
+                }
+            }
+            for cloth in &document.cloth {
+                if !keep.iter().any(|k| k == &cloth.name) && !remove.contains(&cloth.name) {
+                    remove.push(cloth.name.clone());
+                }
+            }
+        }
+        for name in &remove {
+            let position = document
+                .cloth
+                .iter()
+                .position(|cloth| &cloth.name == name)
+                .ok_or_else(|| CliError::new(1, format!("no cloth named {name} to remove")))?;
+            let bytes = document
+                .remove_cloth(position)
+                .map_err(|e| CliError::new(3, format!("removing {name}: {e}")))?;
+            document = reparse(bytes, "remove")?;
+            println!("removed cloth {name}");
+            changed = true;
+        }
+        if prune {
+            let before = document.collidables.len();
+            let bytes = document
+                .prune_unreferenced_collidables()
+                .map_err(|e| CliError::new(3, format!("pruning collidables: {e}")))?;
+            document = reparse(bytes, "prune")?;
+            println!(
+                "pruned {} unreferenced collidable(s)",
+                before.saturating_sub(document.collidables.len())
+            );
+            changed = true;
+        }
+        if transfer_motion.is_some()
+            || damping.is_some()
+            || gravity_scale.is_some()
+            || local_range_scale.is_some()
+        {
+            let mut raw = document.raw.clone();
+            let mut edits = 0usize;
+            {
+                let reflect = Reflect::new(&document)
+                    .ok_or_else(|| CliError::new(3, "BPHCL has no DATA section"))?;
+                let mut writes: Vec<(u32, f32)> = Vec::new();
+                for item in &document.items {
+                    let (t, base) = (item.type_index, item.data_offset);
+                    if let (Some(scale), "hclLocalRangeConstraintSet") =
+                        (local_range_scale, reflect.type_name(t).as_str())
+                    {
+                        let field = resolve(&reflect, t, base, &["localConstraints"])?;
+                        if let Some((storage, count, size)) = reflect.array(field.offset) {
+                            let element = reflect
+                                .find_type("hclLocalRangeConstraintSet::LocalConstraint")
+                                .ok_or_else(|| CliError::new(3, "no LocalConstraint type"))?;
+                            for name in ["shapeRadius", "maxNormalDistance", "minNormalDistance"] {
+                                let m = resolve(&reflect, element, 0, &[name])?;
+                                for k in 0..count {
+                                    let offset = storage + k * size + m.offset;
+                                    writes.push((offset, reflect.f32(offset) * scale));
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    if reflect.type_name(t) != "hclSimClothData" {
+                        continue;
+                    }
+                    if let Some(scale) = transfer_motion {
+                        for field in [
+                            "minTranslationBlend",
+                            "maxTranslationBlend",
+                            "minRotationBlend",
+                            "maxRotationBlend",
+                        ] {
+                            let m = resolve(&reflect, t, base, &["transferMotionData", field])?;
+                            writes
+                                .push((m.offset, (reflect.f32(m.offset) * scale).clamp(0.0, 1.0)));
+                        }
+                    }
+                    if let Some(value) = damping {
+                        let m = resolve(
+                            &reflect,
+                            t,
+                            base,
+                            &["simulationInfo", "globalDampingPerSecond"],
+                        )?;
+                        writes.push((m.offset, value));
+                    }
+                    if let Some(scale) = gravity_scale {
+                        let m = resolve(&reflect, t, base, &["simulationInfo", "gravity"])?;
+                        for component in 0..3u32 {
+                            let offset = m.offset + component * 4;
+                            writes.push((offset, reflect.f32(offset) * scale));
+                        }
+                    }
+                }
+                for (offset, value) in writes {
+                    let at = reflect.base + offset as usize;
+                    let slot = raw
+                        .get_mut(at..at + 4)
+                        .ok_or_else(|| CliError::new(3, "member write exceeds DATA"))?;
+                    slot.copy_from_slice(&value.to_le_bytes());
+                    edits += 1;
+                }
+            }
+            document = reparse(raw, "tune")?;
+            println!("tuned {edits} simulation value(s)");
+            changed = true;
+        }
+        if !renames.is_empty() || !poses.is_empty() {
+            let mut raw = document.raw.clone();
+            let mut edits = 0usize;
+            {
+                let reflect = Reflect::new(&document)
+                    .ok_or_else(|| CliError::new(3, "BPHCL has no DATA section"))?;
+                for item in &document.items {
+                    if reflect.type_name(item.type_index) != "hkaSkeleton" {
+                        continue;
+                    }
+                    let (t, base) = (item.type_index, item.data_offset);
+                    let bones_field = resolve(&reflect, t, base, &["bones"])?;
+                    let pose_field = resolve(&reflect, t, base, &["referencePose"])?;
+                    let Some((bones_at, count, bone_size)) = reflect.array(bones_field.offset)
+                    else {
+                        continue;
+                    };
+                    let pose = reflect.array(pose_field.offset);
+                    for k in 0..count {
+                        let name_field = bones_at + k * bone_size;
+                        let Some(name) = reflect.string_at(name_field) else {
+                            continue;
+                        };
+                        let mut current = name.clone();
+                        if let Some((_, new_name)) = renames.iter().find(|(old, _)| *old == name) {
+                            let string_item = reflect
+                                .referenced(name_field)
+                                .and_then(|index| reflect.item(index))
+                                .ok_or_else(|| {
+                                    CliError::new(3, format!("bone {name} has no string item"))
+                                })?;
+                            if new_name.len() + 1 > string_item.count as usize {
+                                return Err(CliError::new(
+                                    1,
+                                    format!(
+                                        "{new_name} does not fit the {} byte string slot of {name}",
+                                        string_item.count
+                                    ),
+                                ));
+                            }
+                            let at = reflect.base + string_item.data_offset as usize;
+                            let slot = &mut raw[at..at + string_item.count as usize];
+                            slot.fill(0);
+                            slot[..new_name.len()].copy_from_slice(new_name.as_bytes());
+                            current = new_name.clone();
+                            edits += 1;
+                        }
+                        if let Some((_, values)) =
+                            poses.iter().find(|(n, _)| *n == current || *n == name)
+                        {
+                            let Some((pose_at, pose_count, pose_size)) = pose else {
+                                continue;
+                            };
+                            if k >= pose_count {
+                                continue;
+                            }
+                            let at = reflect.base + (pose_at + k * pose_size) as usize;
+                            let floats = [
+                                values[0], values[1], values[2], 0.0, values[3], values[4],
+                                values[5], values[6],
+                            ];
+                            for (n, f) in floats.iter().enumerate() {
+                                raw[at + n * 4..at + n * 4 + 4].copy_from_slice(&f.to_le_bytes());
+                            }
+                            edits += 1;
+                        }
+                    }
+                }
+            }
+            document = reparse(raw, "bones")?;
+            println!("edited {edits} skeleton bone entries");
+            changed = true;
+        }
+        if let Some(path) = &transform_sheet {
+            // The same sheet the tree view's Transform.yaml leaf takes; only
+            // blocks with `use: true` are applied.
+            let text = fs::read_to_string(path)
+                .map_err(|e| CliError::new(1, format!("failed to read {path}: {e}")))?;
+            let sheet = crate::parser::physics::bphcl::parse_transform_yaml(&text)
+                .map_err(|e| CliError::new(1, e.to_string()))?;
+            if !sheet.has_enabled() {
+                return Err(CliError::new(
+                    1,
+                    format!("{path}: no block has `use: true`"),
+                ));
+            }
+            let (bytes, report) = document
+                .apply_transform_sheet(&sheet)
+                .map_err(|e| CliError::new(3, format!("transform failed: {e}")))?;
+            document = reparse(bytes, "transform")?;
+            println!("applied {}", report.summary());
+            changed = true;
+        }
+        if compact {
+            let before = document.raw.len();
+            let bytes = crate::parser::physics::compact(&document)
+                .map_err(|e| CliError::new(3, format!("compaction failed: {e}")))?;
+            document = reparse(bytes, "compact")?;
+            println!("compacted {before} -> {} bytes", document.raw.len());
+            changed = true;
+        }
+
+        if info || (!changed && output.is_none()) {
+            let reflect = Reflect::new(&document)
+                .ok_or_else(|| CliError::new(3, "BPHCL has no DATA section"))?;
+            println!("cloths: {}", document.cloth.len());
+            for cloth in &document.cloth {
+                println!("  [{}] {}", cloth.index, cloth.name);
+                for sim in &cloth.simulations {
+                    println!(
+                        "      sim {} particles={} fixed={} constraints={} collidables={}",
+                        sim.name,
+                        sim.particles.len(),
+                        sim.fixed_particle_indices.len(),
+                        sim.constraint_item_indices.len(),
+                        sim.collidable_item_indices.len()
+                    );
+                }
+                if let Some(skeleton) = document.paired_skeleton(cloth.index) {
+                    let bones: Vec<_> = skeleton.bones.iter().map(|b| b.name.as_str()).collect();
+                    println!(
+                        "      skeleton {} bones={} [{}]",
+                        skeleton.name,
+                        bones.len(),
+                        bones.join(", ")
+                    );
+                }
+            }
+            for item in &document.items {
+                if reflect.type_name(item.type_index) != "hclLocalRangeConstraintSet" {
+                    continue;
+                }
+                let (t, base) = (item.type_index, item.data_offset);
+                let name = reflect
+                    .member_offset(t, "name")
+                    .and_then(|o| reflect.string_at(base + o))
+                    .unwrap_or_default();
+                let field = resolve(&reflect, t, base, &["localConstraints"])?;
+                if let Some((storage, count, size)) = reflect.array(field.offset) {
+                    let radius: Vec<f32> = (0..count)
+                        .map(|k| reflect.f32(storage + k * size + 4))
+                        .collect();
+                    let max = radius.iter().cloned().fold(0.0f32, f32::max);
+                    let mean = radius.iter().sum::<f32>() / radius.len().max(1) as f32;
+                    println!(
+                        "localrange {name}: constraints={count} shapeRadius mean={mean:.4} max={max:.4}"
+                    );
+                }
+            }
+            if list_bones {
+                for item in &document.items {
+                    if reflect.type_name(item.type_index) != "hkaSkeleton" {
+                        continue;
+                    }
+                    let (t, base) = (item.type_index, item.data_offset);
+                    let name = reflect
+                        .member_offset(t, "name")
+                        .and_then(|o| reflect.string_at(base + o))
+                        .unwrap_or_default();
+                    let bones = resolve(&reflect, t, base, &["bones"])?;
+                    let parents = resolve(&reflect, t, base, &["parentIndices"])?;
+                    let pose = resolve(&reflect, t, base, &["referencePose"])?;
+                    println!("skeleton {name}");
+                    if let (
+                        Some((b_at, count, b_size)),
+                        Some((p_at, _, p_size)),
+                        Some((q_at, _, q_size)),
+                    ) = (
+                        reflect.array(bones.offset),
+                        reflect.array(parents.offset),
+                        reflect.array(pose.offset),
+                    ) {
+                        for k in 0..count {
+                            let bone = reflect.string_at(b_at + k * b_size).unwrap_or_default();
+                            let parent = reflect.u16(p_at + k * p_size) as i16;
+                            let q = q_at + k * q_size;
+                            let v: Vec<String> = (0..12)
+                                .map(|n| format!("{:.4}", reflect.f32(q + n * 4)))
+                                .collect();
+                            println!(
+                                "  [{k}] {bone} parent={parent} t=({}, {}, {}) q=({}, {}, {}, {}) s=({}, {}, {})",
+                                v[0], v[1], v[2], v[4], v[5], v[6], v[7], v[8], v[9], v[10]
+                            );
+                        }
+                    }
+                }
+            }
+            println!("collidables: {}", document.collidables.len());
+            for collidable in &document.collidables {
+                println!(
+                    "  [{}] {} ({})",
+                    collidable.index, collidable.name, collidable.class_name
+                );
+            }
+            for item in &document.items {
+                if reflect.type_name(item.type_index) != "hclSimClothData" {
+                    continue;
+                }
+                let (t, base) = (item.type_index, item.data_offset);
+                let name = reflect
+                    .member_offset(t, "name")
+                    .and_then(|o| reflect.string_at(base + o))
+                    .unwrap_or_default();
+                let value = |path: &[&str]| -> String {
+                    resolve(&reflect, t, base, path)
+                        .map(|m| format!("{:.4}", reflect.f32(m.offset)))
+                        .unwrap_or_else(|_| "?".into())
+                };
+                let gravity = resolve(&reflect, t, base, &["simulationInfo", "gravity"])
+                    .map(|m| {
+                        format!(
+                            "({:.3}, {:.3}, {:.3})",
+                            reflect.f32(m.offset),
+                            reflect.f32(m.offset + 4),
+                            reflect.f32(m.offset + 8)
+                        )
+                    })
+                    .unwrap_or_else(|_| "?".into());
+                let enabled = reflect
+                    .member_offset(t, "transferMotionEnabled")
+                    .map(|o| reflect.u8(base + o))
+                    .unwrap_or(0);
+                println!(
+                    "simcloth {name}: transferMotionEnabled={enabled} translationBlend={}..{} (speed {}..{}) rotationBlend={}..{} (speed {}..{}) gravity={gravity} damping={} totalMass={}",
+                    value(&["transferMotionData", "minTranslationBlend"]),
+                    value(&["transferMotionData", "maxTranslationBlend"]),
+                    value(&["transferMotionData", "minTranslationSpeed"]),
+                    value(&["transferMotionData", "maxTranslationSpeed"]),
+                    value(&["transferMotionData", "minRotationBlend"]),
+                    value(&["transferMotionData", "maxRotationBlend"]),
+                    value(&["transferMotionData", "minRotationSpeed"]),
+                    value(&["transferMotionData", "maxRotationSpeed"]),
+                    value(&["simulationInfo", "globalDampingPerSecond"]),
+                    value(&["totalMass"]),
+                );
+            }
+            for type_name in &members {
+                match reflect.find_type(type_name) {
+                    Some(t) => {
+                        println!("type {type_name} (size {}):", reflect.size_of(t));
+                        for m in reflect.members(t) {
+                            println!(
+                                "  +0x{:03x} {} : {}",
+                                m.offset,
+                                m.name,
+                                reflect.type_name(m.type_index)
+                            );
+                        }
+                    }
+                    None => println!("type {type_name}: not in this file"),
+                }
+            }
+        }
+        if let Some(output) = output {
+            write_output(Path::new(&output), &document.raw).map_err(|e| CliError::new(3, e))?;
+            println!("saved {output} ({} bytes)", document.raw.len());
+        }
+        Ok(())
+    }
     /// `txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png>
     /// [--astcenc <dll>] [--compact]`: replaces the image data of a TexToGo
     /// texture with the PNG through [`crate::tools::txtg_edit`], the same

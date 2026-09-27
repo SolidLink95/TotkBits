@@ -429,7 +429,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   const readOnlyActions = [
     { label: 'View', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.webp', shortcut: '', isRender: true },
     { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.webp', shortcut: '', isRender: true },
-    { label: 'Delete', method: handleRemoveBphclNode, icon: 'context_menu/remove.webp', shortcut: '', isRender: activeTab === 'SARC' && !isBars },
+    { label: 'Delete', method: handleRemoveBphclNode, icon: 'context_menu/remove.webp', shortcut: '', isRender: activeTab === 'SARC' && !isBars && !/^(Section\.aamp|Transform\.yaml)$/i.test(name) },
     { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.webp', shortcut: '', isRender: true },
     { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.webp', shortcut: '', isRender: true },
   ];

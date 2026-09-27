@@ -2005,7 +2005,7 @@ fn bits(bones: &[u32], bone_count: usize) -> Vec<u32> {
 
 /// `hkPackedVector3`: three int16 components sharing a power-of-two scale
 /// whose `f32(scale / 65536)` upper half is stored as the fourth word.
-fn pack_vector3(vector: &[f32; 4]) -> [u8; 8] {
+pub(super) fn pack_vector3(vector: &[f32; 4]) -> [u8; 8] {
     let magnitude = vector[..3].iter().fold(0.0f32, |acc, v| acc.max(v.abs()));
     let exponent = if magnitude > 0.0 {
         (magnitude / 32767.0).log2().ceil() as i32

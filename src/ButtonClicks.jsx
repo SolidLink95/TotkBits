@@ -538,6 +538,11 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
       setStatusText("Ready");
       return;
     }
+    if (content.refresh_editor_text && content.tab !== 'ERROR' && typeof content.text === 'string' && editorRef.current) {
+      // A BPHCL Transform.yaml comes back with its applied blocks switched
+      // off; mirror the stored sheet so a second save cannot re-apply them.
+      editorRef.current.setValue(content.text);
+    }
     if (content.sarc_paths.paths.length > 0) {
       refreshSavedArchivePaths(content, setpaths, documentSnapshots);
       console.log(content.sarc_paths.added_paths);

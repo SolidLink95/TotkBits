@@ -326,6 +326,18 @@ pub fn bone_world_position(bones: &[Bone], index: usize) -> [f32; 3] {
     [world.m41, world.m42, world.m43]
 }
 
+/// Bind-pose world matrix of a bone (row-major, translation in the last row),
+/// for skeleton dumps.
+pub fn bone_world_matrix(bones: &[Bone], index: usize) -> [[f32; 4]; 4] {
+    let w = matrix::world_transform(bones, index);
+    [
+        [w.m11, w.m12, w.m13, w.m14],
+        [w.m21, w.m22, w.m23, w.m24],
+        [w.m31, w.m32, w.m33, w.m34],
+        [w.m41, w.m42, w.m43, w.m44],
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

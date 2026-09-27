@@ -110,8 +110,57 @@ pub struct BphclLeaf {
 pub struct BphclFile {
     pub source_path: Option<String>,
     pub document: BphclDocument,
+    /// The `Transform.yaml` leaf as last saved by the user (`None` until then:
+    /// the default sheet is generated from the document on demand).
+    pub transform_yaml: Option<String>,
 }
 impl BphclFile {
+    pub fn new(document: BphclDocument, source_path: Option<String>) -> Self {
+        Self {
+            source_path,
+            document,
+            transform_yaml: None,
+        }
+    }
+
+    /// Replaces the document (after a merge, removal, rescale, ...) keeping
+    /// the stored transform sheet.
+    pub fn with_document(&self, document: BphclDocument) -> Self {
+        Self {
+            source_path: self.source_path.clone(),
+            document,
+            transform_yaml: self.transform_yaml.clone(),
+        }
+    }
+
+    pub fn transform_yaml_text(&self) -> String {
+        self.transform_yaml.clone().unwrap_or_else(|| {
+            crate::parser::physics::bphcl::default_transform_yaml(&self.document)
+        })
+    }
+
+    /// Saves the `Transform.yaml` leaf: applies every enabled block to the
+    /// document and stores the sheet with those blocks switched off. Returns
+    /// the status line for the status bar.
+    pub fn apply_transform_yaml(&mut self, yaml: &str) -> io::Result<String> {
+        let sheet = crate::parser::physics::bphcl::parse_transform_yaml(yaml)?;
+        if !sheet.has_enabled() {
+            self.transform_yaml = Some(yaml.to_owned());
+            return Ok(
+                "Stored Transform.yaml; no block has `use: true`, so nothing was applied".into(),
+            );
+        }
+        let (bytes, report) = self.document.apply_transform_sheet(&sheet)?;
+        let rebuilt = BphclDocument::parse(&bytes)?;
+        rebuilt.validate()?;
+        self.document = rebuilt;
+        self.transform_yaml = Some(crate::parser::physics::bphcl::reset_use_flags(yaml));
+        Ok(format!(
+            "Applied {} to the BPHCL; save the BPHCL to persist it",
+            report.summary()
+        ))
+    }
+
     pub fn open_internal(
         data: &[u8],
         path: &str,
@@ -251,10 +300,10 @@ impl BphclFile {
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "BPHCL leaf not found"))
     }
     pub fn from_binary(data: &[u8], path: Option<&Path>) -> io::Result<Self> {
-        Ok(Self {
-            source_path: path.map(|p| p.to_string_lossy().into_owned()),
-            document: BphclDocument::parse(data)?,
-        })
+        Ok(Self::new(
+            BphclDocument::parse(data)?,
+            path.map(|p| p.to_string_lossy().into_owned()),
+        ))
     }
     pub fn raw_binary(&self) -> Vec<u8> {
         self.document.to_bytes()
@@ -304,6 +353,12 @@ impl BphclFile {
                 read_only: false,
             })
         }
+        out.push(BphclLeaf {
+            path: crate::parser::physics::bphcl::TRANSFORM_LEAF.into(),
+            yaml: self.transform_yaml_text(),
+            viewer_type: "Transform".into(),
+            read_only: false,
+        });
         Ok(out)
     }
 }

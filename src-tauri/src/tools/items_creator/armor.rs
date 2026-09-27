@@ -2349,6 +2349,13 @@ fn write_dye_slices(
                 }
                 let old = texture.clone();
                 let new_base = replace_project(&old, template_project, project);
+                if new_base == old {
+                    // A texture the piece shares with another model project
+                    // (Link's skin, common textures) is not the armor's own:
+                    // leave the material on the vanilla texture and keep it
+                    // out of the dye slices and the texture-pattern animation.
+                    continue;
+                }
                 if !written.contains_key(&old) {
                     let source =
                         texture_sources

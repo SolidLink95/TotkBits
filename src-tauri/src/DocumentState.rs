@@ -320,9 +320,15 @@ impl DocumentState {
                 leaves
             }
             Parsed::Bphcl(document) => {
+                let transform_yaml = target
+                    .opened_file
+                    .bphcl
+                    .as_ref()
+                    .and_then(|file| file.transform_yaml.clone());
                 let file = crate::file_format::bphcl::BphclFile {
                     source_path,
                     document,
+                    transform_yaml,
                 };
                 let leaves = file
                     .leaves()
@@ -508,6 +514,7 @@ impl DocumentState {
             )
         })?;
         let target_source_path = target_file.source_path.clone();
+        let target_transform_yaml = target_file.transform_yaml.clone();
         let parent_link = target_app.internal_parent.clone();
         let original_cloth_count = target_file.document.cloth.len();
         let original_collidable_count = target_file.document.collidables.len();
@@ -568,6 +575,7 @@ impl DocumentState {
         target.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
             source_path: target_source_path,
             document: merged,
+            transform_yaml: target_transform_yaml,
         });
         let root_name = if target.opened_file.path.name.is_empty() {
             "merged.bphcl".to_string()
@@ -633,6 +641,7 @@ impl DocumentState {
             .as_ref()
             .ok_or_else(|| format!("Document '{document_id}' is not a BPHCL document"))?;
         let source_path = file.source_path.clone();
+        let transform_yaml = file.transform_yaml.clone();
         let parent_link = app.internal_parent.clone();
         let display_name = if kind == "cloth" {
             file.document
@@ -668,6 +677,7 @@ impl DocumentState {
         target.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
             source_path,
             document: rebuilt,
+            transform_yaml,
         });
         let root_name = if target.opened_file.path.name.is_empty() {
             "modified.bphcl".to_string()
@@ -724,6 +734,7 @@ impl DocumentState {
                 format!("Document '{target_document_id}' is not a BPHCL document")
             })?;
         let target_source_path = target_file.source_path.clone();
+        let target_transform_yaml = target_file.transform_yaml.clone();
         let original_cloth_count = target_file.document.cloth.len();
         let original_collidable_count = target_file.document.collidables.len();
         let original_collidable_names: std::collections::HashSet<String> = target_file
@@ -822,6 +833,7 @@ impl DocumentState {
         target.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
             source_path: target_source_path,
             document: merged,
+            transform_yaml: target_transform_yaml,
         });
         let root_name = if target.opened_file.path.name.is_empty() {
             "merged.bphcl".to_string()
@@ -1058,14 +1070,19 @@ impl DocumentState {
             return None;
         };
         let editable_bphcl_aamp = format_name == "BPHCL" && leaf.viewer_type == "AAMP";
+        let editable_bphcl_transform = format_name == "BPHCL" && leaf.viewer_type == "Transform";
+        let editable = editable_bphcl_aamp || editable_bphcl_transform;
         let child = documents.entry(child_id.to_owned()).or_default();
-        if editable_bphcl_aamp {
-            child.opened_file = crate::file_format::BinTextFile::OpenedFile::from_path(
-                path.clone(),
-                crate::Zstd::TotkFileType::Aamp,
-            );
+        if editable {
+            let child_type = if editable_bphcl_aamp {
+                crate::Zstd::TotkFileType::Aamp
+            } else {
+                crate::Zstd::TotkFileType::Text
+            };
+            child.opened_file =
+                crate::file_format::BinTextFile::OpenedFile::from_path(path.clone(), child_type);
             let mut internal = crate::InternalFile::InternalFile::new(path.clone());
-            internal.file_type = crate::Zstd::TotkFileType::Aamp;
+            internal.file_type = child_type;
             child.internal_file = Some(internal);
             child.internal_parent = Some(crate::TotkApp::InternalParentLink {
                 document_id: parent_id.to_owned(),
@@ -1079,11 +1096,7 @@ impl DocumentState {
         data.lang = "yaml".into();
         let file_name = path.replace('\\', "/").rsplit('/').next()?.to_owned();
         data.path = crate::Settings::Pathlib::new(&file_name);
-        let mode = if editable_bphcl_aamp {
-            "Editable"
-        } else {
-            "ReadOnly"
-        };
+        let mode = if editable { "Editable" } else { "ReadOnly" };
         data.file_label = format!(
             "{file_name} [{format_name}] [{}] [{mode}]",
             leaf.viewer_type
@@ -1091,6 +1104,8 @@ impl DocumentState {
         data.file_metadata = format!("[{format_name}] [{}] [{mode}]", leaf.viewer_type);
         data.file_type = if editable_bphcl_aamp {
             crate::Zstd::TotkFileType::Aamp
+        } else if editable_bphcl_transform {
+            crate::Zstd::TotkFileType::Text
         } else {
             match format_name {
                 "BPHCL" => crate::Zstd::TotkFileType::Bphcl,
@@ -1102,7 +1117,7 @@ impl DocumentState {
             }
         };
         data.status_text = format!("Opened {} {format_name} leaf: {path}", mode.to_lowercase());
-        data.read_only = !editable_bphcl_aamp;
+        data.read_only = !editable;
         Some(data)
     }
 
@@ -1201,6 +1216,41 @@ impl DocumentState {
                 .get(&link.document_id)
                 .is_some_and(|parent| parent.opened_file.bphcl.is_some())
             && link.inner_path.ends_with("Section.aamp");
+        let is_bphcl_transform = documents
+            .get(id)
+            .is_some_and(|child| child.opened_file.file_type == crate::Zstd::TotkFileType::Text)
+            && documents
+                .get(&link.document_id)
+                .is_some_and(|parent| parent.opened_file.bphcl.is_some())
+            && link
+                .inner_path
+                .ends_with(crate::parser::physics::bphcl::TRANSFORM_LEAF);
+        if is_bphcl_transform {
+            let parent = documents.get_mut(&link.document_id)?;
+            let bphcl = parent.opened_file.bphcl.as_mut()?;
+            let status = match bphcl.apply_transform_yaml(&save_data.text) {
+                Ok(status) => status,
+                Err(error) => {
+                    let mut data = SendData::default();
+                    data.tab = "ERROR".into();
+                    data.status_text = format!("Error: Transform.yaml not applied: {error}");
+                    return Some(data);
+                }
+            };
+            let source_path = bphcl
+                .source_path
+                .clone()
+                .unwrap_or_else(|| parent.opened_file.path.full_path.clone());
+            let mut data = bphcl
+                .send_data(std::path::Path::new(&source_path), status)
+                .ok()?;
+            data.tab = "YAML".into();
+            // Applied blocks are switched off in the stored sheet; show that.
+            data.text = bphcl.transform_yaml_text();
+            data.lang = "yaml".into();
+            data.refresh_editor_text = true;
+            return Some(data);
+        }
         if is_bphcl_aamp {
             let parent = documents.get_mut(&link.document_id)?;
             let bphcl = parent.opened_file.bphcl.as_mut()?;
@@ -1721,6 +1771,7 @@ impl DocumentState {
             .as_ref()
             .ok_or_else(|| format!("Document '{document_id}' is not a BPHCL document"))?;
         let source_path = file.source_path.clone();
+        let transform_yaml = file.transform_yaml.clone();
         let parent_link = app.internal_parent.clone();
         let (bytes, report) = file
             .document
@@ -1740,6 +1791,7 @@ impl DocumentState {
         target.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
             source_path,
             document: rebuilt,
+            transform_yaml,
         });
         let root_name = if target.opened_file.path.name.is_empty() {
             "rescaled.bphcl".to_string()
@@ -1780,6 +1832,7 @@ impl DocumentState {
             .as_ref()
             .ok_or_else(|| format!("Document '{document_id}' is not a BPHCL document"))?;
         let source_path = file.source_path.clone();
+        let transform_yaml = file.transform_yaml.clone();
         let parent_link = app.internal_parent.clone();
         let before = file.document.raw.len();
         let bytes = crate::parser::physics::compact(&file.document)
@@ -1801,6 +1854,7 @@ impl DocumentState {
         target.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
             source_path,
             document: rebuilt,
+            transform_yaml,
         });
         let root_name = if target.opened_file.path.name.is_empty() {
             "compacted.bphcl".to_string()
@@ -1942,11 +1996,10 @@ mod tests {
                         });
                     }
                     PhysicsMergeFormat::Bphcl => {
-                        app.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
-                            source_path: Some(path.to_string_lossy().into_owned()),
-                            document: crate::parser::physics::bphcl::BphclDocument::parse(&bytes)
-                                .unwrap(),
-                        });
+                        app.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile::new(
+                            crate::parser::physics::bphcl::BphclDocument::parse(&bytes).unwrap(),
+                            Some(path.to_string_lossy().into_owned()),
+                        ));
                     }
                 }
             });
