@@ -63,6 +63,7 @@ const emptyForm = (tab) => ({
     dyeable: false,
     skinMaterial: '',
     helperBone: '',
+    renamePhysics: false,
     armorEffects: [{ type: '', level: '' }],
 });
 
@@ -247,6 +248,7 @@ function buildSpec(tab, form, vendor) {
         if (form.dyeable) spec.dyeable = true;
         if (form.skinMaterial) spec.skin_material = form.skinMaterial;
         if (form.helperBone) spec.helper_bone = form.helperBone;
+        if (form.renamePhysics) spec.rename_physics = true;
         const effects = form.armorEffects.filter((effect) => effect.type);
         if (effects.length) {
             spec.armor_effects = effects.map((effect) => toInt(effect.level) !== undefined
@@ -330,6 +332,7 @@ function formFromSpec(spec, ingredientAliases = {}, catalogActors = new Set()) {
         form.dyeable = Boolean(spec.dyeable || spec.make_dyeable);
         form.skinMaterial = spec.skin_material || spec.skin_material_actor || '';
         form.helperBone = spec.helper_bone || spec.helper_bones || spec.helper_bone_actor || '';
+        form.renamePhysics = Boolean(spec.rename_physics || spec.force_physics_rename || spec.rename_all_physics);
         const effects = (spec.armor_effects || spec.effects || []).map((effect) => typeof effect === 'string'
             ? { type: effect, level: '' }
             : { type: effect.type ?? effect.effect_type ?? '', level: effect.level ?? '' });
@@ -881,8 +884,8 @@ function ItemCreator({ activeTab, setStatusText }) {
         <div className="item-creator-body">
             <div className="item-creator-main">
                 <div className="item-creator-tabs">
-                    <button type="button" className={tab === 'weapon' ? 'active' : ''} onClick={() => switchTab('weapon')}>weapon</button>
-                    <button type="button" className={tab === 'armor' ? 'active' : ''} onClick={() => switchTab('armor')}>armor</button>
+                    <button type="button" className={tab === 'weapon' ? 'active' : ''} onClick={() => switchTab('weapon')}>Weapon</button>
+                    <button type="button" className={tab === 'armor' ? 'active' : ''} onClick={() => switchTab('armor')}>Armor</button>
                     <button type="button" className={tab === 'zonai' ? 'active' : ''} onClick={() => switchTab('zonai')}>Zonai</button>
                     <button type="button" className={tab === 'elink' ? 'active' : ''} onClick={() => switchTab('elink')}>ELink</button>
                 </div>
@@ -1055,6 +1058,11 @@ function ItemCreator({ activeTab, setStatusText }) {
                                     placeholder="Keep the helper bones the physics step leaves"
                                     noneLabel="None (keep the template's or physics donor's helper bones)" />
                                 <span className="item-creator-hint">After the physics step, copies the chosen actor's Phive/HelperBone files into the piece (renamed after the actor, replacing the ones already there) and renames its ControllerSetParam, Component/Physics and ActorParam PhysicsRef to match.</span>
+                            </div>
+                            <label>Physics names</label>
+                            <div className="item-creator-check">
+                                <input id="item-creator-rename-physics" type="checkbox" checked={form.renamePhysics} onChange={(event) => update({ renamePhysics: event.target.checked })} />
+                                <label htmlFor="item-creator-rename-physics" className="item-creator-hint">Rename every Phive / Component/Physics file after the actor (Phive/Cloth/&lt;actor&gt;.bphcl, Phive/HelperBone/&lt;actor&gt;.bphhb, …) and rewrite the references to them. Applied last, after the physics donors and helper bones, whatever names those leave (a single copied donor otherwise keeps its own).</label>
                             </div>
                             <label>Audio</label>
                             <div className="item-creator-skin-material">

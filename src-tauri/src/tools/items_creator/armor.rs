@@ -238,6 +238,17 @@ pub struct ArmorSpec {
     /// or blank keeps the helper bones the physics step left.
     #[serde(default, alias = "helper_bones", alias = "helper_bone_actor")]
     pub helper_bone: Option<String>,
+    /// Force every `Phive/*` and `Component/Physics/*` entry of the pack to
+    /// be named after the actor (`Phive/Cloth/<actor>.bphcl`,
+    /// `Phive/HelperBone/<actor>.bphhb`, `<actor>_2`, ...) with every
+    /// reference rewritten (ActorParam `PhysicsRef`, `ControllerSetPath`,
+    /// cloth, cloth-parameter and helper-bone paths, `HktPath`), whatever
+    /// the physics and helper-bone steps left: a single copied donor's files
+    /// otherwise keep that donor's name, and so do the template's own files
+    /// when no donor is usable. Applied last, after every other physics
+    /// option. Off by default.
+    #[serde(default, alias = "force_physics_rename", alias = "rename_all_physics")]
+    pub rename_physics: bool,
     /// With a custom FBX: replace the bones with the FBX skeleton (Toolbox
     /// "Import Bones") instead of keeping the template skeleton.
     #[serde(default, alias = "import_skeleton")]
@@ -802,8 +813,9 @@ impl ArmorSpec {
     /// Clones the template pack under the new project name. Every SARC entry
     /// and BYML string scoped to the template project is renamed, the physics
     /// bundle is swapped only when a usable donor actor is given, the helper
-    /// bones are transferred from the chosen actor, and ArmorParam receives
-    /// the custom defense/series values.
+    /// bones are transferred from the chosen actor, the physics files are
+    /// force-renamed after the actor when `rename_physics` asks for it, and
+    /// ArmorParam receives the custom defense/series values.
     fn clone_actor_pack(
         &self,
         clean_romfs: &Path,
@@ -1095,6 +1107,18 @@ impl ArmorSpec {
             super::physics::transfer_helper_bones(
                 clean_romfs,
                 donor,
+                &self.actor_name,
+                &actor_file,
+                &mut entries,
+                zstd.clone(),
+            )?;
+        }
+        // Forced physics naming: every Phive / Component/Physics entry the
+        // steps above left, whatever its origin, ends up named after the
+        // actor with its references rewritten. Last on purpose, so it sees
+        // the final bundle.
+        if self.rename_physics {
+            super::physics::rename_physics_entries(
                 &self.actor_name,
                 &actor_file,
                 &mut entries,
@@ -2753,6 +2777,7 @@ mod tests {
             model: None,
             physics: Vec::new(),
             helper_bone: None,
+            rename_physics: false,
             replace_bones: false,
             assets: ArmorAssets::default(),
             vendors: Vec::new(),

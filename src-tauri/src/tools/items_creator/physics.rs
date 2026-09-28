@@ -23,13 +23,23 @@
 //! helper-bone donor is chosen: its `Phive/HelperBone/*` files replace
 //! whatever the physics step left, and the ControllerSetParam, PhysicsParam
 //! and ActorParam `PhysicsRef` are renamed after the actor.
+//!
+//! [`rename_physics_entries`] runs last, only when the spec asks for it
+//! (`rename_physics`): every `Phive/*` and `Component/Physics/*` entry the
+//! steps above left is named after the actor and every reference to it is
+//! rewritten, whatever donor or template name it still carried.
 
 use super::actor_pack::{self, InjectedPackEntry};
 use crate::{
     file_format::BinTextFile::BymlFile, parser::physics::bphcl::BphclDocument, Zstd::TotkZstd,
 };
 use roead::byml::{Byml, Map};
-use std::{collections::BTreeSet, io, path::Path, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io,
+    path::Path,
+    sync::Arc,
+};
 
 /// A donor's physics bundle with the documents the merge needs parsed.
 struct DonorPhysics<'a> {
@@ -560,6 +570,148 @@ pub(super) fn transfer_helper_bones<'a>(
     Ok(())
 }
 
+/// Forces every `Phive/*` and `Component/Physics/*` entry of the assembled
+/// pack to be named after the actor (`Phive/Cloth/<actor>.bphcl`,
+/// `Phive/HelperBone/<actor>.bphhb`, `<actor>_2`, ... when one folder holds
+/// several files) and rewrites every reference to them: the ActorParam
+/// `PhysicsRef`, the PhysicsParam `ControllerSetPath`, the ControllerSetParam
+/// cloth, cloth-parameter and helper-bone paths and the ClothParam `HktPath`.
+/// It runs last, after the physics donor and helper-bone steps, on whatever
+/// those left behind under a donor's or the template's name (a single copied
+/// donor keeps its file names, and so does the template when no donor is
+/// usable). Files already named after the actor keep their names, so a
+/// merged bundle passes through untouched. Only the physics documents and
+/// the ActorParam are re-serialized, and only when a string of theirs
+/// changed; a reference to a file the pack does not carry (a shared
+/// `ConstraintController`, a `Dummy` PhysicsParam) is left alone.
+pub(super) fn rename_physics_entries<'a>(
+    actor_name: &str,
+    actor_file: &str,
+    entries: &mut [(String, Vec<u8>)],
+    zstd: Arc<TotkZstd<'a>>,
+) -> io::Result<()> {
+    let renames = physics_stem_renames(actor_name, entries.iter().map(|(name, _)| name.as_str()));
+    if renames.is_empty() {
+        return Ok(());
+    }
+    for (name, data) in entries.iter_mut() {
+        if !name.ends_with(".bgyml") || !(is_physics_entry(name) || name == actor_file) {
+            continue;
+        }
+        let mut document = BymlFile::from_binary(data, zstd.clone(), name.as_str())
+            .map_err(|error| invalid(format!("{name}: {error}")))?;
+        if rename_physics_strings(&mut document.pio, &renames) {
+            *data = document.to_binary_preserving_header()?;
+        }
+    }
+    for (name, _) in entries.iter_mut() {
+        if let Some(renamed) = rename_physics_reference(name, &renames) {
+            *name = renamed;
+        }
+    }
+    Ok(())
+}
+
+fn is_physics_entry(name: &str) -> bool {
+    name.starts_with("Phive/") || name.starts_with("Component/Physics/")
+}
+
+/// `X.phive__ClothParam.bgyml` -> (`X`, `.phive__ClothParam.bgyml`).
+fn split_stem(file: &str) -> (&str, &str) {
+    match file.find('.') {
+        Some(index) => file.split_at(index),
+        None => (file, ""),
+    }
+}
+
+/// `<actor>`, `<actor>_2`, `<actor>_3`, ...: a stem already named after the actor.
+fn is_actor_stem(actor_name: &str, stem: &str) -> bool {
+    stem == actor_name
+        || stem
+            .strip_prefix(actor_name)
+            .and_then(|rest| rest.strip_prefix('_'))
+            .map_or(false, |index| {
+                !index.is_empty() && index.bytes().all(|byte| byte.is_ascii_digit())
+            })
+}
+
+/// The stem every physics entry that is not yet named after the actor gets,
+/// keyed by `<dir>/<old stem>` (so a cloth file and its `.hkt` reference,
+/// which share a stem, move together). Within one folder the stems already
+/// named after the actor are reserved, and the remaining files take
+/// `<actor>`, `<actor>_2`, ... in entry order.
+fn physics_stem_renames<'n>(
+    actor_name: &str,
+    names: impl Iterator<Item = &'n str>,
+) -> BTreeMap<String, String> {
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for name in names.filter(|name| is_physics_entry(name)) {
+        let Some((dir, file)) = name.rsplit_once('/') else {
+            continue;
+        };
+        let (stem, _) = split_stem(file);
+        if !pairs.iter().any(|(d, s)| d == dir && s == stem) {
+            pairs.push((dir.to_owned(), stem.to_owned()));
+        }
+    }
+    let mut taken: BTreeSet<(String, String)> = pairs
+        .iter()
+        .filter(|(_, stem)| is_actor_stem(actor_name, stem))
+        .cloned()
+        .collect();
+    let mut renames = BTreeMap::new();
+    for (dir, stem) in &pairs {
+        if is_actor_stem(actor_name, stem) {
+            continue;
+        }
+        let new_stem = (0..)
+            .map(|index| helper_bone_stem(actor_name, index))
+            .find(|candidate| !taken.contains(&(dir.clone(), candidate.clone())))
+            .expect("an unused actor stem always exists");
+        taken.insert((dir.clone(), new_stem.clone()));
+        renames.insert(format!("{dir}/{stem}"), new_stem);
+    }
+    renames
+}
+
+/// A SARC entry name, an ActorParam reference (`?Component/Physics/X.…gyml`)
+/// or a work path (`Work/Phive/Cloth/X.phcl`, `Work/Phive/Cloth/X.hkt`)
+/// with its stem renamed, or `None` when it points at nothing renamed.
+fn rename_physics_reference(text: &str, renames: &BTreeMap<String, String>) -> Option<String> {
+    let (prefix, path) = if let Some(rest) = text.strip_prefix('?') {
+        ("?", rest)
+    } else if let Some(rest) = text.strip_prefix("Work/") {
+        ("Work/", rest)
+    } else {
+        ("", text)
+    };
+    let (dir, file) = path.rsplit_once('/')?;
+    let (stem, ext) = split_stem(file);
+    let new_stem = renames.get(&format!("{dir}/{stem}"))?;
+    Some(format!("{prefix}{dir}/{new_stem}{ext}"))
+}
+
+/// Rewrites every string of the document that references a renamed file;
+/// returns whether anything changed.
+fn rename_physics_strings(value: &mut Byml, renames: &BTreeMap<String, String>) -> bool {
+    match value {
+        Byml::String(text) => match rename_physics_reference(text, renames) {
+            Some(renamed) => {
+                *text = renamed.into();
+                true
+            }
+            None => false,
+        },
+        Byml::Array(items) => items.iter_mut().fold(false, |changed, item| {
+            rename_physics_strings(item, renames) || changed
+        }),
+        Byml::Map(map) => map.iter_mut().fold(false, |changed, (_, item)| {
+            rename_physics_strings(item, renames) || changed
+        }),
+        _ => false,
+    }
+}
+
 /// `Work/Phive/HelperBone/X.phhb` -> `Phive/HelperBone/X.bphhb`.
 fn helper_bone_internal_path(work_path: &str) -> String {
     let internal = actor_pack::work_path_to_internal(work_path);
@@ -756,6 +908,134 @@ mod tests {
 
     fn zstd_for(_romfs: &Path) -> Arc<TotkZstd<'static>> {
         romfs_zstd().unwrap().1
+    }
+
+    #[test]
+    fn forced_rename_names_every_physics_entry_after_the_actor_and_rewrites_references() {
+        let zstd = Arc::new(TotkZstd::dictionaryless(
+            Arc::new(TotkConfig::default()),
+            TOTK_ZSTD_COMPRESSION_LEVEL,
+        ));
+        let byml = |text: &str| {
+            BymlFile::from_text(text, zstd.clone())
+                .unwrap()
+                .to_binary_preserving_header()
+                .unwrap()
+        };
+        let actor_file = "Actor/Armor_950_Head.engine__actor__ActorParam.bgyml";
+        let model_info = "Component/ModelInfo/Armor_950_Head.engine__component__ModelInfo.bgyml";
+        let model_info_bytes = byml("{ModelProjectName: Armor_950}");
+        let mut entries = vec![
+            (
+                actor_file.to_string(),
+                byml("{Components: {PhysicsRef: '?Component/Physics/Armor_005_Head.engine__component__PhysicsParam.gyml', ModelInfoRef: '?Component/ModelInfo/Armor_950_Head.engine__component__ModelInfo.gyml'}}"),
+            ),
+            (
+                "Component/Physics/Armor_005_Head.engine__component__PhysicsParam.bgyml".into(),
+                byml("{ControllerSetPath: Work/Phive/ControllerSetParam/Armor_005_Head.phive__ControllerSetParam.gyml}"),
+            ),
+            (
+                "Phive/ControllerSetParam/Armor_005_Head.phive__ControllerSetParam.bgyml".into(),
+                byml("{ClothList: [{Path: Work/Phive/Cloth/Armor_005_Head.phcl}], Cloth: [{FilePath: Work/Phive/ClothParam/Armor_005_Head.phive__ClothParam.gyml}], HelperBoneList: [{FilePath: Work/Phive/HelperBone/Armor_950_Head.phhb}, {FilePath: Work/Phive/HelperBone/Hat_1.phhb}], ConstraintControllerPath: Work/Phive/ConstraintController/Shared.gyml}"),
+            ),
+            (
+                "Phive/ClothParam/Armor_005_Head.phive__ClothParam.bgyml".into(),
+                byml("{HktPath: Work/Phive/Cloth/Armor_005_Head.hkt}"),
+            ),
+            ("Phive/Cloth/Armor_005_Head.bphcl".into(), b"bphcl".to_vec()),
+            ("Phive/HelperBone/Armor_950_Head.bphhb".into(), b"hb1".to_vec()),
+            ("Phive/HelperBone/Hat_1.bphhb".into(), b"hb2".to_vec()),
+            (model_info.to_string(), model_info_bytes.clone()),
+        ];
+        rename_physics_entries("Armor_950_Head", actor_file, &mut entries, zstd.clone()).unwrap();
+
+        let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                actor_file,
+                "Component/Physics/Armor_950_Head.engine__component__PhysicsParam.bgyml",
+                "Phive/ControllerSetParam/Armor_950_Head.phive__ControllerSetParam.bgyml",
+                "Phive/ClothParam/Armor_950_Head.phive__ClothParam.bgyml",
+                "Phive/Cloth/Armor_950_Head.bphcl",
+                "Phive/HelperBone/Armor_950_Head.bphhb",
+                "Phive/HelperBone/Armor_950_Head_2.bphhb",
+                model_info,
+            ]
+        );
+        let document = |path: &str| {
+            let (_, data) = entries.iter().find(|(name, _)| name == path).unwrap();
+            BymlFile::from_binary(data, zstd.clone(), path).unwrap()
+        };
+        let actor = document(actor_file);
+        let components = actor.pio.as_map().unwrap().get("Components").unwrap();
+        assert_eq!(
+            map_string(components, "PhysicsRef").as_deref(),
+            Some("?Component/Physics/Armor_950_Head.engine__component__PhysicsParam.gyml")
+        );
+        assert_eq!(
+            map_string(components, "ModelInfoRef").as_deref(),
+            Some("?Component/ModelInfo/Armor_950_Head.engine__component__ModelInfo.gyml")
+        );
+        let physics =
+            document("Component/Physics/Armor_950_Head.engine__component__PhysicsParam.bgyml");
+        assert_eq!(
+            map_string(&physics.pio, "ControllerSetPath").as_deref(),
+            Some("Work/Phive/ControllerSetParam/Armor_950_Head.phive__ControllerSetParam.gyml")
+        );
+        let controller =
+            document("Phive/ControllerSetParam/Armor_950_Head.phive__ControllerSetParam.bgyml");
+        assert_eq!(
+            list_paths(&controller.pio, "ClothList", "Path"),
+            ["Work/Phive/Cloth/Armor_950_Head.phcl"]
+        );
+        assert_eq!(
+            list_paths(&controller.pio, "Cloth", "FilePath"),
+            ["Work/Phive/ClothParam/Armor_950_Head.phive__ClothParam.gyml"]
+        );
+        assert_eq!(
+            list_paths(&controller.pio, "HelperBoneList", "FilePath"),
+            [
+                "Work/Phive/HelperBone/Armor_950_Head.phhb",
+                "Work/Phive/HelperBone/Armor_950_Head_2.phhb"
+            ]
+        );
+        assert_eq!(
+            map_string(&controller.pio, "ConstraintControllerPath").as_deref(),
+            Some("Work/Phive/ConstraintController/Shared.gyml")
+        );
+        let cloth_param = document("Phive/ClothParam/Armor_950_Head.phive__ClothParam.bgyml");
+        assert_eq!(
+            map_string(&cloth_param.pio, "HktPath").as_deref(),
+            Some("Work/Phive/Cloth/Armor_950_Head.hkt")
+        );
+        // Documents outside the physics set are not touched at all.
+        assert_eq!(entries.last().unwrap().1, model_info_bytes);
+    }
+
+    #[test]
+    fn forced_rename_leaves_a_bundle_already_named_after_the_actor_alone() {
+        let names = [
+            "Phive/Cloth/Armor_950_Head.bphcl",
+            "Phive/HelperBone/Armor_950_Head.bphhb",
+            "Phive/HelperBone/Armor_950_Head_2.bphhb",
+            "Component/Physics/Armor_950_Head.engine__component__PhysicsParam.bgyml",
+            "Actor/Armor_950_Head.engine__actor__ActorParam.bgyml",
+        ];
+        assert!(physics_stem_renames("Armor_950_Head", names.into_iter()).is_empty());
+        // Several files of one folder: reserved actor stems first, then
+        // `<actor>`, `<actor>_2`, ... for the rest in entry order.
+        let names = [
+            "Phive/Cloth/Cape.bphcl",
+            "Phive/Cloth/Armor_950_Head.bphcl",
+            "Phive/Cloth/Hat.bphcl",
+            "Phive/HelperBone/Cape.bphhb",
+        ];
+        let renames = physics_stem_renames("Armor_950_Head", names.into_iter());
+        assert_eq!(renames["Phive/Cloth/Cape"], "Armor_950_Head_2");
+        assert_eq!(renames["Phive/Cloth/Hat"], "Armor_950_Head_3");
+        assert_eq!(renames["Phive/HelperBone/Cape"], "Armor_950_Head");
+        assert!(!renames.contains_key("Phive/Cloth/Armor_950_Head"));
     }
 
     #[test]
