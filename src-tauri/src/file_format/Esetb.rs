@@ -1,7 +1,7 @@
 #![allow(non_snake_case, non_camel_case_types)]
 use super::BinTextFile::{BymlFile, FileData};
 use crate::file_format::BinTextFile::OpenedFile;
-use crate::parser::ptcl::Ptcl;
+use crate::parser::ptcl::{Ptcl, PtclDocument};
 use crate::Open_and_Save::SendData;
 use crate::Zstd::is_esetb;
 use crate::{
@@ -215,6 +215,45 @@ impl<'a> Esetb<'a> {
 
         Ok(())
     }
+}
+
+/// The editable PTCL document (`PTCL_JSON`) of an ESETB in its text form, as
+/// the GUI's YAML editor holds it. Errors name the YAML problem so the colour
+/// editor can show it instead of a blank panel.
+pub fn ptcl_document_from_text(text: &str) -> io::Result<PtclDocument> {
+    let pio = Byml::from_text(text).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let map = pio
+        .as_map()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "ESETB root is not a map"))?;
+    let node = map.get(PTCL_JSON_KEY).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("ESETB text has no {PTCL_JSON_KEY} node"),
+        )
+    })?;
+    serde_yaml::from_str(&node.to_text())
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+}
+
+/// The ESETB text with its `PTCL_JSON` node replaced by `document`; every
+/// other node is kept. Emitters the text does not know are ignored on save
+/// by the PTCL writer, so no validation is needed here beyond the YAML shape.
+pub fn text_with_ptcl_document(text: &str, document: &PtclDocument) -> io::Result<String> {
+    let mut pio =
+        Byml::from_text(text).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let map = pio
+        .as_mut_map()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "ESETB root is not a map"))?;
+    if !map.contains_key(PTCL_JSON_KEY) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("ESETB text has no {PTCL_JSON_KEY} node"),
+        ));
+    }
+    let yaml = serde_yaml::to_string(document).map_err(io::Error::other)?;
+    let node = Byml::from_text(&yaml).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    map.insert(PTCL_JSON_KEY.into(), node);
+    Ok(pio.to_text())
 }
 
 pub(crate) fn serialize_preserving_original(

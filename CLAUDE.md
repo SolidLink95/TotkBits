@@ -44,6 +44,8 @@ python tauri_build.py         # full Windows release: clean, NSIS bundle, silent
 
 Build prerequisites beyond the Rust/Node toolchain: LLVM (for the C++ bindings crates) and CMake.
 
+The items creator (`src-tauri/src/tools/items_creator/`, CLI `create_weapon`) only builds weapons/shields/bows, armor, ELink effects and Zonai devices. It does **not** create plain items/ingredients (pouch materials such as `Item_Material_*` / `Item_Enemy_*`); those have to be hand-cloned from a vanilla actor pack (see `res/5/cucco_arrow/tools/build.py` for a worked example: pack, RSDB rows + Tag bits, GameDataList flags, Mals labels, BNTX icons via the CLI).
+
 There is no JS test runner and the Rust tree has essentially no test modules — verify changes by running the app and exercising open → edit → save for the affected format.
 
 ## Architecture

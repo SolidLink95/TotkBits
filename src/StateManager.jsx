@@ -62,6 +62,7 @@ export const EditorProvider = ({ children }) => {
   const [modelBrowserSource, setModelBrowserSource] = useState('aoc');
   const [configLoading, setConfigLoading] = useState(false);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const [esetbColorsOpen, setEsetbColorsOpen] = useState(false); //ESETB colour editor shown over the YAML editor
 
   const updateEditorContent = (content, lang, nextReadOnly = false) => {
     setReadOnly(Boolean(nextReadOnly));
@@ -80,6 +81,7 @@ export const EditorProvider = ({ children }) => {
   // Combine all states and functions into a single object
   const value = {
     isOptionsOpen, setIsOptionsOpen,
+    esetbColorsOpen, setEsetbColorsOpen,
     config, setConfig, aocModelCatalog, setAocModelCatalog,
     lm3SlotCatalog, setLm3SlotCatalog, modelBrowserSource, setModelBrowserSource,
     configLoading, setConfigLoading,

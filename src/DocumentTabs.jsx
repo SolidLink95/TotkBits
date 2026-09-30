@@ -150,6 +150,7 @@ export default function DocumentTabs() {
         latest.setTreeExpandedNodes(new Set(snapshot.treeExpandedNodes || []));
         latest.setCompareData(snapshot.compareData);
         latest.setReadOnly(snapshot.readOnly || false);
+        latest.setEsetbColorsOpen?.(false);
         previousDocumentIdRef.current = activeDocumentId;
     }, [activeDocumentId]);
 

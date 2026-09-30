@@ -28,6 +28,7 @@ import ImageView from './ImageView';
 import AudioView from './AudioView';
 import ModelBrowserView from './ModelBrowserView';
 import ItemCreator from './ItemCreator';
+import EsetbColorView from './EsetbColorView';
 
 
 let triggered = false
@@ -401,6 +402,7 @@ function App() {
       <AmtaView activeTab={activeTab} setActiveTab={setActiveTab} />
       <ModelBrowserView activeTab={activeTab} />
       <ItemCreator activeTab={activeTab} setStatusText={setStatusText} />
+      <EsetbColorView />
       
 
       {activeTab === 'YAML' && readOnly && <div className="physics-yaml-preview-banner" role="status">

@@ -69,6 +69,8 @@ mod archives;
 mod audio;
 #[path = "commands/elink.rs"]
 mod elink;
+#[path = "commands/esetb.rs"]
+mod esetb;
 #[path = "commands/files.rs"]
 mod files;
 #[path = "commands/general.rs"]
@@ -87,6 +89,7 @@ pub(crate) mod visuals;
 pub use archives::*;
 pub use audio::*;
 pub use elink::*;
+pub use esetb::*;
 pub use files::*;
 pub use general::*;
 pub use items_creator::*;

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'r
 import { removeInternalFileClick, replaceInternalFileClick, clearSearchInSarcClick, searchTextInSarcClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
 import { isFileTypeSaveable } from './FileTypes';
+import { ESETB_FILE_TYPE } from './EsetbColorView';
 import { useEditorContext } from './StateManager';
 
 
@@ -50,7 +51,8 @@ const ButtonsDisplay = () => {
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, pathsFilters, setPathsFilters, isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
-    setSavingFile, documentSnapshots
+    setSavingFile, documentSnapshots,
+    esetbColorsOpen, setEsetbColorsOpen,
   } = useEditorContext();
 
   const displayButtons = !['3D', 'IMAGE', 'AMTA', 'MODEL_BROWSER'].includes(activeTab);
@@ -274,6 +276,16 @@ const ButtonsDisplay = () => {
           />
         ))}
         <PathsFilterCheckboxes />
+        {activeTab === 'YAML' && activeDocument?.fileType === ESETB_FILE_TYPE && (
+          <button
+            type="button"
+            className={`toolbar-text-button ${esetbColorsOpen ? 'is-active' : ''}`}
+            onClick={() => setEsetbColorsOpen(!esetbColorsOpen)}
+            title={esetbColorsOpen ? 'Back to the YAML editor' : 'Edit the emitter colours with colour pickers'}
+          >
+            {esetbColorsOpen ? 'YAML' : 'Colors'}
+          </button>
+        )}
         {isClearSearchShown && (
           <button
             className="modal-footer-button"

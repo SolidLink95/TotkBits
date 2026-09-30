@@ -334,6 +334,11 @@ impl CliCommand {
         )
         .filter(|bytes| !bytes.is_empty())
         .ok_or_else(|| format!("conversion to {} produced no data", self.file_type))?;
+        let bytes = if matches!(file_type, TotkFileType::Byml | TotkFileType::Bcett) {
+            byml_as_v7(bytes)?
+        } else {
+            bytes
+        };
         write_output(&self.output, &bytes)
     }
 
@@ -3120,6 +3125,17 @@ fn parse_lm3_slot_id(value: &str) -> Result<(String, usize), String> {
         .parse()
         .map_err(|_| format!("invalid LM3 slot number in {value}"))?;
     Ok((archive.to_string(), slot))
+}
+
+/// `text_to_bin` always emits BYML v7 (the TOTK version); roead's default
+/// writer produces v2, so anything that is not already v7 is re-encoded.
+fn byml_as_v7(bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+    if bytes.get(..4) == Some(&b"YB\x07\x00"[..]) {
+        return Ok(bytes);
+    }
+    let byml = roead::byml::Byml::from_binary(&bytes)
+        .map_err(|e| format!("failed to re-encode BYML as v7: {e}"))?;
+    Ok(byml.to_binary_with_version(Endian::Little, 7))
 }
 
 fn parse_dictionary(value: &str) -> Result<ZstdDictionary, String> {
