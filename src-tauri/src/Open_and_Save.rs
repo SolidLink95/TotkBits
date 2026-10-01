@@ -1006,6 +1006,13 @@ fn file_from_disk_content_guess<'a>(
     if let Some(result) = MsbtFile::open_mstb_binary(&bytes, file_name, zstd.clone()) {
         return Some(result);
     }
+    // Wii U texture archives (BOTW .sbitemico and the like) are BFRES files
+    // without a model: they belong to the image view.
+    if crate::parser::ftex::is_texture_archive(&probe) {
+        if let Some(result) = crate::file_format::Image::ImageDocument::open(file_name, &zstd) {
+            return Some(result);
+        }
+    }
     if Magic::is_bfres(&probe) {
         if let Some(result) = crate::file_format::Model3D::bfres::BfresFile::open_binary(
             &bytes,

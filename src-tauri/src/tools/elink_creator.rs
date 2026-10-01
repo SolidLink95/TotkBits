@@ -414,7 +414,7 @@ pub fn user_assets(text: &str, user: &str) -> io::Result<Vec<AssetEntry>> {
 pub fn edited_entry_keys(text: &str, user: &str, edits: &[EntryEdit]) -> io::Result<Vec<String>> {
     let assets = user_assets(text, user)?;
     let mut keys: Vec<String> = Vec::new();
-    for edit in edits.iter().filter(|edit| !edit.params.is_empty()) {
+    for edit in edits.iter().filter(|edit| !edit.is_empty()) {
         let asset = assets
             .get(edit.id)
             .ok_or_else(|| invalid(format!("asset entry {} does not exist in {user}", edit.id)))?;
@@ -469,6 +469,69 @@ pub struct EntryEdit {
     pub id: usize,
     #[serde(default)]
     pub params: BTreeMap<String, Option<String>>,
+    /// Float parameters driven by a property curve instead of a constant
+    /// (`"Alpha": {"property": "Global::時刻", "points": [[0, 1], [6, 0]]}`),
+    /// which is how vanilla fades an effect with the time of day.
+    #[serde(default)]
+    pub curves: BTreeMap<String, CurveEdit>,
+}
+
+impl EntryEdit {
+    /// Whether the edit changes anything of its asset call.
+    pub fn is_empty(&self) -> bool {
+        self.params.is_empty() && self.curves.is_empty()
+    }
+}
+
+/// A `CURVE` value of an asset-call parameter: the parameter follows
+/// `property` (`Global::<name>` or `Local::<name>`) through `points`
+/// (`[input, value]`, interpolated in input order).
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CurveEdit {
+    pub property: String,
+    pub points: Vec<[f32; 2]>,
+}
+
+/// The text lines of `key = CURVE { … }` at `indent`.
+fn curve_lines(key: &str, curve: &CurveEdit, indent: usize) -> io::Result<Vec<String>> {
+    let property = curve.property.trim();
+    let named = property
+        .strip_prefix("Global::")
+        .or_else(|| property.strip_prefix("Local::"))
+        .is_some_and(|name| !name.is_empty());
+    if !named || property.contains(['\n', '{', '}']) {
+        return Err(invalid(format!(
+            "{key}: a curve needs a Global::<name> or Local::<name> property"
+        )));
+    }
+    if curve.points.len() < 2 {
+        return Err(invalid(format!("{key}: a curve needs at least two points")));
+    }
+    if curve.points.windows(2).any(|pair| pair[1][0] < pair[0][0]) {
+        return Err(invalid(format!(
+            "{key}: curve points must be in input order"
+        )));
+    }
+    let pad = " ".repeat(indent);
+    let mut lines = vec![
+        format!("{pad}{key} = CURVE {{"),
+        format!("{pad}  Type = Standard"),
+        format!("{pad}  Property = {property}"),
+        format!("{pad}  Unknown = 0"),
+        format!("{pad}  UpdateType = Update"),
+        format!("{pad}  Points = {{"),
+    ];
+    for point in &curve.points {
+        lines.push(format!(
+            "{pad}    ({}, {})",
+            format_float(&point[0].to_string(), key)?,
+            format_float(&point[1].to_string(), key)?
+        ));
+    }
+    lines.push(format!("{pad}  }}"));
+    lines.push(format!("{pad}}}"));
+    Ok(lines)
 }
 
 fn format_float(value: &str, key: &str) -> io::Result<String> {
@@ -595,6 +658,32 @@ pub fn build_custom_user(
                 }
                 (None, None) => {}
             }
+        }
+        for (key, curve) in &edit.curves {
+            let spec = param_spec(key)
+                .filter(|spec| spec.kind == ParamKind::Float)
+                .ok_or_else(|| invalid(format!("{key} cannot be driven by a curve")))?;
+            if edit.params.contains_key(spec.name) {
+                return Err(invalid(format!("{key} is given both a value and a curve")));
+            }
+            // Whatever spells the parameter today (a constant leaf or a
+            // CURVE / RANDOM block) makes way for the new curve.
+            for &index in &node.leaves {
+                if leaf_key_value(lines[index]).map(|(k, _)| k) == Some(key.as_str()) {
+                    replacements.insert(index, None);
+                }
+            }
+            for child in &node.children {
+                if child.label.split_once(" = ").map(|(k, _)| k.trim()) == Some(key.as_str()) {
+                    for index in child.start..=child.end {
+                        replacements.insert(index, None);
+                    }
+                }
+            }
+            insertions
+                .entry(node.end)
+                .or_default()
+                .extend(curve_lines(key, curve, leaf_indent)?);
         }
     }
 
@@ -1015,7 +1104,7 @@ pub fn generate(
         edited_entries: request
             .entries
             .iter()
-            .filter(|edit| !edit.params.is_empty())
+            .filter(|edit| !edit.is_empty())
             .count(),
         notes,
     })
@@ -1053,14 +1142,17 @@ mod tests {
             EntryEdit {
                 id: 1,
                 params: bone.clone(),
+                ..Default::default()
             },
             EntryEdit {
                 id: 0,
                 params: BTreeMap::new(),
+                ..Default::default()
             },
             EntryEdit {
                 id: 1,
                 params: bone,
+                ..Default::default()
             },
         ];
         assert_eq!(
@@ -1072,7 +1164,8 @@ mod tests {
             "Item_Weapon_01",
             &[EntryEdit {
                 id: 9,
-                params: Default::default()
+                params: Default::default(),
+                ..Default::default()
             }]
         )
         .unwrap()
@@ -1084,7 +1177,8 @@ mod tests {
             "Item_Weapon_01",
             &[EntryEdit {
                 id: 9,
-                params: missing.clone()
+                params: missing.clone(),
+                ..Default::default()
             }]
         )
         .is_err());
@@ -1095,6 +1189,7 @@ mod tests {
             &[EntryEdit {
                 id: 2,
                 params: missing,
+                ..Default::default()
             }],
         )
         .unwrap_err();
@@ -1105,6 +1200,54 @@ mod tests {
     }
 
     #[test]
+    fn drives_a_parameter_with_a_property_curve() {
+        let mut curves = BTreeMap::new();
+        curves.insert(
+            "Scale".to_owned(),
+            CurveEdit {
+                property: "Global::時刻".to_owned(),
+                points: vec![[0.0, 1.0], [5.5, 0.0], [24.0, 1.0]],
+            },
+        );
+        let edit = EntryEdit {
+            id: 0,
+            curves: curves.clone(),
+            ..Default::default()
+        };
+        let block = build_custom_user(SAMPLE, "Item_Weapon_01", "Custom", &[edit.clone()]).unwrap();
+        let text = block.join("\n");
+        // The constant leaf makes way for the curve block.
+        assert!(!text.contains("Scale = 1.60000002"), "{text}");
+        assert!(
+            text.contains(
+                "              Scale = CURVE {\n                Type = Standard\n                Property = Global::時刻\n                Unknown = 0\n                UpdateType = Update\n                Points = {\n                  (0.0, 1.0)\n                  (5.5, 0.0)\n                  (24.0, 1.0)\n                }\n              }"
+            ),
+            "{text}"
+        );
+        // A curve alone counts as an edit of the call.
+        assert_eq!(
+            edited_entry_keys(SAMPLE, "Item_Weapon_01", &[edit]).unwrap(),
+            vec!["鏃".to_owned()]
+        );
+        // Text parameters and unordered points are refused.
+        let mut bone = BTreeMap::new();
+        bone.insert("Bone".to_owned(), curves["Scale"].clone());
+        let refused = EntryEdit {
+            id: 0,
+            curves: bone,
+            ..Default::default()
+        };
+        assert!(build_custom_user(SAMPLE, "Item_Weapon_01", "Custom", &[refused]).is_err());
+        curves.get_mut("Scale").unwrap().points.reverse();
+        let unordered = EntryEdit {
+            id: 0,
+            curves,
+            ..Default::default()
+        };
+        assert!(build_custom_user(SAMPLE, "Item_Weapon_01", "Custom", &[unordered]).is_err());
+    }
+
+    #[test]
     fn builds_renamed_block_with_edits() {
         let mut params = BTreeMap::new();
         params.insert("Scale".to_owned(), Some("2".to_owned()));
@@ -1112,7 +1255,11 @@ mod tests {
         params.insert("Red".to_owned(), Some("0.25".to_owned()));
         params.insert("Alpha".to_owned(), Some("1".to_owned()));
         params.insert("Bone".to_owned(), Some(String::new()));
-        let edits = vec![EntryEdit { id: 0, params }];
+        let edits = vec![EntryEdit {
+            id: 0,
+            params,
+            ..Default::default()
+        }];
         let block =
             build_custom_user(SAMPLE, "Item_Weapon_01", "Item_Weapon_01_custom", &edits).unwrap();
         let text = block.join("\n");
@@ -1150,7 +1297,11 @@ mod tests {
         let request = ElinkRequest {
             base_user: "Item_Weapon_01".into(),
             new_name: "Item_Weapon_01_custom".into(),
-            entries: vec![EntryEdit { id: 7, params }],
+            entries: vec![EntryEdit {
+                id: 7,
+                params,
+                ..Default::default()
+            }],
             clone_esetb: true,
             update_rstb: true,
         };

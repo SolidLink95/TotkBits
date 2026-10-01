@@ -94,6 +94,7 @@ impl CliCommand {
                 | "bfres_render"
                 | "bfres_edit"
                 | "bntx_edit"
+                | "ftex_edit"
                 | "create_weapon"
                 | "merge_skeletons"
                 | "hkcl_to_bphcl"
@@ -112,6 +113,7 @@ impl CliCommand {
             operation.as_str(),
             "bfres_edit"
                 | "bntx_edit"
+                | "ftex_edit"
                 | "create_weapon"
                 | "merge_skeletons"
                 | "hkcl_to_bphcl"
@@ -128,7 +130,7 @@ impl CliCommand {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0|mc> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--set_tex MATERIAL <slot|_n0> TEXTURE]... [--rename_bone FROM TO]... [--rename_mat FROM TO]... [--info] [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc-avx2-shared.dll>]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--no_rstb] [--lang <USen|EUen|...>] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc-avx2-shared.dll>] [--compact]\n  Totkbits.exe --cli coacd_decompose -i <mesh.obj|request.json> -o <pieces.json|pieces.obj> [--threshold N] [--max_hulls N] [--prep_res N] [--no_preprocess] [--no_merge] [--seed N] [--time_limit SECONDS]\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0|mc> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n  Totkbits.exe --cli lm3_render <archive>_<slot> <lm3_romfs> <output.png>\n  Totkbits.exe --cli lm3_render_all <skip|overwrite> <lm3_romfs> <output_dir>\n  Totkbits.exe --cli lm3_slot_sizes all <lm3_romfs> <output.json>\n  Totkbits.exe --cli bfres_render <default|none|skin,hair,outfit> <input.bfres[.zs]> <output.png>\n  Totkbits.exe --cli bfres_edit -i <in.bfres[.mc]> -o <out.bfres.mc> [--swap_int_name N] [--swap_model_name N] [--fbx m.fbx [--import_skeleton]] [--skeleton <a.dae|a.fbx>]... [--rename_tex FROM TO]... [--set_tex MATERIAL <slot|_n0> TEXTURE]... [--rename_bone FROM TO]... [--rename_mat FROM TO]... [--info] [--totk_path <romfs>]\n  Totkbits.exe --cli merge_skeletons -o <out.fbx> <in.dae|in.fbx>... [--compare <reference.fbx>] [--tolerance N] [--rotation_tolerance DEG]\n  Totkbits.exe --cli bntx_edit -i <in.bntx[.zs]> -o <out.bntx[.zs]> [--swap_int_name N] [--rename_tex FROM TO]... [--replace_tex <image.png|.dds> [TEXTURE]]... [--export_tex DIR] [--astcenc <astcenc-avx2-shared.dll>]\n  Totkbits.exe --cli ftex_edit -i <in.sbitemico|in.sbfres|in.bfres> [-o <out>] [--replace_tex <image.png> [TEXTURE]]... [--export_tex DIR]\n  Totkbits.exe --cli create_weapon -i <spec.json|spec.toml> -o <output_romfs> [--totk_path <romfs>] [--zstd_level N] [--no_rstb] [--lang <USen|EUen|...>] [--plan]\n  Totkbits.exe --cli create_weapon --rstb_only -o <output_romfs> [--totk_path <romfs>] [--zstd_level N]\n  Totkbits.exe --cli hkcl_to_bphcl -i <in.hkcl> -o <out.bphcl | out.pack.zs> [--pack <actor.pack.zs>] [--scale N]\n  Totkbits.exe --cli txtg_edit -i <in.txtg[.zs]> -o <out.txtg[.zs]> --png <image.png> [--astcenc <astcenc-avx2-shared.dll>] [--compact]\n  Totkbits.exe --cli coacd_decompose -i <mesh.obj|request.json> -o <pieces.json|pieces.obj> [--threshold N] [--max_hulls N] [--prep_res N] [--no_preprocess] [--no_merge] [--seed N] [--time_limit SECONDS]\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -151,6 +153,7 @@ impl CliCommand {
             operation.as_str(),
             "bfres_edit"
                 | "bntx_edit"
+                | "ftex_edit"
                 | "create_weapon"
                 | "merge_skeletons"
                 | "hkcl_to_bphcl"
@@ -231,6 +234,7 @@ impl CliCommand {
         match self.operation.as_str() {
             "bfres_edit" => return self.bfres_edit(),
             "bntx_edit" => return self.bntx_edit(),
+            "ftex_edit" => return self.ftex_edit(),
             "merge_skeletons" => return self.merge_skeletons(),
             "hkcl_to_bphcl" => return self.hkcl_to_bphcl(),
             "bphcl_edit" => return self.bphcl_edit(),
@@ -2387,6 +2391,153 @@ impl CliCommand {
                 let png = dir.join(format!("{}.png", texture.name));
                 let image = file
                     .decode_texture(index)
+                    .map_err(|e| fail(3, format!("{}: {e}", texture.name)))?;
+                image
+                    .save_with_format(&png, image::ImageFormat::Png)
+                    .map_err(|e| fail(3, format!("{}: {e}", png.display())))?;
+                println!("exported {}", png.display());
+            }
+        }
+        Ok(())
+    }
+
+    /// Wii U texture archive editing (`.sbitemico` and the other Yaz0
+    /// BFRES files that hold only FTEX textures): image replacement and PNG
+    /// export. The output keeps the input's Yaz0 wrapping and matches what
+    /// Switch Toolbox saves after the same replacement.
+    fn ftex_edit(&self) -> Result<(), CliError> {
+        use crate::parser::ftex::{FtexCompression, FtexFile};
+
+        fn fail(code: i32, message: impl Into<String>) -> CliError {
+            CliError::new(code, message)
+        }
+
+        let mut input = None;
+        let mut output = None;
+        let mut export_dir = None;
+        let mut replacements: Vec<(String, Option<String>)> = Vec::new();
+        let args = &self.extra;
+        let mut i = 0;
+        while i < args.len() {
+            let take = |i: &mut usize| -> Result<String, CliError> {
+                *i += 1;
+                args.get(*i).cloned().ok_or_else(|| {
+                    fail(
+                        1,
+                        format!(
+                            "{} requires a value",
+                            args.get(*i - 1).map(String::as_str).unwrap_or_default()
+                        ),
+                    )
+                })
+            };
+            match args[i].as_str() {
+                "-i" => input = Some(take(&mut i)?),
+                "-o" => output = Some(take(&mut i)?),
+                "--export_tex" => export_dir = Some(take(&mut i)?),
+                "--replace_tex" => {
+                    let image = take(&mut i)?;
+                    // The texture name is optional: the next token unless it is a switch.
+                    let texture = match args.get(i + 1) {
+                        Some(next) if !next.starts_with('-') => {
+                            i += 1;
+                            Some(next.clone())
+                        }
+                        _ => None,
+                    };
+                    replacements.push((image, texture));
+                }
+                other => return Err(fail(1, format!("unknown argument {other}"))),
+            }
+            i += 1;
+        }
+        let Some(input) = input else {
+            return Err(fail(1, "-i <input file> is required"));
+        };
+        let input = Path::new(&input);
+        if !input.is_file() {
+            return Err(fail(
+                1,
+                format!("input file not found: {}", input.display()),
+            ));
+        }
+        for (image, _) in &replacements {
+            if !Path::new(image).is_file() {
+                return Err(fail(1, format!("image file not found: {image}")));
+            }
+        }
+        if output.is_none() && !replacements.is_empty() {
+            return Err(fail(1, "-o <output file> is required"));
+        }
+
+        let mut file =
+            FtexFile::open(input).map_err(|e| fail(1, format!("{}: {e}", input.display())))?;
+        let file_name = input
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let wrapping = match file.compression {
+            FtexCompression::Yaz0(_) => ", yaz0",
+            FtexCompression::None => "",
+        };
+        println!(
+            "opened {file_name} (Wii U bfres{wrapping}, {} texture(s))",
+            file.textures.len()
+        );
+        for texture in &file.textures {
+            println!("  {}", texture.describe());
+        }
+
+        for (image, texture) in &replacements {
+            let index = match texture {
+                None => 0,
+                Some(name) => file.find_texture(name).ok_or_else(|| {
+                    let have: Vec<_> = file.textures.iter().map(|t| t.name.as_str()).collect();
+                    fail(
+                        3,
+                        format!(
+                            "texture {name} not found in {file_name} (have: {}); nothing written",
+                            have.join(", ")
+                        ),
+                    )
+                })?,
+            };
+            let before = file.textures[index].describe();
+            let warning = file
+                .replace_texture_from_file(index, Path::new(image))
+                .map_err(|e| fail(3, e.to_string()))?;
+            if let Some(warning) = warning {
+                println!("warning: {warning}");
+            }
+            println!(
+                "replaced {before} from {} -> {}",
+                Path::new(image)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default(),
+                file.textures[index].describe()
+            );
+        }
+
+        if let Some(output) = output {
+            let output = Path::new(&output);
+            let saved = file.save().map_err(|e| fail(3, e.to_string()))?;
+            write_output(output, &saved).map_err(|e| fail(3, e))?;
+            println!(
+                "saved {} ({} bytes{wrapping})",
+                output.display(),
+                saved.len()
+            );
+        }
+
+        if let Some(dir) = export_dir {
+            let dir = Path::new(&dir);
+            fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            for texture in &file.textures {
+                let png = dir.join(format!("{}.png", texture.name));
+                let image = texture
+                    .decode(0, 0)
                     .map_err(|e| fail(3, format!("{}: {e}", texture.name)))?;
                 image
                     .save_with_format(&png, image::ImageFormat::Png)

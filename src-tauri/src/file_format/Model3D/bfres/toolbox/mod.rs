@@ -311,7 +311,44 @@ impl ResFile {
             .models
             .first_mut()
             .ok_or_else(|| BfresError::new(0, "BFRES contains no model"))?;
-        geometry_import::import_model(model, fbx, import_bones)
+        geometry_import::import_model(model, fbx, import_bones, false)
+    }
+
+    /// Parses a material exported by Switch Toolbox (`.bfmat`).
+    pub fn load_material_subfile(data: &[u8]) -> Result<Material, BfresError> {
+        loader::load_material_subfile(data)
+    }
+
+    /// [`Self::import_model_like_toolbox`] with the first model's materials
+    /// replaced by `materials` first: every FBX mesh is bound to the
+    /// material named like its FBX material (a mesh without such a material
+    /// is an error) and gets that material's vertex attribute layout.
+    pub fn import_model_with_materials(
+        &mut self,
+        fbx: &[u8],
+        import_bones: bool,
+        materials: Vec<Material>,
+    ) -> Result<GeometryImportReport, BfresError> {
+        let model = self
+            .models
+            .first_mut()
+            .ok_or_else(|| BfresError::new(0, "BFRES contains no model"))?;
+        if materials.is_empty() {
+            return Err(BfresError::new(0, "no material to import"));
+        }
+        for (index, material) in materials.iter().enumerate() {
+            if materials[..index]
+                .iter()
+                .any(|other| other.name == material.name)
+            {
+                return Err(BfresError::new(
+                    0,
+                    format!("material {} is imported twice", material.name),
+                ));
+            }
+        }
+        model.materials = materials;
+        geometry_import::import_model(model, fbx, import_bones, true)
     }
 
     pub fn first_model_name(&self) -> Option<&str> {

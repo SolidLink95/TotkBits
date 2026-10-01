@@ -51,9 +51,10 @@ use crate::TauriCommands::{
     open_file_struct, open_folder_struct, preview_aoc_model, read_file_base64, remove_bphcl_node,
     remove_internal_sarc_file, rename_bntx_texture, rename_internal_sarc_file, render_image,
     replace_bars_audio_from_folder, replace_bfwav_node, replace_bntx_image, replace_dds_image,
-    replace_g1m_meshes, rescale_bphcl_document, restart_app, rstb_edit_entry, rstb_get_entries,
-    rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc, set_viewport_brightness,
-    update_toml_config, validate_bphcl_merge_documents, validate_physics_merge_request,
+    replace_ftex_image, replace_g1m_meshes, rescale_bphcl_document, restart_app, rstb_edit_entry,
+    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,
+    set_viewport_brightness, update_toml_config, validate_bphcl_merge_documents,
+    validate_physics_merge_request,
 };
 
 fn main() -> std::process::ExitCode {
@@ -145,6 +146,7 @@ fn run() -> Result<(), tools::Cli::CliError> {
             replace_bntx_image,
             export_image_png,
             replace_dds_image,
+            replace_ftex_image,
             open_bfwav_node,
             replace_bfwav_node,
             replace_bars_audio_from_folder,

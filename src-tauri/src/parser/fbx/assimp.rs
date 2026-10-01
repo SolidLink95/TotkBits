@@ -61,6 +61,10 @@ pub struct AssimpScene {
     /// Meshes in Toolbox's `BuildNode` order: depth-first over the node
     /// tree, meshes of a node before its children.
     pub meshes: Vec<AssimpMesh>,
+    /// Name of every converted material, indexed by
+    /// [`AssimpMesh::material_index`] (Assimp's default material is
+    /// `DefaultMaterial`).
+    pub material_names: Vec<String>,
 }
 
 /// `AI_MAX_NUMBER_OF_TEXTURECOORDS` / `AI_MAX_NUMBER_OF_COLOR_SETS`.
@@ -205,11 +209,24 @@ pub fn import_scene(data: &[u8]) -> io::Result<AssimpScene> {
     for child in root_children {
         converter.convert_nodes(child, IDENTITY)?;
     }
+    let material_names = converter
+        .materials_converted
+        .iter()
+        .map(|id| {
+            objects.get(id).map_or_else(
+                || "DefaultMaterial".to_owned(),
+                |object| object.name.clone(),
+            )
+        })
+        .collect();
     let mut meshes = converter.meshes;
     for mesh in &mut meshes {
         post_process(mesh);
     }
-    Ok(AssimpScene { meshes })
+    Ok(AssimpScene {
+        meshes,
+        material_names,
+    })
 }
 
 struct Converter<'a, 'b> {

@@ -254,6 +254,7 @@ pub fn import_model(
     model: &mut Model,
     fbx: &[u8],
     import_bones: bool,
+    materials_by_name: bool,
 ) -> Result<GeometryImportReport, BfresError> {
     let scene = assimp::import_scene(fbx).map_err(|error| BfresError::new(0, error.to_string()))?;
     let mut objects: Vec<GenericObject> = Vec::new();
@@ -278,6 +279,31 @@ pub fn import_model(
             if !import_bones {
                 object.bone_index = existing.bone_index;
             }
+        }
+    }
+    // Imported materials (`.bfmat`): every mesh takes the model material
+    // named like its FBX material instead.
+    if materials_by_name {
+        for (object, mesh) in objects.iter_mut().zip(&scene.meshes) {
+            let name = scene
+                .material_names
+                .get(mesh.material_index as usize)
+                .map(String::as_str)
+                .unwrap_or_default();
+            let index = model
+                .materials
+                .iter()
+                .position(|material| material.name == name)
+                .ok_or_else(|| {
+                    BfresError::new(
+                        0,
+                        format!(
+                            "mesh {} uses material {name}, which none of the imported materials is named after",
+                            object.name
+                        ),
+                    )
+                })?;
+            object.material_index = index as i32;
         }
     }
     model.shapes.clear();
@@ -336,7 +362,7 @@ pub fn import_model(
                 .collect::<Vec<_>>(),
             &object.name,
         );
-        let material_index = if object.material_index > 0
+        let material_index = if (materials_by_name || object.material_index > 0)
             && (object.material_index as usize) < model.materials.len()
         {
             object.material_index as u16

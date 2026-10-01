@@ -969,6 +969,26 @@ pub fn replace_bntx_image(
     )
 }
 
+#[tauri::command]
+pub fn replace_ftex_image(
+    target: String,
+    png: String,
+    texture_index: usize,
+) -> Result<Option<String>, String> {
+    crate::Settings::catch_panic_with(
+        move || {
+            require_experimental_visuals()?;
+            crate::file_format::Image::ImageDocument::replace_ftex_texture(
+                target,
+                png,
+                texture_index,
+            )
+            .map_err(|error| error.to_string())
+        },
+        Err,
+    )
+}
+
 fn require_experimental_visuals() -> Result<(), String> {
     return Ok(());
     if cfg!(debug_assertions) {

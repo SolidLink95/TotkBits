@@ -373,6 +373,8 @@ impl ImageDocument {
         send.path = crate::Settings::Pathlib::new(path);
         send.file_label = if opened.file_type == crate::Zstd::TotkFileType::Bntx {
             format!("{} [BNTX]", send.path.name)
+        } else if crate::parser::ftex::is_texture_archive_file(&data) {
+            format!("{} [FTEX]", send.path.name)
         } else {
             format!("{} [IMAGE]", send.path.name)
         };
@@ -416,6 +418,8 @@ impl ImageDocument {
         send.path = crate::Settings::Pathlib::new(path_ref);
         send.file_label = if opened.file_type == crate::Zstd::TotkFileType::Bntx {
             format!("{} [BNTX]", send.path.name)
+        } else if crate::parser::ftex::is_texture_archive_file(bytes) {
+            format!("{} [FTEX]", send.path.name)
         } else {
             format!("{} [IMAGE]", send.path.name)
         };
@@ -605,6 +609,38 @@ impl ImageDocument {
                 "BNTX".into(),
                 u32::from(texture.mip_count),
                 Some(format_name),
+            )
+        } else if crate::parser::ftex::is_texture_archive_file(&data) {
+            let ftex = crate::parser::ftex::FtexFile::from_bytes(&data)?;
+            entries = ftex
+                .textures
+                .iter()
+                .map(|texture| ImageEntry {
+                    name: texture.name.clone(),
+                    width: texture.width,
+                    height: texture.height,
+                    mip_count: texture.stored_mip_count(),
+                    array_count: texture.array_count(),
+                    format: texture.format_name(),
+                    subimages: subimages(
+                        texture.array_count(),
+                        texture.stored_mip_count(),
+                        texture.width,
+                        texture.height,
+                    ),
+                })
+                .collect();
+            let texture = ftex.textures.get(texture_index).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "FTEX texture index is out of range",
+                )
+            })?;
+            (
+                texture.decode(array_index, mip_index)?,
+                "FTEX".into(),
+                texture.stored_mip_count(),
+                Some(texture.format_name()),
             )
         } else if data.get(4..8) == Some(b"6PK0") {
             let txtg = crate::parser::textogo::TexToGoFile::parse(&data).map_err(invalid)?;
@@ -912,6 +948,23 @@ impl ImageDocument {
         std::fs::write(target, data)
     }
 
+    /// Replaces one texture of a Wii U texture archive (`.sbitemico` and
+    /// the like) with a picture, the way Switch Toolbox does: the surface
+    /// format is kept, the texture takes the picture's size and the file is
+    /// written back with its Yaz0 wrapping. Returns a warning when the
+    /// result may differ from Toolbox's bytes.
+    pub fn replace_ftex_texture(
+        path: impl AsRef<Path>,
+        png: impl AsRef<Path>,
+        texture_index: usize,
+    ) -> io::Result<Option<String>> {
+        let path = path.as_ref();
+        let mut ftex = crate::parser::ftex::FtexFile::open(path)?;
+        let warning = ftex.replace_texture_from_file(texture_index, png.as_ref())?;
+        std::fs::write(path, ftex.save()?)?;
+        Ok(warning)
+    }
+
     pub fn rename_bntx_texture(
         path: impl AsRef<Path>,
         texture_index: usize,
@@ -1158,6 +1211,9 @@ impl ImageDocument {
             if let Ok(decoded) = maybe_zstd(data, zstd) {
                 return crate::Settings::Magic::is_bntx(&decoded);
             }
+        }
+        if crate::parser::ftex::is_texture_archive_file(data) {
+            return true;
         }
         matches!(
             path.extension()
@@ -1458,6 +1514,49 @@ mod tests {
             b"not an image",
             None,
         ));
+    }
+
+    /// BOTW Wii U `.sbitemico`: a Yaz0 BFRES holding one FTEX texture. It
+    /// goes to the image view, and a PNG replacement written from there
+    /// is the file Switch Toolbox saves.
+    #[test]
+    fn wii_u_texture_archive_opens_renders_and_replaces_like_toolbox() {
+        let scratch = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_CLAUDE/bitemico");
+        let source = scratch.join("original.sbitemico");
+        let png = scratch.join("big.png");
+        let Ok(expected) = fs::read(scratch.join("ref_big.sbitemico")) else {
+            return;
+        };
+        if !source.is_file() || !png.is_file() {
+            return;
+        }
+        let data = fs::read(&source).unwrap();
+        assert!(ImageDocument::supports(&source, &data, None));
+
+        let zstd = Arc::new(crate::Zstd::TotkZstd::dictionaryless(
+            Arc::new(TotkConfig::default()),
+            TOTK_ZSTD_COMPRESSION_LEVEL,
+        ));
+        let (_, send) = crate::Open_and_Save::file_from_disk_to_senddata(&source, zstd)
+            .expect("the open chain rejected the texture archive");
+        assert_eq!(send.tab, "IMAGE");
+        assert!(send.file_label.ends_with("[FTEX]"), "{}", send.file_label);
+
+        let rendered = ImageDocument::render_path(&source).unwrap();
+        assert_eq!(rendered.format, "FTEX");
+        assert_eq!((rendered.width, rendered.height), (111, 111));
+        assert_eq!(rendered.dds_type.as_deref(), Some("TCS_R8_G8_B8_A8_SRGB"));
+        assert_eq!(rendered.entries.len(), 1);
+        assert_eq!(rendered.entries[0].name, "Armor_878_Head");
+
+        let target = scratch.join("replace_test.sbitemico");
+        fs::copy(&source, &target).unwrap();
+        let warning = ImageDocument::replace_ftex_texture(&target, &png, 0).unwrap();
+        assert_eq!(warning, None);
+        assert_eq!(fs::read(&target).unwrap(), expected);
+        let rendered = ImageDocument::render_path(&target).unwrap();
+        assert_eq!((rendered.width, rendered.height), (256, 256));
+        fs::remove_file(target).unwrap();
     }
 
     #[test]

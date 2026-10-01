@@ -598,6 +598,29 @@ impl<'a> Loader<'a> {
     }
 }
 
+/// Parses a material Switch Toolbox exported on its own (`.bfmat`): an
+/// `fmdlSUB` header followed by one version 10 `FMAT` section whose pointers
+/// are relative to the start of the file and whose strings are all local.
+pub fn load_material_subfile(data: &[u8]) -> Result<Material, BfresError> {
+    const SECTION: usize = 0x30;
+    if data.get(1..8) != Some(b"fmdlSUB") || data.get(0xc..0x10) != Some(b"FMAT") {
+        return Err(BfresError::new(0, "not a Switch Toolbox material (.bfmat)"));
+    }
+    if data.get(9).copied() != Some(10) {
+        return Err(BfresError::new(
+            8,
+            "only materials exported from a BFRES version 10 model are supported",
+        ));
+    }
+    let ext = ExternalStrings::empty();
+    Loader {
+        data,
+        ext: &ext,
+        buffer_offset: 0,
+    }
+    .material(SECTION)
+}
+
 /// Parses a BFRES v10 file. `ext` resolves the 64-bit string keys of vanilla
 /// TOTK models; pass an empty table for files whose strings are all local.
 pub fn load(data: &[u8], ext: &ExternalStrings) -> Result<ResFile, BfresError> {

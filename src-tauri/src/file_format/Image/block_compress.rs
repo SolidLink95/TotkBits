@@ -52,7 +52,11 @@ pub fn encode_linear(image: &RgbaImage, format: ImageFormat) -> io::Result<Vec<u
     let block_bytes = match format {
         ImageFormat::BC1RgbaUnorm | ImageFormat::BC1RgbaUnormSrgb => 8,
         ImageFormat::BC4RUnorm => 8,
-        ImageFormat::BC5RgUnorm => 16,
+        ImageFormat::BC2RgbaUnorm
+        | ImageFormat::BC2RgbaUnormSrgb
+        | ImageFormat::BC3RgbaUnorm
+        | ImageFormat::BC3RgbaUnormSrgb
+        | ImageFormat::BC5RgUnorm => 16,
         other => {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
@@ -99,6 +103,14 @@ pub fn encode_linear(image: &RgbaImage, format: ImageFormat) -> io::Result<Vec<u
             match format {
                 ImageFormat::BC1RgbaUnorm | ImageFormat::BC1RgbaUnormSrgb => {
                     out.extend_from_slice(&encode_bc1(&texels, BC1_ALPHA_THRESHOLD));
+                }
+                ImageFormat::BC2RgbaUnorm | ImageFormat::BC2RgbaUnormSrgb => {
+                    out.extend_from_slice(&encode_bc2_alpha(&texels));
+                    out.extend_from_slice(&encode_bc1(&texels, 0.0));
+                }
+                ImageFormat::BC3RgbaUnorm | ImageFormat::BC3RgbaUnormSrgb => {
+                    out.extend_from_slice(&encode_bc3_alpha(&texels));
+                    out.extend_from_slice(&encode_bc1(&texels, 0.0));
                 }
                 ImageFormat::BC4RUnorm => {
                     let mut u = [0f32; PIXELS_PER_BLOCK];
@@ -440,6 +452,118 @@ fn pack_bc1(rgb0: u16, rgb1: u16, bitmap: u32) -> [u8; 8] {
     out[..2].copy_from_slice(&rgb0.to_le_bytes());
     out[2..4].copy_from_slice(&rgb1.to_le_bytes());
     out[4..].copy_from_slice(&bitmap.to_le_bytes());
+    out
+}
+
+// ----------------------------------------------------------------------------- BC2 / BC3 alpha
+
+/// The explicit 4-bit alpha half of `D3DXEncodeBC2` (no dithering).
+fn encode_bc2_alpha(color: &[Rgba; PIXELS_PER_BLOCK]) -> [u8; 8] {
+    let mut bitmap = [0u32; 2];
+    for (i, c) in color.iter().enumerate() {
+        let u = (c.a * 15.0 + 0.5) as u32;
+        bitmap[i >> 3] >>= 4;
+        bitmap[i >> 3] |= u << 28;
+    }
+    let mut out = [0u8; 8];
+    out[..4].copy_from_slice(&bitmap[0].to_le_bytes());
+    out[4..].copy_from_slice(&bitmap[1].to_le_bytes());
+    out
+}
+
+/// The interpolated alpha half of `D3DXEncodeBC3` (no dithering).
+fn encode_bc3_alpha(color: &[Rgba; PIXELS_PER_BLOCK]) -> [u8; 8] {
+    let mut alpha = [0f32; PIXELS_PER_BLOCK];
+    let mut min_alpha = color[0].a;
+    let mut max_alpha = color[0].a;
+    for (quantized, c) in alpha.iter_mut().zip(color) {
+        *quantized = ((c.a * 255.0 + 0.5) as i32) as f32 * UBYTE_TO_FLOAT;
+        if *quantized < min_alpha {
+            min_alpha = *quantized;
+        } else if *quantized > max_alpha {
+            max_alpha = *quantized;
+        }
+    }
+    let mut out = [0u8; 8];
+    if min_alpha == 1.0 {
+        out[0] = 0xff;
+        out[1] = 0xff;
+        return out;
+    }
+
+    let steps: usize = if min_alpha == 0.0 || max_alpha == 1.0 {
+        6
+    } else {
+        8
+    };
+    let (alpha_a, alpha_b) = optimize_alpha(&alpha, steps);
+    let byte_a = ((alpha_a * 255.0 + 0.5) as i32) as u8;
+    let byte_b = ((alpha_b * 255.0 + 0.5) as i32) as u8;
+    let alpha_a = f32::from(byte_a) * UBYTE_TO_FLOAT;
+    let alpha_b = f32::from(byte_b) * UBYTE_TO_FLOAT;
+    if steps == 8 && byte_a == byte_b {
+        out[0] = byte_a;
+        out[1] = byte_b;
+        return out;
+    }
+
+    const STEPS6: [u32; 6] = [0, 2, 3, 4, 5, 1];
+    const STEPS8: [u32; 8] = [0, 2, 3, 4, 5, 6, 7, 1];
+    let mut step = [0f32; 8];
+    let p_steps: &[u32] = if steps == 6 {
+        out[0] = byte_a;
+        out[1] = byte_b;
+        step[0] = alpha_a;
+        step[1] = alpha_b;
+        for i in 1..5 {
+            step[i + 1] = (step[0] * (5 - i) as f32 + step[1] * i as f32) * (1.0 / 5.0);
+        }
+        step[6] = 0.0;
+        step[7] = 1.0;
+        &STEPS6
+    } else {
+        out[0] = byte_b;
+        out[1] = byte_a;
+        step[0] = alpha_b;
+        step[1] = alpha_a;
+        for i in 1..7 {
+            step[i + 1] = (step[0] * (7 - i) as f32 + step[1] * i as f32) * (1.0 / 7.0);
+        }
+        &STEPS8
+    };
+
+    let f_steps = (steps - 1) as f32;
+    let f_scale = if step[0] != step[1] {
+        f_steps / (step[1] - step[0])
+    } else {
+        0.0
+    };
+    for set in 0..2 {
+        let mut dw = 0u32;
+        for c in &color[set * 8..set * 8 + 8] {
+            let a = c.a;
+            let f_dot = (a - step[0]) * f_scale;
+            let i_step = if f_dot <= 0.0 {
+                if steps == 6 && a <= step[0] * 0.5 {
+                    6
+                } else {
+                    0
+                }
+            } else if f_dot >= f_steps {
+                if steps == 6 && a >= (step[1] + 1.0) * 0.5 {
+                    7
+                } else {
+                    1
+                }
+            } else {
+                p_steps[(f_dot + 0.5) as usize]
+            };
+            dw = (i_step << 21) | (dw >> 3);
+        }
+        out[2 + set * 3] = dw as u8;
+        out[3 + set * 3] = (dw >> 8) as u8;
+        out[4 + set * 3] = (dw >> 16) as u8;
+    }
     out
 }
 

@@ -21,7 +21,7 @@ use crate::{
                 read_material_anim_bfres, write_material_anim_bfres, TexturePatternAnim,
                 TexturePatternMaterial,
             },
-            toolbox::ResFile,
+            toolbox::{Material, ResFile},
             BfresFile,
         },
         Pack::PackFile,
@@ -73,6 +73,12 @@ pub struct ArmorAssets {
     /// Custom mesh replacing the template's shapes (skinned to its bones).
     #[serde(default)]
     pub fbx: Option<PathBuf>,
+    /// With a custom FBX: Switch Toolbox material exports (`.bfmat` files,
+    /// or directories whose `.bfmat` files are all taken) that replace the
+    /// template's materials. Every FBX mesh is bound to the material named
+    /// like its FBX material; materials no mesh uses are left out.
+    #[serde(default, alias = "bfmat")]
+    pub materials: Vec<PathBuf>,
 }
 
 fn one() -> i32 {
@@ -586,6 +592,18 @@ impl ArmorSpec {
             return Err(invalid(
                 "choose either a custom FBX or the placeholder cube, not both",
             ));
+        }
+        if !self.assets.materials.is_empty() && self.assets.fbx.is_none() {
+            return Err(invalid("imported materials need a custom FBX"));
+        }
+        for path in &self.assets.materials {
+            let resolved = super::resolve_asset(asset_root, path);
+            if !resolved.exists() {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("required source asset is missing: {}", resolved.display()),
+                ));
+            }
         }
         // `physics` is not validated: unusable donors are skipped and the
         // template's own physics files stay when none is usable.
@@ -1162,6 +1180,42 @@ impl ArmorSpec {
         Ok(output)
     }
 
+    /// The `.bfmat` materials of `assets.materials` that the FBX meshes use,
+    /// in file-name order.
+    fn imported_materials(&self, asset_root: &Path, fbx: &[u8]) -> io::Result<Vec<Material>> {
+        let mut files = Vec::new();
+        for path in &self.assets.materials {
+            let resolved = super::resolve_asset(asset_root, path);
+            if resolved.is_dir() {
+                for entry in fs::read_dir(&resolved)? {
+                    let path = entry?.path();
+                    let is_bfmat = path
+                        .extension()
+                        .is_some_and(|extension| extension.eq_ignore_ascii_case("bfmat"));
+                    if is_bfmat && path.is_file() {
+                        files.push(path);
+                    }
+                }
+            } else {
+                files.push(resolved);
+            }
+        }
+        files.sort();
+        files.dedup();
+        let used = crate::parser::fbx::assimp::import_scene(fbx)
+            .map_err(|error| invalid_data(format!("failed to read the FBX: {error}")))?
+            .material_names;
+        let mut materials = Vec::new();
+        for path in files {
+            let material = ResFile::load_material_subfile(&fs::read(&path)?)
+                .map_err(|error| invalid_data(format!("{}: {error}", path.display())))?;
+            if used.contains(&material.name) {
+                materials.push(material);
+            }
+        }
+        Ok(materials)
+    }
+
     /// Clones the template model under the new project, optionally replacing
     /// its geometry with the skinned cube, and copies its textures (every dye
     /// slice of the albedo array included).
@@ -1220,8 +1274,13 @@ impl ArmorSpec {
             return Err(invalid_data("template BFRES contains no model"));
         }
         if let Some(bytes) = &fbx_bytes {
-            file.import_model_like_toolbox(bytes, self.replace_bones)
-                .map_err(|error| invalid_data(format!("failed to import the FBX: {error}")))?;
+            if self.assets.materials.is_empty() {
+                file.import_model_like_toolbox(bytes, self.replace_bones)
+            } else {
+                let materials = self.imported_materials(asset_root, bytes)?;
+                file.import_model_with_materials(bytes, self.replace_bones, materials)
+            }
+            .map_err(|error| invalid_data(format!("failed to import the FBX: {error}")))?;
         }
         stopwatch.lap("fbx import");
         let cube = match &self.model {

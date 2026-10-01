@@ -44,7 +44,11 @@ python tauri_build.py         # full Windows release: clean, NSIS bundle, silent
 
 Build prerequisites beyond the Rust/Node toolchain: LLVM (for the C++ bindings crates) and CMake.
 
+Wii U texture archives (BOTW `.sbitemico` etc.: Yaz0 + big-endian BFRES holding only FTEX) live in `src-tauri/src/parser/ftex.rs` (container, Syroot layout), `parser/gx2.rs` (GX2 address library) and `compression/trueyz.rs` (Toolbox's Yaz0 encoder), and open in the IMAGE tab (`format: "FTEX"`, command `replace_ftex_image`, CLI `ftex_edit`). Their output is byte-identical to Switch Toolbox; the reference files the tests compare against are produced by `tmp/_CLAUDE/bitemico/ref.sh`, a C# harness (`harness/Ref.cs`, built with the .NET Framework `csc.exe`) that drives the Toolbox DLLs in `tmp/Switch-Toolbox/Toolbox/bin/Release` headlessly — Toolbox's own CLI cannot replace textures in a BFRES.
+
 The items creator (`src-tauri/src/tools/items_creator/`, CLI `create_weapon`) only builds weapons/shields/bows, armor, ELink effects and Zonai devices. It does **not** create plain items/ingredients (pouch materials such as `Item_Material_*` / `Item_Enemy_*`); those have to be hand-cloned from a vanilla actor pack (see `res/5/cucco_arrow/tools/build.py` for a worked example: pack, RSDB rows + Tag bits, GameDataList flags, Mals labels, BNTX icons via the CLI).
+
+Armor with a custom model built from other vanilla models: the creator only imports binary FBX, so `tmp/_CLAUDE/beedle/merge_dae.py -o out.fbx base.dae other.dae=SCALE` merges Toolbox DAE exports first (later files scaled about the origin, meshes and bone translations alike; bones shared by name keep the base file's transforms, new bones keep their world placement). Pair it with `"replace_bones": true` and `"assets": {"materials": ["<dir of .bfmat>"]}` so the meshes get their original materials by FBX material name. A bare `.bphcl` is not a physics donor: wrap it in a small `.pack` (ActorParam with `PhysicsRef`, PhysicsParam, ControllerSetParam, ClothParam, cloth reactions) as `tmp/_CLAUDE/beedle/donor/` does. Worked example: `tmp/_CLAUDE/beedle/spec.json` (output in `res/5/beedle_backpack_dueling_peaks`).
 
 There is no JS test runner and the Rust tree has essentially no test modules — verify changes by running the app and exercising open → edit → save for the affected format.
 

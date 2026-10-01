@@ -120,6 +120,15 @@ export default function ImageView({ activeTab, setStatusText }) {
         setRevision((value) => value + 1);
         setStatusText(`Replaced ${selectedEntry?.name}, layer ${arrayIndex}, mip ${mipIndex}`);
     };
+    const replaceFtex = async () => {
+        const png = await open({ multiple: false, filters: [{ name: 'PNG image', extensions: ['png'] }] });
+        if (!png) return;
+        const warning = await invoke('replace_ftex_image', { target: document.fullPath, png, textureIndex });
+        setArrayIndex(0);
+        setMipIndex(0);
+        setRevision((value) => value + 1);
+        setStatusText(warning ? `Warning: ${warning}` : `Replaced ${selectedEntry?.name} from ${png}`);
+    };
     const changeZoom = (amount) => setZoom((value) => Math.min(16, Math.max(0.05, value + amount)));
     const fileName = document?.fullPath?.replace(/\\/g, '/').split('/').pop() || document?.title || 'Image';
     const entries = image?.entries?.length ? image.entries : [{ name: fileName }];
@@ -213,6 +222,11 @@ export default function ImageView({ activeTab, setStatusText }) {
                     ? <p>G1T format is preserved (for example {selectedEntry?.format || 'the original format'}).</p>
                     : <label>Output format<select value={replacementFormat} onChange={(event) => setReplacementFormat(event.target.value)}><option value="ORIGINAL">Keep original ({selectedEntry?.format})</option>{replacementFormats.map((format) => <option key={format} value={format} disabled={!encodableFormats.has(format)}>{format}{encodableFormats.has(format) ? '' : ' (unavailable)'}</option>)}</select></label>} */}
                 <button type="button" onClick={replaceDds}>Replace</button>
+            </section>}
+            {image?.format === 'FTEX' && <section>
+                <h3>Replace texture</h3>
+                <p>Replaces {selectedEntry?.name} with a PNG of any size. The surface format ({selectedEntry?.format}) is kept and the file is saved the way Switch Toolbox writes it.</p>
+                <button type="button" onClick={replaceFtex}>Replace</button>
             </section>}
             {image?.format === 'BNTX' && <section>
                 <h3>Replace selected surface</h3>
