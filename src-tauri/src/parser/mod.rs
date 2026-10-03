@@ -18,3 +18,4 @@ pub mod ptcl;
 pub mod rstb;
 pub mod skeleton;
 pub mod textogo;
+pub mod xlink_yaml;
